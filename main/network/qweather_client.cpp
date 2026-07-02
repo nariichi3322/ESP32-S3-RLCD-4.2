@@ -283,6 +283,8 @@ constexpr WarningColorInfo kWarningColors[] = {
     {"black", "黑色", "黑", 1},
 };
 
+void log_qweather_fixed_warning(const char *message);
+
 const char *qweather_stage_text(const char *stage)
 {
     return stage ? stage : kQweatherDefaultStage;
@@ -317,6 +319,40 @@ bool format_qweather_url(char *out, size_t out_len, const char *stage, const cha
         return false;
     }
     return true;
+}
+
+bool format_ip_coordinates(char *out, size_t out_len, double longitude, double latitude)
+{
+    if (!out || out_len == 0) {
+        log_qweather_fixed_warning(kIpLocationInvalidArgLog);
+        return false;
+    }
+    int written = snprintf(out, out_len, kIpGeoCoordinateFormat, longitude, latitude);
+    if (written < 0 || written >= (int)out_len) {
+        out[0] = '\0';
+        log_qweather_fixed_warning(kIpLocationCoordinateTooLongLog);
+        return false;
+    }
+    return true;
+}
+
+void copy_ip_coordinate_location(const char *location, char *city_id, size_t city_id_len, WeatherData *weather)
+{
+    if (!location || !city_id || city_id_len == 0 || !weather) {
+        return;
+    }
+    strlcpy(city_id, location, city_id_len);
+    char *comma = strchr(city_id, ',');
+    if (!comma) {
+        return;
+    }
+    size_t lon_len = comma - city_id;
+    if (lon_len >= sizeof(weather->lon)) {
+        lon_len = sizeof(weather->lon) - 1;
+    }
+    memcpy(weather->lon, city_id, lon_len);
+    weather->lon[lon_len] = '\0';
+    strlcpy(weather->lat, comma + 1, sizeof(weather->lat));
 }
 
 char *alloc_qweather_response(const char *stage, size_t buffer_size)
@@ -458,10 +494,7 @@ bool ip_geolocation_lookup(char *location, size_t location_len, char *city, size
     cJSON *lon = cJSON_GetObjectItem(root.get(), kIpGeoJsonLongitudeField);
     cJSON *region = cJSON_GetObjectItem(root.get(), kIpGeoJsonRegionField);
     if (cJSON_IsNumber(lat) && cJSON_IsNumber(lon)) {
-        int written = snprintf(location, location_len, kIpGeoCoordinateFormat, lon->valuedouble, lat->valuedouble);
-        if (written < 0 || written >= (int)location_len) {
-            location[0] = '\0';
-            log_qweather_fixed_warning(kIpLocationCoordinateTooLongLog);
+        if (!format_ip_coordinates(location, location_len, lon->valuedouble, lat->valuedouble)) {
             return false;
         }
         if (cJSON_IsString(region) && region->valuestring) {
@@ -1218,17 +1251,7 @@ bool perform_weather_update()
         }
         strlcpy(next.city, ip_city[0] ? ip_city : (lookup_city[0] ? lookup_city : location), sizeof(next.city));
         if (!have_city_id) {
-            strlcpy(city_id, location, sizeof(city_id));
-            char *comma = strchr(location, ',');
-            if (comma) {
-                size_t lon_len = comma - location;
-                if (lon_len >= sizeof(next.lon)) {
-                    lon_len = sizeof(next.lon) - 1;
-                }
-                memcpy(next.lon, location, lon_len);
-                next.lon[lon_len] = '\0';
-                strlcpy(next.lat, comma + 1, sizeof(next.lat));
-            }
+            copy_ip_coordinate_location(location, city_id, sizeof(city_id), &next);
             ESP_LOGW(TAG, WEATHER_USING_IP_COORDINATES_FORMAT, city_id);
         }
         if (fetch_and_commit_weather(city_id, &next)) {

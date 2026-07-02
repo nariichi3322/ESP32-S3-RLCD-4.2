@@ -79,6 +79,24 @@ constexpr const char *kSettingsOtaHintRebooting = "即将重启";
 constexpr const char *kSettingsOtaHintRetry = "BOOT重新检查";
 constexpr const char *kSettingsOtaHintCheck = "BOOT开始检查";
 
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+constexpr bool settings_ota_hint_texts_nonempty()
+{
+    return cstr_nonempty(kSettingsOtaUpdatingWithSpeedFormat) &&
+           cstr_nonempty(kSettingsOtaUpdatingFormat) &&
+           cstr_nonempty(kSettingsOtaCurrentVersionFormat) &&
+           cstr_nonempty(kSettingsOtaHintDownloading) &&
+           cstr_nonempty(kSettingsOtaHintInstall) &&
+           cstr_nonempty(kSettingsOtaHintChecking) &&
+           cstr_nonempty(kSettingsOtaHintRebooting) &&
+           cstr_nonempty(kSettingsOtaHintRetry) &&
+           cstr_nonempty(kSettingsOtaHintCheck);
+}
+
 int settings_ota_progress_fill_width(int progress)
 {
     int clamped = progress;
@@ -123,6 +141,16 @@ constexpr int kSettingsGridSwitchTextSystemW = 26;
 constexpr int kSettingsGridSwitchTextDisplayW = 30;
 constexpr int kSettingsGridSwitchTextYOffset = 7;
 constexpr const char *kSettingsPrimaryItems[kSettingsPrimaryCount] = {"网络", "声音", "显示", "系统"};
+constexpr bool settings_primary_items_nonempty()
+{
+    for (const char *item : kSettingsPrimaryItems) {
+        if (!cstr_nonempty(item)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 constexpr const char *kSettingsNetworkSyncTimeText = "同步时间";
 constexpr const char *kSettingsNetworkSyncWeatherText = "同步天气";
 constexpr const char *kSettingsNetworkSayingText = "更新一言";
@@ -213,6 +241,8 @@ constexpr size_t kInfoSourceLabelIndex = kInfoLabelCount - 1;
 static_assert(kSettingsListRowCount == kSettingsSecondaryMaxCount);
 static_assert(kSettingsGridRowCount * kSettingsGridColumns >= kWorkPageCount);
 static_assert(array_count(kSettingsPrimaryItems) == kSettingsPrimaryCount);
+static_assert(settings_primary_items_nonempty(), "settings primary menu texts must be non-empty");
+static_assert(settings_ota_hint_texts_nonempty(), "settings OTA status and hint texts must be non-empty");
 static_assert(kNetworkDiagLocalIpLine < kNetworkDiagPublicIpLine);
 static_assert(kNetworkDiagPublicIpLine < kNetworkDiagGridFirstLine);
 static_assert(kNetworkDiagGridFirstLine <= kNetworkDiagWideLine);

@@ -223,7 +223,7 @@ void button_task(void *)
                        button_press_is_long(now - key_pressed_since)) {
                 g_boot_info_requested = false;
                 g_info_page_until_tick = 0;
-                return_to_system_settings_item(3, now);
+                return_to_system_settings_item(kSystemSettingsInfoItem, now);
                 key_long_handled = true;
                 notify_ui_task();
             } else if (!key_long_handled &&
@@ -231,7 +231,7 @@ void button_task(void *)
                        !g_settings_requested &&
                        button_press_is_long(now - key_pressed_since)) {
                 g_network_diag_page_requested = false;
-                return_to_system_settings_item(0, now);
+                return_to_system_settings_item(kSystemSettingsNetworkDiagItem, now);
                 key_long_handled = true;
                 notify_ui_task();
             }

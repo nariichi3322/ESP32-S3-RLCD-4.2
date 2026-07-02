@@ -112,6 +112,47 @@ static constexpr const char *kOtaManifestJsonSizeField = "size";
 static constexpr const char *kOtaManifestJsonNotesField = "notes";
 static constexpr const char *kOtaUnknownManifestSource = "unknown";
 
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+constexpr bool ota_status_texts_nonempty()
+{
+    return cstr_nonempty(kOtaStatusCheckFailed) &&
+           cstr_nonempty(kOtaStatusCheckingUpdate) &&
+           cstr_nonempty(kOtaStatusAlreadyLatest) &&
+           cstr_nonempty(kOtaStatusDownloadFailed) &&
+           cstr_nonempty(kOtaStatusVerifyFailed) &&
+           cstr_nonempty(kOtaStatusUpdateFailed) &&
+           cstr_nonempty(kOtaStatusUpdateDoneRebooting) &&
+           cstr_nonempty(kOtaStatusNoWifi) &&
+           cstr_nonempty(kOtaStatusLowBattery) &&
+           cstr_nonempty(kOtaStatusWifiFailed) &&
+           cstr_nonempty(kOtaStatusNoOtaSlot) &&
+           cstr_nonempty(kOtaStatusNoMemory) &&
+           cstr_nonempty(kOtaStatusOfflineMode) &&
+           cstr_nonempty(kOtaStatusUnavailable) &&
+           cstr_nonempty(kOtaStatusIdlePrompt) &&
+           cstr_nonempty(kOtaStatusInstallingUpdate) &&
+           cstr_nonempty(kOtaStatusInstallingBackup) &&
+           cstr_nonempty(kOtaStatusInstallingProgressFormat) &&
+           cstr_nonempty(kOtaStatusNewVersionFormat);
+}
+
+constexpr bool ota_manifest_field_texts_nonempty()
+{
+    return cstr_nonempty(kOtaManifestJsonVersionField) &&
+           cstr_nonempty(kOtaManifestJsonUrlField) &&
+           cstr_nonempty(kOtaManifestJsonSha256Field) &&
+           cstr_nonempty(kOtaManifestJsonSizeField) &&
+           cstr_nonempty(kOtaManifestJsonNotesField) &&
+           cstr_nonempty(kOtaUnknownManifestSource);
+}
+
+static_assert(ota_status_texts_nonempty(), "OTA status texts must be non-empty");
+static_assert(ota_manifest_field_texts_nonempty(), "OTA manifest field texts must be non-empty");
+
 static void log_ota_heap(const char *stage, int downloaded, int progress)
 {
     ESP_LOGI(TAG,

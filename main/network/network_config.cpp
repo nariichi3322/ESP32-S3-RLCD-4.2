@@ -151,6 +151,31 @@ constexpr bool clear_config_keys_nonempty()
     return true;
 }
 
+constexpr bool config_event_texts_nonempty()
+{
+    return cstr_nonempty(kConfigEventReasonFallback) &&
+           cstr_nonempty(kConfigEventReasonNetworkRequestReset) &&
+           cstr_nonempty(kConfigEventReasonFactoryReset) &&
+           cstr_nonempty(kConfigEventReasonOfflineManualTime) &&
+           cstr_nonempty(kConfigEventReasonProvisioningSave) &&
+           cstr_nonempty(kConfigEventActionClear) &&
+           cstr_nonempty(kConfigEventActionSet);
+}
+
+constexpr bool nvs_action_texts_nonempty()
+{
+    return cstr_nonempty(kNvsActionAccessingConfig) &&
+           cstr_nonempty(kNvsActionLoadingConfig) &&
+           cstr_nonempty(kNvsActionSavingOfflineMode) &&
+           cstr_nonempty(kNvsActionSavingConfig) &&
+           cstr_nonempty(kNvsActionSavingWeatherCity) &&
+           cstr_nonempty(kNvsActionClearingWeatherCity) &&
+           cstr_nonempty(kNvsActionSavingHourlyReminder) &&
+           cstr_nonempty(kNvsActionSavingPageSettings) &&
+           cstr_nonempty(kNvsActionSavingPageOrder) &&
+           cstr_nonempty(kNvsActionClearingConfig);
+}
+
 static_assert(kFormEncodedBufferSize > 0, "form encoded scratch buffer must be nonzero");
 static_assert(kManualTimeFieldSize > 1, "manual time field must fit text and NUL");
 static_assert(kSetupSsidFieldSize > 1, "setup SSID field must fit text and NUL");
@@ -196,6 +221,8 @@ static_assert(cstr_nonempty(kInvalidWeatherCityChars), "invalid weather city cha
 static_assert(cstr_nonempty(kConfigEventReasonFallback), "config event fallback reason must be non-empty");
 static_assert(cstr_nonempty(kConfigEventActionClear), "config event clear action must be non-empty");
 static_assert(cstr_nonempty(kConfigEventActionSet), "config event set action must be non-empty");
+static_assert(config_event_texts_nonempty(), "config event reason/action texts must be non-empty");
+static_assert(nvs_action_texts_nonempty(), "NVS action texts must be non-empty");
 static_assert(kManualTimeMinMonth == 1 && kManualTimeMaxMonth == 12, "manual time month range must be 1..12");
 static_assert(kManualTimeMinDay == 1 && kManualTimeMaxDay == 31, "manual time day range must be 1..31");
 static_assert(kManualTimeMinHour == 0 && kManualTimeMaxHour == 23, "manual time hour range must be 0..23");

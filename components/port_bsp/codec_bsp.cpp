@@ -20,6 +20,10 @@ static constexpr int kCodecEchoBitsPerSample = 16;
 static constexpr int kCodecTdmChannelCount = 4;
 static constexpr uint32_t kCodecTdmChannelMask = 0x0F;
 static constexpr int kCodecTdmMclkMultiple = 384;
+static constexpr size_t kCodecPcmPlaybackSlotBufferSize = 4096;
+static constexpr int kCodecPcmPlaybackSampleRateHz = 24000;
+static constexpr int kCodecPcmPlaybackChannelCount = kCodecTdmChannelCount;
+static constexpr int kCodecPcmPlaybackBitsPerSample = 16;
 static constexpr const char *kCodecMusicTaskName = "CodecPort_MusicTask";
 static constexpr const char *kCodecEchoTaskName = "CodecPort_EchoTask";
 static constexpr uint32_t kCodecTaskStackWords = 4 * 1024;
@@ -34,6 +38,10 @@ static_assert(kCodecEchoBitsPerSample > 0, "Echo bits per sample must be positiv
 static_assert(kCodecTdmChannelCount > 0, "Codec TDM channel count must be positive");
 static_assert(kCodecTdmChannelMask != 0, "Codec TDM channel mask must not be empty");
 static_assert(kCodecTdmMclkMultiple > 0, "Codec TDM MCLK multiple must be positive");
+static_assert(kCodecPcmPlaybackSlotBufferSize > 0, "Codec PCM playback buffer size must be positive");
+static_assert(kCodecPcmPlaybackSampleRateHz > 0, "Codec PCM playback sample rate must be positive");
+static_assert(kCodecPcmPlaybackChannelCount > 0, "Codec PCM playback channel count must be positive");
+static_assert(kCodecPcmPlaybackBitsPerSample > 0, "Codec PCM playback bits per sample must be positive");
 static_assert(kCodecMusicTaskName[0] != '\0', "Music task name must not be empty");
 static_assert(kCodecEchoTaskName[0] != '\0', "Echo task name must not be empty");
 static_assert(kCodecTaskStackWords > 0, "Codec task stack size must be positive");
@@ -59,7 +67,7 @@ void CodecPort::CodecPort_MusicTask(void *arg) {
 		size_t bytes_write = 0;
   	  	size_t bytes_sizt = hourly_chime_pcm_end - hourly_chime_pcm_start;
   	  	uint8_t *data_ptr = (uint8_t *)hourly_chime_pcm_start;
-		codec->CodecPort_SetInfo(kCodecNameEs8311,1,24000,4,16);
+		codec->CodecPort_SetInfo(kCodecNameEs8311,1,kCodecPcmPlaybackSampleRateHz,kCodecPcmPlaybackChannelCount,kCodecPcmPlaybackBitsPerSample);
 		do
 		{
 			codec->CodecPort_PlayWrite(data_ptr, 256);
@@ -242,9 +250,9 @@ bool CodecPort::CodecPort_IsReady(void) const {
 
 static bool play_pcm_to_slot0(CodecPort *codec, const uint8_t *pcm_start, const uint8_t *pcm_end, int source_slot, int volume)
 {
-    static uint8_t slot_buffer[4096];
-    constexpr int kSampleRate = 24000;
-    constexpr int kChannels = 4;
+    static uint8_t slot_buffer[kCodecPcmPlaybackSlotBufferSize];
+    constexpr int kSampleRate = kCodecPcmPlaybackSampleRateHz;
+    constexpr int kChannels = kCodecPcmPlaybackChannelCount;
     constexpr int kBytesPerSample = sizeof(int16_t);
     constexpr int kFrameBytes = kChannels * kBytesPerSample;
     constexpr int kWarmupMs = 90;
@@ -268,7 +276,7 @@ static bool play_pcm_to_slot0(CodecPort *codec, const uint8_t *pcm_start, const 
         ESP_LOGW(TAG, "invalid pcm range");
         return false;
     }
-    if (!codec->CodecPort_SetInfo(kCodecNameEs8311, 1, 24000, 4, 16)) {
+    if (!codec->CodecPort_SetInfo(kCodecNameEs8311, 1, kCodecPcmPlaybackSampleRateHz, kCodecPcmPlaybackChannelCount, kCodecPcmPlaybackBitsPerSample)) {
         return false;
     }
     codec->CodecPort_SetSpeakerVol(0);
