@@ -6,12 +6,22 @@
 #include <string.h>
 
 namespace {
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
 constexpr int kHistoryWindowHours = 24;
+constexpr int kHoursPerDay = 24;
 constexpr int kSecondsPerMinute = 60;
 constexpr int kMinutesPerHour = 60;
 constexpr int kSecondsPerHour = kSecondsPerMinute * kMinutesPerHour;
 constexpr int kHistoryAxisTickCount = 5;
 constexpr int kHistoryAxisValueCount = 3;
+constexpr int kHistoryAxisMaxIndex = 0;
+constexpr int kHistoryAxisMidIndex = 1;
+constexpr int kHistoryAxisMinIndex = 2;
 constexpr int kHistoryCanvasW = 364;
 constexpr int kHistoryCanvasH = 190;
 constexpr int kHistoryBadgeW = 40;
@@ -66,6 +76,37 @@ constexpr const char *kHistoryTempBadgeFormat = "%.1f";
 constexpr const char *kHistoryHumiBadgeFormat = "%.0f";
 constexpr const char *kHistorySensorSummaryFormat = "%.0fC %.0f%%";
 constexpr const char *kHistorySensorSummaryPlaceholder = "--C --%%";
+static_assert(kHistoryWindowHours > 0, "History window must be positive");
+static_assert(kHoursPerDay > 0, "Hours per day must be positive");
+static_assert(kSecondsPerMinute > 0, "Seconds per minute must be positive");
+static_assert(kMinutesPerHour > 0, "Minutes per hour must be positive");
+static_assert(kSecondsPerHour == kSecondsPerMinute * kMinutesPerHour, "Seconds per hour mismatch");
+static_assert(kHistoryAxisTickCount > 0, "History axis tick count must be positive");
+static_assert(kHistoryAxisValueCount == kHistoryAxisMinIndex + 1, "History axis index count mismatch");
+static_assert(kHistoryAxisMaxIndex >= 0 && kHistoryAxisMaxIndex < kHistoryAxisValueCount,
+              "History max axis index out of range");
+static_assert(kHistoryAxisMidIndex >= 0 && kHistoryAxisMidIndex < kHistoryAxisValueCount,
+              "History mid axis index out of range");
+static_assert(kHistoryAxisMinIndex >= 0 && kHistoryAxisMinIndex < kHistoryAxisValueCount,
+              "History min axis index out of range");
+static_assert(kHistoryCanvasW > 0 && kHistoryCanvasH > 0, "History canvas dimensions must be positive");
+static_assert(kHistoryBadgeW > 0 && kHistoryBadgeH > 0, "History badge dimensions must be positive");
+static_assert(kHistoryPlotW > 0 && kHistoryPlotH > 0, "History plot dimensions must be positive");
+static_assert(kHistoryGridLineCount > 1, "History grid needs at least two lines");
+static_assert(kHistoryGridIntervalCount == kHistoryGridLineCount - 1, "History grid interval count mismatch");
+static_assert(kHistoryMinValidSamplesForLine >= 2, "History line needs at least two samples");
+static_assert(array_count(kHistoryTimeLabelCenterX) == kHistoryAxisTickCount,
+              "History time label coordinate count mismatch");
+static_assert(array_count(kHistoryAxisTickHours) == kHistoryAxisTickCount,
+              "History axis tick hour count mismatch");
+#define HISTORY_WINDOW_INVALID_ARG_LOG "history window invalid arg"
+#define HISTORY_CHART_INVALID_ARG_LOG "history chart invalid arg"
+#define HISTORY_TEMP_TITLE_CREATE_FAILED_LOG "history temp title create failed"
+#define HISTORY_HUMI_TITLE_CREATE_FAILED_LOG "history humi title create failed"
+#define HISTORY_CHART_CANVAS_CREATE_FAILED_LOG "history chart canvas create failed"
+#define HISTORY_TIME_LABEL_CREATE_FAILED_FORMAT "history time label create failed index=%d"
+#define HISTORY_TEMP_AXIS_LABEL_CREATE_FAILED_FORMAT "history temp axis label create failed index=%d"
+#define HISTORY_HUMI_AXIS_LABEL_CREATE_FAILED_FORMAT "history humi axis label create failed index=%d"
 } // namespace
 
 void style_history_value_badge(lv_obj_t *label)
@@ -153,7 +194,7 @@ bool collect_history_window(time_t end_hour,
         *out_count = 0;
     }
     if (!out || !out_count) {
-        ESP_LOGW(TAG, "history window invalid arg");
+        ESP_LOGW(TAG, "%s", HISTORY_WINDOW_INVALID_ARG_LOG);
         return false;
     }
     time_t start = end_hour - kHistoryWindowHours * kSecondsPerHour;
@@ -186,6 +227,21 @@ void update_history_axis_labels(time_t start, time_t end)
         char text[kHistoryAxisHourTextSize];
         format_axis_hour(start + kHistoryAxisTickHours[i] * kSecondsPerHour, text, sizeof(text));
         set_label_text_if_changed(g_history_time_labels[i], text);
+    }
+}
+
+int history_hour_key(const struct tm &local)
+{
+    return local.tm_yday * kHoursPerDay + local.tm_hour;
+}
+
+void set_history_axis_placeholders(lv_obj_t **axis_labels)
+{
+    if (!axis_labels) {
+        return;
+    }
+    for (int i = 0; i < kHistoryAxisValueCount; ++i) {
+        set_label_text_if_changed(axis_labels[i], kHistoryAxisPlaceholder);
     }
 }
 
@@ -232,14 +288,10 @@ void draw_history_chart_panel(lv_obj_t *canvas,
 {
     if (!canvas || !samples || sample_count <= 0 || !axis_labels ||
         canvas_w <= 0 || canvas_h <= 0 || plot_w <= 0 || plot_h <= 0) {
-        ESP_LOGW(TAG, "history chart invalid arg");
+        ESP_LOGW(TAG, "%s", HISTORY_CHART_INVALID_ARG_LOG);
         set_obj_visible(max_label, false);
         set_obj_visible(min_label, false);
-        if (axis_labels) {
-            for (int i = 0; i < kHistoryAxisValueCount; ++i) {
-                set_label_text_if_changed(axis_labels[i], kHistoryAxisPlaceholder);
-            }
-        }
+        set_history_axis_placeholders(axis_labels);
         return;
     }
     int valid_count = 0;
@@ -272,9 +324,7 @@ void draw_history_chart_panel(lv_obj_t *canvas,
     if (valid_count < kHistoryMinValidSamplesForLine) {
         set_obj_visible(max_label, false);
         set_obj_visible(min_label, false);
-        for (int i = 0; i < kHistoryAxisValueCount; ++i) {
-            set_label_text_if_changed(axis_labels[i], kHistoryAxisPlaceholder);
-        }
+        set_history_axis_placeholders(axis_labels);
         return;
     }
 
@@ -288,11 +338,11 @@ void draw_history_chart_panel(lv_obj_t *canvas,
     float axis_mid = (axis_min + axis_max) * kHistoryAxisMidRatio;
     char axis_text[kHistoryAxisValueTextSize];
     snprintf(axis_text, sizeof(axis_text), temperature ? kHistoryTempAxisFormat : kHistoryHumiAxisFormat, axis_max);
-    set_label_text_if_changed(axis_labels[0], axis_text);
+    set_label_text_if_changed(axis_labels[kHistoryAxisMaxIndex], axis_text);
     snprintf(axis_text, sizeof(axis_text), temperature ? kHistoryTempAxisFormat : kHistoryHumiAxisFormat, axis_mid);
-    set_label_text_if_changed(axis_labels[1], axis_text);
+    set_label_text_if_changed(axis_labels[kHistoryAxisMidIndex], axis_text);
     snprintf(axis_text, sizeof(axis_text), temperature ? kHistoryTempAxisFormat : kHistoryHumiAxisFormat, axis_min);
-    set_label_text_if_changed(axis_labels[2], axis_text);
+    set_label_text_if_changed(axis_labels[kHistoryAxisMinIndex], axis_text);
 
     int prev_x = 0;
     int prev_y = 0;
@@ -357,7 +407,7 @@ bool update_history_page(const struct tm &local)
     struct tm mutable_local = local;
     time_t now = mktime(&mutable_local);
     time_t end_hour = hour_start_from_time(now);
-    int hour_key = local.tm_yday * 24 + local.tm_hour;
+    int hour_key = history_hour_key(local);
     bool changed = update_work_page_status_time(g_history_status_time_label, local);
     changed |= update_work_page_sensor_summary(g_history_summary_label);
     if (g_last_history_drawn_version == g_hourly_history_version &&
@@ -425,13 +475,13 @@ void build_history_page()
     if (temp_title) {
         lv_obj_set_style_text_font(temp_title, &zh_font_16, LV_PART_MAIN);
     } else {
-        ESP_LOGW(TAG, "history temp title create failed");
+        ESP_LOGW(TAG, "%s", HISTORY_TEMP_TITLE_CREATE_FAILED_LOG);
     }
     lv_obj_t *humi_title = make_label(screen, 24, 172, 80, 24, kHistoryHumiTitle);
     if (humi_title) {
         lv_obj_set_style_text_font(humi_title, &zh_font_16, LV_PART_MAIN);
     } else {
-        ESP_LOGW(TAG, "history humi title create failed");
+        ESP_LOGW(TAG, "%s", HISTORY_HUMI_TITLE_CREATE_FAILED_LOG);
     }
 
     if (!g_history_chart_canvas_buf) {
@@ -439,7 +489,7 @@ void build_history_page()
     }
     g_history_chart_canvas = lv_canvas_create(screen);
     if (!g_history_chart_canvas) {
-        ESP_LOGW(TAG, "history chart canvas create failed");
+        ESP_LOGW(TAG, "%s", HISTORY_CHART_CANVAS_CREATE_FAILED_LOG);
     } else {
         lv_obj_clear_flag(g_history_chart_canvas, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_pos(g_history_chart_canvas, kHistoryChartCanvasX, kHistoryChartCanvasY);
@@ -469,7 +519,7 @@ void build_history_page()
         if (g_history_time_labels[i]) {
             lv_obj_set_style_text_align(g_history_time_labels[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         } else {
-            ESP_LOGW(TAG, "history time label create failed index=%d", i);
+            ESP_LOGW(TAG, HISTORY_TIME_LABEL_CREATE_FAILED_FORMAT, i);
         }
     }
     for (int i = 0; i < kHistoryAxisValueCount; ++i) {
@@ -488,19 +538,19 @@ void build_history_page()
         if (g_history_temp_axis_labels[i]) {
             lv_obj_set_style_text_align(g_history_temp_axis_labels[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
         } else {
-            ESP_LOGW(TAG, "history temp axis label create failed index=%d", i);
+            ESP_LOGW(TAG, HISTORY_TEMP_AXIS_LABEL_CREATE_FAILED_FORMAT, i);
         }
         if (g_history_humi_axis_labels[i]) {
             lv_obj_set_style_text_align(g_history_humi_axis_labels[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
         } else {
-            ESP_LOGW(TAG, "history humi axis label create failed index=%d", i);
+            ESP_LOGW(TAG, HISTORY_HUMI_AXIS_LABEL_CREATE_FAILED_FORMAT, i);
         }
     }
 
-    g_history_temp_max_label = make_label_with_font(screen, 0, 0, 40, 16, kHistoryAxisPlaceholder, &lv_font_montserrat_12);
-    g_history_temp_min_label = make_label_with_font(screen, 0, 0, 40, 16, kHistoryAxisPlaceholder, &lv_font_montserrat_12);
-    g_history_humi_max_label = make_label_with_font(screen, 0, 0, 40, 16, kHistoryAxisPlaceholder, &lv_font_montserrat_12);
-    g_history_humi_min_label = make_label_with_font(screen, 0, 0, 40, 16, kHistoryAxisPlaceholder, &lv_font_montserrat_12);
+    g_history_temp_max_label = make_label_with_font(screen, 0, 0, kHistoryBadgeW, kHistoryBadgeH, kHistoryAxisPlaceholder, &lv_font_montserrat_12);
+    g_history_temp_min_label = make_label_with_font(screen, 0, 0, kHistoryBadgeW, kHistoryBadgeH, kHistoryAxisPlaceholder, &lv_font_montserrat_12);
+    g_history_humi_max_label = make_label_with_font(screen, 0, 0, kHistoryBadgeW, kHistoryBadgeH, kHistoryAxisPlaceholder, &lv_font_montserrat_12);
+    g_history_humi_min_label = make_label_with_font(screen, 0, 0, kHistoryBadgeW, kHistoryBadgeH, kHistoryAxisPlaceholder, &lv_font_montserrat_12);
     style_history_value_badge(g_history_temp_max_label);
     style_history_value_badge(g_history_temp_min_label);
     style_history_value_badge(g_history_humi_max_label);

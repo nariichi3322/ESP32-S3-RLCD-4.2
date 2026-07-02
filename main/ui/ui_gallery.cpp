@@ -4,14 +4,29 @@
 #include "clock_gallery_images.h"
 #include "custom_assets.h"
 
+#define GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG "gallery image canvas create failed"
+#define GALLERY_TIME_CANVAS_CREATE_FAILED_LOG "gallery time canvas create failed"
+#define GALLERY_SAYING_LABEL_CREATE_FAILED_LOG "gallery saying label create failed"
+
 static int s_last_gallery_image_index = -1;
 static int s_last_gallery_time_key = -1;
 static uint8_t s_custom_gallery_image[CLOCK_GALLERY_IMAGE_BYTES_PER_ROW * CLOCK_GALLERY_IMAGE_HEIGHT];
 
 static constexpr int kGalleryTimeCanvasW = 112;
 static constexpr int kGalleryTimeCanvasH = 198;
+static constexpr int kGalleryMinutesPerHour = 60;
+static constexpr int kGalleryBlockDigitCount = 10;
+static constexpr int kGalleryBlockDigitRows = 7;
+static constexpr int kGalleryBlockDigitCols = 5;
+static constexpr int kGalleryBlockDigitScale = 10;
+static constexpr int kGalleryBlockDigitGap = 8;
+static constexpr int kGalleryBlockDigitW = kGalleryBlockDigitCols * kGalleryBlockDigitScale;
+static constexpr int kGalleryBlockDigitH = kGalleryBlockDigitRows * kGalleryBlockDigitScale;
+static constexpr int kGalleryBlockNumberW = kGalleryBlockDigitW * 2 + kGalleryBlockDigitGap;
+static constexpr int kGalleryTimeHourY = 15;
+static constexpr int kGalleryTimeMinuteY = 116;
 
-static const char *const kBlockDigits[10][7] = {
+static const char *const kBlockDigits[kGalleryBlockDigitCount][kGalleryBlockDigitRows] = {
     {"11111", "10001", "10011", "10101", "11001", "10001", "11111"},
     {"00100", "01100", "00100", "00100", "00100", "00100", "01110"},
     {"11110", "00001", "00001", "11110", "10000", "10000", "11111"},
@@ -23,6 +38,27 @@ static const char *const kBlockDigits[10][7] = {
     {"01110", "10001", "10001", "01110", "10001", "10001", "01110"},
     {"01110", "10001", "10001", "01111", "00001", "00001", "11110"},
 };
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+static_assert(array_count(kBlockDigits) == kGalleryBlockDigitCount);
+static_assert(kGalleryTimeCanvasW > 0 && kGalleryTimeCanvasH > 0, "Gallery time canvas dimensions must be positive");
+static_assert(kGalleryMinutesPerHour > 0, "Gallery minutes per hour must be positive");
+static_assert(kGalleryBlockDigitCount == 10, "Gallery block digit table must contain decimal digits");
+static_assert(kGalleryBlockDigitRows > 0 && kGalleryBlockDigitCols > 0, "Gallery block digit grid must be positive");
+static_assert(kGalleryBlockDigitScale > 1, "Gallery block digit scale must leave a visible gap");
+static_assert(kGalleryBlockDigitGap >= 0, "Gallery block digit gap must not be negative");
+static_assert(kGalleryBlockNumberW <= kGalleryTimeCanvasW, "Gallery block number must fit the time canvas width");
+static_assert(kGalleryTimeHourY >= 0, "Gallery hour Y must not be negative");
+static_assert(kGalleryTimeMinuteY >= 0, "Gallery minute Y must not be negative");
+static_assert(kGalleryTimeHourY + kGalleryBlockDigitH <= kGalleryTimeCanvasH,
+              "Gallery hour digits must fit the time canvas height");
+static_assert(kGalleryTimeMinuteY + kGalleryBlockDigitH <= kGalleryTimeCanvasH,
+              "Gallery minute digits must fit the time canvas height");
 
 static void canvas_fill_rect(lv_obj_t *canvas, int x, int y, int w, int h, lv_color_t color)
 {
@@ -38,11 +74,11 @@ static void canvas_fill_rect(lv_obj_t *canvas, int x, int y, int w, int h, lv_co
 
 static void draw_block_digit(lv_obj_t *canvas, int digit, int x, int y, int scale)
 {
-    if (digit < 0 || digit > 9) {
+    if (digit < 0 || digit >= kGalleryBlockDigitCount) {
         return;
     }
-    for (int row = 0; row < 7; ++row) {
-        for (int col = 0; col < 5; ++col) {
+    for (int row = 0; row < kGalleryBlockDigitRows; ++row) {
+        for (int col = 0; col < kGalleryBlockDigitCols; ++col) {
             if (kBlockDigits[digit][row][col] == '1') {
                 canvas_fill_rect(canvas, x + col * scale, y + row * scale, scale - 1, scale - 1, lv_color_black());
             }
@@ -52,13 +88,9 @@ static void draw_block_digit(lv_obj_t *canvas, int digit, int x, int y, int scal
 
 static void draw_block_number(lv_obj_t *canvas, int value, int y)
 {
-    constexpr int scale = 10;
-    constexpr int digit_w = 5 * scale;
-    constexpr int gap = 8;
-    constexpr int total_w = digit_w * 2 + gap;
-    int x = (112 - total_w) / 2;
-    draw_block_digit(canvas, value / 10, x, y, scale);
-    draw_block_digit(canvas, value % 10, x + digit_w + gap, y, scale);
+    int x = (kGalleryTimeCanvasW - kGalleryBlockNumberW) / 2;
+    draw_block_digit(canvas, value / 10, x, y, kGalleryBlockDigitScale);
+    draw_block_digit(canvas, value % 10, x + kGalleryBlockDigitW + kGalleryBlockDigitGap, y, kGalleryBlockDigitScale);
 }
 
 static bool update_gallery_time_labels(const struct tm &local)
@@ -67,8 +99,8 @@ static bool update_gallery_time_labels(const struct tm &local)
         return false;
     }
     lv_canvas_fill_bg(g_gallery_time_canvas, lv_color_white(), LV_OPA_COVER);
-    draw_block_number(g_gallery_time_canvas, local.tm_hour, 15);
-    draw_block_number(g_gallery_time_canvas, local.tm_min, 116);
+    draw_block_number(g_gallery_time_canvas, local.tm_hour, kGalleryTimeHourY);
+    draw_block_number(g_gallery_time_canvas, local.tm_min, kGalleryTimeMinuteY);
     lv_obj_invalidate(g_gallery_time_canvas);
     return true;
 }
@@ -116,7 +148,7 @@ bool update_gallery_page(const struct tm &local)
 {
     build_gallery_page();
     bool changed = false;
-    int time_key = local.tm_hour * 60 + local.tm_min;
+    int time_key = local.tm_hour * kGalleryMinutesPerHour + local.tm_min;
     if (time_key != s_last_gallery_time_key) {
         s_last_gallery_time_key = time_key;
         changed |= update_gallery_time_labels(local);
@@ -139,7 +171,12 @@ void build_gallery_page()
     g_gallery_root = screen;
 
     build_battery_icon(screen, g_gallery_battery_segments);
-    build_work_page_status_bar(screen, 2, &g_gallery_date_label, &g_gallery_summary_label, &g_gallery_status_time_label, false);
+    build_work_page_status_bar(screen,
+                               kWorkPageGallery,
+                               &g_gallery_date_label,
+                               &g_gallery_summary_label,
+                               &g_gallery_status_time_label,
+                               false);
 
     lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
     set_obj_black(top_line, true);
@@ -149,7 +186,7 @@ void build_gallery_page()
     }
     g_gallery_image_canvas = lv_canvas_create(screen);
     if (!g_gallery_image_canvas) {
-        ESP_LOGW(TAG, "gallery image canvas create failed");
+        ESP_LOGW(TAG, "%s", GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG);
     } else {
         lv_obj_clear_flag(g_gallery_image_canvas, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_pos(g_gallery_image_canvas, 20, 62);
@@ -173,7 +210,7 @@ void build_gallery_page()
     }
     g_gallery_time_canvas = lv_canvas_create(screen);
     if (!g_gallery_time_canvas) {
-        ESP_LOGW(TAG, "gallery time canvas create failed");
+        ESP_LOGW(TAG, "%s", GALLERY_TIME_CANVAS_CREATE_FAILED_LOG);
     } else {
         lv_obj_clear_flag(g_gallery_time_canvas, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_pos(g_gallery_time_canvas, 268, 62);
@@ -191,9 +228,13 @@ void build_gallery_page()
     }
 
     g_gallery_saying_label = make_label(screen, 18, 272, 364, 26, "");
-    lv_obj_set_style_text_font(g_gallery_saying_label, &zh_font_16, LV_PART_MAIN);
-    lv_obj_set_style_text_align(g_gallery_saying_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_label_set_long_mode(g_gallery_saying_label, LV_LABEL_LONG_DOT);
+    if (!g_gallery_saying_label) {
+        ESP_LOGW(TAG, "%s", GALLERY_SAYING_LABEL_CREATE_FAILED_LOG);
+    } else {
+        lv_obj_set_style_text_font(g_gallery_saying_label, &zh_font_16, LV_PART_MAIN);
+        lv_obj_set_style_text_align(g_gallery_saying_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_label_set_long_mode(g_gallery_saying_label, LV_LABEL_LONG_DOT);
+    }
 
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
     update_battery_segments(g_gallery_battery_segments, g_battery_percent);

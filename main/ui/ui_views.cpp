@@ -33,6 +33,42 @@ constexpr const char *kUiSensorTempPlaceholder = "--.-℃";
 constexpr const char *kUiSensorHumidityPlaceholder = "--.-%%";
 constexpr const char *kUiWeatherTempFormat = "%s℃";
 constexpr const char *kUiWeatherHumidityFormat = "%s%%";
+#define UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT "weather clock visible with %s weather, requesting sync"
+#define UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT "settings manual sync timeout: op=%d"
+#define UI_SETTINGS_TIMEOUT_RETURN_LOG "settings timeout, returning to clock"
+#define UI_GALLERY_SAYING_SYNC_REQUEST_LOG "gallery visible with missing/stale daily saying, requesting sync"
+
+void copy_ui_text(char *out, size_t out_len, const char *text)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    strlcpy(out, text ? text : "", out_len);
+}
+
+void format_sensor_status_text(char *temp, size_t temp_len, char *humi, size_t humi_len)
+{
+    if (g_sensor_ok) {
+        snprintf(temp, temp_len, kUiSensorTempFormat, g_temperature);
+        snprintf(humi, humi_len, kUiSensorHumidityFormat, g_humidity);
+    } else {
+        copy_ui_text(temp, temp_len, kUiSensorTempPlaceholder);
+        copy_ui_text(humi, humi_len, kUiSensorHumidityPlaceholder);
+    }
+}
+
+void format_weather_status_text(const WeatherData &weather,
+                                char *city,
+                                size_t city_len,
+                                char *temp,
+                                size_t temp_len,
+                                char *humi,
+                                size_t humi_len)
+{
+    copy_ui_text(city, city_len, weather.city);
+    snprintf(temp, temp_len, kUiWeatherTempFormat, weather.temp);
+    snprintf(humi, humi_len, kUiWeatherHumidityFormat, weather.humidity);
+}
 } // namespace
 
 void ui_task(void *)
@@ -141,7 +177,7 @@ void ui_task(void *)
             clock_weather_sync_requested = true;
             clock_weather_sync_request_tick = tick_value;
             ++clock_weather_sync_attempts;
-            ESP_LOGI(TAG, "weather clock visible with %s weather, requesting sync", reason);
+            ESP_LOGI(TAG, UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT, reason);
             xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
         }
     };
@@ -335,7 +371,7 @@ void ui_task(void *)
                     TickType_t deadline = g_settings_sync_deadline_tick;
                     if (deadline != 0 && tick_now >= deadline) {
                         int op = g_settings_sync_op;
-                        ESP_LOGW(TAG, "settings manual sync timeout: op=%d", op);
+                        ESP_LOGW(TAG, UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT, op);
                         if (op == kSettingsSyncNtp) {
                             xEventGroupClearBits(g_app_events, kManualNtpSyncBit);
                             finish_settings_sync(kSettingsSyncNtp, "时间同步超时");
@@ -363,7 +399,7 @@ void ui_task(void *)
                         !button_pressed &&
                         !is_settings_sync_busy() && !ota_flow_active() &&
                         last_activity != 0 && tick_now - last_activity >= pdMS_TO_TICKS(kSettingsTimeoutMs)) {
-                        ESP_LOGI(TAG, "settings timeout, returning to clock");
+                        ESP_LOGI(TAG, "%s", UI_SETTINGS_TIMEOUT_RETURN_LOG);
                         if (g_settings_page_order_mode) {
                             if (save_work_page_order()) {
                                 g_active_work_page = first_enabled_work_page();
@@ -516,7 +552,7 @@ void ui_task(void *)
                     gallery_saying_sync_requested = true;
                     gallery_saying_sync_request_tick = tick_now;
                     ++gallery_saying_sync_attempts;
-                    ESP_LOGI(TAG, "gallery visible with missing/stale daily saying, requesting sync");
+                    ESP_LOGI(TAG, "%s", UI_GALLERY_SAYING_SYNC_REQUEST_LOG);
                     xEventGroupSetBits(g_app_events, kManualSayingSyncBit);
                 }
             }
@@ -612,13 +648,7 @@ void ui_task(void *)
                 }
                 char temp[kUiSensorValueTextSize];
                 char humi[kUiSensorValueTextSize];
-                if (g_sensor_ok) {
-                    snprintf(temp, sizeof(temp), kUiSensorTempFormat, g_temperature);
-                    snprintf(humi, sizeof(humi), kUiSensorHumidityFormat, g_humidity);
-                } else {
-                    snprintf(temp, sizeof(temp), kUiSensorTempPlaceholder);
-                    snprintf(humi, sizeof(humi), kUiSensorHumidityPlaceholder);
-                }
+                format_sensor_status_text(temp, sizeof(temp), humi, sizeof(humi));
 
                 if (!setup_active && !g_low_battery_mode && clock_page_active) {
                     content_changed |= set_label_text_if_changed(g_temp_label, temp);
@@ -631,9 +661,13 @@ void ui_task(void *)
                         char city[kUiWeatherCityTextSize];
                         char weather_temp[kUiWeatherValueTextSize];
                         char weather_humi[kUiWeatherValueTextSize];
-                        strlcpy(city, weather.city, sizeof(city));
-                        snprintf(weather_temp, sizeof(weather_temp), kUiWeatherTempFormat, weather.temp);
-                        snprintf(weather_humi, sizeof(weather_humi), kUiWeatherHumidityFormat, weather.humidity);
+                        format_weather_status_text(weather,
+                                                   city,
+                                                   sizeof(city),
+                                                   weather_temp,
+                                                   sizeof(weather_temp),
+                                                   weather_humi,
+                                                   sizeof(weather_humi));
                         content_changed |= set_label_text_if_changed(g_weather_city_label, city);
                         content_changed |= set_label_text_if_changed(g_weather_info_label, weather.text);
                         content_changed |= set_label_text_if_changed(g_weather_temp_label, weather_temp);

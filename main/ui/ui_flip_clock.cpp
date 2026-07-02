@@ -3,6 +3,10 @@
 
 #include <algorithm>
 
+#define FLIP_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT "flip clock card %d canvas create failed"
+#define FLIP_CLOCK_TEMP_LABEL_CREATE_FAILED_LOG "flip clock temp label create failed"
+#define FLIP_CLOCK_HUMIDITY_LABEL_CREATE_FAILED_LOG "flip clock humidity label create failed"
+
 namespace {
 
 static constexpr int kCardCount = 3;
@@ -24,19 +28,30 @@ static constexpr int kDigitScaleNumerator = 3;
 static constexpr int kDigitScaleDenominator = 4;
 static constexpr int kDigitBaselineY = 84;
 static constexpr int kFlipSensorPanelX = 18;
-static constexpr int kFlipSensorPanelY = 226;
+static constexpr int kFlipSensorPanelY = 214;
 static constexpr int kFlipSensorPanelW = 364;
-static constexpr int kFlipSensorPanelH = 44;
-static constexpr int kFlipSensorTextY = 234;
-static constexpr int kFlipSensorTextH = 28;
-static constexpr int kFlipSensorTextPadX = 14;
-static constexpr int kFlipSensorTextW = 158;
+static constexpr int kFlipSensorPanelH = 66;
+static constexpr int kFlipSensorPanelRadius = 18;
+static constexpr int kFlipSensorTextY = 213;
+static constexpr int kFlipSensorTextH = 66;
+static constexpr int kFlipSensorTextPadX = 16;
+static constexpr int kFlipSensorTextW = 166;
+static constexpr int kFlipSensorBoldOffset = 1;
+static constexpr int kFlipSensorBoldYOffset = 1;
 static constexpr int kFlipHumiTextX = kFlipSensorPanelX + kFlipSensorPanelW - kFlipSensorTextPadX - kFlipSensorTextW;
 static constexpr size_t kFlipSensorTextSize = 16;
 static constexpr const char *kFlipTempPlaceholder = "--.-C";
 static constexpr const char *kFlipHumiPlaceholder = "--%";
 static constexpr const char *kFlipTempFormat = "%.1fC";
 static constexpr const char *kFlipHumiFormat = "%.0f%%";
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+static_assert(array_count(kCardX) == kCardCount);
 
 void apply_card_rounding(lv_obj_t *canvas)
 {
@@ -151,7 +166,10 @@ void draw_flip_card(int card_index, int value)
 
 bool update_flip_sensor_text()
 {
-    if (!g_flip_clock_sensor_label && !g_flip_clock_humidity_label) {
+    if (!g_flip_clock_sensor_label &&
+        !g_flip_clock_sensor_bold_label &&
+        !g_flip_clock_humidity_label &&
+        !g_flip_clock_humidity_bold_label) {
         return false;
     }
     char temp_text[kFlipSensorTextSize];
@@ -165,8 +183,33 @@ bool update_flip_sensor_text()
     }
     bool changed = false;
     changed |= set_label_text_if_changed(g_flip_clock_sensor_label, temp_text);
+    changed |= set_label_text_if_changed(g_flip_clock_sensor_bold_label, temp_text);
+    changed |= set_label_text_if_changed(g_flip_clock_sensor_bold_y_label, temp_text);
     changed |= set_label_text_if_changed(g_flip_clock_humidity_label, humi_text);
+    changed |= set_label_text_if_changed(g_flip_clock_humidity_bold_label, humi_text);
+    changed |= set_label_text_if_changed(g_flip_clock_humidity_bold_y_label, humi_text);
     return changed;
+}
+
+lv_obj_t *make_flip_sensor_value_label(lv_obj_t *parent,
+                                        int x,
+                                        int y,
+                                        const char *text,
+                                        lv_text_align_t align)
+{
+    lv_obj_t *label = make_label_with_font(parent,
+                                           x,
+                                           y,
+                                           kFlipSensorTextW,
+                                           kFlipSensorTextH,
+                                           text,
+                                           &lv_font_montserrat_48);
+    if (!label) {
+        return nullptr;
+    }
+    lv_obj_set_style_text_align(label, align, LV_PART_MAIN);
+    lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+    return label;
 }
 
 } // namespace
@@ -201,7 +244,7 @@ void build_flip_clock_page()
         }
         g_flip_clock_card_canvas[i] = lv_canvas_create(screen);
         if (!g_flip_clock_card_canvas[i]) {
-            ESP_LOGW(TAG, "flip clock card %d canvas create failed", i);
+            ESP_LOGW(TAG, FLIP_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT, i);
             continue;
         }
         lv_obj_clear_flag(g_flip_clock_card_canvas[i], LV_OBJ_FLAG_SCROLLABLE);
@@ -225,33 +268,48 @@ void build_flip_clock_page()
                                       kFlipSensorPanelW,
                                       kFlipSensorPanelH);
     set_obj_black(sensor_panel, true);
-
-    g_flip_clock_sensor_label = make_label_with_font(screen,
-                                                     kFlipSensorPanelX + kFlipSensorTextPadX,
-                                                     kFlipSensorTextY,
-                                                     kFlipSensorTextW,
-                                                     kFlipSensorTextH,
-                                                     kFlipTempPlaceholder,
-                                                     &lv_font_montserrat_24);
-    if (g_flip_clock_sensor_label) {
-        lv_obj_set_style_text_align(g_flip_clock_sensor_label, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-        lv_obj_set_style_text_color(g_flip_clock_sensor_label, lv_color_white(), LV_PART_MAIN);
-    } else {
-        ESP_LOGW(TAG, "flip clock temp label create failed");
+    if (sensor_panel) {
+        lv_obj_set_style_radius(sensor_panel, kFlipSensorPanelRadius, LV_PART_MAIN);
+        lv_obj_set_style_clip_corner(sensor_panel, true, LV_PART_MAIN);
     }
 
-    g_flip_clock_humidity_label = make_label_with_font(screen,
-                                                       kFlipHumiTextX,
-                                                       kFlipSensorTextY,
-                                                       kFlipSensorTextW,
-                                                       kFlipSensorTextH,
-                                                       kFlipHumiPlaceholder,
-                                                       &lv_font_montserrat_24);
-    if (g_flip_clock_humidity_label) {
-        lv_obj_set_style_text_align(g_flip_clock_humidity_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-        lv_obj_set_style_text_color(g_flip_clock_humidity_label, lv_color_white(), LV_PART_MAIN);
-    } else {
-        ESP_LOGW(TAG, "flip clock humidity label create failed");
+    int temp_x = kFlipSensorPanelX + kFlipSensorTextPadX;
+    g_flip_clock_sensor_label = make_flip_sensor_value_label(screen,
+                                                             temp_x,
+                                                             kFlipSensorTextY,
+                                                             kFlipTempPlaceholder,
+                                                             LV_TEXT_ALIGN_LEFT);
+    g_flip_clock_sensor_bold_label = make_flip_sensor_value_label(screen,
+                                                                  temp_x + kFlipSensorBoldOffset,
+                                                                  kFlipSensorTextY,
+                                                                  kFlipTempPlaceholder,
+                                                                  LV_TEXT_ALIGN_LEFT);
+    g_flip_clock_sensor_bold_y_label = make_flip_sensor_value_label(screen,
+                                                                    temp_x,
+                                                                    kFlipSensorTextY + kFlipSensorBoldYOffset,
+                                                                    kFlipTempPlaceholder,
+                                                                    LV_TEXT_ALIGN_LEFT);
+    if (!g_flip_clock_sensor_label || !g_flip_clock_sensor_bold_label || !g_flip_clock_sensor_bold_y_label) {
+        ESP_LOGW(TAG, "%s", FLIP_CLOCK_TEMP_LABEL_CREATE_FAILED_LOG);
+    }
+
+    g_flip_clock_humidity_label = make_flip_sensor_value_label(screen,
+                                                               kFlipHumiTextX,
+                                                               kFlipSensorTextY,
+                                                               kFlipHumiPlaceholder,
+                                                               LV_TEXT_ALIGN_RIGHT);
+    g_flip_clock_humidity_bold_label = make_flip_sensor_value_label(screen,
+                                                                    kFlipHumiTextX - kFlipSensorBoldOffset,
+                                                                    kFlipSensorTextY,
+                                                                    kFlipHumiPlaceholder,
+                                                                    LV_TEXT_ALIGN_RIGHT);
+    g_flip_clock_humidity_bold_y_label = make_flip_sensor_value_label(screen,
+                                                                      kFlipHumiTextX,
+                                                                      kFlipSensorTextY + kFlipSensorBoldYOffset,
+                                                                      kFlipHumiPlaceholder,
+                                                                      LV_TEXT_ALIGN_RIGHT);
+    if (!g_flip_clock_humidity_label || !g_flip_clock_humidity_bold_label || !g_flip_clock_humidity_bold_y_label) {
+        ESP_LOGW(TAG, "%s", FLIP_CLOCK_HUMIDITY_LABEL_CREATE_FAILED_LOG);
     }
 
     update_battery_segments(g_flip_clock_battery_segments, g_battery_percent);

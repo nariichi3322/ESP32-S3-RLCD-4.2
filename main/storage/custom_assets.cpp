@@ -51,6 +51,39 @@ static constexpr uint32_t kCustomAssetCrc32Initial = 0xFFFFFFFFU;
 static constexpr uint16_t kCustomAssetMaxGalleryImages = 24;
 static constexpr int kCustomAssetDiagGifFrames[] = {0, 1, 30, 59};
 
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+constexpr bool custom_asset_diag_frames_valid()
+{
+    for (int frame : kCustomAssetDiagGifFrames) {
+        if (frame < 0 || frame >= STATUS_GIF_FRAME_COUNT) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static_assert(array_count(kCustomAssetDiagGifFrames) > 0);
+static_assert(custom_asset_diag_frames_valid(), "custom asset diagnostic GIF frames must be valid");
+static_assert(sizeof(CustomAssetsHeader) == 24, "custom assets header wire size must stay stable");
+static_assert(sizeof(CustomAssetEntry) == 24, "custom asset entry wire size must stay stable");
+static_assert(kCustomAssetsMagic == 0x31414357, "custom assets magic must remain WCA1");
+static_assert(kCustomAssetsVersion > 0, "custom assets version must be positive");
+static_assert(kCustomAssetTypeMainGif != kCustomAssetTypeGalleryImage,
+              "custom asset type ids must be distinct");
+static_assert(kCustomAssetMaxEntries > 0, "custom asset entry limit must be positive");
+static_assert(kCustomAssetMaxGalleryImages > 0, "custom gallery image limit must be positive");
+static_assert(kCustomAssetMaxGalleryImages <= kCustomAssetMaxEntries,
+              "custom gallery image limit must fit entry table");
+static_assert(kCustomAssetCrcChunkSize > 0, "custom asset CRC chunk size must be positive");
+static_assert(kBitsPerByte == 8, "custom assets expect 8-bit bytes");
+static_assert(kCustomAssetCrc32Initial == 0xFFFFFFFFU, "custom asset CRC32 initial value must stay stable");
+static_assert(kCustomAssetCrc32Polynomial == 0xEDB88320U, "custom asset CRC32 polynomial must stay stable");
+
 class CustomAssetTempBuffer {
 public:
     explicit CustomAssetTempBuffer(size_t size)

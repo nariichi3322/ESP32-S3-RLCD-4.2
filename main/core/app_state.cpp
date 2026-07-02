@@ -2,7 +2,7 @@
 #include "app_state.h"
 
 const char *const TAG = "WeatherClock";
-const char *const APP_VERSION = "v1.4.41";
+const char *const APP_VERSION = "v1.4.42";
 #ifndef WEATHER_CLOCK_BUILD_DATE
 #define WEATHER_CLOCK_BUILD_DATE "unknown"
 #endif
@@ -216,7 +216,11 @@ lv_color_t *g_second_progress_canvas_buf;
 lv_obj_t *g_flip_clock_card_canvas[3];
 lv_color_t *g_flip_clock_card_canvas_buf[3];
 lv_obj_t *g_flip_clock_sensor_label;
+lv_obj_t *g_flip_clock_sensor_bold_label;
+lv_obj_t *g_flip_clock_sensor_bold_y_label;
 lv_obj_t *g_flip_clock_humidity_label;
+lv_obj_t *g_flip_clock_humidity_bold_label;
+lv_obj_t *g_flip_clock_humidity_bold_y_label;
 lv_obj_t *g_flip_clock_day_progress_canvas;
 lv_color_t *g_flip_clock_day_progress_canvas_buf;
 lv_obj_t *g_flip_clock_second_progress_canvas;

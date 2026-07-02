@@ -21,7 +21,12 @@ LV_FONT_DECLARE(zh_font_16);
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.4.41";
+static const char *APP_VERSION = "v1.4.42";
+static const char *const kPreviewWeekDaysFull[] = {
+    "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六",
+};
+static constexpr int kPreviewTmYearOffset = 1900;
+static constexpr int kPreviewTmMonthOffset = 1;
 static constexpr int kTimeCanvasW = 292;
 static constexpr int kTimeCanvasH = 92;
 static constexpr int kSecondCanvasW = 60;
@@ -113,11 +118,44 @@ struct PreviewHistorySample {
     float humi;
 };
 
+template <typename T, size_t N>
+static constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
 static void update_time_ui(const struct tm &local);
 static time_t preview_time();
 static const char *weather_icon_text(const char *code);
 static void build_battery_icon(lv_obj_t *parent);
 static void update_battery_icon(int percent);
+
+static bool preview_mode_is(const char *mode, const char *expected)
+{
+    return mode && expected && strcmp(mode, expected) == 0;
+}
+
+static const char *preview_weekday_full(int weekday)
+{
+    if (weekday < 0 || weekday >= static_cast<int>(array_count(kPreviewWeekDaysFull))) {
+        return "--";
+    }
+    return kPreviewWeekDaysFull[weekday];
+}
+
+static void format_preview_date(char *out, size_t out_len, const struct tm &local)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    snprintf(out,
+             out_len,
+             "%04d/%02d/%02d / %s",
+             local.tm_year + kPreviewTmYearOffset,
+             local.tm_mon + kPreviewTmMonthOffset,
+             local.tm_mday,
+             preview_weekday_full(local.tm_wday));
+}
 
 static void set_obj_black(lv_obj_t *obj, bool active)
 {
@@ -960,15 +998,8 @@ static void build_gallery_preview_ui()
     struct tm local = {};
     localtime_r(&now, &local);
     build_preview_work_status_bar(screen, local, false);
-    static const char *week_days[] = {"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"};
     char date_text[48];
-    snprintf(date_text,
-             sizeof(date_text),
-             "%04d/%02d/%02d / %s",
-             local.tm_year + 1900,
-             local.tm_mon + 1,
-             local.tm_mday,
-             week_days[local.tm_wday]);
+    format_preview_date(date_text, sizeof(date_text), local);
     set_label_text_if_changed(g_date_label, date_text);
 
     lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
@@ -1097,8 +1128,8 @@ static void build_calendar_preview_ui()
             draw_preview_calendar_text(calendar, weekdays[col], x, 2, cell_w, &zh_font_16, lv_color_black());
         }
     }
-    int first = preview_first_weekday(local.tm_year + 1900, local.tm_mon + 1);
-    int days = preview_days_in_month(local.tm_year + 1900, local.tm_mon + 1);
+    int first = preview_first_weekday(local.tm_year + kPreviewTmYearOffset, local.tm_mon + kPreviewTmMonthOffset);
+    int days = preview_days_in_month(local.tm_year + kPreviewTmYearOffset, local.tm_mon + kPreviewTmMonthOffset);
     for (int day = 1; day <= days; ++day) {
         int idx = first + day - 1;
         int col = idx % 7;
@@ -1263,15 +1294,8 @@ static void build_flip_clock_preview_ui()
     struct tm local = {};
     localtime_r(&now, &local);
     build_preview_work_status_bar(screen, local, false, false);
-    static const char *flip_week_days[] = {"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"};
     char flip_date_text[48];
-    snprintf(flip_date_text,
-             sizeof(flip_date_text),
-             "%04d/%02d/%02d / %s",
-             local.tm_year + 1900,
-             local.tm_mon + 1,
-             local.tm_mday,
-             flip_week_days[local.tm_wday]);
+    format_preview_date(flip_date_text, sizeof(flip_date_text), local);
     set_label_text_if_changed(g_date_label, flip_date_text);
 
     lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
@@ -1294,14 +1318,22 @@ static void build_flip_clock_preview_ui()
         lv_canvas_set_buffer(card, g_flip_card_pixels[i].data(), kFlipCardW, kFlipCardH, LV_IMG_CF_TRUE_COLOR);
         draw_preview_flip_card(card, values[i]);
     }
-    lv_obj_t *sensor_panel = make_bar(screen, 18, 226, 364, 44);
+    lv_obj_t *sensor_panel = make_bar(screen, 18, 216, 364, 60);
     set_obj_black(sensor_panel, true);
-    lv_obj_t *temp = make_label_with_font(screen, 32, 234, 158, 28, "25.6C", &lv_font_montserrat_24);
+    lv_obj_set_style_radius(sensor_panel, 14, LV_PART_MAIN);
+    lv_obj_set_style_clip_corner(sensor_panel, true, LV_PART_MAIN);
+    lv_obj_t *temp = make_label_with_font(screen, 34, 218, 166, 58, "25.6C", &lv_font_montserrat_48);
     lv_obj_set_style_text_align(temp, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     lv_obj_set_style_text_color(temp, lv_color_white(), LV_PART_MAIN);
-    lv_obj_t *humi = make_label_with_font(screen, 210, 234, 158, 28, "46%", &lv_font_montserrat_24);
+    lv_obj_t *temp_bold = make_label_with_font(screen, 35, 218, 166, 58, "25.6C", &lv_font_montserrat_48);
+    lv_obj_set_style_text_align(temp_bold, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(temp_bold, lv_color_white(), LV_PART_MAIN);
+    lv_obj_t *humi = make_label_with_font(screen, 200, 218, 166, 58, "46%", &lv_font_montserrat_48);
     lv_obj_set_style_text_align(humi, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     lv_obj_set_style_text_color(humi, lv_color_white(), LV_PART_MAIN);
+    lv_obj_t *humi_bold = make_label_with_font(screen, 199, 218, 166, 58, "46%", &lv_font_montserrat_48);
+    lv_obj_set_style_text_align(humi_bold, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(humi_bold, lv_color_white(), LV_PART_MAIN);
 }
 
 static void build_info_preview_ui()
@@ -1719,13 +1751,8 @@ static void update_time_ui(const struct tm &local)
         update_progress_canvas(g_second_progress_canvas, local.tm_sec + 1, &g_last_second_progress_filled);
     }
 
-    static const char *week_days[] = {"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"};
     char date[48];
-    snprintf(date, sizeof(date), "%04d/%02d/%02d / %s",
-             local.tm_year + 1900,
-             local.tm_mon + 1,
-             local.tm_mday,
-             week_days[local.tm_wday]);
+    format_preview_date(date, sizeof(date), local);
     set_label_text_if_changed(g_date_label, date);
 }
 
@@ -1812,7 +1839,7 @@ int main(int, char **)
     const char *preview_mode = getenv("WEATHER_CLOCK_SDL_MODE");
 
     show_boot_screen();
-    if (screenshot_path && screenshot_path[0] && preview_mode && strcmp(preview_mode, "boot") == 0) {
+    if (screenshot_path && screenshot_path[0] && preview_mode_is(preview_mode, "boot")) {
         for (int i = 0; i < 5; ++i) {
             lv_tick_inc(16);
             lv_timer_handler();
@@ -1842,12 +1869,12 @@ int main(int, char **)
     SDL_Delay(100);
     lv_obj_clean(lv_scr_act());
     g_boot_anim_canvas = nullptr;
-    bool history_preview = preview_mode && strcmp(preview_mode, "history") == 0;
-    bool gallery_preview = preview_mode && strcmp(preview_mode, "gallery") == 0;
-    bool flip_clock_preview = preview_mode && strcmp(preview_mode, "flip_clock") == 0;
-    bool calendar_preview = preview_mode && strcmp(preview_mode, "calendar") == 0;
-    bool weather_board_preview = preview_mode && strcmp(preview_mode, "weather_board") == 0;
-    bool info_preview = preview_mode && strcmp(preview_mode, "info") == 0;
+    bool history_preview = preview_mode_is(preview_mode, "history");
+    bool gallery_preview = preview_mode_is(preview_mode, "gallery");
+    bool flip_clock_preview = preview_mode_is(preview_mode, "flip_clock");
+    bool calendar_preview = preview_mode_is(preview_mode, "calendar");
+    bool weather_board_preview = preview_mode_is(preview_mode, "weather_board");
+    bool info_preview = preview_mode_is(preview_mode, "info");
     if (history_preview) {
         build_history_preview_ui();
     } else if (gallery_preview) {
@@ -1875,16 +1902,16 @@ int main(int, char **)
     if (screenshot_path && screenshot_path[0]) {
         if (history_preview || gallery_preview || flip_clock_preview || calendar_preview || weather_board_preview || info_preview) {
             // Alternate work pages are already built above.
-        } else if (preview_mode && strcmp(preview_mode, "settings") == 0) {
+        } else if (preview_mode_is(preview_mode, "settings")) {
             build_settings_page();
-        } else if (preview_mode && strcmp(preview_mode, "setup") == 0) {
+        } else if (preview_mode_is(preview_mode, "setup")) {
             set_lower_panel_visible(false);
             set_setup_panel_visible(true);
             set_obj_visible(g_chime_status_icon_canvas, false);
             set_obj_visible(g_wifi_status_icon_canvas, false);
-        } else if (preview_mode && strcmp(preview_mode, "alert") == 0) {
+        } else if (preview_mode_is(preview_mode, "alert")) {
             apply_alert_preview(true);
-        } else if (preview_mode && strcmp(preview_mode, "low") == 0) {
+        } else if (preview_mode_is(preview_mode, "low")) {
             update_battery_icon(4);
             apply_low_battery_preview(true);
         }
@@ -1893,9 +1920,9 @@ int main(int, char **)
         localtime_r(&now, &local);
         if (!history_preview && !gallery_preview && !flip_clock_preview && !calendar_preview && !weather_board_preview &&
             !info_preview &&
-            !(preview_mode && strcmp(preview_mode, "settings") == 0)) {
+            !preview_mode_is(preview_mode, "settings")) {
             update_time_ui(local);
-            if (preview_mode && strcmp(preview_mode, "low") == 0) {
+            if (preview_mode_is(preview_mode, "low")) {
                 apply_low_battery_preview(true);
             }
         }

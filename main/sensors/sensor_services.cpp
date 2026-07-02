@@ -9,6 +9,13 @@ constexpr uint32_t kHousekeepingOtaPauseDelayMs = 5000;
 constexpr uint32_t kHousekeepingFallbackDelayMs = 1000;
 constexpr TickType_t kHousekeepingOtaPauseDelay = pdMS_TO_TICKS(kHousekeepingOtaPauseDelayMs);
 constexpr TickType_t kHousekeepingFallbackDelay = pdMS_TO_TICKS(kHousekeepingFallbackDelayMs);
+constexpr TickType_t kBatteryChargingSampleDelay = pdMS_TO_TICKS(kBatteryChargingSampleMs);
+static_assert(kHousekeepingOtaPauseDelayMs > 0, "housekeeping OTA pause delay must be positive");
+static_assert(kHousekeepingFallbackDelayMs > 0, "housekeeping fallback delay must be positive");
+static_assert(kBatteryChargingSampleMs > 0, "battery charging sample delay must be positive");
+static_assert(kHousekeepingOtaPauseDelay > 0, "housekeeping OTA pause tick delay must be positive");
+static_assert(kHousekeepingFallbackDelay > 0, "housekeeping fallback tick delay must be positive");
+static_assert(kBatteryChargingSampleDelay > 0, "battery charging sample tick delay must be positive");
 
 TickType_t next_housekeeping_wake_tick(bool low_battery, TickType_t next_sensor, TickType_t next_battery)
 {
@@ -21,7 +28,7 @@ TickType_t next_housekeeping_wake_tick(bool low_battery, TickType_t next_sensor,
 TickType_t next_battery_wake_after_sample(TickType_t sampled_tick)
 {
     if (g_battery_charging) {
-        return sampled_tick + pdMS_TO_TICKS(kBatteryChargingSampleMs);
+        return sampled_tick + kBatteryChargingSampleDelay;
     }
     return next_battery_sample_tick(sampled_tick);
 }

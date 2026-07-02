@@ -6,18 +6,48 @@
 #include "i2c_bsp.h"
 #include "SensorPCF85063.hpp"
 
+namespace {
+constexpr uint32_t kShtc3PostResetDelayMs = 20;
+constexpr uint32_t kShtc3WakeupDelayMs = 50;
+constexpr uint32_t kShtc3MeasureDelayMs = 20;
+constexpr uint32_t kShtc3I2cSpeedHz = 400000;
+constexpr uint32_t kRtcI2cSpeedHz = 300000;
+constexpr const char *kShtc3LogTag = "shtc3";
+constexpr const char *kRtcLogTag = "rtc";
+constexpr float kShtc3RawFullScale = 65536.0f;
+constexpr float kShtc3TemperatureScaleC = 175.0f;
+constexpr float kShtc3TemperatureOffsetC = -45.0f;
+constexpr float kShtc3HumidityScalePercent = 100.0f;
+constexpr TickType_t kShtc3PostResetDelay = pdMS_TO_TICKS(kShtc3PostResetDelayMs);
+constexpr TickType_t kShtc3WakeupDelay = pdMS_TO_TICKS(kShtc3WakeupDelayMs);
+constexpr TickType_t kShtc3MeasureDelay = pdMS_TO_TICKS(kShtc3MeasureDelayMs);
+static_assert(kShtc3PostResetDelayMs > 0, "SHTC3 post-reset delay must be positive");
+static_assert(kShtc3WakeupDelayMs > 0, "SHTC3 wakeup delay must be positive");
+static_assert(kShtc3MeasureDelayMs > 0, "SHTC3 measure delay must be positive");
+static_assert(kShtc3I2cSpeedHz > 0, "SHTC3 I2C speed must be positive");
+static_assert(kRtcI2cSpeedHz > 0, "RTC I2C speed must be positive");
+static_assert(kShtc3LogTag[0] != '\0', "SHTC3 log tag must not be empty");
+static_assert(kRtcLogTag[0] != '\0', "RTC log tag must not be empty");
+static_assert(kShtc3RawFullScale > 0.0f, "SHTC3 raw full scale must be positive");
+static_assert(kShtc3TemperatureScaleC > 0.0f, "SHTC3 temperature scale must be positive");
+static_assert(kShtc3HumidityScalePercent > 0.0f, "SHTC3 humidity scale must be positive");
+static_assert(kShtc3PostResetDelay > 0, "SHTC3 post-reset tick delay must be positive");
+static_assert(kShtc3WakeupDelay > 0, "SHTC3 wakeup tick delay must be positive");
+static_assert(kShtc3MeasureDelay > 0, "SHTC3 measure tick delay must be positive");
+} // namespace
+
 Shtc3Port::Shtc3Port(I2cMasterBus& i2cbus) :
 i2cbus_(i2cbus) {
     i2c_master_bus_handle_t I2cMasterBus = i2cbus_.Get_I2cBusHandle();
     i2c_device_config_t dev_cfg = {};
     dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
     dev_cfg.device_address  = Shtc3Address;
-    dev_cfg.scl_speed_hz    = 400000;
+    dev_cfg.scl_speed_hz    = kShtc3I2cSpeedHz;
     ESP_ERROR_CHECK(i2c_master_bus_add_device(I2cMasterBus, &dev_cfg, &I2c_DevShtc3));
 
     Shtc3_Wakeup();
     Shtc3_SoftReset();
-    vTaskDelay(pdMS_TO_TICKS(20)); //20MS
+    vTaskDelay(kShtc3PostResetDelay);
     Shtc3_GetId();
     ESP_LOGI(TAG, "ID:%04x", shtc3_id);
 }
@@ -31,12 +61,12 @@ etError Shtc3Port::Shtc3_GetId() {
     int     err        = i2cbus_.i2c_master_write_read_dev(I2c_DevShtc3, senBuf, 2, readBuf, 3);
     etError error      = (err == ESP_OK) ? NO_ERROR : ACK_ERROR;
     if (error != NO_ERROR) {
-        ESP_LOGE("shtc3", "GetId WRITE Failure");
+        ESP_LOGE(kShtc3LogTag, "GetId WRITE Failure");
         return error;
     }
     error = Shtc3_CheckCrc(readBuf, 2, readBuf[2]);
     if (error != NO_ERROR) {
-        ESP_LOGE("shtc3", "GetId CRC Failure");
+        ESP_LOGE(kShtc3LogTag, "GetId CRC Failure");
         return error;
     }
     shtc3_id = ((readBuf[0] << 8) | readBuf[1]);
@@ -53,9 +83,9 @@ etError Shtc3Port::Shtc3_Wakeup() {
     int     err       = i2cbus_.i2c_write_buff(I2c_DevShtc3, -1, senBuf, 2);
     etError error     = (err == ESP_OK) ? NO_ERROR : ACK_ERROR;
     //esp_rom_delay_us(100); //100us
-    vTaskDelay(pdMS_TO_TICKS(50)); //50MS
+    vTaskDelay(kShtc3WakeupDelay);
     if (error != NO_ERROR)
-        ESP_LOGE("shtc3", "Wakeup Failure");
+        ESP_LOGE(kShtc3LogTag, "Wakeup Failure");
     return error;
 }
 
@@ -64,7 +94,7 @@ etError Shtc3Port::Shtc3_SoftReset() {
     int     err       = i2cbus_.i2c_write_buff(I2c_DevShtc3, -1, senBuf, 2);
     etError error     = (err == ESP_OK) ? NO_ERROR : ACK_ERROR;
     if (error != NO_ERROR)
-        ESP_LOGE("shtc3", "SoftReset Failure");
+        ESP_LOGE(kShtc3LogTag, "SoftReset Failure");
     return error;
 }
 
@@ -96,13 +126,13 @@ etError Shtc3Port::Shtc3_CheckCrc(uint8_t data[], uint8_t nbrOfBytes, uint8_t ch
 float Shtc3Port::Shtc3_CalcTemperature(uint16_t rawValue) {
     // calculate temperature [°C]
     // T = -45 + 175 * rawValue / 2^16
-    return 175 * (float) rawValue / 65536.0f - 45.0f;
+    return kShtc3TemperatureScaleC * (float) rawValue / kShtc3RawFullScale + kShtc3TemperatureOffsetC;
 }
 
 float Shtc3Port::Shtc3_CalcHumidity(uint16_t rawValue) {
     // calculate relative humidity [%RH]
     // RH = rawValue / 2^16 * 100
-    return 100 * (float) rawValue / 65536.0f;
+    return kShtc3HumidityScalePercent * (float) rawValue / kShtc3RawFullScale;
 }
 
 etError Shtc3Port::Shtc3_GetTempAndHumiPolling(float *temp, float *humi) {
@@ -116,27 +146,27 @@ etError Shtc3Port::Shtc3_GetTempAndHumiPolling(float *temp, float *humi) {
     err               = i2cbus_.i2c_write_buff(I2c_DevShtc3, -1, senBuf, 2);
     error             = (err == ESP_OK) ? NO_ERROR : ACK_ERROR;
     if (error != NO_ERROR) {
-        ESP_LOGE("shtc3", "GetTempAndHumi WRITE Failure");
+        ESP_LOGE(kShtc3LogTag, "GetTempAndHumi WRITE Failure");
         return error;
     }
 
-    vTaskDelay(pdMS_TO_TICKS(20));
+    vTaskDelay(kShtc3MeasureDelay);
 
     // if no error, read temperature and humidity raw values
     err   = i2cbus_.i2c_read_buff(I2c_DevShtc3, -1, bytes, 6);
     error = (err == ESP_OK) ? NO_ERROR : ACK_ERROR;
     if (error != NO_ERROR) {
-        ESP_LOGE("shtc3", "GetTempAndHumi READ Failure");
+        ESP_LOGE(kShtc3LogTag, "GetTempAndHumi READ Failure");
         return error;
     }
     error = Shtc3_CheckCrc(bytes, 2, bytes[2]);
     if (error != NO_ERROR) {
-        ESP_LOGE("shtc3", "GetTempAndHumi TempCRC Failure");
+        ESP_LOGE(kShtc3LogTag, "GetTempAndHumi TempCRC Failure");
         return error;
     }
     error = Shtc3_CheckCrc(&bytes[3], 2, bytes[5]);
     if (error != NO_ERROR) {
-        ESP_LOGE("shtc3", "GetTempAndHumi humidityCRC Failure");
+        ESP_LOGE(kShtc3LogTag, "GetTempAndHumi humidityCRC Failure");
         return error;
     }
     // if no error, calculate temperature in °C and humidity in %RH
@@ -152,7 +182,7 @@ etError Shtc3Port::Shtc3_Sleep() {
     int     err       = i2cbus_.i2c_write_buff(I2c_DevShtc3, -1, senBuf, 2);
     etError error     = (err == ESP_OK) ? NO_ERROR : ACK_ERROR;
     if (error != NO_ERROR)
-        ESP_LOGE("shtc3", "Sleep Failure");
+        ESP_LOGE(kShtc3LogTag, "Sleep Failure");
     return error;
 }
 
@@ -161,7 +191,7 @@ uint8_t Shtc3Port::Shtc3_ReadTempHumi(float *t,float *h) {
     Shtc3_Wakeup();
     error = Shtc3_GetTempAndHumiPolling(t, h);
     if (error != NO_ERROR) {
-        ESP_LOGW("shtc3", "error:%d", error);
+        ESP_LOGW(kShtc3LogTag, "error:%d", error);
     }
     Shtc3_Sleep();
     return error == NO_ERROR ? 0 : 1;
@@ -200,15 +230,15 @@ void Rtc_Setup(I2cMasterBus *i2cbus,uint8_t dev_addr) {
         i2c_master_bus_handle_t BusHandle = i2cbus->Get_I2cBusHandle();
         i2c_device_config_t     dev_cfg   = {};
         dev_cfg.dev_addr_length           = I2C_ADDR_BIT_LEN_7;
-        dev_cfg.scl_speed_hz              = 300000;
+        dev_cfg.scl_speed_hz              = kRtcI2cSpeedHz;
         dev_cfg.device_address            = dev_addr;
         ESP_ERROR_CHECK(i2c_master_bus_add_device(BusHandle, &dev_cfg, &I2cRTCdev));
         I2cRTCAddress = dev_addr;
     }
     if (rtc.begin(I2cDevCallback)) {
-        ESP_LOGI("rtc", "InitWill");
+        ESP_LOGI(kRtcLogTag, "InitWill");
     } else {
-        ESP_LOGE("rtc", "InitFailure");
+        ESP_LOGE(kRtcLogTag, "InitFailure");
     }
 }
 

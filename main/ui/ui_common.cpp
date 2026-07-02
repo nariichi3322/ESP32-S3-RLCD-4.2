@@ -3,6 +3,20 @@
 
 #include "custom_assets.h"
 
+#define UI_CANVAS_BUFFER_INVALID_SIZE_FORMAT "canvas buffer invalid size %dx%d"
+#define UI_CANVAS_BUFFER_SIZE_OVERFLOW_FORMAT "canvas buffer size overflow %dx%d"
+#define UI_CANVAS_BUFFER_ALLOC_FAILED_FORMAT "canvas buffer alloc failed %dx%d"
+#define UI_BAR_PARENT_UNAVAILABLE_LOG "bar parent unavailable"
+#define UI_BAR_INVALID_SIZE_FORMAT "bar invalid size %dx%d"
+#define UI_BAR_CREATE_FAILED_LOG "bar create failed"
+#define UI_PROGRESS_CANVAS_BUILD_INVALID_ARG_LOG "progress canvas build invalid arg"
+#define UI_PROGRESS_CANVAS_CREATE_FAILED_LOG "progress canvas create failed"
+#define UI_1BIT_ICON_INVALID_SIZE_FORMAT "1bit icon invalid size %dx%d row=%d"
+#define UI_1BIT_ICON_ROW_TOO_SMALL_FORMAT "1bit icon row too small width=%d row=%d min=%d"
+#define UI_LABEL_PARENT_UNAVAILABLE_LOG "label parent unavailable"
+#define UI_LABEL_INVALID_SIZE_FORMAT "label invalid size %dx%d"
+#define UI_LABEL_CREATE_FAILED_LOG "label create failed"
+
 void notify_ui_task()
 {
     if (g_ui_task_handle) {
@@ -13,12 +27,12 @@ void notify_ui_task()
 lv_color_t *alloc_canvas_buffer(int width, int height)
 {
     if (width <= 0 || height <= 0) {
-        ESP_LOGW(TAG, "canvas buffer invalid size %dx%d", width, height);
+        ESP_LOGW(TAG, UI_CANVAS_BUFFER_INVALID_SIZE_FORMAT, width, height);
         return nullptr;
     }
     size_t pixel_count = (size_t)width * (size_t)height;
     if (pixel_count > SIZE_MAX / sizeof(lv_color_t)) {
-        ESP_LOGW(TAG, "canvas buffer size overflow %dx%d", width, height);
+        ESP_LOGW(TAG, UI_CANVAS_BUFFER_SIZE_OVERFLOW_FORMAT, width, height);
         return nullptr;
     }
     lv_color_t *buf = (lv_color_t *)heap_caps_calloc(pixel_count,
@@ -28,7 +42,7 @@ lv_color_t *alloc_canvas_buffer(int width, int height)
         buf = (lv_color_t *)calloc(pixel_count, sizeof(lv_color_t));
     }
     if (!buf) {
-        ESP_LOGW(TAG, "canvas buffer alloc failed %dx%d", width, height);
+        ESP_LOGW(TAG, UI_CANVAS_BUFFER_ALLOC_FAILED_FORMAT, width, height);
     }
     return buf;
 }
@@ -47,16 +61,16 @@ void set_obj_black(lv_obj_t *obj, bool active)
 lv_obj_t *make_bar(lv_obj_t *parent, int x, int y, int w, int h)
 {
     if (!parent) {
-        ESP_LOGW(TAG, "bar parent unavailable");
+        ESP_LOGW(TAG, "%s", UI_BAR_PARENT_UNAVAILABLE_LOG);
         return nullptr;
     }
     if (w <= 0 || h <= 0) {
-        ESP_LOGW(TAG, "bar invalid size %dx%d", w, h);
+        ESP_LOGW(TAG, UI_BAR_INVALID_SIZE_FORMAT, w, h);
         return nullptr;
     }
     lv_obj_t *bar = lv_obj_create(parent);
     if (!bar) {
-        ESP_LOGW(TAG, "bar create failed");
+        ESP_LOGW(TAG, "%s", UI_BAR_CREATE_FAILED_LOG);
         return nullptr;
     }
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
@@ -178,7 +192,7 @@ void invalidate_progress_segment(lv_obj_t *canvas, int index)
 void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf, int y)
 {
     if (!parent || !canvas || !buf) {
-        ESP_LOGW(TAG, "progress canvas build invalid arg");
+        ESP_LOGW(TAG, "%s", UI_PROGRESS_CANVAS_BUILD_INVALID_ARG_LOG);
         return;
     }
     if (!*buf) {
@@ -186,7 +200,7 @@ void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf
     }
     *canvas = lv_canvas_create(parent);
     if (!*canvas) {
-        ESP_LOGW(TAG, "progress canvas create failed");
+        ESP_LOGW(TAG, "%s", UI_PROGRESS_CANVAS_CREATE_FAILED_LOG);
         return;
     }
     lv_obj_clear_flag(*canvas, LV_OBJ_FLAG_SCROLLABLE);
@@ -244,12 +258,12 @@ void draw_1bit_icon(lv_obj_t *canvas,
         return;
     }
     if (width <= 0 || height <= 0 || bytes_per_row <= 0) {
-        ESP_LOGW(TAG, "1bit icon invalid size %dx%d row=%d", width, height, bytes_per_row);
+        ESP_LOGW(TAG, UI_1BIT_ICON_INVALID_SIZE_FORMAT, width, height, bytes_per_row);
         return;
     }
     int min_bytes_per_row = packed_1bit_bytes_per_row(width);
     if (bytes_per_row < min_bytes_per_row) {
-        ESP_LOGW(TAG, "1bit icon row too small width=%d row=%d min=%d", width, bytes_per_row, min_bytes_per_row);
+        ESP_LOGW(TAG, UI_1BIT_ICON_ROW_TOO_SMALL_FORMAT, width, bytes_per_row, min_bytes_per_row);
         return;
     }
     lv_canvas_fill_bg(canvas, bg, LV_OPA_COVER);
@@ -425,16 +439,16 @@ void draw_status_gif_frame(int frame)
 lv_obj_t *make_label_with_font(lv_obj_t *parent, int x, int y, int w, int h, const char *text, const lv_font_t *font)
 {
     if (!parent) {
-        ESP_LOGW(TAG, "label parent unavailable");
+        ESP_LOGW(TAG, "%s", UI_LABEL_PARENT_UNAVAILABLE_LOG);
         return nullptr;
     }
     if (w <= 0 || h <= 0) {
-        ESP_LOGW(TAG, "label invalid size %dx%d", w, h);
+        ESP_LOGW(TAG, UI_LABEL_INVALID_SIZE_FORMAT, w, h);
         return nullptr;
     }
     lv_obj_t *label = lv_label_create(parent);
     if (!label) {
-        ESP_LOGW(TAG, "label create failed");
+        ESP_LOGW(TAG, "%s", UI_LABEL_CREATE_FAILED_LOG);
         return nullptr;
     }
     lv_obj_set_pos(label, x, y);

@@ -6,7 +6,7 @@
 #include <new>
 
 #define AUDIO_TASK_FUNCTION_UNAVAILABLE_LOG_FORMAT "failed to create %s task: task function unavailable"
-#define AUDIO_TASK_CREATE_FAILED_LOG_FORMAT "failed to create %s task"
+#define AUDIO_TASK_CREATE_FAILED_LOG_FORMAT "failed to create %s task rtos=%s stack=%u priority=%u core=%d rc=%d"
 #define HOURLY_CHIME_PLAYED_LOG_FORMAT "hourly chime played sound=%d volume=%d"
 #define HOURLY_CHIME_SKIPPED_LOG_FORMAT "hourly chime skipped sound=%d"
 
@@ -17,8 +17,10 @@ constexpr UBaseType_t kAudioPlaybackTaskPriority = 4;
 constexpr UBaseType_t kSettingsChimeRetryTaskPriority = 3;
 constexpr BaseType_t kAudioTaskCore = 1;
 constexpr int kSettingsChimeRetryAttempts = 8;
-constexpr TickType_t kSettingsChimeRetryDelay = pdMS_TO_TICKS(180);
-constexpr TickType_t kSetupPromptChainDelay = pdMS_TO_TICKS(120);
+constexpr uint32_t kSettingsChimeRetryDelayMs = 180;
+constexpr uint32_t kSetupPromptChainDelayMs = 120;
+constexpr TickType_t kSettingsChimeRetryDelay = pdMS_TO_TICKS(kSettingsChimeRetryDelayMs);
+constexpr TickType_t kSetupPromptChainDelay = pdMS_TO_TICKS(kSetupPromptChainDelayMs);
 constexpr int kHourlyChimeQuietStartHour = 7;
 constexpr int kHourlyChimeQuietEndHour = 22;
 constexpr const char *kAudioCodecBoardName = "S3_RLCD_4_2";
@@ -36,6 +38,44 @@ constexpr const char *kSetupPromptSkippedLog = "setup prompt skipped";
 constexpr const char *kSetupPromptPendingLog = "setup prompt pending";
 constexpr const char *kSettingsChimeRetryTaskCreateFailedLog = "failed to create settings chime retry task";
 constexpr const char *kHourlyChimeRadioSetupSkippedLog = "hourly chime skipped while radio or setup is active";
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+static_assert(kAudioPlaybackTaskStack > 0, "audio playback task stack must be positive");
+static_assert(kSettingsChimeRetryTaskStack > 0, "settings chime retry task stack must be positive");
+static_assert(kAudioPlaybackTaskPriority > tskIDLE_PRIORITY, "audio playback task priority must exceed idle");
+static_assert(kSettingsChimeRetryTaskPriority > tskIDLE_PRIORITY, "settings chime retry priority must exceed idle");
+static_assert(kAudioTaskCore >= 0, "audio task core must be non-negative");
+static_assert(kSettingsChimeRetryAttempts > 0, "settings chime retry attempts must be positive");
+static_assert(kSettingsChimeRetryDelayMs > 0, "settings chime retry delay must be positive");
+static_assert(kSetupPromptChainDelayMs > 0, "setup prompt chain delay must be positive");
+static_assert(kSettingsChimeRetryDelay > 0, "settings chime retry delay must be positive");
+static_assert(kSetupPromptChainDelay > 0, "setup prompt chain delay must be positive");
+static_assert(kHourlyChimeQuietStartHour >= 0 && kHourlyChimeQuietStartHour < 24,
+              "hourly chime start hour must be in 0..23");
+static_assert(kHourlyChimeQuietEndHour >= 0 && kHourlyChimeQuietEndHour < 24,
+              "hourly chime end hour must be in 0..23");
+static_assert(kHourlyChimeQuietStartHour <= kHourlyChimeQuietEndHour,
+              "hourly chime active window must not wrap midnight");
+static_assert(cstr_nonempty(kAudioCodecBoardName), "audio codec board name must be non-empty");
+static_assert(cstr_nonempty(kDefaultAudioTaskName), "default audio task name must be non-empty");
+static_assert(cstr_nonempty(kHourlyChimeTaskName), "hourly chime task name must be non-empty");
+static_assert(cstr_nonempty(kSetupPromptTaskName), "setup prompt task name must be non-empty");
+static_assert(cstr_nonempty(kSettingsChimeRetryTaskName), "settings chime task name must be non-empty");
+static_assert(cstr_nonempty(kDefaultAudioLogName), "default audio log name must be non-empty");
+static_assert(cstr_nonempty(kHourlyChimeLogName), "hourly chime log name must be non-empty");
+static_assert(cstr_nonempty(kSetupPromptLogName), "setup prompt log name must be non-empty");
+static_assert(cstr_nonempty(kSettingsChimeBusyLog), "settings chime busy log must be non-empty");
+static_assert(cstr_nonempty(kAudioCodecAllocationFailedLog), "audio codec allocation log must be non-empty");
+static_assert(cstr_nonempty(kSetupPromptPlayedLog), "setup prompt played log must be non-empty");
+static_assert(cstr_nonempty(kSetupPromptSkippedLog), "setup prompt skipped log must be non-empty");
+static_assert(cstr_nonempty(kSetupPromptPendingLog), "setup prompt pending log must be non-empty");
+static_assert(cstr_nonempty(kSettingsChimeRetryTaskCreateFailedLog),
+              "settings chime retry task failure log must be non-empty");
+static_assert(cstr_nonempty(kHourlyChimeRadioSetupSkippedLog),
+              "hourly chime radio/setup skip log must be non-empty");
 } // namespace
 
 bool try_mark_audio_playing()
@@ -121,7 +161,14 @@ static bool create_audio_playback_task(TaskFunction_t task_fn,
                                             nullptr,
                                             kAudioTaskCore);
     if (ok != pdPASS) {
-        ESP_LOGW(TAG, AUDIO_TASK_CREATE_FAILED_LOG_FORMAT, display_name);
+        ESP_LOGW(TAG,
+                 AUDIO_TASK_CREATE_FAILED_LOG_FORMAT,
+                 display_name,
+                 rtos_name,
+                 (unsigned)kAudioPlaybackTaskStack,
+                 (unsigned)kAudioPlaybackTaskPriority,
+                 (int)kAudioTaskCore,
+                 (int)ok);
         return false;
     }
     return true;

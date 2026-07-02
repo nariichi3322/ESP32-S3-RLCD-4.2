@@ -24,6 +24,12 @@ static constexpr const char *kStatusSummaryPlaceholder = "--C --%";
 static constexpr const char *kStatusTimePlaceholder = "--:--";
 static constexpr size_t kStatusTimeTextSize = 8;
 static constexpr const char *kStatusTimeFormat = "%02d:%02d";
+#define WORK_STATUS_ICON_INVALID_ARG_LOG "status icon invalid arg"
+#define WORK_STATUS_ICON_INVALID_SIZE_FORMAT "status icon invalid size %dx%d row=%d"
+#define WORK_STATUS_ICON_CANVAS_CREATE_FAILED_LOG "status icon canvas create failed"
+#define WORK_STATUS_DATE_LABEL_CREATE_FAILED_FORMAT "work status date label create failed page=%d"
+#define WORK_STATUS_SUMMARY_LABEL_CREATE_FAILED_FORMAT "work status summary label create failed page=%d"
+#define WORK_STATUS_TIME_LABEL_CREATE_FAILED_FORMAT "work status time label create failed page=%d"
 
 bool is_status_icon_page(int page)
 {
@@ -41,11 +47,11 @@ void build_status_icon(lv_obj_t *screen,
                        const uint8_t *bits)
 {
     if (!screen || !canvas || !buffer) {
-        ESP_LOGW(TAG, "status icon invalid arg");
+        ESP_LOGW(TAG, "%s", WORK_STATUS_ICON_INVALID_ARG_LOG);
         return;
     }
     if (width <= 0 || height <= 0 || bytes_per_row <= 0 || !bits) {
-        ESP_LOGW(TAG, "status icon invalid size %dx%d row=%d", width, height, bytes_per_row);
+        ESP_LOGW(TAG, WORK_STATUS_ICON_INVALID_SIZE_FORMAT, width, height, bytes_per_row);
         return;
     }
     if (!*buffer) {
@@ -53,7 +59,7 @@ void build_status_icon(lv_obj_t *screen,
     }
     *canvas = lv_canvas_create(screen);
     if (!*canvas) {
-        ESP_LOGW(TAG, "status icon canvas create failed");
+        ESP_LOGW(TAG, "%s", WORK_STATUS_ICON_CANVAS_CREATE_FAILED_LOG);
         return;
     }
     lv_obj_clear_flag(*canvas, LV_OBJ_FLAG_SCROLLABLE);
@@ -98,7 +104,7 @@ void build_work_page_status_bar(lv_obj_t *screen,
         if (*date_label) {
             lv_obj_set_style_text_align(*date_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
         } else {
-            ESP_LOGW(TAG, "work status date label create failed page=%d", page);
+            ESP_LOGW(TAG, WORK_STATUS_DATE_LABEL_CREATE_FAILED_FORMAT, page);
         }
     }
     if (summary_label) {
@@ -112,7 +118,7 @@ void build_work_page_status_bar(lv_obj_t *screen,
         if (*summary_label) {
             style_work_page_sensor_summary(*summary_label);
         } else {
-            ESP_LOGW(TAG, "work status summary label create failed page=%d", page);
+            ESP_LOGW(TAG, WORK_STATUS_SUMMARY_LABEL_CREATE_FAILED_FORMAT, page);
         }
     }
     if (time_label) {
@@ -130,7 +136,7 @@ void build_work_page_status_bar(lv_obj_t *screen,
             lv_obj_set_style_text_align(*time_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
             lv_obj_set_style_pad_all(*time_label, 0, LV_PART_MAIN);
         } else {
-            ESP_LOGW(TAG, "work status time label create failed page=%d", page);
+            ESP_LOGW(TAG, WORK_STATUS_TIME_LABEL_CREATE_FAILED_FORMAT, page);
         }
     }
     if (is_status_icon_page(page)) {

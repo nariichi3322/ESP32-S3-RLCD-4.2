@@ -6,14 +6,53 @@
 #include <esp_heap_caps.h>
 #include "display_bsp.h"
 
+#define PIXEL_OUT_OF_BOUNDS_LOG_FORMAT "Beyond the limit : (%d,%d)"
+#define RLCD_TX_FAILED_LOG_FORMAT "RLCD tx failed err=%s len=%d offset=%d dma_free=%u dma_largest=%u"
+
 static constexpr int kRlcdSpiClockHz = 5 * 1000 * 1000;
 static constexpr int kRlcdTxChunkBytes = 2048;
 static constexpr int kRlcdOtaTxChunkBytes = 512;
 static constexpr int kRlcdTxRetryCount = 4;
 static constexpr int kRlcdOtaTxRetryCount = 8;
+static constexpr int kRlcdLcdCommandBits = 8;
+static constexpr int kRlcdLcdParamBits = 8;
+static constexpr int kRlcdSpiMode = 0;
+static constexpr int kRlcdSpiTransQueueDepth = 10;
+static constexpr int kRlcdDmaConservativeMaxDepth = 8;
+static constexpr const char *kRlcdKeepPinsActiveLog = "keep RLCD pins active in light sleep";
+static constexpr uint32_t kRlcdSleepOutDelayMs = 200;
+static constexpr uint32_t kRlcdResetHighDelayMs = 50;
+static constexpr uint32_t kRlcdResetLowDelayMs = 20;
+static constexpr TickType_t kRlcdSleepOutDelay = pdMS_TO_TICKS(kRlcdSleepOutDelayMs);
+static constexpr TickType_t kRlcdResetHighDelay = pdMS_TO_TICKS(kRlcdResetHighDelayMs);
+static constexpr TickType_t kRlcdResetLowDelay = pdMS_TO_TICKS(kRlcdResetLowDelayMs);
+static_assert(kRlcdSleepOutDelayMs > 0, "RLCD sleep-out delay must be positive");
+static_assert(kRlcdResetHighDelayMs > 0, "RLCD reset high delay must be positive");
+static_assert(kRlcdResetLowDelayMs > 0, "RLCD reset low delay must be positive");
+static_assert(kRlcdLcdCommandBits > 0, "RLCD command bit width must be positive");
+static_assert(kRlcdLcdParamBits > 0, "RLCD parameter bit width must be positive");
+static_assert(kRlcdSpiMode >= 0, "RLCD SPI mode must not be negative");
+static_assert(kRlcdSpiTransQueueDepth > 0, "RLCD SPI transaction queue depth must be positive");
+static_assert(kRlcdDmaConservativeMaxDepth > 0, "RLCD DMA conservative depth limit must be positive");
+static_assert(kRlcdKeepPinsActiveLog[0] != '\0', "RLCD light-sleep pin log must not be empty");
+static_assert(kRlcdSleepOutDelay > 0, "RLCD sleep-out tick delay must be positive");
+static_assert(kRlcdResetHighDelay > 0, "RLCD reset high tick delay must be positive");
+static_assert(kRlcdResetLowDelay > 0, "RLCD reset low tick delay must be positive");
 static bool s_ota_quiet_mode = false;
 static int s_dma_conservative_depth = 0;
 static portMUX_TYPE s_dma_mode_mux = portMUX_INITIALIZER_UNLOCKED;
+
+static void LogDisplayAllocationFailure(const char *name, size_t bytes)
+{
+    ESP_LOGE("Display",
+             "%s allocation failed bytes=%u psram_free=%u psram_largest=%u internal_free=%u dma_largest=%u",
+             name,
+             (unsigned)bytes,
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM),
+             (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+             (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
+}
 
 static bool Display_IsDmaConservativeMode()
 {
@@ -33,7 +72,7 @@ void Display_SetOtaQuietMode(bool enabled)
 void Display_AcquireDmaConservativeMode()
 {
     portENTER_CRITICAL(&s_dma_mode_mux);
-    if (s_dma_conservative_depth < 8) {
+    if (s_dma_conservative_depth < kRlcdDmaConservativeMaxDepth) {
         ++s_dma_conservative_depth;
     }
     portEXIT_CRITICAL(&s_dma_mode_mux);
@@ -73,10 +112,10 @@ height_(height)
     io_config.dc_gpio_num = dc_;
     io_config.cs_gpio_num = cs_;
     io_config.pclk_hz = kRlcdSpiClockHz;
-    io_config.lcd_cmd_bits = 8;
-    io_config.lcd_param_bits = 8;
-    io_config.spi_mode = 0;
-    io_config.trans_queue_depth = 10;
+    io_config.lcd_cmd_bits = kRlcdLcdCommandBits;
+    io_config.lcd_param_bits = kRlcdLcdParamBits;
+    io_config.spi_mode = kRlcdSpiMode;
+    io_config.trans_queue_depth = kRlcdSpiTransQueueDepth;
 
     ESP_ERROR_CHECK(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)spihost, &io_config, &io_handle));
 
@@ -92,11 +131,20 @@ height_(height)
 
     DisplayLen                = transfer >> 3; //(1byte 8ipex)
     DispBuffer                = (uint8_t *) heap_caps_malloc(DisplayLen, MALLOC_CAP_SPIRAM);
+    if (DispBuffer == NULL) {
+        LogDisplayAllocationFailure("RLCD display buffer", DisplayLen);
+    }
     assert(DispBuffer);
 
 #if (AlgorithmOptimization == 3)
 	PixelIndexLUT = (uint16_t (*)[300])heap_caps_malloc(transfer * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
 	PixelBitLUT   = (uint8_t (*)[300])heap_caps_malloc(transfer * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
+    if (PixelIndexLUT == NULL) {
+        LogDisplayAllocationFailure("RLCD pixel index LUT", transfer * sizeof(uint16_t));
+    }
+    if (PixelBitLUT == NULL) {
+        LogDisplayAllocationFailure("RLCD pixel bit LUT", transfer * sizeof(uint8_t));
+    }
     assert(PixelIndexLUT);
     assert(PixelBitLUT);
     if(width_ == 400) {
@@ -190,7 +238,7 @@ void DisplayPort::RLCD_Init() {
 	RLCD_SendData(0x64);
 
 	RLCD_SendCommand(0x11); 
-	vTaskDelay(pdMS_TO_TICKS(200));     
+	vTaskDelay(kRlcdSleepOutDelay);
 	RLCD_SendCommand(0xC9);
 	RLCD_SendData(0x00);
 
@@ -240,7 +288,7 @@ void DisplayPort::KeepPinsActiveInLightSleep(void) {
     for (gpio_num_t pin : pins) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_sleep_sel_dis(pin));
     }
-    ESP_LOGI(TAG, "keep RLCD pins active in light sleep");
+    ESP_LOGI(TAG, "%s", kRlcdKeepPinsActiveLog);
 }
 
 void DisplayPort::RLCD_ColorClear(uint8_t color) {
@@ -286,11 +334,11 @@ void DisplayPort::RLCD_DisplayXRange(uint16_t x1, uint16_t x2) {
 
 void DisplayPort::RLCD_Reset(void) {
     Set_ResetIOLevel(1);
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(kRlcdResetHighDelay);
     Set_ResetIOLevel(0);
-    vTaskDelay(pdMS_TO_TICKS(20));
+    vTaskDelay(kRlcdResetLowDelay);
     Set_ResetIOLevel(1);
-    vTaskDelay(pdMS_TO_TICKS(50));
+    vTaskDelay(kRlcdResetHighDelay);
 }
 
 void DisplayPort::RLCD_SendCommand(uint8_t Reg) {
@@ -327,7 +375,7 @@ void DisplayPort::RLCD_Sendbuffera(uint8_t *Data, int len) {
 
         if (err != ESP_OK) {
             ESP_LOGW(TAG,
-                     "RLCD tx failed err=%s len=%d offset=%d dma_free=%u dma_largest=%u",
+                     RLCD_TX_FAILED_LOG_FORMAT,
                      esp_err_to_name(err),
                      len,
                      offset,
@@ -346,7 +394,7 @@ void DisplayPort::Set_ResetIOLevel(uint8_t level) {
 
 void DisplayPort::RLCD_SetPortraitPixel(uint16_t x, uint16_t y, uint8_t color) {
     if((x >= width_) || (y >= height_)) {
-  	  	ESP_LOGE("Pixel","Beyond the limit : (%d,%d)",x ,y);
+        ESP_LOGE("Pixel", PIXEL_OUT_OF_BOUNDS_LOG_FORMAT, x, y);
         return;
   	}
 #if (AlgorithmOptimization == 2)

@@ -54,8 +54,35 @@ constexpr int kSensorSampleNightMinutes = 2;
 constexpr int kNightSlowWindowStartHour = 22;
 constexpr int kNightSlowWindowEndHour = 6;
 constexpr int kTmYearOffset = 1900;
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+static_assert(kHourlyHistoryCount > 0, "hourly history must keep at least one slot");
+static_assert(kLegacyHourlyHistoryCount > 0, "legacy hourly history must keep at least one sample");
 static_assert(kHourlyHistoryCount <= 99, "hourly slot key format h%02d supports two-digit indexes");
+static_assert(kHourlyHistoryCount >= kLegacyHourlyHistoryCount,
+              "new hourly history must cover legacy history samples");
+static_assert(kHourlyHistoryMetaVersion > kLegacyHourlyHistoryVersion,
+              "hourly sensor history meta version must be newer than legacy blob version");
+static_assert(kHourlyHistoryMetaVersion != kLegacyHourlyHistoryVersion,
+              "new hourly metadata version must differ from legacy blob version");
 static_assert(kHourlySlotKeyBufferSize >= sizeof("h00"), "hourly slot key buffer must fit hNN plus terminator");
+static_assert(cstr_nonempty(kSensorNvsNamespace), "sensor NVS namespace must be non-empty");
+static_assert(cstr_nonempty(kHourlyHistoryMetaKey), "hourly history metadata key must be non-empty");
+static_assert(cstr_nonempty(kLegacyHourlyHistoryKey), "legacy hourly history key must be non-empty");
+static_assert(cstr_nonempty(kHourlySlotKeyFormat), "hourly history slot key format must be non-empty");
+static_assert(kWeatherSyncFallbackSeconds > 0, "weather sync fallback interval must be positive");
+static_assert(kWeatherSyncSearchHours > 0, "weather sync search hours must be positive");
+static_assert(kWeatherSyncSearchStepHours > 0, "weather sync search step must be positive");
+static_assert(kUnknownTimeSensorSampleMs > 0, "unknown-time sensor sample interval must be positive");
+static_assert(kSensorSampleDayMinutes > 0, "day sensor sample interval must be positive");
+static_assert(kSensorSampleNightMinutes > 0, "night sensor sample interval must be positive");
+static_assert(kNightSlowWindowStartHour >= 0 && kNightSlowWindowStartHour < 24,
+              "night slow window start hour must be in 0..23");
+static_assert(kNightSlowWindowEndHour >= 0 && kNightSlowWindowEndHour < 24,
+              "night slow window end hour must be in 0..23");
 
 int seconds_until_next_interval(const struct tm &local, int interval_seconds)
 {

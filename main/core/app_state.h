@@ -112,10 +112,10 @@ inline constexpr int kSettingsManualSyncTimeoutMs = kAppMsPerMinute;
 inline constexpr int kWeatherClockAutoRetryMs = 2 * kAppMsPerMinute;
 inline constexpr int kWeatherClockAutoSyncMaxAttempts = 3;
 inline constexpr int kWeatherClockAutoBackoffMs = 30 * kAppMsPerMinute;
-inline constexpr int kButtonIdlePollMs = 250;
-inline constexpr int kButtonLowRefreshIdlePollMs = 500;
-inline constexpr int kButtonActivePollMs = 100;
-inline constexpr int kButtonPressedPollMs = 50;
+inline constexpr int kButtonIdlePollMs = 60;
+inline constexpr int kButtonLowRefreshIdlePollMs = 50;
+inline constexpr int kButtonActivePollMs = 50;
+inline constexpr int kButtonPressedPollMs = 20;
 inline constexpr int kBootAnimRunFrameMs = 50;
 inline constexpr int kBootWifiConnectTimeoutMs = 5 * kAppMsPerSecond;
 inline constexpr int kBootNtpRetries = 2;
@@ -177,6 +177,11 @@ inline constexpr int kBatteryChargingSampleMs = kAppMsPerMinute;
 inline constexpr int kBatterySampleUnknownTimeMinutes = 10;
 inline constexpr int kBatterySampleDayMinutes = 10;
 inline constexpr int kBatterySampleNightMinutes = 20;
+
+static_assert(kWorkPageCount == kWorkPageFlipClock + 1, "work page count must match the last work page id");
+static_assert(kDisplaySettingsPageItemCount == kWorkPageCount, "display page setting count must match work page count");
+static_assert(kDisplaySettingsSecondaryCount == kDisplaySettingsOrderItem + 1,
+              "display settings count must include the page order item");
 
 enum SettingsSyncOp {
     kSettingsSyncNone = 0,
@@ -483,7 +488,11 @@ extern lv_color_t *g_second_progress_canvas_buf;
 extern lv_obj_t *g_flip_clock_card_canvas[3];
 extern lv_color_t *g_flip_clock_card_canvas_buf[3];
 extern lv_obj_t *g_flip_clock_sensor_label;
+extern lv_obj_t *g_flip_clock_sensor_bold_label;
+extern lv_obj_t *g_flip_clock_sensor_bold_y_label;
 extern lv_obj_t *g_flip_clock_humidity_label;
+extern lv_obj_t *g_flip_clock_humidity_bold_label;
+extern lv_obj_t *g_flip_clock_humidity_bold_y_label;
 extern lv_obj_t *g_flip_clock_day_progress_canvas;
 extern lv_color_t *g_flip_clock_day_progress_canvas_buf;
 extern lv_obj_t *g_flip_clock_second_progress_canvas;

@@ -39,6 +39,16 @@ constexpr const char *kNetworkPmLockName = "network_sync";
 constexpr const char *kAudioPmLockName = "audio_play";
 constexpr const char *kNetworkPmLogName = "network";
 constexpr const char *kAudioPmLogName = "audio";
+static_assert(kMinValidYear <= kMaxValidYear, "valid year range must be ordered");
+static_assert(kRtcMinMonth == 1, "RTC month range must start at 1");
+static_assert(kRtcMaxMonth == 12, "RTC month range must end at 12");
+static_assert(kRtcMinDay == 1, "RTC day range must start at 1");
+static_assert(kRtcMaxDay == 31, "RTC day range must end at 31");
+static_assert(kRtcMaxHour == 23, "RTC hour max must stay 23");
+static_assert(kRtcMaxMinute == 59, "RTC minute max must stay 59");
+static_assert(kRtcMaxSecond == 59, "RTC second max must stay 59");
+static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
+static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
 
 bool rtc_time_fields_in_range(const rtcTimeStruct_t &rtc_time)
 {
@@ -68,6 +78,8 @@ namespace {
 SemaphoreHandle_t s_pm_lock_mutex = nullptr;
 constexpr uint32_t kPmLockMutexTimeoutMs = 1000;
 constexpr TickType_t kPmLockMutexTimeout = pdMS_TO_TICKS(kPmLockMutexTimeoutMs);
+static_assert(kPmLockMutexTimeoutMs > 0, "PM lock mutex timeout must be positive");
+static_assert(kPmLockMutexTimeout > 0, "PM lock mutex tick timeout must be positive");
 
 bool take_pm_lock_mutex(const char *name)
 {

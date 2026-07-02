@@ -31,6 +31,25 @@ static constexpr int kBatteryAdcRawMax = 4095;
 static constexpr int kBatteryPercentMin = 0;
 static constexpr int kBatteryPercentMax = 100;
 static constexpr int kBatteryPercentUnknown = -1;
+static_assert(kBatteryVoltageDivider > 0.0f, "battery voltage divider must be positive");
+static_assert(kBatteryMillivoltsToVolts > 0.0f, "millivolts-to-volts scale must be positive");
+static_assert(kBatteryFullVoltage > kBatteryEmptyVoltage, "battery voltage range must be positive");
+static_assert(kBatteryVoltageRange > 0.0f, "battery voltage range must be positive");
+static_assert(kBatteryPercentScale > 0.0f, "battery percent scale must be positive");
+static_assert(kBatteryPercentRoundOffset >= 0.0f && kBatteryPercentRoundOffset < 1.0f,
+              "battery percent rounding offset must stay within one percent step");
+static_assert(kBatteryValidPreviousVoltageMin <= kBatteryEmptyVoltage,
+              "battery previous-voltage sentinel must not exceed empty voltage");
+static_assert(kBatteryAdcReferenceMv > 0, "battery ADC reference voltage must be positive");
+static_assert(kBatteryAdcRawMax > 0, "battery ADC raw max must be positive");
+static_assert(kBatteryAdcRawMax == (1 << 12) - 1, "12-bit battery ADC raw max must stay 4095");
+static_assert(kBatteryPercentMin == 0, "battery percent min is expected to be zero");
+static_assert(kBatteryPercentMax == 100, "battery percent max is expected to be one hundred");
+static_assert(kBatteryPercentMin < kBatteryPercentMax, "battery percent range must be ordered");
+static_assert(kBatteryPercentUnknown < kBatteryPercentMin, "unknown battery percent must be below valid range");
+static_assert(kBatteryChargingRiseSamples > 0, "charging detection must require at least one rising sample");
+static_assert(kBatteryChargingRiseVoltage > kBatteryChargingStopVoltage,
+              "charging rise threshold must stay above stop threshold");
 
 static int clamp_battery_percent(int percent)
 {

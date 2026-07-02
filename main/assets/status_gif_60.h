@@ -11,6 +11,12 @@ static constexpr int STATUS_GIF_HEIGHT = 84;
 static constexpr int STATUS_GIF_FRAME_COUNT = 60;
 static constexpr int STATUS_GIF_BYTES_PER_FRAME = 882;
 
+static_assert(STATUS_GIF_WIDTH > 0, "Status GIF width must be positive");
+static_assert(STATUS_GIF_HEIGHT > 0, "Status GIF height must be positive");
+static_assert(STATUS_GIF_FRAME_COUNT > 1, "Status GIF needs multiple frames");
+static_assert(STATUS_GIF_BYTES_PER_FRAME == (STATUS_GIF_WIDTH * STATUS_GIF_HEIGHT + 7) / 8,
+              "Status GIF frame byte count mismatch");
+
 static const uint8_t status_gif_frames[STATUS_GIF_FRAME_COUNT][STATUS_GIF_BYTES_PER_FRAME] = {
     { // frame 0
         0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 
@@ -3493,3 +3499,5 @@ static const uint8_t status_gif_frames[STATUS_GIF_FRAME_COUNT][STATUS_GIF_BYTES_
         0x00, 0x00, 
     },
 };
+static_assert(sizeof(status_gif_frames) == STATUS_GIF_FRAME_COUNT * STATUS_GIF_BYTES_PER_FRAME,
+              "Status GIF frame table size mismatch");

@@ -39,8 +39,26 @@ constexpr size_t min_size(size_t a, size_t b)
     return a < b ? a : b;
 }
 
+constexpr bool ntp_servers_nonempty()
+{
+    for (const char *server : kNtpServers) {
+        if (!server || server[0] == '\0') {
+            return false;
+        }
+    }
+    return true;
+}
+
 constexpr size_t kActiveNtpServerCount = min_size(kNtpServerCount, kConfiguredNtpServerSlots);
 constexpr const char *kNtpTimeSyncedEventUnavailableLog = "skip time synced event bit: app events unavailable";
+static_assert(ntp_servers_nonempty(), "NTP server names must be non-empty");
+static_assert(kDefaultConfiguredNtpServerSlots > 0, "default SNTP server slots must be positive");
+static_assert(kActiveNtpServerCount > 0, "active NTP server count must be positive");
+static_assert(kActiveNtpServerCount <= kNtpServerCount, "active NTP server count must fit server list");
+static_assert(kActiveNtpServerCount <= kConfiguredNtpServerSlots, "active NTP server count must fit SNTP slots");
+static_assert(kNtpPollDelayMs > 0, "NTP poll delay must be positive");
+static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
+static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
 
 void set_time_synced_event_bit()
 {

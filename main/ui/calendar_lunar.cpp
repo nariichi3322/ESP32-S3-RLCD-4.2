@@ -8,6 +8,18 @@ struct LunarYearInfo {
     uint32_t data;
 };
 
+struct CalendarFestivalRule {
+    int month;
+    int day;
+    const char *name;
+};
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
 static const LunarYearInfo kLunarYears[] = {
     {2023, 0x0d2b2},
     {2024, 0x0a950},
@@ -46,10 +58,41 @@ static const char *const kSolarTermNames[] = {
 
 static constexpr int kTmYearOffset = 1900;
 static constexpr int kTmMonthOffset = 1;
+static constexpr int kFirstGregorianMonth = 1;
+static constexpr int kLastGregorianMonth = 12;
+static constexpr int kFebruaryMonth = 2;
+static constexpr int kCommonFebruaryDays = 28;
+static constexpr int kLeapFebruaryDays = 29;
+static constexpr int kFallbackGregorianMonthDays = 30;
+static constexpr int kLeapYearCycle4 = 4;
+static constexpr int kLeapYearCycle100 = 100;
+static constexpr int kLeapYearCycle400 = 400;
+static constexpr int kFirstLunarMonth = 1;
+static constexpr int kLastLunarMonth = 12;
+static constexpr int kFirstLunarDay = 1;
+static constexpr int kLunarSmallMonthDays = 29;
+static constexpr int kLunarLargeMonthDays = 30;
+static constexpr int kLunarYearBaseDays = kLastLunarMonth * kLunarSmallMonthDays;
+static constexpr uint32_t kLunarLeapMonthMask = 0x0f;
+static constexpr uint32_t kLunarLeapMonthDaysMask = 0x10000;
+static constexpr uint32_t kLunarMonthDaysBaseMask = 0x10000;
+static constexpr int kLunarYearDaysFirstMask = 0x8000;
+static constexpr int kLunarYearDaysLastMask = 0x8;
+static constexpr int kLunarBaseYear = 2023;
+static constexpr int kLunarBaseMonth = 1;
+static constexpr int kLunarBaseDay = 22;
+static constexpr int kSolarTermsPerMonth = 2;
 static constexpr int kSolarTermBaseYear = 1900;
+static constexpr double kSolarTermYearMs = 31556925974.7;
+static constexpr double kSolarTermBaseMs = -2208491700000.0; // 1900-01-06 02:05 UTC
 static constexpr double kMsPerMinute = 60000.0;
+static constexpr double kMsPerDay = 86400000.0;
 static constexpr const char *kCalendarLunarPlaceholder = "--";
 static constexpr const char *kLunarMonthDisplayFormat = "%s%s";
+
+static const int kGregorianMonthDays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+static_assert(array_count(kGregorianMonthDays) == kLastGregorianMonth,
+              "gregorian month days must cover January through December");
 
 static const int kSolarTermMinutes[] = {
     0, 21208, 42467, 63836, 85337, 107014,
@@ -57,6 +100,31 @@ static const int kSolarTermMinutes[] = {
     263343, 285989, 308563, 331033, 353350, 375494,
     397447, 419210, 440795, 462224, 483532, 504758,
 };
+
+static const CalendarFestivalRule kGregorianFestivals[] = {
+    {1, 1, "元旦"},
+    {2, 14, "情人节"},
+    {3, 8, "妇女节"},
+    {5, 1, "劳动节"},
+    {6, 1, "儿童节"},
+    {9, 10, "教师节"},
+    {10, 1, "国庆"},
+    {12, 25, "圣诞"},
+};
+
+static const CalendarFestivalRule kLunarFestivals[] = {
+    {1, 1, "春节"},
+    {1, 15, "元宵"},
+    {5, 5, "端午"},
+    {7, 7, "七夕"},
+    {8, 15, "中秋"},
+    {9, 9, "重阳"},
+    {12, 8, "腊八"},
+};
+static_assert(array_count(kSolarTermNames) == kLastGregorianMonth * kSolarTermsPerMonth,
+              "solar term names must cover two terms per month");
+static_assert(array_count(kSolarTermMinutes) == kLastGregorianMonth * kSolarTermsPerMonth,
+              "solar term minute offsets must cover two terms per month");
 
 static int days_from_civil(int year, unsigned month, unsigned day)
 {
@@ -95,9 +163,15 @@ static const LunarYearInfo *find_lunar_year(int year)
     return nullptr;
 }
 
+static bool is_gregorian_leap_year(int year)
+{
+    return (year % kLeapYearCycle4 == 0 && year % kLeapYearCycle100 != 0) ||
+           (year % kLeapYearCycle400 == 0);
+}
+
 static int leap_month(uint32_t data)
 {
-    return (int)(data & 0x0f);
+    return (int)(data & kLunarLeapMonthMask);
 }
 
 static int leap_month_days(uint32_t data)
@@ -105,18 +179,18 @@ static int leap_month_days(uint32_t data)
     if (leap_month(data) == 0) {
         return 0;
     }
-    return (data & 0x10000) ? 30 : 29;
+    return (data & kLunarLeapMonthDaysMask) ? kLunarLargeMonthDays : kLunarSmallMonthDays;
 }
 
 static int lunar_month_days(uint32_t data, int month)
 {
-    return (data & (0x10000 >> month)) ? 30 : 29;
+    return (data & (kLunarMonthDaysBaseMask >> month)) ? kLunarLargeMonthDays : kLunarSmallMonthDays;
 }
 
 static int lunar_year_days(uint32_t data)
 {
-    int days = 348;
-    for (int mask = 0x8000; mask > 0x8; mask >>= 1) {
+    int days = kLunarYearBaseDays;
+    for (int mask = kLunarYearDaysFirstMask; mask > kLunarYearDaysLastMask; mask >>= 1) {
         if (data & mask) {
             ++days;
         }
@@ -126,15 +200,13 @@ static int lunar_year_days(uint32_t data)
 
 int calendar_days_in_month(int year, int month)
 {
-    static const int month_days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    if (month < 1 || month > 12) {
-        return 30;
+    if (month < kFirstGregorianMonth || month > kLastGregorianMonth) {
+        return kFallbackGregorianMonthDays;
     }
-    if (month == 2) {
-        bool leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
-        return leap ? 29 : 28;
+    if (month == kFebruaryMonth) {
+        return is_gregorian_leap_year(year) ? kLeapFebruaryDays : kCommonFebruaryDays;
     }
-    return month_days[month - 1];
+    return kGregorianMonthDays[month - kFirstGregorianMonth];
 }
 
 int calendar_first_weekday(int year, int month)
@@ -147,12 +219,12 @@ int calendar_first_weekday(int year, int month)
 static bool lunar_from_date(int year, int month, int day, CalendarDayInfo *info)
 {
     int offset = days_from_civil(year, (unsigned)month, (unsigned)day) -
-                 days_from_civil(2023, 1, 22);
+                 days_from_civil(kLunarBaseYear, kLunarBaseMonth, kLunarBaseDay);
     if (offset < 0) {
         return false;
     }
 
-    int lunar_year = 2023;
+    int lunar_year = kLunarBaseYear;
     const LunarYearInfo *year_info = find_lunar_year(lunar_year);
     while (year_info) {
         int days = lunar_year_days(year_info->data);
@@ -167,7 +239,7 @@ static bool lunar_from_date(int year, int month, int day, CalendarDayInfo *info)
         return false;
     }
 
-    int lunar_month = 1;
+    int lunar_month = kFirstLunarMonth;
     bool is_leap = false;
     int leap = leap_month(year_info->data);
     for (;;) {
@@ -182,7 +254,7 @@ static bool lunar_from_date(int year, int month, int day, CalendarDayInfo *info)
             is_leap = false;
             ++lunar_month;
         }
-        if (lunar_month > 12) {
+        if (lunar_month > kLastLunarMonth) {
             return false;
         }
     }
@@ -196,42 +268,48 @@ static bool lunar_from_date(int year, int month, int day, CalendarDayInfo *info)
 
 static const char *gregorian_festival(int month, int day)
 {
-    if (month == 1 && day == 1) return "元旦";
-    if (month == 2 && day == 14) return "情人节";
-    if (month == 3 && day == 8) return "妇女节";
-    if (month == 5 && day == 1) return "劳动节";
-    if (month == 6 && day == 1) return "儿童节";
-    if (month == 9 && day == 10) return "教师节";
-    if (month == 10 && day == 1) return "国庆";
-    if (month == 12 && day == 25) return "圣诞";
+    for (const auto &festival : kGregorianFestivals) {
+        if (month == festival.month && day == festival.day) {
+            return festival.name;
+        }
+    }
     return nullptr;
 }
 
 static const char *lunar_festival(int lunar_month, int lunar_day)
 {
-    if (lunar_month == 1 && lunar_day == 1) return "春节";
-    if (lunar_month == 1 && lunar_day == 15) return "元宵";
-    if (lunar_month == 5 && lunar_day == 5) return "端午";
-    if (lunar_month == 7 && lunar_day == 7) return "七夕";
-    if (lunar_month == 8 && lunar_day == 15) return "中秋";
-    if (lunar_month == 9 && lunar_day == 9) return "重阳";
-    if (lunar_month == 12 && lunar_day == 8) return "腊八";
+    for (const auto &festival : kLunarFestivals) {
+        if (lunar_month == festival.month && lunar_day == festival.day) {
+            return festival.name;
+        }
+    }
     return nullptr;
+}
+
+static void set_calendar_subtext(CalendarDayInfo *info, const char *text)
+{
+    strlcpy(info->subtext, text ? text : kCalendarLunarPlaceholder, sizeof(info->subtext));
+}
+
+static void set_calendar_lunar_month_subtext(CalendarDayInfo *info)
+{
+    snprintf(info->subtext, sizeof(info->subtext), kLunarMonthDisplayFormat,
+             info->lunar_leap ? "闰" : "",
+             kLunarMonthNames[info->lunar_month]);
 }
 
 static const char *solar_term(int year, int month, int day)
 {
-    if (year < kMinValidYear || year > kMaxValidYear || month < 1 || month > 12) {
+    if (year < kMinValidYear || year > kMaxValidYear ||
+        month < kFirstGregorianMonth || month > kLastGregorianMonth) {
         return nullptr;
     }
-    constexpr double kYearMs = 31556925974.7;
-    constexpr double kBaseMs = -2208491700000.0; // 1900-01-06 02:05 UTC
-    constexpr double kDayMs = 86400000.0;
-    int first = (month - 1) * 2;
-    for (int i = 0; i < 2; ++i) {
+    int first = (month - kFirstGregorianMonth) * kSolarTermsPerMonth;
+    for (int i = 0; i < kSolarTermsPerMonth; ++i) {
         int term = first + i;
-        double ms = kBaseMs + kYearMs * (year - kSolarTermBaseYear) + (double)kSolarTermMinutes[term] * kMsPerMinute;
-        int days = (int)(ms / kDayMs);
+        double ms = kSolarTermBaseMs + kSolarTermYearMs * (year - kSolarTermBaseYear) +
+                    (double)kSolarTermMinutes[term] * kMsPerMinute;
+        int days = (int)(ms / kMsPerDay);
         int ty = 0;
         unsigned tm = 0;
         unsigned td = 0;
@@ -253,7 +331,7 @@ bool calendar_day_info(const struct tm &local, CalendarDayInfo *info)
     info->month = local.tm_mon + kTmMonthOffset;
     info->day = local.tm_mday;
     if (info->year < kMinValidYear || info->year > kMaxValidYear) {
-        strlcpy(info->subtext, kCalendarLunarPlaceholder, sizeof(info->subtext));
+        set_calendar_subtext(info, nullptr);
         return false;
     }
 
@@ -266,16 +344,16 @@ bool calendar_day_info(const struct tm &local, CalendarDayInfo *info)
         text = lunar_festival(info->lunar_month, info->lunar_day);
     }
     if (!text && lunar_ok) {
-        if (info->lunar_day == 1 && info->lunar_month >= 1 && info->lunar_month <= 12) {
-            snprintf(info->subtext, sizeof(info->subtext), kLunarMonthDisplayFormat,
-                     info->lunar_leap ? "闰" : "",
-                     kLunarMonthNames[info->lunar_month]);
+        if (info->lunar_day == kFirstLunarDay &&
+            info->lunar_month >= kFirstLunarMonth &&
+            info->lunar_month <= kLastLunarMonth) {
+            set_calendar_lunar_month_subtext(info);
             return true;
         }
-        if (info->lunar_day >= 1 && info->lunar_day <= 30) {
+        if (info->lunar_day >= kFirstLunarDay && info->lunar_day <= kLunarLargeMonthDays) {
             text = kLunarDayNames[info->lunar_day];
         }
     }
-    strlcpy(info->subtext, text ? text : kCalendarLunarPlaceholder, sizeof(info->subtext));
+    set_calendar_subtext(info, text);
     return lunar_ok;
 }

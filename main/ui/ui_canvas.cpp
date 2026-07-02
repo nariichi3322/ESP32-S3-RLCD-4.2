@@ -6,6 +6,11 @@ constexpr int kDashedLineRunPixels = 5;
 constexpr int kDashedLinePeriodPixels = kDashedLineRunPixels * 2;
 constexpr int kBresenhamErrorScale = 2;
 
+static_assert(kDashedLineRunPixels > 0, "dashed line run length must be positive");
+static_assert(kDashedLinePeriodPixels > kDashedLineRunPixels,
+              "dashed line period must be longer than the drawn segment");
+static_assert(kBresenhamErrorScale == 2, "Bresenham error scale must stay doubled");
+
 bool canvas_size_valid(int w, int h)
 {
     return w > 0 && h > 0;

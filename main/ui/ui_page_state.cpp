@@ -4,8 +4,26 @@
 #include "network_services.h"
 
 namespace {
+#define PAGE_ROOT_CREATE_FAILED_LOG "page root create failed"
 constexpr int kFirstWorkPage = kWorkPageWeatherClock;
 constexpr int kFallbackWorkPage = kWorkPageWeatherClock;
+constexpr size_t kAuxPageRootCount = 3; // System info, network diagnostics and settings.
+constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
+    kWorkPageWeatherClock,
+    kWorkPageFlipClock,
+    kWorkPageGallery,
+    kWorkPageHistory,
+    kWorkPageCalendar,
+    kWorkPageWeatherBoard,
+};
+constexpr int kDisplaySettingPages[kDisplaySettingsPageItemCount] = {
+    kWorkPageWeatherClock,
+    kWorkPageGallery,
+    kWorkPageHistory,
+    kWorkPageCalendar,
+    kWorkPageWeatherBoard,
+    kWorkPageFlipClock,
+};
 
 bool is_work_page_index(int page)
 {
@@ -16,6 +34,26 @@ template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
     return N;
+}
+
+template <typename T, size_t N>
+constexpr bool page_list_covers_each_work_page_once(const T (&pages)[N])
+{
+    if (N != kWorkPageCount) {
+        return false;
+    }
+    for (int page = kFirstWorkPage; page < kWorkPageCount; ++page) {
+        int hits = 0;
+        for (size_t i = 0; i < N; ++i) {
+            if (pages[i] == page) {
+                ++hits;
+            }
+        }
+        if (hits != 1) {
+            return false;
+        }
+    }
+    return true;
 }
 
 template <typename T, size_t N>
@@ -30,13 +68,28 @@ lv_obj_t *work_page_root_or_fallback(lv_obj_t *root)
 {
     return root ? root : g_clock_root;
 }
+
+static_assert(kFirstWorkPage == 0, "work page ids must start at zero");
+static_assert(kFallbackWorkPage == kWorkPageWeatherClock, "fallback page must remain weather clock");
+static_assert(kAuxPageRootCount == 3, "auxiliary roots are info, network diagnostics and settings");
+static_assert(kWorkPageCount > 0, "there must be at least one work page");
+static_assert(kWorkPageCount < static_cast<int>(sizeof(uint32_t) * 8),
+              "work page enabled mask must have room for every work page bit");
+static_assert(array_count(kDefaultWorkPageOrder) == kWorkPageCount,
+              "default work page order must cover every work page");
+static_assert(array_count(kDisplaySettingPages) == kDisplaySettingsPageItemCount,
+              "display setting page mapping must match the settings item count");
+static_assert(page_list_covers_each_work_page_once(kDefaultWorkPageOrder),
+              "default work page order must include every work page exactly once");
+static_assert(page_list_covers_each_work_page_once(kDisplaySettingPages),
+              "display settings must map every work page exactly once");
 } // namespace
 
 lv_obj_t *create_page_root()
 {
     lv_obj_t *root = lv_obj_create(lv_scr_act());
     if (!root) {
-        ESP_LOGW(TAG, "page root create failed");
+        ESP_LOGW(TAG, "%s", PAGE_ROOT_CREATE_FAILED_LOG);
         return nullptr;
     }
     lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
@@ -75,6 +128,9 @@ void show_page(lv_obj_t *page)
         g_network_diag_root,
         g_settings_root,
     };
+    constexpr size_t kPageRootCount = array_count(roots);
+    static_assert(kPageRootCount == kWorkPageCount + kAuxPageRootCount,
+                  "page root visibility list must cover all work pages and auxiliary pages");
     for (lv_obj_t *root : roots) {
         set_page_visible(root, page == root);
     }
@@ -149,17 +205,7 @@ const char *work_page_name(int page)
 
 int display_settings_item_work_page(int item)
 {
-    static const int kDisplaySettingPages[kDisplaySettingsPageItemCount] = {
-        kWorkPageWeatherClock,
-        kWorkPageGallery,
-        kWorkPageHistory,
-        kWorkPageCalendar,
-        kWorkPageWeatherBoard,
-        kWorkPageFlipClock,
-    };
     constexpr int kDisplaySettingPageCount = static_cast<int>(array_count(kDisplaySettingPages));
-    static_assert(kDisplaySettingPageCount == kDisplaySettingsPageItemCount,
-                  "display setting page mapping must match the settings item count");
     if (item < 0 || item >= kDisplaySettingPageCount) {
         return -1;
     }
@@ -180,19 +226,9 @@ int first_enabled_work_page()
 
 void reset_work_page_order()
 {
-    static const uint8_t kDefaultOrder[kWorkPageCount] = {
-        kWorkPageWeatherClock,
-        kWorkPageFlipClock,
-        kWorkPageGallery,
-        kWorkPageHistory,
-        kWorkPageCalendar,
-        kWorkPageWeatherBoard,
-    };
-    constexpr size_t kDefaultOrderCount = array_count(kDefaultOrder);
-    static_assert(kDefaultOrderCount == kWorkPageCount, "default work page order must cover every work page");
-    static_assert(sizeof(kDefaultOrder) == sizeof(g_work_page_order),
+    static_assert(sizeof(kDefaultWorkPageOrder) == sizeof(g_work_page_order),
                   "default work page order storage must match runtime order storage");
-    memcpy(g_work_page_order, kDefaultOrder, sizeof(g_work_page_order));
+    memcpy(g_work_page_order, kDefaultWorkPageOrder, sizeof(g_work_page_order));
 }
 
 void normalize_work_page_order()
@@ -304,7 +340,11 @@ void clear_clock_object_refs()
     g_second_progress_canvas = nullptr;
     clear_pointer_array(g_flip_clock_card_canvas);
     g_flip_clock_sensor_label = nullptr;
+    g_flip_clock_sensor_bold_label = nullptr;
+    g_flip_clock_sensor_bold_y_label = nullptr;
     g_flip_clock_humidity_label = nullptr;
+    g_flip_clock_humidity_bold_label = nullptr;
+    g_flip_clock_humidity_bold_y_label = nullptr;
     g_flip_clock_day_progress_canvas = nullptr;
     g_flip_clock_second_progress_canvas = nullptr;
     clear_pointer_array(g_battery_segments);

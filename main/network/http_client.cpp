@@ -37,6 +37,20 @@ constexpr const char *kHttpDecodeInvalidArgLog = "decode http body invalid arg";
 constexpr const char *kHttpGetInvalidArgLog = "http get invalid arg";
 constexpr const char *kHttpBootBudgetExhaustedLog = "http get skipped: boot sync time budget exhausted";
 constexpr const char *kHttpClientInitFailedLog = "http client init failed";
+static_assert(kGzipMagicPrefixSize == 2, "gzip magic prefix must contain two bytes");
+static_assert(kGzipHeaderProbeSize >= 3, "gzip header probe must cover magic and compression method");
+static_assert(kGzipBaseHeaderSize > kGzipHeaderProbeSize, "gzip base header must include fixed fields after method");
+static_assert(kGzipMinSize >= kGzipBaseHeaderSize + kGzipTrailerSize,
+              "gzip minimum size must cover base header and trailer");
+static_assert(kGzipExtraLengthFieldSize == 2, "gzip extra length field is two bytes");
+static_assert(kHttpStatusOkMin >= 100 && kHttpStatusOkMin < kHttpStatusOkMax,
+              "HTTP success lower bound must be a valid status below upper bound");
+static_assert(kHttpStatusOkMax <= 600, "HTTP success upper bound must stay within valid status space");
+static_assert(kCStringTerminatorSize == 1, "C string terminator reservation must be one byte");
+static_assert(kHttpPreviewBufferSize == kHttpPreviewMaxChars + kCStringTerminatorSize,
+              "HTTP preview buffer must include NUL terminator space");
+static_assert(kUrlEncodedPlainCharSize == 1, "URL unreserved characters encode to one byte");
+static_assert(kUrlEncodedEscapedCharSize == 3, "URL escaped characters encode as %XX");
 #define HTTP_TEMP_BUFFER_ALLOC_FAILED_FORMAT "http temp buffer alloc failed len=%u"
 #define HTTP_GZIP_HEADER_INVALID_FORMAT "gzip response header invalid len=%u"
 #define HTTP_GZIP_DECOMPRESS_FAILED_FORMAT "gzip response decompress failed payload_len=%u"
@@ -47,6 +61,39 @@ constexpr const char *kHttpClientInitFailedLog = "http client init failed";
 #define HTTP_GET_FAILED_FORMAT "http get failed status=%d err=%s"
 #define HTTP_RESPONSE_TRUNCATED_FORMAT "http response may be truncated status=%d content_len=%lld buffer=%u"
 #define HTTP_GET_OK_FORMAT "http get ok status=%d len=%u gzip=%d"
+
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+constexpr size_t cstr_len(const char *text)
+{
+    size_t len = 0;
+    if (!text) {
+        return 0;
+    }
+    while (text[len] != '\0') {
+        ++len;
+    }
+    return len;
+}
+
+static_assert(cstr_nonempty(kUrlHexDigits), "URL hex digit table must be non-empty");
+static_assert(cstr_len(kUrlHexDigits) == 16, "URL hex digit table must contain 16 characters");
+static_assert(cstr_nonempty(kHttpAcceptHeaderName), "HTTP Accept header name must be non-empty");
+static_assert(cstr_nonempty(kHttpAcceptHeader), "HTTP Accept header value must be non-empty");
+static_assert(cstr_nonempty(kHttpAcceptEncodingHeaderName),
+              "HTTP Accept-Encoding header name must be non-empty");
+static_assert(cstr_nonempty(kHttpAcceptEncodingHeader), "HTTP Accept-Encoding header value must be non-empty");
+static_assert(cstr_nonempty(kQweatherApiKeyHeader), "QWeather API key header name must be non-empty");
+static_assert(cstr_nonempty(kQweatherGeoHost), "QWeather Geo host marker must be non-empty");
+static_assert(cstr_nonempty(kQweatherDevHost), "QWeather Dev host marker must be non-empty");
+static_assert(cstr_nonempty(kHttpPreviewDefaultStage), "HTTP preview default stage must be non-empty");
+static_assert(cstr_nonempty(kHttpDecodeInvalidArgLog), "HTTP decode invalid-argument log must be non-empty");
+static_assert(cstr_nonempty(kHttpGetInvalidArgLog), "HTTP get invalid-argument log must be non-empty");
+static_assert(cstr_nonempty(kHttpBootBudgetExhaustedLog), "HTTP boot-budget log must be non-empty");
+static_assert(cstr_nonempty(kHttpClientInitFailedLog), "HTTP client init-failed log must be non-empty");
 
 bool is_qweather_url(const char *url)
 {

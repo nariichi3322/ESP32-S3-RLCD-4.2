@@ -10,6 +10,34 @@ static const char *TAG = "CodecPort";
 static constexpr const char *kCodecNameEs8311 = "es8311";
 static constexpr const char *kCodecNameEs7210 = "es7210";
 static constexpr const char *kCodecNamePlaybackAndRecord = "es8311 & es7210";
+static constexpr uint32_t kCodecI2cSpeedHz = 400000;
+static constexpr int kCodecEchoSpeakerVolume = 60;
+static constexpr float kCodecEchoMicGainDb = 25.0f;
+static constexpr size_t kCodecEchoBufferSize = 1024;
+static constexpr int kCodecEchoSampleRateHz = 44100;
+static constexpr int kCodecEchoChannelCount = 2;
+static constexpr int kCodecEchoBitsPerSample = 16;
+static constexpr int kCodecTdmChannelCount = 4;
+static constexpr uint32_t kCodecTdmChannelMask = 0x0F;
+static constexpr int kCodecTdmMclkMultiple = 384;
+static constexpr const char *kCodecMusicTaskName = "CodecPort_MusicTask";
+static constexpr const char *kCodecEchoTaskName = "CodecPort_EchoTask";
+static constexpr uint32_t kCodecTaskStackWords = 4 * 1024;
+static constexpr UBaseType_t kCodecTaskPriority = 2;
+static_assert(kCodecI2cSpeedHz > 0, "Codec I2C speed must be positive");
+static_assert(kCodecEchoSpeakerVolume >= 0, "Echo speaker volume must be non-negative");
+static_assert(kCodecEchoMicGainDb >= 0.0f, "Echo mic gain must be non-negative");
+static_assert(kCodecEchoBufferSize > 0, "Echo buffer size must be positive");
+static_assert(kCodecEchoSampleRateHz > 0, "Echo sample rate must be positive");
+static_assert(kCodecEchoChannelCount > 0, "Echo channel count must be positive");
+static_assert(kCodecEchoBitsPerSample > 0, "Echo bits per sample must be positive");
+static_assert(kCodecTdmChannelCount > 0, "Codec TDM channel count must be positive");
+static_assert(kCodecTdmChannelMask != 0, "Codec TDM channel mask must not be empty");
+static_assert(kCodecTdmMclkMultiple > 0, "Codec TDM MCLK multiple must be positive");
+static_assert(kCodecMusicTaskName[0] != '\0', "Music task name must not be empty");
+static_assert(kCodecEchoTaskName[0] != '\0', "Echo task name must not be empty");
+static_assert(kCodecTaskStackWords > 0, "Codec task stack size must be positive");
+static_assert(kCodecTaskPriority > 0, "Codec task priority must be positive");
 
 extern const uint8_t hourly_chime_pcm_start[] asm("_binary_hourly_chime_pcm_start");
 extern const uint8_t hourly_chime_pcm_end[] asm("_binary_hourly_chime_pcm_end");
@@ -42,18 +70,23 @@ void CodecPort::CodecPort_MusicTask(void *arg) {
 }
 
 void CodecPort::CodecPort_EchoTask(void *arg) {
-	CodecPort *codec = (CodecPort *)arg;
-	codec->CodecPort_SetSpeakerVol(60);
-	codec->CodecPort_SetMicGain(25);
-	uint8_t *data_ptr = (uint8_t *)heap_caps_malloc(1024 * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
-	codec->CodecPort_SetInfo(kCodecNamePlaybackAndRecord,1,44100,2,16);
-	for(;;)
-  	{
-  	  	if(ESP_CODEC_DEV_OK == codec->CodecPort_EchoRead(data_ptr, 1024))
-  	  	{
-  	  	  	codec->CodecPort_PlayWrite(data_ptr, 1024);
-  	  	}
-  	}
+    CodecPort *codec = (CodecPort *)arg;
+    codec->CodecPort_SetSpeakerVol(kCodecEchoSpeakerVolume);
+    codec->CodecPort_SetMicGain(kCodecEchoMicGainDb);
+    uint8_t *data_ptr = (uint8_t *)heap_caps_malloc(kCodecEchoBufferSize * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
+    if (data_ptr == nullptr) {
+        ESP_LOGW(TAG, "echo buffer alloc failed");
+        vTaskDelete(nullptr);
+        return;
+    }
+    codec->CodecPort_SetInfo(kCodecNamePlaybackAndRecord,1,kCodecEchoSampleRateHz,kCodecEchoChannelCount,kCodecEchoBitsPerSample);
+    for(;;)
+    {
+        if(ESP_CODEC_DEV_OK == codec->CodecPort_EchoRead(data_ptr, kCodecEchoBufferSize))
+        {
+            codec->CodecPort_PlayWrite(data_ptr, kCodecEchoBufferSize);
+        }
+    }
 }
 
 
@@ -79,7 +112,7 @@ i2cbus_(i2cbus)
     i2c_device_config_t dev_cfg = {};
     dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
     dev_cfg.device_address  = Es8311Address;
-    dev_cfg.scl_speed_hz    = 400000;
+    dev_cfg.scl_speed_hz    = kCodecI2cSpeedHz;
     err = i2c_master_bus_add_device(I2cMasterBus, &dev_cfg, &I2c_DevEs8311);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "%s i2c add failed: %s", kCodecNameEs8311, esp_err_to_name(err));
@@ -174,9 +207,9 @@ bool CodecPort::CodecPort_SetInfo(const char *strName,int open_en,int sample_rat
     	fs.sample_rate = sample_rate;
     	fs.channel = channel;
     	fs.bits_per_sample = bits_per_sample;
-        if (channel == 4) {
-            fs.channel_mask = 0x0F;
-            fs.mclk_multiple = 384;
+        if (channel == kCodecTdmChannelCount) {
+            fs.channel_mask = kCodecTdmChannelMask;
+            fs.mclk_multiple = kCodecTdmMclkMultiple;
         }
 	if(open_en) {
         if (!initialized) return false;
@@ -357,14 +390,18 @@ bool CodecPort::CodecPort_PlayWifiPrompt(void) {
 }
 
 void CodecPort::CodecPort_CreateMusicTask(void) {
-	xTaskCreate(CodecPort_MusicTask, "CodecPort_MusicTask", 4 * 1024, (void *)this, 2, NULL);
+	xTaskCreate(CodecPort_MusicTask, kCodecMusicTaskName, kCodecTaskStackWords, (void *)this, kCodecTaskPriority, NULL);
 }
 
 void CodecPort::CodecPort_CreateEchoTask(void) {
-	xTaskCreate(CodecPort_EchoTask, "CodecPort_EchoTask", 4 * 1024, (void *)this, 2, NULL);
+	xTaskCreate(CodecPort_EchoTask, kCodecEchoTaskName, kCodecTaskStackWords, (void *)this, kCodecTaskPriority, NULL);
 }
 
 uint8_t *CodecPort::CodecPort_GetPcmData(uint32_t *len) {
+    if (len == nullptr) {
+        ESP_LOGW(TAG, "pcm length output is null");
+        return (uint8_t *)hourly_chime_pcm_start;
+    }
 	*len = (hourly_chime_pcm_end - hourly_chime_pcm_start);
 	return (uint8_t *)hourly_chime_pcm_start;
 }

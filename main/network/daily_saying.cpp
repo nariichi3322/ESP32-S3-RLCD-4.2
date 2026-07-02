@@ -29,6 +29,41 @@ constexpr const char *const kDailySayingJsonFields[] = {
     "data",
 };
 
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+constexpr bool daily_saying_json_fields_nonempty()
+{
+    for (const char *field : kDailySayingJsonFields) {
+        if (!cstr_nonempty(field)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static_assert(array_count(kDailySayingJsonFields) > 0);
+static_assert(daily_saying_json_fields_nonempty(), "daily saying JSON fields must be non-empty");
+static_assert(kDailySayingResponseBufferSize > 0, "daily saying response buffer must be nonzero");
+static_assert(kDailySayingResponseBufferSize >= kDailySayingLen,
+              "daily saying response buffer must cover cached saying text");
+static_assert(kDailySayingLen > kMaxSayingChars,
+              "daily saying cache must exceed the accepted character limit plus terminator");
+static_assert(kMaxSayingChars > 0, "daily saying character limit must be positive");
+static_assert(kMaxSayingAttempts > 0, "daily saying retry count must be positive");
+static_assert(kMaxSayingJsonDepth >= 0, "daily saying JSON search depth must be non-negative");
+static_assert(kUtf8ContinuationMask == 0xC0, "UTF-8 continuation mask must cover two high bits");
+static_assert(kUtf8ContinuationPrefix == 0x80, "UTF-8 continuation prefix must match 10xxxxxx bytes");
+static_assert(kJsonObjectStart != kJsonArrayStart, "JSON object and array sentinels must differ");
+
 class DailySayingResponseBuffer {
 public:
     DailySayingResponseBuffer()

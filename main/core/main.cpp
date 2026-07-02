@@ -52,6 +52,14 @@ constexpr const char *kBootAnimTaskCreateFailed = "boot animation task create fa
 constexpr const char *kBootConnectivityTaskCreateFailed = "boot connectivity task create failed";
 constexpr const char *kBootReadyStatus = "Ready";
 constexpr const char *kBootReadyDetail = "Starting clock";
+static_assert(kBootAnimTaskStack > 0, "boot animation task stack must be positive");
+static_assert(kBootSyncTaskStack > 0, "boot sync task stack must be positive");
+static_assert(kNetworkSyncTaskStack > 0, "network sync task stack must be positive");
+static_assert(kOtaTaskStack > 0, "OTA task stack must be positive");
+static_assert(kHousekeepingTaskStack > 0, "housekeeping task stack must be positive");
+static_assert(kUiTaskStack > 0, "UI task stack must be positive");
+static_assert(kButtonTaskStack > 0, "button task stack must be positive");
+static_assert(kBootAnimStopWaitMs > 0, "boot animation stop wait must be positive");
 } // namespace
 
 static void create_app_task(TaskFunction_t task,

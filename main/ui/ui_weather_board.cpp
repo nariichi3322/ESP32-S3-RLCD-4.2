@@ -90,6 +90,9 @@ constexpr size_t kWeatherBoardAirLineSize = 40;
 constexpr size_t kWeatherBoardWindLineSize = 48;
 constexpr size_t kWeatherBoardSunTimeLineSize = 24;
 constexpr size_t kWeatherBoardAlertLineSize = 160;
+#define WEATHER_BOARD_FORECAST_CARD_CREATE_FAILED_FORMAT "weather forecast card %d create failed"
+static_assert(array_count(kWeatherBoardWeekdayNames) == kWeatherBoardWeekdayCount,
+              "weather board weekday names must match weekday count");
 static_assert(array_count(kForecastCardX) == kWeatherForecastDays,
               "weather forecast card positions must match forecast day count");
 
@@ -255,7 +258,7 @@ void build_weather_board_page()
         int y = kForecastCardY;
         s_cards[i].box = lv_obj_create(screen);
         if (!s_cards[i].box) {
-            ESP_LOGW(TAG, "weather forecast card %d create failed", i);
+            ESP_LOGW(TAG, WEATHER_BOARD_FORECAST_CARD_CREATE_FAILED_FORMAT, i);
         } else {
             lv_obj_set_pos(s_cards[i].box, x, y);
             lv_obj_set_size(s_cards[i].box, kForecastCardW, kForecastCardH);

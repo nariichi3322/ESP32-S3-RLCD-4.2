@@ -51,6 +51,28 @@ constexpr const char *kFactoryResetFailedFeedback = "恢复失败";
 constexpr size_t kSettingsFeedbackTextSize = 32;
 constexpr size_t kClockDateTextSize = 48;
 constexpr const char *kClockDateFormat = "%04d/%02d/%02d / %s";
+#define HOURLY_CHIME_SETTING_LOG_FORMAT "hourly chime %s"
+#define ALL_DAY_CHIME_SETTING_LOG_FORMAT "hourly chime all-day %s"
+#define CHIME_SETTING_ENABLED_LOG_VALUE "enabled"
+#define CHIME_SETTING_DISABLED_LOG_VALUE "disabled"
+#define MANUAL_WEATHER_CITY_CLEARED_SYNC_LOG "manual weather city cleared, requesting weather sync"
+#define MANUAL_NTP_SYNC_REQUESTED_LOG "manual ntp sync requested"
+#define MANUAL_WEATHER_SYNC_REQUESTED_LOG "manual weather sync requested"
+#define MANUAL_SAYING_SYNC_REQUESTED_LOG "manual daily saying sync requested"
+#define MANUAL_NETWORK_DIAG_REQUESTED_LOG "manual network diagnostics requested"
+#define FACTORY_RESET_CONFIRM_REQUESTED_LOG "factory reset confirmation requested"
+#define FACTORY_RESET_REQUESTED_LOG "factory reset requested from settings"
+#define SYSTEM_INFO_REQUESTED_LOG "system info requested from settings"
+#define CLOCK_DATE_LABEL_CREATE_FAILED_LOG "clock date label create failed"
+#define CLOCK_ALERT_PILL_CREATE_FAILED_LOG "clock alert pill create failed"
+#define CLOCK_ALERT_ICON_CANVAS_CREATE_FAILED_LOG "clock alert icon canvas create failed"
+#define CLOCK_ALERT_LABEL_CREATE_FAILED_LOG "clock alert label create failed"
+#define CLOCK_STATUS_ICON_CANVAS_CREATE_FAILED_FORMAT "clock status icon canvas create failed x=%d"
+#define CLOCK_LABEL_CREATE_FAILED_FORMAT "clock label create failed name=%s"
+#define CLOCK_ICON_CANVAS_CREATE_FAILED_FORMAT "clock icon canvas create failed name=%s"
+#define CLOCK_TREND_CANVAS_CREATE_FAILED_FORMAT "clock trend canvas create failed name=%s"
+#define CLOCK_FILL_CANVAS_CREATE_FAILED_FORMAT "clock fill canvas create failed name=%s"
+#define SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT "setup status label create failed index=%d"
 constexpr int kTmYearOffset = 1900;
 constexpr int kTmMonthOffset = 1;
 constexpr int kSecondsPerMinute = 60;
@@ -59,6 +81,213 @@ constexpr int kHoursPerDay = 24;
 constexpr int kProgressSegmentCount = 60;
 constexpr int kSecondsPerHour = kMinutesPerHour * kSecondsPerMinute;
 constexpr int kSecondsPerDay = kHoursPerDay * kSecondsPerHour;
+constexpr int kClockTimeCanvasX = 18;
+constexpr int kClockTimeCanvasY = 76;
+constexpr int kClockTimeCanvasWidth = 292;
+constexpr int kClockTimeCanvasHeight = 92;
+constexpr int kClockSecondCanvasX = 320;
+constexpr int kClockSecondCanvasY = 124;
+constexpr int kClockSecondCanvasWidth = 60;
+constexpr int kClockSecondCanvasHeight = 40;
+constexpr int kClockStatusGifCanvasX = 279;
+constexpr int kClockStatusGifCanvasY = 196;
+constexpr int kClockDateLabelX = 198;
+constexpr int kClockDateLabelY = 15;
+constexpr int kClockDateLabelWidth = 182;
+constexpr int kClockDateLabelHeight = 26;
+constexpr int kClockAlertPillX = 64;
+constexpr int kClockAlertPillY = 11;
+constexpr int kClockAlertPillWidth = 128;
+constexpr int kClockAlertPillHeight = 26;
+constexpr int kClockAlertPillRadius = 13;
+constexpr int kClockAlertIconX = 4;
+constexpr int kClockAlertIconY = 4;
+constexpr int kClockAlertLabelX = 24;
+constexpr int kClockAlertLabelY = 4;
+constexpr int kClockAlertLabelWidth = 94;
+constexpr int kClockAlertLabelHeight = 18;
+constexpr int kClockChimeStatusIconX = 64;
+constexpr int kClockChimeStatusIconY = 15;
+constexpr int kClockWifiStatusIconX = 90;
+constexpr int kClockWifiStatusIconY = 15;
+constexpr int kClockDividerX = 18;
+constexpr int kClockTopDividerY = 54;
+constexpr int kClockBottomDividerY = 184;
+constexpr int kClockDividerWidth = 364;
+constexpr int kClockDividerHeight = 4;
+constexpr int kClockDayProgressCanvasY = 59;
+constexpr int kClockSecondProgressCanvasY = 180;
+constexpr int kClockLowerPanelSeparatorY = 188;
+constexpr int kClockLowerPanelSeparatorWidth = 2;
+constexpr int kClockLowerPanelSeparatorHeight = 102;
+constexpr int kClockLowerPanelSeparatorAX = 139;
+constexpr int kClockLowerPanelSeparatorBX = 260;
+constexpr int kClockWeatherCityLabelX = 14;
+constexpr int kClockWeatherCityLabelY = 196;
+constexpr int kClockWeatherCityLabelWidth = 76;
+constexpr int kClockWeatherCityLabelHeight = 20;
+constexpr int kClockWeatherIconLabelX = 91;
+constexpr int kClockWeatherIconLabelY = 194;
+constexpr int kClockWeatherIconLabelWidth = 34;
+constexpr int kClockWeatherIconLabelHeight = 38;
+constexpr int kClockWeatherInfoLabelX = 14;
+constexpr int kClockWeatherInfoLabelY = 218;
+constexpr int kClockWeatherInfoLabelWidth = 76;
+constexpr int kClockWeatherInfoLabelHeight = 20;
+constexpr int kClockWeatherMetricLabelX = 20;
+constexpr int kClockWeatherTempLabelY = 242;
+constexpr int kClockWeatherHumiLabelY = 264;
+constexpr int kClockWeatherMetricLabelWidth = 68;
+constexpr int kClockWeatherMetricLabelHeight = 20;
+constexpr int kClockTempIconX = 152;
+constexpr int kClockTempIconY = 214;
+constexpr int kClockHumiIconX = 154;
+constexpr int kClockHumiIconY = 244;
+constexpr int kClockLocalMetricLabelX = 174;
+constexpr int kClockLocalTempLabelY = 214;
+constexpr int kClockLocalHumiLabelY = 246;
+constexpr int kClockLocalMetricLabelWidth = 62;
+constexpr int kClockLocalMetricLabelHeight = 28;
+constexpr int kClockTrendCanvasX = 239;
+constexpr int kClockTempTrendCanvasY = 215;
+constexpr int kClockHumiTrendCanvasY = 248;
+constexpr int kClockLowBatteryIconX = 156;
+constexpr int kClockLowBatteryIconY = 214;
+constexpr int kSetupStatusLabelX = 26;
+constexpr int kSetupStatusLabelWidth = 348;
+constexpr int kSetupStatusLabelHeight = 18;
+
+void configure_clock_canvas(lv_obj_t *canvas, int x, int y, int width, int height)
+{
+    if (!canvas) {
+        return;
+    }
+    lv_obj_clear_flag(canvas, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(canvas, x, y);
+    lv_obj_set_size(canvas, width, height);
+    lv_obj_set_style_border_width(canvas, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(canvas, 0, LV_PART_MAIN);
+}
+
+void build_clock_status_icon(lv_obj_t *screen,
+                             lv_obj_t **canvas,
+                             lv_color_t **buffer,
+                             int x,
+                             int y,
+                             int width,
+                             int height,
+                             int bytes_per_row,
+                             const uint8_t *bits)
+{
+    if (!screen || !canvas || !buffer || !bits) {
+        return;
+    }
+    if (!*buffer) {
+        *buffer = alloc_canvas_buffer(width, height);
+    }
+    *canvas = lv_canvas_create(screen);
+    if (!*canvas) {
+        ESP_LOGW(TAG, CLOCK_STATUS_ICON_CANVAS_CREATE_FAILED_FORMAT, x);
+        return;
+    }
+    configure_clock_canvas(*canvas, x, y, width, height);
+    if (*buffer) {
+        lv_canvas_set_buffer(*canvas, *buffer, width, height, LV_IMG_CF_TRUE_COLOR);
+        draw_1bit_icon(*canvas, width, height, bytes_per_row, bits, lv_color_black(), lv_color_white());
+    }
+    lv_obj_add_flag(*canvas, LV_OBJ_FLAG_HIDDEN);
+}
+
+void center_clock_label_if_created(lv_obj_t *label, const char *name)
+{
+    if (!label) {
+        ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, name);
+        return;
+    }
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+}
+
+void build_clock_lower_icon(lv_obj_t *screen,
+                            lv_obj_t **canvas,
+                            lv_color_t **buffer,
+                            int x,
+                            int y,
+                            int width,
+                            int height,
+                            int bytes_per_row,
+                            const uint8_t *bits,
+                            const char *name)
+{
+    if (!screen || !canvas || !buffer || !bits) {
+        return;
+    }
+    if (!*buffer) {
+        *buffer = alloc_canvas_buffer(width, height);
+    }
+    *canvas = lv_canvas_create(screen);
+    if (!*canvas) {
+        ESP_LOGW(TAG, CLOCK_ICON_CANVAS_CREATE_FAILED_FORMAT, name);
+        return;
+    }
+    configure_clock_canvas(*canvas, x, y, width, height);
+    if (*buffer) {
+        lv_canvas_set_buffer(*canvas, *buffer, width, height, LV_IMG_CF_TRUE_COLOR);
+        draw_1bit_icon(*canvas, width, height, bytes_per_row, bits, lv_color_black(), lv_color_white());
+    }
+}
+
+void build_clock_trend_canvas(lv_obj_t *screen,
+                              lv_obj_t **canvas,
+                              lv_color_t **buffer,
+                              int x,
+                              int y,
+                              int trend,
+                              const char *name)
+{
+    if (!screen || !canvas || !buffer) {
+        return;
+    }
+    if (!*buffer) {
+        *buffer = alloc_canvas_buffer(TREND_ICON_WIDTH, TREND_ICON_HEIGHT);
+    }
+    *canvas = lv_canvas_create(screen);
+    if (!*canvas) {
+        ESP_LOGW(TAG, CLOCK_TREND_CANVAS_CREATE_FAILED_FORMAT, name);
+        return;
+    }
+    configure_clock_canvas(*canvas, x, y, TREND_ICON_WIDTH, TREND_ICON_HEIGHT);
+    if (*buffer) {
+        lv_canvas_set_buffer(*canvas, *buffer, TREND_ICON_WIDTH, TREND_ICON_HEIGHT, LV_IMG_CF_TRUE_COLOR);
+        update_trend_icon(*canvas, trend, nullptr);
+    }
+}
+
+void build_clock_fill_canvas(lv_obj_t *screen,
+                             lv_obj_t **canvas,
+                             lv_color_t **buffer,
+                             int x,
+                             int y,
+                             int width,
+                             int height,
+                             const char *name)
+{
+    if (!screen || !canvas || !buffer) {
+        return;
+    }
+    if (!*buffer) {
+        *buffer = alloc_canvas_buffer(width, height);
+    }
+    *canvas = lv_canvas_create(screen);
+    if (!*canvas) {
+        ESP_LOGW(TAG, CLOCK_FILL_CANVAS_CREATE_FAILED_FORMAT, name);
+        return;
+    }
+    configure_clock_canvas(*canvas, x, y, width, height);
+    if (*buffer) {
+        lv_canvas_set_buffer(*canvas, *buffer, width, height, LV_IMG_CF_TRUE_COLOR);
+        lv_canvas_fill_bg(*canvas, lv_color_white(), LV_OPA_COVER);
+    }
+}
 } // namespace
 
 void build_clock_ui()
@@ -72,267 +301,249 @@ void build_clock_ui()
     }
     g_clock_root = screen;
 
-    g_date_label = make_label(screen, 198, 15, 182, 26, "----/--/-- / 星期-");
-    lv_obj_set_style_text_align(g_date_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    g_date_label = make_label(screen,
+                              kClockDateLabelX,
+                              kClockDateLabelY,
+                              kClockDateLabelWidth,
+                              kClockDateLabelHeight,
+                              "----/--/-- / 星期-");
+    if (g_date_label) {
+        lv_obj_set_style_text_align(g_date_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    } else {
+        ESP_LOGW(TAG, "%s", CLOCK_DATE_LABEL_CREATE_FAILED_LOG);
+    }
     build_battery_icon(screen, g_battery_segments);
 
     g_alert_pill = lv_obj_create(screen);
-    lv_obj_clear_flag(g_alert_pill, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_alert_pill, 64, 11);
-    lv_obj_set_size(g_alert_pill, 128, 26);
-    lv_obj_set_style_bg_color(g_alert_pill, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(g_alert_pill, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(g_alert_pill, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(g_alert_pill, 13, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_alert_pill, 0, LV_PART_MAIN);
-    lv_obj_add_flag(g_alert_pill, LV_OBJ_FLAG_HIDDEN);
+    if (g_alert_pill) {
+        lv_obj_clear_flag(g_alert_pill, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_pos(g_alert_pill, kClockAlertPillX, kClockAlertPillY);
+        lv_obj_set_size(g_alert_pill, kClockAlertPillWidth, kClockAlertPillHeight);
+        lv_obj_set_style_bg_color(g_alert_pill, lv_color_black(), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(g_alert_pill, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_width(g_alert_pill, 0, LV_PART_MAIN);
+        lv_obj_set_style_radius(g_alert_pill, kClockAlertPillRadius, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(g_alert_pill, 0, LV_PART_MAIN);
+        lv_obj_add_flag(g_alert_pill, LV_OBJ_FLAG_HIDDEN);
 
-    if (!g_alert_icon_canvas_buf) {
-        g_alert_icon_canvas_buf = alloc_canvas_buffer(WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT);
+        if (!g_alert_icon_canvas_buf) {
+            g_alert_icon_canvas_buf = alloc_canvas_buffer(WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT);
+        }
+        g_alert_icon_canvas = lv_canvas_create(g_alert_pill);
+        if (g_alert_icon_canvas) {
+            lv_obj_clear_flag(g_alert_icon_canvas, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_pos(g_alert_icon_canvas, kClockAlertIconX, kClockAlertIconY);
+            lv_obj_set_size(g_alert_icon_canvas, WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT);
+            lv_obj_set_style_border_width(g_alert_icon_canvas, 0, LV_PART_MAIN);
+            lv_obj_set_style_pad_all(g_alert_icon_canvas, 0, LV_PART_MAIN);
+            if (g_alert_icon_canvas_buf) {
+                lv_canvas_set_buffer(g_alert_icon_canvas,
+                                     g_alert_icon_canvas_buf,
+                                     WARNING_ICON_WIDTH,
+                                     WARNING_ICON_HEIGHT,
+                                     LV_IMG_CF_TRUE_COLOR);
+                draw_1bit_icon(g_alert_icon_canvas,
+                               WARNING_ICON_WIDTH,
+                               WARNING_ICON_HEIGHT,
+                               WARNING_ICON_BYTES_PER_ROW,
+                               warning_icon_bits,
+                               lv_color_white(),
+                               lv_color_black());
+            }
+        } else {
+            ESP_LOGW(TAG, "%s", CLOCK_ALERT_ICON_CANVAS_CREATE_FAILED_LOG);
+        }
+        g_alert_label = make_label_with_font(g_alert_pill,
+                                             kClockAlertLabelX,
+                                             kClockAlertLabelY,
+                                             kClockAlertLabelWidth,
+                                             kClockAlertLabelHeight,
+                                             "",
+                                             &zh_font_16);
+        if (g_alert_label) {
+            lv_obj_set_style_text_color(g_alert_label, lv_color_white(), LV_PART_MAIN);
+            lv_obj_set_style_text_align(g_alert_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+            lv_label_set_long_mode(g_alert_label, LV_LABEL_LONG_CLIP);
+        } else {
+            ESP_LOGW(TAG, "%s", CLOCK_ALERT_LABEL_CREATE_FAILED_LOG);
+        }
+    } else {
+        ESP_LOGW(TAG, "%s", CLOCK_ALERT_PILL_CREATE_FAILED_LOG);
     }
-    g_alert_icon_canvas = lv_canvas_create(g_alert_pill);
-    lv_obj_clear_flag(g_alert_icon_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_alert_icon_canvas, 4, 4);
-    lv_obj_set_size(g_alert_icon_canvas, WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT);
-    lv_obj_set_style_border_width(g_alert_icon_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_alert_icon_canvas, 0, LV_PART_MAIN);
-    if (g_alert_icon_canvas_buf) {
-        lv_canvas_set_buffer(g_alert_icon_canvas,
-                             g_alert_icon_canvas_buf,
-                             WARNING_ICON_WIDTH,
-                             WARNING_ICON_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        draw_1bit_icon(g_alert_icon_canvas,
-                       WARNING_ICON_WIDTH,
-                       WARNING_ICON_HEIGHT,
-                       WARNING_ICON_BYTES_PER_ROW,
-                       warning_icon_bits,
-                       lv_color_white(),
-                       lv_color_black());
-    }
-    g_alert_label = make_label_with_font(g_alert_pill, 24, 4, 94, 18, "", &zh_font_16);
-    lv_obj_set_style_text_color(g_alert_label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_align(g_alert_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_label_set_long_mode(g_alert_label, LV_LABEL_LONG_CLIP);
 
-    if (!g_chime_status_icon_canvas_buf) {
-        g_chime_status_icon_canvas_buf = alloc_canvas_buffer(CHIME_STATUS_ICON_WIDTH, CHIME_STATUS_ICON_HEIGHT);
-    }
-    g_chime_status_icon_canvas = lv_canvas_create(screen);
-    lv_obj_clear_flag(g_chime_status_icon_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_chime_status_icon_canvas, 64, 15);
-    lv_obj_set_size(g_chime_status_icon_canvas, CHIME_STATUS_ICON_WIDTH, CHIME_STATUS_ICON_HEIGHT);
-    lv_obj_set_style_border_width(g_chime_status_icon_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_chime_status_icon_canvas, 0, LV_PART_MAIN);
-    if (g_chime_status_icon_canvas_buf) {
-        lv_canvas_set_buffer(g_chime_status_icon_canvas,
-                             g_chime_status_icon_canvas_buf,
-                             CHIME_STATUS_ICON_WIDTH,
-                             CHIME_STATUS_ICON_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        draw_1bit_icon(g_chime_status_icon_canvas,
-                       CHIME_STATUS_ICON_WIDTH,
-                       CHIME_STATUS_ICON_HEIGHT,
-                       CHIME_STATUS_ICON_BYTES_PER_ROW,
-                       chime_status_icon_bits,
-                       lv_color_black(),
-                       lv_color_white());
-    }
-    lv_obj_add_flag(g_chime_status_icon_canvas, LV_OBJ_FLAG_HIDDEN);
+    build_clock_status_icon(screen,
+                            &g_chime_status_icon_canvas,
+                            &g_chime_status_icon_canvas_buf,
+                            kClockChimeStatusIconX,
+                            kClockChimeStatusIconY,
+                            CHIME_STATUS_ICON_WIDTH,
+                            CHIME_STATUS_ICON_HEIGHT,
+                            CHIME_STATUS_ICON_BYTES_PER_ROW,
+                            chime_status_icon_bits);
 
-    if (!g_wifi_status_icon_canvas_buf) {
-        g_wifi_status_icon_canvas_buf = alloc_canvas_buffer(WIFI_STATUS_ICON_WIDTH, WIFI_STATUS_ICON_HEIGHT);
-    }
-    g_wifi_status_icon_canvas = lv_canvas_create(screen);
-    lv_obj_clear_flag(g_wifi_status_icon_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_wifi_status_icon_canvas, 90, 15);
-    lv_obj_set_size(g_wifi_status_icon_canvas, WIFI_STATUS_ICON_WIDTH, WIFI_STATUS_ICON_HEIGHT);
-    lv_obj_set_style_border_width(g_wifi_status_icon_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_wifi_status_icon_canvas, 0, LV_PART_MAIN);
-    if (g_wifi_status_icon_canvas_buf) {
-        lv_canvas_set_buffer(g_wifi_status_icon_canvas,
-                             g_wifi_status_icon_canvas_buf,
-                             WIFI_STATUS_ICON_WIDTH,
-                             WIFI_STATUS_ICON_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        draw_1bit_icon(g_wifi_status_icon_canvas,
-                       WIFI_STATUS_ICON_WIDTH,
-                       WIFI_STATUS_ICON_HEIGHT,
-                       WIFI_STATUS_ICON_BYTES_PER_ROW,
-                       wifi_status_icon_bits,
-                       lv_color_black(),
-                       lv_color_white());
-    }
-    lv_obj_add_flag(g_wifi_status_icon_canvas, LV_OBJ_FLAG_HIDDEN);
+    build_clock_status_icon(screen,
+                            &g_wifi_status_icon_canvas,
+                            &g_wifi_status_icon_canvas_buf,
+                            kClockWifiStatusIconX,
+                            kClockWifiStatusIconY,
+                            WIFI_STATUS_ICON_WIDTH,
+                            WIFI_STATUS_ICON_HEIGHT,
+                            WIFI_STATUS_ICON_BYTES_PER_ROW,
+                            wifi_status_icon_bits);
 
-    g_weather_city_label = make_label(screen, 14, 196, 76, 20, kClockWeatherCityPlaceholder);
+    g_weather_city_label = make_label(screen,
+                                      kClockWeatherCityLabelX,
+                                      kClockWeatherCityLabelY,
+                                      kClockWeatherCityLabelWidth,
+                                      kClockWeatherCityLabelHeight,
+                                      kClockWeatherCityPlaceholder);
     remember_lower_panel_object(g_weather_city_label);
-    lv_obj_set_style_text_align(g_weather_city_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    g_weather_icon_label = make_label(screen, 91, 194, 34, 38, "");
+    center_clock_label_if_created(g_weather_city_label, "weather_city");
+    g_weather_icon_label = make_label(screen,
+                                      kClockWeatherIconLabelX,
+                                      kClockWeatherIconLabelY,
+                                      kClockWeatherIconLabelWidth,
+                                      kClockWeatherIconLabelHeight,
+                                      "");
     remember_lower_panel_object(g_weather_icon_label);
-    lv_obj_set_style_text_font(g_weather_icon_label, &qweather_icons_36, LV_PART_MAIN);
-    lv_obj_set_style_border_width(g_weather_icon_label, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_weather_icon_label, 0, LV_PART_MAIN);
-    lv_obj_set_style_text_align(g_weather_icon_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    g_weather_info_label = make_label(screen, 14, 218, 76, 20, kClockWeatherInfoWaitingText);
+    if (g_weather_icon_label) {
+        lv_obj_set_style_text_font(g_weather_icon_label, &qweather_icons_36, LV_PART_MAIN);
+        lv_obj_set_style_border_width(g_weather_icon_label, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(g_weather_icon_label, 0, LV_PART_MAIN);
+        lv_obj_set_style_text_align(g_weather_icon_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    } else {
+        ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, "weather_icon");
+    }
+    g_weather_info_label = make_label(screen,
+                                      kClockWeatherInfoLabelX,
+                                      kClockWeatherInfoLabelY,
+                                      kClockWeatherInfoLabelWidth,
+                                      kClockWeatherInfoLabelHeight,
+                                      kClockWeatherInfoWaitingText);
     remember_lower_panel_object(g_weather_info_label);
-    lv_label_set_long_mode(g_weather_info_label, LV_LABEL_LONG_CLIP);
-    lv_obj_set_style_text_align(g_weather_info_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    g_weather_temp_label = make_label(screen, 20, 242, 68, 20, kClockWeatherTempPlaceholder);
-    g_weather_humi_label = make_label(screen, 20, 264, 68, 20, kClockWeatherHumidityPlaceholder);
+    if (g_weather_info_label) {
+        lv_label_set_long_mode(g_weather_info_label, LV_LABEL_LONG_CLIP);
+        lv_obj_set_style_text_align(g_weather_info_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    } else {
+        ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, "weather_info");
+    }
+    g_weather_temp_label = make_label(screen,
+                                      kClockWeatherMetricLabelX,
+                                      kClockWeatherTempLabelY,
+                                      kClockWeatherMetricLabelWidth,
+                                      kClockWeatherMetricLabelHeight,
+                                      kClockWeatherTempPlaceholder);
+    g_weather_humi_label = make_label(screen,
+                                      kClockWeatherMetricLabelX,
+                                      kClockWeatherHumiLabelY,
+                                      kClockWeatherMetricLabelWidth,
+                                      kClockWeatherMetricLabelHeight,
+                                      kClockWeatherHumidityPlaceholder);
     remember_lower_panel_object(g_weather_temp_label);
     remember_lower_panel_object(g_weather_humi_label);
-    lv_obj_set_style_text_align(g_weather_temp_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_text_align(g_weather_humi_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    center_clock_label_if_created(g_weather_temp_label, "weather_temp");
+    center_clock_label_if_created(g_weather_humi_label, "weather_humi");
 
-    if (!g_temp_icon_canvas_buf) {
-        g_temp_icon_canvas_buf = alloc_canvas_buffer(TEMP_ICON_WIDTH, TEMP_ICON_HEIGHT);
-    }
-    if (!g_humi_icon_canvas_buf) {
-        g_humi_icon_canvas_buf = alloc_canvas_buffer(HUMI_ICON_WIDTH, HUMI_ICON_HEIGHT);
-    }
-    g_temp_icon_canvas = lv_canvas_create(screen);
-    lv_obj_clear_flag(g_temp_icon_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_temp_icon_canvas, 152, 214);
-    lv_obj_set_size(g_temp_icon_canvas, TEMP_ICON_WIDTH, TEMP_ICON_HEIGHT);
-    lv_obj_set_style_border_width(g_temp_icon_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_temp_icon_canvas, 0, LV_PART_MAIN);
-    if (g_temp_icon_canvas_buf) {
-        lv_canvas_set_buffer(g_temp_icon_canvas,
-                             g_temp_icon_canvas_buf,
-                             TEMP_ICON_WIDTH,
-                             TEMP_ICON_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        draw_1bit_icon(g_temp_icon_canvas,
-                       TEMP_ICON_WIDTH,
-                       TEMP_ICON_HEIGHT,
-                       TEMP_ICON_BYTES_PER_ROW,
-                       temp_icon_bits,
-                       lv_color_black(),
-                       lv_color_white());
-    }
-    g_humi_icon_canvas = lv_canvas_create(screen);
-    lv_obj_clear_flag(g_humi_icon_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_humi_icon_canvas, 154, 244);
-    lv_obj_set_size(g_humi_icon_canvas, HUMI_ICON_WIDTH, HUMI_ICON_HEIGHT);
-    lv_obj_set_style_border_width(g_humi_icon_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_humi_icon_canvas, 0, LV_PART_MAIN);
-    if (g_humi_icon_canvas_buf) {
-        lv_canvas_set_buffer(g_humi_icon_canvas,
-                             g_humi_icon_canvas_buf,
-                             HUMI_ICON_WIDTH,
-                             HUMI_ICON_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        draw_1bit_icon(g_humi_icon_canvas,
-                       HUMI_ICON_WIDTH,
-                       HUMI_ICON_HEIGHT,
-                       HUMI_ICON_BYTES_PER_ROW,
-                       humi_icon_bits,
-                       lv_color_black(),
-                       lv_color_white());
-    }
-    g_temp_label = make_label(screen, 174, 214, 62, 28, "--.-℃");
-    g_humi_label = make_label(screen, 174, 246, 62, 28, "--.-%");
+    build_clock_lower_icon(screen,
+                           &g_temp_icon_canvas,
+                           &g_temp_icon_canvas_buf,
+                           kClockTempIconX,
+                           kClockTempIconY,
+                           TEMP_ICON_WIDTH,
+                           TEMP_ICON_HEIGHT,
+                           TEMP_ICON_BYTES_PER_ROW,
+                           temp_icon_bits,
+                           "temp_icon");
+    build_clock_lower_icon(screen,
+                           &g_humi_icon_canvas,
+                           &g_humi_icon_canvas_buf,
+                           kClockHumiIconX,
+                           kClockHumiIconY,
+                           HUMI_ICON_WIDTH,
+                           HUMI_ICON_HEIGHT,
+                           HUMI_ICON_BYTES_PER_ROW,
+                           humi_icon_bits,
+                           "humi_icon");
+    g_temp_label = make_label(screen,
+                              kClockLocalMetricLabelX,
+                              kClockLocalTempLabelY,
+                              kClockLocalMetricLabelWidth,
+                              kClockLocalMetricLabelHeight,
+                              "--.-℃");
+    g_humi_label = make_label(screen,
+                              kClockLocalMetricLabelX,
+                              kClockLocalHumiLabelY,
+                              kClockLocalMetricLabelWidth,
+                              kClockLocalMetricLabelHeight,
+                              "--.-%");
     remember_lower_panel_object(g_temp_icon_canvas);
     remember_lower_panel_object(g_humi_icon_canvas);
     remember_lower_panel_object(g_temp_label);
     remember_lower_panel_object(g_humi_label);
-    lv_obj_set_style_text_align(g_temp_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_text_align(g_humi_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    if (!g_temp_trend_canvas_buf) {
-        g_temp_trend_canvas_buf = alloc_canvas_buffer(TREND_ICON_WIDTH, TREND_ICON_HEIGHT);
-    }
-    if (!g_humi_trend_canvas_buf) {
-        g_humi_trend_canvas_buf = alloc_canvas_buffer(TREND_ICON_WIDTH, TREND_ICON_HEIGHT);
-    }
-    g_temp_trend_canvas = lv_canvas_create(screen);
-    lv_obj_clear_flag(g_temp_trend_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_temp_trend_canvas, 239, 215);
-    lv_obj_set_size(g_temp_trend_canvas, TREND_ICON_WIDTH, TREND_ICON_HEIGHT);
-    lv_obj_set_style_border_width(g_temp_trend_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_temp_trend_canvas, 0, LV_PART_MAIN);
-    if (g_temp_trend_canvas_buf) {
-        lv_canvas_set_buffer(g_temp_trend_canvas,
-                             g_temp_trend_canvas_buf,
-                             TREND_ICON_WIDTH,
-                             TREND_ICON_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        update_trend_icon(g_temp_trend_canvas, g_temp_trend, nullptr);
-    }
-    g_humi_trend_canvas = lv_canvas_create(screen);
-    lv_obj_clear_flag(g_humi_trend_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_humi_trend_canvas, 239, 248);
-    lv_obj_set_size(g_humi_trend_canvas, TREND_ICON_WIDTH, TREND_ICON_HEIGHT);
-    lv_obj_set_style_border_width(g_humi_trend_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_humi_trend_canvas, 0, LV_PART_MAIN);
-    if (g_humi_trend_canvas_buf) {
-        lv_canvas_set_buffer(g_humi_trend_canvas,
-                             g_humi_trend_canvas_buf,
-                             TREND_ICON_WIDTH,
-                             TREND_ICON_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        update_trend_icon(g_humi_trend_canvas, g_humi_trend, nullptr);
-    }
+    center_clock_label_if_created(g_temp_label, "temp_value");
+    center_clock_label_if_created(g_humi_label, "humi_value");
+    build_clock_trend_canvas(screen,
+                             &g_temp_trend_canvas,
+                             &g_temp_trend_canvas_buf,
+                             kClockTrendCanvasX,
+                             kClockTempTrendCanvasY,
+                             g_temp_trend,
+                             "temp_trend");
+    build_clock_trend_canvas(screen,
+                             &g_humi_trend_canvas,
+                             &g_humi_trend_canvas_buf,
+                             kClockTrendCanvasX,
+                             kClockHumiTrendCanvasY,
+                             g_humi_trend,
+                             "humi_trend");
     remember_lower_panel_object(g_temp_trend_canvas);
     remember_lower_panel_object(g_humi_trend_canvas);
-    constexpr int canvas_w = 292;
-    constexpr int canvas_h = 92;
-    if (!g_time_canvas_buf) {
-        g_time_canvas_buf = alloc_canvas_buffer(canvas_w, canvas_h);
-    }
-    g_time_canvas = lv_canvas_create(screen);
-    lv_obj_clear_flag(g_time_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_time_canvas, 18, 76);
-    lv_obj_set_size(g_time_canvas, canvas_w, canvas_h);
-    lv_obj_set_style_border_width(g_time_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_time_canvas, 0, LV_PART_MAIN);
-    if (g_time_canvas_buf) {
-        lv_canvas_set_buffer(g_time_canvas, g_time_canvas_buf, canvas_w, canvas_h, LV_IMG_CF_TRUE_COLOR);
-        lv_canvas_fill_bg(g_time_canvas, lv_color_white(), LV_OPA_COVER);
-    }
+    build_clock_fill_canvas(screen,
+                            &g_time_canvas,
+                            &g_time_canvas_buf,
+                            kClockTimeCanvasX,
+                            kClockTimeCanvasY,
+                            kClockTimeCanvasWidth,
+                            kClockTimeCanvasHeight,
+                            "time");
 
-    constexpr int second_w = 60;
-    constexpr int second_h = 40;
-    if (!g_second_canvas_buf) {
-        g_second_canvas_buf = alloc_canvas_buffer(second_w, second_h);
-    }
-    g_second_canvas = lv_canvas_create(screen);
-    lv_obj_clear_flag(g_second_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_second_canvas, 320, 124);
-    lv_obj_set_size(g_second_canvas, second_w, second_h);
-    lv_obj_set_style_border_width(g_second_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_second_canvas, 0, LV_PART_MAIN);
-    if (g_second_canvas_buf) {
-        lv_canvas_set_buffer(g_second_canvas, g_second_canvas_buf, second_w, second_h, LV_IMG_CF_TRUE_COLOR);
-        lv_canvas_fill_bg(g_second_canvas, lv_color_white(), LV_OPA_COVER);
-    }
+    build_clock_fill_canvas(screen,
+                            &g_second_canvas,
+                            &g_second_canvas_buf,
+                            kClockSecondCanvasX,
+                            kClockSecondCanvasY,
+                            kClockSecondCanvasWidth,
+                            kClockSecondCanvasHeight,
+                            "second");
 
-    if (!g_status_gif_canvas_buf) {
-        g_status_gif_canvas_buf = alloc_canvas_buffer(STATUS_GIF_WIDTH, STATUS_GIF_HEIGHT);
-    }
-    g_status_gif_canvas = lv_canvas_create(screen);
+    build_clock_fill_canvas(screen,
+                            &g_status_gif_canvas,
+                            &g_status_gif_canvas_buf,
+                            kClockStatusGifCanvasX,
+                            kClockStatusGifCanvasY,
+                            STATUS_GIF_WIDTH,
+                            STATUS_GIF_HEIGHT,
+                            "status_gif");
     remember_lower_panel_object(g_status_gif_canvas);
-    lv_obj_clear_flag(g_status_gif_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_status_gif_canvas, 279, 196);
-    lv_obj_set_size(g_status_gif_canvas, STATUS_GIF_WIDTH, STATUS_GIF_HEIGHT);
-    lv_obj_set_style_border_width(g_status_gif_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_status_gif_canvas, 0, LV_PART_MAIN);
     if (g_status_gif_canvas_buf) {
-        lv_canvas_set_buffer(g_status_gif_canvas,
-                             g_status_gif_canvas_buf,
-                             STATUS_GIF_WIDTH,
-                             STATUS_GIF_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        lv_canvas_fill_bg(g_status_gif_canvas, lv_color_white(), LV_OPA_COVER);
         draw_status_gif_frame(0);
     }
 
-    lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
-    lv_obj_t *bottom_line = make_bar(screen, 18, 184, 364, 4);
-    build_progress_canvas(screen, &g_day_progress_canvas, &g_day_progress_canvas_buf, 59);
-    build_progress_canvas(screen, &g_second_progress_canvas, &g_second_progress_canvas_buf, 180);
-    g_panel_sep_a = make_bar(screen, 139, 188, 2, 102);
-    g_panel_sep_b = make_bar(screen, 260, 188, 2, 102);
+    lv_obj_t *top_line = make_bar(screen, kClockDividerX, kClockTopDividerY, kClockDividerWidth, kClockDividerHeight);
+    lv_obj_t *bottom_line =
+        make_bar(screen, kClockDividerX, kClockBottomDividerY, kClockDividerWidth, kClockDividerHeight);
+    build_progress_canvas(screen, &g_day_progress_canvas, &g_day_progress_canvas_buf, kClockDayProgressCanvasY);
+    build_progress_canvas(screen, &g_second_progress_canvas, &g_second_progress_canvas_buf, kClockSecondProgressCanvasY);
+    g_panel_sep_a = make_bar(screen,
+                             kClockLowerPanelSeparatorAX,
+                             kClockLowerPanelSeparatorY,
+                             kClockLowerPanelSeparatorWidth,
+                             kClockLowerPanelSeparatorHeight);
+    g_panel_sep_b = make_bar(screen,
+                             kClockLowerPanelSeparatorBX,
+                             kClockLowerPanelSeparatorY,
+                             kClockLowerPanelSeparatorWidth,
+                             kClockLowerPanelSeparatorHeight);
     remember_lower_panel_object(g_panel_sep_a);
     remember_lower_panel_object(g_panel_sep_b);
     set_obj_black(top_line, true);
@@ -340,33 +551,22 @@ void build_clock_ui()
     set_obj_black(g_panel_sep_a, true);
     set_obj_black(g_panel_sep_b, true);
 
-    if (!g_low_battery_icon_canvas_buf) {
-        g_low_battery_icon_canvas_buf = alloc_canvas_buffer(LOW_BATTERY_ICON_WIDTH, LOW_BATTERY_ICON_HEIGHT);
-    }
-    g_low_battery_icon_canvas = lv_canvas_create(screen);
-    lv_obj_clear_flag(g_low_battery_icon_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(g_low_battery_icon_canvas, 156, 214);
-    lv_obj_set_size(g_low_battery_icon_canvas, LOW_BATTERY_ICON_WIDTH, LOW_BATTERY_ICON_HEIGHT);
-    lv_obj_set_style_border_width(g_low_battery_icon_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(g_low_battery_icon_canvas, 0, LV_PART_MAIN);
-    lv_obj_add_flag(g_low_battery_icon_canvas, LV_OBJ_FLAG_HIDDEN);
-    if (g_low_battery_icon_canvas_buf) {
-        lv_canvas_set_buffer(g_low_battery_icon_canvas,
-                             g_low_battery_icon_canvas_buf,
-                             LOW_BATTERY_ICON_WIDTH,
-                             LOW_BATTERY_ICON_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        draw_1bit_icon(g_low_battery_icon_canvas,
-                       LOW_BATTERY_ICON_WIDTH,
-                       LOW_BATTERY_ICON_HEIGHT,
-                       LOW_BATTERY_ICON_BYTES_PER_ROW,
-                       low_battery_icon_bits,
-                       lv_color_black(),
-                       lv_color_white());
+    build_clock_lower_icon(screen,
+                           &g_low_battery_icon_canvas,
+                           &g_low_battery_icon_canvas_buf,
+                           kClockLowBatteryIconX,
+                           kClockLowBatteryIconY,
+                           LOW_BATTERY_ICON_WIDTH,
+                           LOW_BATTERY_ICON_HEIGHT,
+                           LOW_BATTERY_ICON_BYTES_PER_ROW,
+                           low_battery_icon_bits,
+                           "low_battery_icon");
+    if (g_low_battery_icon_canvas) {
+        lv_obj_add_flag(g_low_battery_icon_canvas, LV_OBJ_FLAG_HIDDEN);
     }
 
-    static const int setup_y[] = {194, 212, 230, 248, 266, 284};
-    static const char *setup_text[] = {
+    static const int kSetupStatusLabelY[] = {194, 212, 230, 248, 266, 284};
+    static const char *kSetupStatusText[] = {
         "Setup Mode",
         "AP SSID: --",
         "AP Password: --",
@@ -374,20 +574,24 @@ void build_clock_ui()
         "STA SSID: --",
         "STA IP: --",
     };
-    constexpr size_t kSetupStatusLabelCount = array_count(setup_y);
-    static_assert(kSetupStatusLabelCount == array_count(setup_text),
+    constexpr size_t kSetupStatusLabelCount = array_count(kSetupStatusLabelY);
+    static_assert(kSetupStatusLabelCount == array_count(kSetupStatusText),
                   "setup status coordinates and text must stay in sync");
     static_assert(kSetupStatusLabelCount == array_count(g_setup_status_labels),
                   "setup status label storage must match the rendered row count");
     for (size_t i = 0; i < kSetupStatusLabelCount; ++i) {
         g_setup_status_labels[i] = make_label_with_font(screen,
-                                                        26,
-                                                        setup_y[i],
-                                                        348,
-                                                        18,
-                                                        setup_text[i],
+                                                        kSetupStatusLabelX,
+                                                        kSetupStatusLabelY[i],
+                                                        kSetupStatusLabelWidth,
+                                                        kSetupStatusLabelHeight,
+                                                        kSetupStatusText[i],
                                                         &lv_font_montserrat_14);
-        lv_obj_add_flag(g_setup_status_labels[i], LV_OBJ_FLAG_HIDDEN);
+        if (g_setup_status_labels[i]) {
+            lv_obj_add_flag(g_setup_status_labels[i], LV_OBJ_FLAG_HIDDEN);
+        } else {
+            ESP_LOGW(TAG, SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT, static_cast<int>(i));
+        }
     }
 }
 
@@ -421,13 +625,14 @@ bool update_time_ui(const struct tm &local, bool clock_page_active, int active_w
                         ? kWorkPageWeatherClock
                         : active_work_page;
     if (date_key != g_last_ui_date_key || date_page != g_last_ui_date_page) {
-        static const char *week_days[] = {"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"};
+        static const char *kWeekdayNames[] = {"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"};
+        static_assert(array_count(kWeekdayNames) == 7, "tm_wday maps to exactly seven weekday names");
         char date[kClockDateTextSize];
         snprintf(date, sizeof(date), kClockDateFormat,
                  local.tm_year + kTmYearOffset,
                  local.tm_mon + kTmMonthOffset,
                  local.tm_mday,
-                 week_days[local.tm_wday]);
+                 kWeekdayNames[local.tm_wday]);
         if (date_page == kWorkPageWeatherClock) {
             changed |= set_label_text_if_changed(g_date_label, date);
         } else if (date_page == kWorkPageHistory) {
@@ -529,7 +734,7 @@ void handle_settings_action()
                 return;
             }
             begin_settings_sync(kSettingsSyncWeather, kManualWeatherSyncFeedback);
-            ESP_LOGI(TAG, "manual weather city cleared, requesting weather sync");
+            ESP_LOGI(TAG, "%s", MANUAL_WEATHER_CITY_CLEARED_SYNC_LOG);
             xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
             return;
         }
@@ -539,15 +744,15 @@ void handle_settings_action()
         }
         if (selected == kNetworkSettingsNtpItem) {
             begin_settings_sync(kSettingsSyncNtp, kManualNtpSyncFeedback);
-            ESP_LOGI(TAG, "manual ntp sync requested");
+            ESP_LOGI(TAG, "%s", MANUAL_NTP_SYNC_REQUESTED_LOG);
             xEventGroupSetBits(g_app_events, kManualNtpSyncBit);
         } else if (selected == kNetworkSettingsWeatherItem) {
             begin_settings_sync(kSettingsSyncWeather, kManualWeatherSyncFeedback);
-            ESP_LOGI(TAG, "manual weather sync requested");
+            ESP_LOGI(TAG, "%s", MANUAL_WEATHER_SYNC_REQUESTED_LOG);
             xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
         } else if (selected == kNetworkSettingsSayingItem) {
             begin_settings_sync(kSettingsSyncSaying, kManualSayingSyncFeedback);
-            ESP_LOGI(TAG, "manual daily saying sync requested");
+            ESP_LOGI(TAG, "%s", MANUAL_SAYING_SYNC_REQUESTED_LOG);
             xEventGroupSetBits(g_app_events, kManualSayingSyncBit);
         }
         return;
@@ -593,7 +798,9 @@ void handle_settings_action()
                 return;
             }
             set_settings_feedback(g_hourly_chime_enabled ? kHourlyChimeEnabledFeedback : kHourlyChimeDisabledFeedback, kSettingsFeedbackDefaultMs);
-            ESP_LOGI(TAG, "hourly chime %s", g_hourly_chime_enabled ? "enabled" : "disabled");
+            ESP_LOGI(TAG,
+                     HOURLY_CHIME_SETTING_LOG_FORMAT,
+                     g_hourly_chime_enabled ? CHIME_SETTING_ENABLED_LOG_VALUE : CHIME_SETTING_DISABLED_LOG_VALUE);
             if (g_hourly_chime_enabled) {
                 request_settings_confirmation_chime();
             }
@@ -606,7 +813,9 @@ void handle_settings_action()
                 return;
             }
             set_settings_feedback(g_hourly_chime_all_day ? kAllDayChimeEnabledFeedback : kAllDayChimeDisabledFeedback, kSettingsFeedbackDefaultMs);
-            ESP_LOGI(TAG, "hourly chime all-day %s", g_hourly_chime_all_day ? "enabled" : "disabled");
+            ESP_LOGI(TAG,
+                     ALL_DAY_CHIME_SETTING_LOG_FORMAT,
+                     g_hourly_chime_all_day ? CHIME_SETTING_ENABLED_LOG_VALUE : CHIME_SETTING_DISABLED_LOG_VALUE);
             if (g_hourly_chime_all_day) {
                 request_settings_confirmation_chime();
             }
@@ -680,7 +889,7 @@ void handle_settings_action()
                 return;
             }
             begin_settings_sync(kSettingsSyncNetworkDiag, kNetworkDiagSyncFeedback);
-            ESP_LOGI(TAG, "manual network diagnostics requested");
+            ESP_LOGI(TAG, "%s", MANUAL_NETWORK_DIAG_REQUESTED_LOG);
             network_diag_reset();
             g_settings_requested = false;
             g_network_diag_page_requested = true;
@@ -693,10 +902,10 @@ void handle_settings_action()
             if (!g_factory_reset_confirm_pending) {
                 g_factory_reset_confirm_pending = true;
                 set_settings_feedback(kFactoryResetConfirmFeedback, kSettingsTimeoutMs);
-                ESP_LOGW(TAG, "factory reset confirmation requested");
+                ESP_LOGW(TAG, "%s", FACTORY_RESET_CONFIRM_REQUESTED_LOG);
                 return;
             }
-            ESP_LOGW(TAG, "factory reset requested from settings");
+            ESP_LOGW(TAG, "%s", FACTORY_RESET_REQUESTED_LOG);
             if (!clear_saved_config()) {
                 set_settings_feedback(kFactoryResetFailedFeedback, kSettingsFeedbackDefaultMs);
                 return;
@@ -715,7 +924,7 @@ void handle_settings_action()
             g_factory_reset_confirm_pending = false;
             g_boot_info_requested = true;
             g_info_page_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(kSettingsTimeoutMs);
-            ESP_LOGI(TAG, "system info requested from settings");
+            ESP_LOGI(TAG, "%s", SYSTEM_INFO_REQUESTED_LOG);
         } else if (selected == kSystemSettingsOtaItem) {
             if (g_offline_mode_ui_enabled) {
                 set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);

@@ -55,12 +55,37 @@ static constexpr uint32_t kOtaOfflineHoldMs = 3500;
 static constexpr uint32_t kOtaRebootNoticeDelayMs = 3500;
 static constexpr uint32_t kOtaPreRestartDisplayQuietMs = 1500;
 static constexpr uint32_t kOtaWifiConnectTimeoutMs = 45000;
-static constexpr TickType_t kOtaReadRetryDelay = pdMS_TO_TICKS(100);
+static constexpr uint32_t kOtaReadRetryDelayMs = 100;
+static constexpr TickType_t kOtaReadRetryDelay = pdMS_TO_TICKS(kOtaReadRetryDelayMs);
 static constexpr int kHttpStatusMovedPermanently = 301;
 static constexpr int kHttpStatusFound = 302;
 static constexpr int kHttpStatusSeeOther = 303;
 static constexpr int kHttpStatusTemporaryRedirect = 307;
 static constexpr int kHttpStatusPermanentRedirect = 308;
+static_assert(kOtaMaxRedirects > 0, "OTA redirect limit must be positive");
+static_assert(kOtaRedirectUrlLen > kOtaUrlLen, "OTA redirect URL buffer must exceed manifest URL storage");
+static_assert(kOtaHttpTxBufferSize > 0, "OTA HTTP tx buffer must be positive");
+static_assert(kOtaManifestResponseBufferSize > 1, "OTA manifest response buffer must fit text and NUL");
+static_assert(kOtaManifestSourceNameLen > 1, "OTA manifest source name must fit text and NUL");
+static_assert(kSemverComponentCount == 3, "OTA semantic version comparison expects three components");
+static_assert(kSha256ByteCount == 32, "OTA SHA256 byte count must remain 32");
+static_assert(kSha256HexLen + 1 == kOtaSha256Len, "OTA SHA256 hex length must match manifest storage");
+static_assert(kOtaDownloadStatusTextLen <= kOtaStatusLen,
+              "OTA download status scratch text must fit global OTA status storage");
+static_assert(kOtaUsPerSecond == kOtaUsPerMs * 1000, "OTA microsecond constants must stay consistent");
+static_assert(kOtaBytesPerKiB == 1024, "OTA KiB conversion must remain binary");
+static_assert(kOtaFailureHoldMs > 0 && kOtaSuccessHoldMs > 0 && kOtaOfflineHoldMs > 0,
+              "OTA terminal status hold times must be positive");
+static_assert(kOtaRebootNoticeDelayMs >= kOtaPreRestartDisplayQuietMs,
+              "OTA reboot notice must outlast pre-restart display quiet window");
+static_assert(kOtaWifiConnectTimeoutMs > 0, "OTA Wi-Fi connect timeout must be positive");
+static_assert(kOtaReadRetryDelayMs > 0, "OTA read retry delay must be positive");
+static_assert(kOtaReadRetryDelay > 0, "OTA read retry tick delay must be positive");
+static_assert(kHttpStatusMovedPermanently < kHttpStatusFound &&
+                  kHttpStatusFound < kHttpStatusSeeOther &&
+                  kHttpStatusSeeOther < kHttpStatusTemporaryRedirect &&
+                  kHttpStatusTemporaryRedirect < kHttpStatusPermanentRedirect,
+              "OTA HTTP redirect status constants must stay ordered");
 static constexpr const char *kOtaStatusCheckFailed = "Check failed";
 static constexpr const char *kOtaStatusCheckingUpdate = "Checking update";
 static constexpr const char *kOtaStatusAlreadyLatest = "Already latest";
@@ -74,10 +99,18 @@ static constexpr const char *kOtaStatusWifiFailed = "WiFi failed";
 static constexpr const char *kOtaStatusNoOtaSlot = "No OTA slot";
 static constexpr const char *kOtaStatusNoMemory = "No memory";
 static constexpr const char *kOtaStatusOfflineMode = "Offline mode";
+static constexpr const char *kOtaStatusUnavailable = "Update unavailable";
+static constexpr const char *kOtaStatusIdlePrompt = "BOOT: Check Update";
 static constexpr const char *kOtaStatusInstallingUpdate = "Installing update 0%";
 static constexpr const char *kOtaStatusInstallingBackup = "Installing backup 0%";
 static constexpr const char *kOtaStatusInstallingProgressFormat = "Installing %d%%  %dKB/s";
 static constexpr const char *kOtaStatusNewVersionFormat = "New version %s";
+static constexpr const char *kOtaManifestJsonVersionField = "version";
+static constexpr const char *kOtaManifestJsonUrlField = "url";
+static constexpr const char *kOtaManifestJsonSha256Field = "sha256";
+static constexpr const char *kOtaManifestJsonSizeField = "size";
+static constexpr const char *kOtaManifestJsonNotesField = "notes";
+static constexpr const char *kOtaUnknownManifestSource = "unknown";
 
 static void log_ota_heap(const char *stage, int downloaded, int progress)
 {
@@ -175,6 +208,11 @@ public:
         return size_;
     }
 
+    explicit operator bool() const
+    {
+        return data_ != nullptr;
+    }
+
 private:
     char *data_ = nullptr;
     size_t size_ = 0;
@@ -198,6 +236,11 @@ public:
     cJSON *get() const
     {
         return root_;
+    }
+
+    explicit operator bool() const
+    {
+        return root_ != nullptr;
     }
 
 private:
@@ -228,6 +271,11 @@ public:
     int size() const
     {
         return (int)size_;
+    }
+
+    explicit operator bool() const
+    {
+        return data_ != nullptr;
     }
 
 private:
@@ -303,7 +351,7 @@ static bool set_ota_event_bit(EventBits_t bit, const char *name)
 {
     if (!g_app_events) {
         ESP_LOGW(TAG, "OTA %s skipped: event group unavailable", name ? name : "request");
-        ota_set_status(kOtaFailed, "Update unavailable", -1, kOtaFailureHoldMs);
+        ota_set_status(kOtaFailed, kOtaStatusUnavailable, -1, kOtaFailureHoldMs);
         return false;
     }
     xEventGroupSetBits(g_app_events, bit);
@@ -317,7 +365,7 @@ static void keep_ota_settings_panel_visible()
     g_settings_focus_secondary = true;
     g_settings_page_order_mode = false;
     g_settings_primary_selection = kSettingsPrimarySystem;
-    g_settings_selection = 4;
+    g_settings_selection = kSystemSettingsOtaItem;
     g_settings_last_activity_tick = now;
     g_info_page_until_tick = 0;
 }
@@ -372,7 +420,7 @@ void ota_reset_status_if_idle()
         g_ota_status_until_tick = 0;
     }
     if (g_ota_state == kOtaIdle) {
-        strlcpy(g_ota_status, "BOOT: Check Update", sizeof(g_ota_status));
+        strlcpy(g_ota_status, kOtaStatusIdlePrompt, sizeof(g_ota_status));
         g_ota_progress = -1;
         g_ota_speed_kbps = -1;
     }
@@ -509,20 +557,32 @@ static bool parse_ota_manifest(const char *json, OtaManifest *manifest)
         return false;
     }
     OtaJsonRoot root(json);
-    if (!root.get()) {
+    if (!root) {
         ESP_LOGW(TAG, "OTA manifest JSON parse failed");
         return false;
     }
-    bool have_version = json_copy_string(root.get(), "version", manifest->version, sizeof(manifest->version)) &&
+    bool have_version = json_copy_string(root.get(),
+                                         kOtaManifestJsonVersionField,
+                                         manifest->version,
+                                         sizeof(manifest->version)) &&
                         manifest->version[0] != '\0';
-    bool have_url = json_copy_string(root.get(), "url", manifest->url, sizeof(manifest->url)) &&
+    bool have_url = json_copy_string(root.get(),
+                                     kOtaManifestJsonUrlField,
+                                     manifest->url,
+                                     sizeof(manifest->url)) &&
                     manifest->url[0] != '\0';
-    bool have_sha = json_copy_string(root.get(), "sha256", manifest->sha256, sizeof(manifest->sha256));
-    cJSON *size = cJSON_GetObjectItem(root.get(), "size");
+    bool have_sha = json_copy_string(root.get(),
+                                     kOtaManifestJsonSha256Field,
+                                     manifest->sha256,
+                                     sizeof(manifest->sha256));
+    cJSON *size = cJSON_GetObjectItem(root.get(), kOtaManifestJsonSizeField);
     if (cJSON_IsNumber(size)) {
         manifest->size = size->valueint;
     }
-    (void)json_copy_string(root.get(), "notes", manifest->notes, sizeof(manifest->notes));
+    (void)json_copy_string(root.get(),
+                           kOtaManifestJsonNotesField,
+                           manifest->notes,
+                           sizeof(manifest->notes));
     if (!have_version || !have_url || !have_sha) {
         ESP_LOGW(TAG, "OTA manifest missing required fields version=%d url=%d sha=%d",
                  have_version,
@@ -551,11 +611,11 @@ static bool fetch_ota_manifest_from_source(const OtaManifestSource &source, OtaM
         return false;
     }
     if (!ota_manifest_source_valid(source)) {
-        ESP_LOGW(TAG, "OTA manifest source skipped: %s", source.name ? source.name : "unknown");
+        ESP_LOGW(TAG, "OTA manifest source skipped: %s", source.name ? source.name : kOtaUnknownManifestSource);
         return false;
     }
     OtaManifestResponseBuffer response(kOtaManifestResponseBufferSize);
-    if (!response.data()) {
+    if (!response) {
         ESP_LOGW(TAG, "OTA manifest response alloc failed");
         ota_set_status(kOtaFailed, kOtaStatusCheckFailed, -1, kOtaFailureHoldMs);
         return false;
@@ -709,7 +769,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
     }
 
     OtaDownloadBuffer buffer(kOtaDownloadBufferSize);
-    if (!buffer.data()) {
+    if (!buffer) {
         esp_ota_abort(ota_handle);
         close_ota_http_client(&client);
         ota_set_status(kOtaFailed, kOtaStatusNoMemory, -1, kOtaFailureHoldMs);
@@ -930,7 +990,7 @@ void ota_task(void *)
             }
             ESP_LOGI(TAG,
                      "OTA update check source=%s remote=%s current=%s",
-                     manifest_source[0] ? manifest_source : "unknown",
+                     manifest_source[0] ? manifest_source : kOtaUnknownManifestSource,
                      manifest.version,
                      APP_VERSION);
             if (compare_versions(manifest.version, APP_VERSION) <= 0) {

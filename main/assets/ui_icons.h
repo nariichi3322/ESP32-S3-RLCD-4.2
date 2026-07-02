@@ -71,6 +71,10 @@ static const uint8_t warning_icon_bits[] = {
 static constexpr int CHIME_STATUS_ICON_WIDTH = 19;
 static constexpr int CHIME_STATUS_ICON_HEIGHT = 19;
 static constexpr int CHIME_STATUS_ICON_BYTES_PER_ROW = 3;
+static_assert(CHIME_STATUS_ICON_WIDTH > 0, "chime_status icon width must be positive");
+static_assert(CHIME_STATUS_ICON_HEIGHT > 0, "chime_status icon height must be positive");
+static_assert(CHIME_STATUS_ICON_BYTES_PER_ROW == (CHIME_STATUS_ICON_WIDTH + 7) / 8,
+              "chime_status icon row byte count mismatch");
 static const uint8_t chime_status_icon_bits[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x60, 0x00, 0x00, 0xE0, 0x00,
     0x01, 0xE0, 0x80, 0x03, 0x24, 0xC0, 0x3F, 0x26, 0x40, 0x70, 0x26, 0x60,
@@ -78,10 +82,16 @@ static const uint8_t chime_status_icon_bits[] = {
     0x70, 0x26, 0x60, 0x3F, 0x26, 0x40, 0x03, 0x24, 0xC0, 0x01, 0xE0, 0x80,
     0x00, 0xE0, 0x00, 0x00, 0x60, 0x00, 0x00, 0x00, 0x00,
 };
+static_assert(sizeof(chime_status_icon_bits) == CHIME_STATUS_ICON_BYTES_PER_ROW * CHIME_STATUS_ICON_HEIGHT,
+              "chime_status icon payload size mismatch");
 
 static constexpr int WIFI_STATUS_ICON_WIDTH = 19;
 static constexpr int WIFI_STATUS_ICON_HEIGHT = 19;
 static constexpr int WIFI_STATUS_ICON_BYTES_PER_ROW = 3;
+static_assert(WIFI_STATUS_ICON_WIDTH > 0, "wifi_status icon width must be positive");
+static_assert(WIFI_STATUS_ICON_HEIGHT > 0, "wifi_status icon height must be positive");
+static_assert(WIFI_STATUS_ICON_BYTES_PER_ROW == (WIFI_STATUS_ICON_WIDTH + 7) / 8,
+              "wifi_status icon row byte count mismatch");
 static const uint8_t wifi_status_icon_bits[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0xF0, 0x00,
     0x0F, 0xFE, 0x00, 0x38, 0x03, 0x80, 0x60, 0x00, 0xC0, 0x41, 0xF0, 0x40,
@@ -89,6 +99,8 @@ static const uint8_t wifi_status_icon_bits[] = {
     0x01, 0xF0, 0x00, 0x01, 0xF0, 0x00, 0x00, 0xE0, 0x00, 0x00, 0x40, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 };
+static_assert(sizeof(wifi_status_icon_bits) == WIFI_STATUS_ICON_BYTES_PER_ROW * WIFI_STATUS_ICON_HEIGHT,
+              "wifi_status icon payload size mismatch");
 
 static constexpr int TREND_ICON_WIDTH = 14;
 static constexpr int TREND_ICON_HEIGHT = 14;

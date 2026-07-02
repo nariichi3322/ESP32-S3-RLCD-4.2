@@ -60,6 +60,15 @@ constexpr int kSettingsOtaBarFillH = kSettingsOtaBarFrameH - kSettingsOtaBarInse
 constexpr int kSettingsOtaProgressMax = 100;
 constexpr size_t kSettingsOtaLineTextSize = 96;
 constexpr size_t kSettingsOtaHintTextSize = 48;
+#define BOOT_ANIM_DONE_EVENT_SKIPPED_LOG "boot anim done event skipped: app events unavailable"
+#define BOOT_ANIM_CANVAS_CREATE_FAILED_LOG "boot anim canvas create failed"
+#define NETWORK_DIAG_LINE_LABEL_CREATE_FAILED_FORMAT "network diag line %d label create failed"
+#define SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT "settings primary label create failed index=%d"
+#define SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT "settings secondary label create failed index=%d"
+#define SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT "settings switch dot create failed index=%d"
+#define SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT "settings switch text create failed index=%d"
+#define SETTINGS_OTA_BAR_FRAME_CREATE_FAILED_LOG "settings ota bar frame create failed"
+#define SETTINGS_OTA_BAR_FILL_CREATE_FAILED_LOG "settings ota bar fill create failed"
 constexpr const char *kSettingsOtaUpdatingWithSpeedFormat = "OTA %d%%  %d KB/s";
 constexpr const char *kSettingsOtaUpdatingFormat = "OTA %d%%";
 constexpr const char *kSettingsOtaCurrentVersionFormat = "当前版本 %s";
@@ -135,6 +144,14 @@ constexpr const char *kSettingsCheckUpdateText = "检查更新";
 constexpr uint32_t kSettingsOrderExitFeedbackMs = 2500;
 constexpr const char *kSettingsOrderExitSavedFeedback = "页面顺序已保存";
 constexpr const char *kSettingsOrderExitSaveFailedFeedback = "保存失败";
+#define SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT "settings secondary text index out of range: %d"
+#define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
+#define BATTERY_ICON_INVALID_ARG_LOG "battery icon invalid arg"
+#define BATTERY_FRAME_CREATE_FAILED_LOG "battery frame create failed"
+#define BATTERY_INNER_CREATE_FAILED_LOG "battery inner create failed"
+#define BATTERY_TIP_CREATE_FAILED_LOG "battery tip create failed"
+#define BATTERY_SEGMENT_CREATE_FAILED_FORMAT "battery segment %d create failed"
+constexpr const char *kLabelCreateFailedLog = "label create failed";
 constexpr int kBatteryFrameX = 20;
 constexpr int kBatteryFrameY = 17;
 constexpr int kBatteryFrameW = 34;
@@ -187,18 +204,53 @@ constexpr int kInfoSourceTextX = 0;
 constexpr int kInfoSourceTextW = 400;
 constexpr int kInfoLabelY[] = {70, 104, 138, 172, 206, 276};
 constexpr size_t kInfoLabelCount = array_count(kInfoLabelY);
+constexpr size_t kInfoNtpLabelIndex = 0;
+constexpr size_t kInfoWifiLabelIndex = 1;
+constexpr size_t kInfoWeatherLabelIndex = 2;
+constexpr size_t kInfoBatteryLabelIndex = 3;
+constexpr size_t kInfoVersionLabelIndex = 4;
 constexpr size_t kInfoSourceLabelIndex = kInfoLabelCount - 1;
 static_assert(kSettingsListRowCount == kSettingsSecondaryMaxCount);
 static_assert(kSettingsGridRowCount * kSettingsGridColumns >= kWorkPageCount);
 static_assert(array_count(kSettingsPrimaryItems) == kSettingsPrimaryCount);
+static_assert(kNetworkDiagLocalIpLine < kNetworkDiagPublicIpLine);
+static_assert(kNetworkDiagPublicIpLine < kNetworkDiagGridFirstLine);
+static_assert(kNetworkDiagGridFirstLine <= kNetworkDiagWideLine);
+static_assert(kNetworkDiagWideLine < kNetworkDiagLineCount);
+static_assert(kSettingsOtaBarInset >= 0);
+static_assert(kSettingsOtaBarFillW > 0);
+static_assert(kSettingsOtaBarFillH > 0);
+static_assert(kSettingsOtaProgressMax > 0);
+static_assert(kBatteryFrameW > 0 && kBatteryFrameH > 0);
+static_assert(kBatteryInnerW > 0 && kBatteryInnerH > 0);
+static_assert(kBatteryTipW > 0 && kBatteryTipH > 0);
+static_assert(kBatterySegmentCount > 0);
+static_assert(kBatterySegmentW > 0 && kBatterySegmentH > 0);
+static_assert(kBatterySegmentCount * kBatteryPercentPerSegment == 100,
+              "battery segments must cover exactly 100 percent");
+static_assert(kInfoVersionLabelIndex < kInfoSourceLabelIndex);
+static_assert(kInfoSourceLabelIndex < kInfoLabelCount);
+
+bool settings_secondary_index_valid(int index)
+{
+    return index >= 0 && index < kSettingsSecondaryMaxCount;
+}
 
 void set_secondary_text(char items[][kSettingsSecondaryTextSize], int index, const char *text)
 {
+    if (!settings_secondary_index_valid(index)) {
+        ESP_LOGW(TAG, SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT, index);
+        return;
+    }
     copy_text(items[index], kSettingsSecondaryTextSize, text);
 }
 
 void hide_settings_switch_slot(int index)
 {
+    if (!settings_secondary_index_valid(index)) {
+        ESP_LOGW(TAG, SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT, index);
+        return;
+    }
     if (g_settings_switch_dots[index]) {
         set_obj_visible(g_settings_switch_dots[index], false);
     }
@@ -219,7 +271,7 @@ bool center_align_label(lv_obj_t *label)
 void warn_if_center_align_failed(lv_obj_t *label, const char *message)
 {
     if (!center_align_label(label)) {
-        ESP_LOGW(TAG, "%s", message ? message : "label create failed");
+        ESP_LOGW(TAG, "%s", message ? message : kLabelCreateFailedLog);
     }
 }
 }
@@ -260,7 +312,7 @@ void boot_anim_task(void *)
     if (g_app_events) {
         xEventGroupSetBits(g_app_events, kBootAnimDoneBit);
     } else {
-        ESP_LOGW(TAG, "boot anim done event skipped: app events unavailable");
+        ESP_LOGW(TAG, BOOT_ANIM_DONE_EVENT_SKIPPED_LOG);
     }
     g_boot_anim_task_handle = nullptr;
     vTaskDelete(nullptr);
@@ -306,12 +358,12 @@ void style_battery_frame(lv_obj_t *obj)
 void build_battery_icon(lv_obj_t *parent, lv_obj_t **segments)
 {
     if (!parent || !segments) {
-        ESP_LOGW(TAG, "battery icon invalid arg");
+        ESP_LOGW(TAG, BATTERY_ICON_INVALID_ARG_LOG);
         return;
     }
     lv_obj_t *frame = lv_obj_create(parent);
     if (!frame) {
-        ESP_LOGW(TAG, "battery frame create failed");
+        ESP_LOGW(TAG, BATTERY_FRAME_CREATE_FAILED_LOG);
         return;
     }
     lv_obj_clear_flag(frame, LV_OBJ_FLAG_SCROLLABLE);
@@ -321,7 +373,7 @@ void build_battery_icon(lv_obj_t *parent, lv_obj_t **segments)
 
     lv_obj_t *inner = lv_obj_create(frame);
     if (!inner) {
-        ESP_LOGW(TAG, "battery inner create failed");
+        ESP_LOGW(TAG, BATTERY_INNER_CREATE_FAILED_LOG);
         return;
     }
     lv_obj_clear_flag(inner, LV_OBJ_FLAG_SCROLLABLE);
@@ -333,7 +385,7 @@ void build_battery_icon(lv_obj_t *parent, lv_obj_t **segments)
 
     lv_obj_t *tip = lv_obj_create(parent);
     if (!tip) {
-        ESP_LOGW(TAG, "battery tip create failed");
+        ESP_LOGW(TAG, BATTERY_TIP_CREATE_FAILED_LOG);
         return;
     }
     lv_obj_clear_flag(tip, LV_OBJ_FLAG_SCROLLABLE);
@@ -346,7 +398,7 @@ void build_battery_icon(lv_obj_t *parent, lv_obj_t **segments)
     for (int i = 0; i < kBatterySegmentCount; ++i) {
         segments[i] = lv_obj_create(frame);
         if (!segments[i]) {
-            ESP_LOGW(TAG, "battery segment %d create failed", i);
+            ESP_LOGW(TAG, BATTERY_SEGMENT_CREATE_FAILED_FORMAT, i);
             continue;
         }
         lv_obj_clear_flag(segments[i], LV_OBJ_FLAG_SCROLLABLE);
@@ -388,7 +440,7 @@ void show_boot_screen()
         lv_obj_set_style_border_width(g_boot_anim_canvas, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(g_boot_anim_canvas, 0, LV_PART_MAIN);
     } else {
-        ESP_LOGW(TAG, "boot anim canvas create failed");
+        ESP_LOGW(TAG, BOOT_ANIM_CANVAS_CREATE_FAILED_LOG);
     }
     if (g_boot_anim_canvas && g_boot_anim_canvas_buf) {
         lv_canvas_set_buffer(g_boot_anim_canvas,
@@ -489,14 +541,14 @@ void update_boot_info_page()
 
     format_time_or_dash(g_last_ntp_sync_time, ntp, sizeof(ntp));
     snprintf(line, sizeof(line), kInfoLastNtpFormat, ntp);
-    set_label_text_if_changed(g_info_labels[0], line);
+    set_label_text_if_changed(g_info_labels[kInfoNtpLabelIndex], line);
 
     snprintf(line, sizeof(line), kInfoWifiFormat, g_wifi_ssid[0] ? g_wifi_ssid : "--");
-    set_label_text_if_changed(g_info_labels[1], line);
+    set_label_text_if_changed(g_info_labels[kInfoWifiLabelIndex], line);
 
     format_time_or_dash(g_last_weather_sync_time, weather, sizeof(weather));
     snprintf(line, sizeof(line), kInfoLastWeatherFormat, weather);
-    set_label_text_if_changed(g_info_labels[2], line);
+    set_label_text_if_changed(g_info_labels[kInfoWeatherLabelIndex], line);
 
     if (g_battery_percent >= 0 && g_battery_voltage >= 0.0f) {
         snprintf(line, sizeof(line), kInfoBatteryFullFormat, g_battery_percent, g_battery_voltage);
@@ -505,13 +557,13 @@ void update_boot_info_page()
     } else {
         copy_text(line, sizeof(line), kInfoBatteryPlaceholder);
     }
-    set_label_text_if_changed(g_info_labels[3], line);
+    set_label_text_if_changed(g_info_labels[kInfoBatteryLabelIndex], line);
 
     snprintf(line, sizeof(line), kInfoVersionFormat, APP_VERSION, APP_BUILD_DATE);
-    set_label_text_if_changed(g_info_labels[4], line);
+    set_label_text_if_changed(g_info_labels[kInfoVersionLabelIndex], line);
 
     snprintf(line, sizeof(line), kInfoSourceFormat, kProjectSourceUrl);
-    set_label_text_if_changed(g_info_labels[5], line);
+    set_label_text_if_changed(g_info_labels[kInfoSourceLabelIndex], line);
 
     ota_reset_status_if_idle();
 }
@@ -562,7 +614,7 @@ void build_network_diag_page()
             lv_label_set_long_mode(g_network_diag_labels[i], LV_LABEL_LONG_CLIP);
             lv_obj_set_style_text_align(g_network_diag_labels[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
         } else {
-            ESP_LOGW(TAG, "network diag line %d label create failed", i);
+            ESP_LOGW(TAG, NETWORK_DIAG_LINE_LABEL_CREATE_FAILED_FORMAT, i);
         }
     }
 
@@ -755,7 +807,7 @@ void build_settings_page()
             lv_label_set_long_mode(g_settings_labels[i], LV_LABEL_LONG_CLIP);
             center_align_label(g_settings_labels[i]);
         } else {
-            ESP_LOGW(TAG, "settings primary label create failed index=%d", i);
+            ESP_LOGW(TAG, SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT, i);
         }
     }
     for (int i = 0; i < kSettingsSecondaryMaxCount; ++i) {
@@ -766,7 +818,7 @@ void build_settings_page()
             lv_label_set_long_mode(g_settings_labels[slot], LV_LABEL_LONG_CLIP);
             center_align_label(g_settings_labels[slot]);
         } else {
-            ESP_LOGW(TAG, "settings secondary label create failed index=%d", i);
+            ESP_LOGW(TAG, SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT, i);
         }
         g_settings_switch_dots[i] = lv_obj_create(screen);
         if (g_settings_switch_dots[i]) {
@@ -778,7 +830,7 @@ void build_settings_page()
             style_settings_switch_dot(g_settings_switch_dots[i], false, false);
             lv_obj_add_flag(g_settings_switch_dots[i], LV_OBJ_FLAG_HIDDEN);
         } else {
-            ESP_LOGW(TAG, "settings switch dot create failed index=%d", i);
+            ESP_LOGW(TAG, SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT, i);
         }
         g_settings_switch_texts[i] =
             make_label(screen,
@@ -793,7 +845,7 @@ void build_settings_page()
             lv_label_set_long_mode(g_settings_switch_texts[i], LV_LABEL_LONG_CLIP);
             lv_obj_add_flag(g_settings_switch_texts[i], LV_OBJ_FLAG_HIDDEN);
         } else {
-            ESP_LOGW(TAG, "settings switch text create failed index=%d", i);
+            ESP_LOGW(TAG, SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT, i);
         }
     }
     g_settings_ota_status_label = make_label(screen, kSettingsSecondaryX, 176, kSettingsSecondaryW, 22, "");
@@ -811,7 +863,7 @@ void build_settings_page()
         lv_obj_set_style_pad_all(g_settings_ota_bar_frame, 0, LV_PART_MAIN);
         lv_obj_add_flag(g_settings_ota_bar_frame, LV_OBJ_FLAG_HIDDEN);
     } else {
-        ESP_LOGW(TAG, "settings ota bar frame create failed");
+        ESP_LOGW(TAG, SETTINGS_OTA_BAR_FRAME_CREATE_FAILED_LOG);
     }
     g_settings_ota_bar_fill = make_bar(screen,
                                        kSettingsOtaBarFrameX + kSettingsOtaBarInset,
@@ -823,7 +875,7 @@ void build_settings_page()
         lv_obj_set_style_radius(g_settings_ota_bar_fill, 2, LV_PART_MAIN);
         lv_obj_add_flag(g_settings_ota_bar_fill, LV_OBJ_FLAG_HIDDEN);
     } else {
-        ESP_LOGW(TAG, "settings ota bar fill create failed");
+        ESP_LOGW(TAG, SETTINGS_OTA_BAR_FILL_CREATE_FAILED_LOG);
     }
     g_settings_ota_hint_label = make_label(screen, kSettingsSecondaryX, 218, kSettingsSecondaryW, 20, "");
     warn_if_center_align_failed(g_settings_ota_hint_label, "settings ota hint label create failed");
@@ -1111,7 +1163,7 @@ bool update_settings_page()
 
 void set_settings_feedback(const char *text, uint32_t duration_ms)
 {
-    strlcpy(g_settings_feedback, text, sizeof(g_settings_feedback));
+    copy_text(g_settings_feedback, sizeof(g_settings_feedback), text);
     TickType_t now = xTaskGetTickCount();
     g_settings_feedback_until_tick = now + pdMS_TO_TICKS(duration_ms);
     if (g_settings_requested) {

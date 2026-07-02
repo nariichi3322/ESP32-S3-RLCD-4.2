@@ -64,6 +64,9 @@ constexpr const char *kConfigEventReasonNetworkRequestReset = "network request r
 constexpr const char *kConfigEventReasonFactoryReset = "factory reset";
 constexpr const char *kConfigEventReasonOfflineManualTime = "offline manual time";
 constexpr const char *kConfigEventReasonProvisioningSave = "provisioning save";
+constexpr const char *kConfigEventActionClear = "clear";
+constexpr const char *kConfigEventActionSet = "set";
+constexpr const char *kNvsActionAccessingConfig = "accessing config";
 constexpr const char *kNvsActionLoadingConfig = "loading config";
 constexpr const char *kNvsActionSavingOfflineMode = "saving offline mode";
 constexpr const char *kNvsActionSavingConfig = "saving config";
@@ -73,7 +76,10 @@ constexpr const char *kNvsActionSavingHourlyReminder = "saving hourly reminder";
 constexpr const char *kNvsActionSavingPageSettings = "saving page settings";
 constexpr const char *kNvsActionSavingPageOrder = "saving page order";
 constexpr const char *kNvsActionClearingConfig = "clearing config";
+constexpr const char *kEmptyWifiSsidSaveLog = "skip saving empty wifi ssid";
 constexpr const char *kInvalidWeatherCitySaveLog = "skip saving invalid weather city";
+#define CONFIG_EVENT_GROUP_UNAVAILABLE_FORMAT "skip %s event bits for %s: event group unavailable"
+#define NVS_OPEN_FAILED_FORMAT "nvs open failed while %s: %s"
 #define NVS_SAVE_OFFLINE_MODE_FAILED_FORMAT "nvs save offline mode failed: %s"
 #define NVS_ERASE_LEGACY_API_HOST_FAILED_FORMAT "nvs erase legacy api host failed while saving config: %s"
 #define NVS_SAVE_CONFIG_FAILED_FORMAT "nvs save config failed: %s"
@@ -84,6 +90,17 @@ constexpr const char *kInvalidWeatherCitySaveLog = "skip saving invalid weather 
 #define NVS_SAVE_PAGE_ORDER_FAILED_FORMAT "nvs save page order failed: %s"
 #define NVS_ERASE_KEY_CLEARING_CONFIG_FAILED_FORMAT "nvs erase key %s failed while clearing config: %s"
 #define NVS_CLEAR_CONFIG_FAILED_FORMAT "nvs clear config failed: %s"
+#define MANUAL_TIME_NORMALIZATION_FAILED_LOG "manual offline time localtime normalization failed"
+#define OFFLINE_SETUP_EMPTY_BODY_LOG "offline setup ignored empty request body"
+#define OFFLINE_SETUP_INVALID_MANUAL_TIME_LOG "offline setup ignored invalid manual time"
+#define MANUAL_TIME_MKTIME_FAILED_LOG "set manual offline time skipped: mktime failed"
+#define MANUAL_TIME_SETTIMEOFDAY_FAILED_FORMAT "set manual offline time failed errno=%d"
+#define OFFLINE_MODE_ENABLED_MANUAL_TIME_FORMAT "offline mode enabled with manual time: %04d-%02d-%02d %02d:%02d:%02d"
+#define PROVISIONING_EMPTY_BODY_LOG "provisioning ignored empty request body"
+#define PROVISIONING_EMPTY_SSID_LOG "provisioning ignored empty ssid"
+#define PROVISIONING_EMPTY_API_KEY_LOG "provisioning ignored empty api key for online setup"
+#define PROVISIONING_INVALID_WEATHER_CITY_LOG "provisioning ignored invalid weather city"
+#define PROVISIONING_SAVED_FORMAT "provisioning saved ssid=%s pass_len=%u api_key=%s len=%u weather_city=%s city_len=%u"
 constexpr const char *kFormManualTimeKey = "manual_time";
 constexpr const char *kFormManualTimeFallbackKey = "datetime";
 constexpr const char *kFormSsidKey = "ssid";
@@ -102,19 +119,128 @@ constexpr const char *kClearConfigKeys[] = {
     kLegacyApiHostKey,
     kOfflineModeKey,
 };
+
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+constexpr bool valid_chime_volumes_include_default()
+{
+    for (uint8_t volume : kValidChimeVolumePercent) {
+        if (volume == kDefaultChimeVolumePercent) {
+            return true;
+        }
+    }
+    return false;
+}
+
+constexpr bool clear_config_keys_nonempty()
+{
+    for (const char *key : kClearConfigKeys) {
+        if (!cstr_nonempty(key)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static_assert(kFormEncodedBufferSize > 0, "form encoded scratch buffer must be nonzero");
+static_assert(kManualTimeFieldSize > 1, "manual time field must fit text and NUL");
+static_assert(kSetupSsidFieldSize > 1, "setup SSID field must fit text and NUL");
+static_assert(kSetupPasswordFieldSize > 1, "setup password field must fit text and NUL");
+static_assert(kSetupApiKeyFieldSize > 1, "setup API key field must fit text and NUL");
+static_assert(kSetupWeatherCityFieldSize == kManualWeatherCityLen,
+              "setup weather city field must match runtime city buffer");
+static_assert(cstr_nonempty(kWifiNvsNamespace), "Wi-Fi NVS namespace must be non-empty");
+static_assert(cstr_nonempty(kWifiSsidKey), "Wi-Fi SSID NVS key must be non-empty");
+static_assert(cstr_nonempty(kWifiPassKey), "Wi-Fi password NVS key must be non-empty");
+static_assert(cstr_nonempty(kWeatherApiKeyKey), "weather API key NVS key must be non-empty");
+static_assert(cstr_nonempty(kManualWeatherCityKey), "manual weather city NVS key must be non-empty");
+static_assert(cstr_nonempty(kLegacyApiHostKey), "legacy API host NVS key must be non-empty");
+static_assert(cstr_nonempty(kOfflineModeKey), "offline mode NVS key must be non-empty");
+static_assert(cstr_nonempty(kHourlyChimeKey), "hourly chime NVS key must be non-empty");
+static_assert(cstr_nonempty(kHourlyAllDayKey), "all-day chime NVS key must be non-empty");
+static_assert(cstr_nonempty(kChimeVolumeKey), "chime volume NVS key must be non-empty");
+static_assert(cstr_nonempty(kChimeSoundKey), "chime sound NVS key must be non-empty");
+static_assert(cstr_nonempty(kPageMaskV1Key), "page mask v1 NVS key must be non-empty");
+static_assert(cstr_nonempty(kPageMaskV2Key), "page mask v2 NVS key must be non-empty");
+static_assert(cstr_nonempty(kPageMaskV3Key), "page mask v3 NVS key must be non-empty");
+static_assert(cstr_nonempty(kPageOrderV1Key), "page order v1 NVS key must be non-empty");
+static_assert(cstr_nonempty(kPageOrderV2Key), "page order v2 NVS key must be non-empty");
+static_assert(cstr_nonempty(kPageOrderV3Key), "page order v3 NVS key must be non-empty");
+static_assert(array_count(kValidChimeVolumePercent) > 0, "valid chime volume list must not be empty");
+static_assert(valid_chime_volumes_include_default(), "default chime volume must be selectable");
+static_assert(array_count(kClearConfigKeys) > 0, "clear config key list must not be empty");
+static_assert(clear_config_keys_nonempty(), "clear config keys must be non-empty");
+static_assert(kManualTimeRequiredFieldCount == 5, "manual time requires year/month/day/hour/minute");
+static_assert(cstr_nonempty(kManualTimeIsoSecondsFormat), "manual ISO time format must be non-empty");
+static_assert(cstr_nonempty(kManualTimeSpaceSecondsFormat), "manual space time format must be non-empty");
+static_assert(cstr_nonempty(kManualTimeSpaceMinutesFormat), "manual minute time format must be non-empty");
+static_assert(cstr_nonempty(kFormManualTimeKey), "manual time form key must be non-empty");
+static_assert(cstr_nonempty(kFormManualTimeFallbackKey), "manual time fallback form key must be non-empty");
+static_assert(cstr_nonempty(kFormSsidKey), "SSID form key must be non-empty");
+static_assert(cstr_nonempty(kFormPasswordKey), "password form key must be non-empty");
+static_assert(cstr_nonempty(kFormPasswordFallbackKey), "password fallback form key must be non-empty");
+static_assert(cstr_nonempty(kFormApiKeyKey), "API key form key must be non-empty");
+static_assert(cstr_nonempty(kFormApiKeyFallbackKey), "API key fallback form key must be non-empty");
+static_assert(cstr_nonempty(kFormWeatherCityKey), "weather city form key must be non-empty");
+static_assert(cstr_nonempty(kFormWeatherCityFallbackKey), "weather city fallback form key must be non-empty");
+static_assert(cstr_nonempty(kInvalidWeatherCityChars), "invalid weather city character list must be non-empty");
+static_assert(cstr_nonempty(kConfigEventReasonFallback), "config event fallback reason must be non-empty");
+static_assert(cstr_nonempty(kConfigEventActionClear), "config event clear action must be non-empty");
+static_assert(cstr_nonempty(kConfigEventActionSet), "config event set action must be non-empty");
+static_assert(kManualTimeMinMonth == 1 && kManualTimeMaxMonth == 12, "manual time month range must be 1..12");
+static_assert(kManualTimeMinDay == 1 && kManualTimeMaxDay == 31, "manual time day range must be 1..31");
+static_assert(kManualTimeMinHour == 0 && kManualTimeMaxHour == 23, "manual time hour range must be 0..23");
+static_assert(kManualTimeMinMinute == 0 && kManualTimeMaxMinute == 59,
+              "manual time minute range must be 0..59");
+static_assert(kManualTimeMinSecond == 0 && kManualTimeMaxSecond == 59,
+              "manual time second range must be 0..59");
+static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
+static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
 static_assert(kWorkPageCount <= 8, "work page enabled mask is stored as uint8_t");
 static_assert(kLegacyPageOrderV1Count <= kWorkPageCount);
 static_assert(kPageOrderV2Count <= kWorkPageCount);
+static_assert(kLegacyPageOrderV1Count == kWorkPageCalendar + 1,
+              "legacy page order v1 must cover pages through calendar");
+static_assert(kPageOrderV2Count == kWorkPageWeatherBoard + 1,
+              "page order v2 must cover pages through weather board");
+static_assert(kLegacyPageMaskV1KnownBits == ((1U << kLegacyPageOrderV1Count) - 1),
+              "legacy page mask v1 must cover the legacy order pages");
+static_assert(kPageMaskV2KnownBits == ((1U << kPageOrderV2Count) - 1),
+              "page mask v2 must cover the v2 order pages");
+static_assert(kPageMaskV3KnownBits == ((1U << kWorkPageCount) - 1),
+              "page mask v3 must cover every current work page");
+static_assert((kPageMaskV3KnownBits & kWeatherClockPageMask) == kWeatherClockPageMask,
+              "weather clock page must be covered by the current page mask");
+static_assert((kPageMaskV3KnownBits & kWeatherBoardPageMask) == kWeatherBoardPageMask,
+              "weather board page must be covered by the current page mask");
+static_assert((kPageMaskV3KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
+              "flip clock page must be covered by the current page mask");
 
 const char *config_event_reason_text(const char *reason)
 {
     return reason ? reason : kConfigEventReasonFallback;
 }
 
+void log_config_event_group_unavailable(const char *action, const char *reason)
+{
+    ESP_LOGW(TAG, CONFIG_EVENT_GROUP_UNAVAILABLE_FORMAT,
+             action ? action : kConfigEventReasonFallback,
+             config_event_reason_text(reason));
+}
+
 void clear_app_event_bits(EventBits_t bits, const char *reason)
 {
     if (!g_app_events) {
-        ESP_LOGW(TAG, "skip clear event bits for %s: event group unavailable", config_event_reason_text(reason));
+        log_config_event_group_unavailable(kConfigEventActionClear, reason);
         return;
     }
     xEventGroupClearBits(g_app_events, bits);
@@ -123,7 +249,7 @@ void clear_app_event_bits(EventBits_t bits, const char *reason)
 void set_app_event_bits(EventBits_t bits, const char *reason)
 {
     if (!g_app_events) {
-        ESP_LOGW(TAG, "skip set event bits for %s: event group unavailable", config_event_reason_text(reason));
+        log_config_event_group_unavailable(kConfigEventActionSet, reason);
         return;
     }
     xEventGroupSetBits(g_app_events, bits);
@@ -204,6 +330,11 @@ uint8_t normalize_chime_volume(uint8_t volume)
     return kDefaultChimeVolumePercent;
 }
 
+uint8_t normalize_chime_sound_index(uint8_t sound)
+{
+    return sound < kChimeSoundCount ? sound : 0;
+}
+
 esp_err_t erase_nvs_key_if_present(nvs_handle_t nvs, const char *key, bool *erased)
 {
     esp_err_t err = nvs_erase_key(nvs, key);
@@ -223,7 +354,7 @@ esp_err_t open_wifi_nvs(nvs_open_mode_t mode, nvs_handle_t *nvs, const char *act
     }
     esp_err_t err = nvs_open(kWifiNvsNamespace, mode, nvs);
     if (err != ESP_OK && (log_not_found || err != ESP_ERR_NVS_NOT_FOUND)) {
-        ESP_LOGW(TAG, "nvs open failed while %s: %s", action ? action : "accessing config", esp_err_to_name(err));
+        ESP_LOGW(TAG, NVS_OPEN_FAILED_FORMAT, action ? action : kNvsActionAccessingConfig, esp_err_to_name(err));
     }
     return err;
 }
@@ -361,7 +492,7 @@ bool load_saved_config()
     g_hourly_chime_all_day = all_day != 0;
     g_offline_mode_ui_enabled = offline != 0;
     g_chime_volume_percent = normalize_chime_volume(volume);
-    g_chime_sound_index = sound < kChimeSoundCount ? sound : 0;
+    g_chime_sound_index = normalize_chime_sound_index(sound);
     g_work_page_enabled_mask = (page_mask | kWeatherClockPageMask) & kPageMaskV3KnownBits;
     if (order_err == ESP_OK && page_order_len == sizeof(page_order)) {
         memcpy(g_work_page_order, page_order, sizeof(g_work_page_order));
@@ -393,7 +524,7 @@ bool set_offline_mode_enabled(bool enabled)
     uint8_t next_value = enabled ? 1 : 0;
     bool unchanged = nvs_u8_matches(nvs, kOfflineModeKey, next_value);
     if (!unchanged) {
-        err = nvs_set_u8(nvs, kOfflineModeKey, next_value);
+        err = set_nvs_u8_if_ok(nvs, err, kOfflineModeKey, next_value);
         err = commit_nvs_if_ok(nvs, err);
     }
     nvs_close(nvs);
@@ -460,7 +591,7 @@ void set_manual_weather_city_state(const char *city)
 bool save_config(const char *ssid, const char *pass, const char *api_key, const char *weather_city)
 {
     if (!ssid || ssid[0] == '\0') {
-        ESP_LOGW(TAG, "skip saving empty wifi ssid");
+        ESP_LOGW(TAG, "%s", kEmptyWifiSsidSaveLog);
         return false;
     }
     if (!pass) {
@@ -616,7 +747,7 @@ bool save_work_page_settings()
         g_work_page_enabled_mask = mask;
         return true;
     }
-    err = nvs_set_u8(nvs, kPageMaskV3Key, mask);
+    err = set_nvs_u8_if_ok(nvs, err, kPageMaskV3Key, mask);
     err = commit_nvs_if_ok(nvs, err);
     nvs_close(nvs);
     if (err != ESP_OK) {
@@ -756,6 +887,12 @@ void form_value_fallback(const char *body, const char *primary_key, const char *
     }
 }
 
+void form_value_fallback_trimmed(const char *body, const char *primary_key, const char *fallback_key, char *out, size_t out_len)
+{
+    form_value_fallback(body, primary_key, fallback_key, out, out_len);
+    trim_ascii(out);
+}
+
 static bool parse_manual_datetime(const char *text, struct tm *out)
 {
     if (!text || !out || text[0] == '\0') {
@@ -799,7 +936,7 @@ static bool parse_manual_datetime(const char *text, struct tm *out)
     }
     struct tm normalized = {};
     if (!localtime_r(&epoch, &normalized)) {
-        ESP_LOGW(TAG, "manual offline time localtime normalization failed");
+        ESP_LOGW(TAG, "%s", MANUAL_TIME_NORMALIZATION_FAILED_LOG);
         return false;
     }
     if (normalized.tm_year != local.tm_year ||
@@ -816,26 +953,25 @@ static bool parse_manual_datetime(const char *text, struct tm *out)
 bool save_offline_datetime_from_body(const char *body)
 {
     if (!body) {
-        ESP_LOGW(TAG, "offline setup ignored empty request body");
+        ESP_LOGW(TAG, "%s", OFFLINE_SETUP_EMPTY_BODY_LOG);
         return false;
     }
     char manual_time[kManualTimeFieldSize] = {};
-    form_value_fallback(body, kFormManualTimeKey, kFormManualTimeFallbackKey, manual_time, sizeof(manual_time));
-    trim_ascii(manual_time);
+    form_value_fallback_trimmed(body, kFormManualTimeKey, kFormManualTimeFallbackKey, manual_time, sizeof(manual_time));
     struct tm local = {};
     if (!parse_manual_datetime(manual_time, &local)) {
-        ESP_LOGW(TAG, "offline setup ignored invalid manual time");
+        ESP_LOGW(TAG, "%s", OFFLINE_SETUP_INVALID_MANUAL_TIME_LOG);
         return false;
     }
     time_t epoch = mktime(&local);
     if (epoch <= 0) {
-        ESP_LOGW(TAG, "set manual offline time skipped: mktime failed");
+        ESP_LOGW(TAG, "%s", MANUAL_TIME_MKTIME_FAILED_LOG);
         return false;
     }
     struct timeval now = {};
     now.tv_sec = epoch;
     if (settimeofday(&now, nullptr) != 0) {
-        ESP_LOGW(TAG, "set manual offline time failed errno=%d", errno);
+        ESP_LOGW(TAG, MANUAL_TIME_SETTIMEOFDAY_FAILED_FORMAT, errno);
         return false;
     }
     sync_rtc_from_system_time();
@@ -843,7 +979,7 @@ bool save_offline_datetime_from_body(const char *body)
         return false;
     }
     set_app_event_bits(kTimeSyncedBit, kConfigEventReasonOfflineManualTime);
-    ESP_LOGI(TAG, "offline mode enabled with manual time: %04d-%02d-%02d %02d:%02d:%02d",
+    ESP_LOGI(TAG, OFFLINE_MODE_ENABLED_MANUAL_TIME_FORMAT,
              local.tm_year + kTmYearOffset,
              local.tm_mon + kTmMonthOffset,
              local.tm_mday,
@@ -856,7 +992,7 @@ bool save_offline_datetime_from_body(const char *body)
 bool save_credentials_from_body(const char *body)
 {
     if (!body) {
-        ESP_LOGW(TAG, "provisioning ignored empty request body");
+        ESP_LOGW(TAG, "%s", PROVISIONING_EMPTY_BODY_LOG);
         return false;
     }
     char ssid[kSetupSsidFieldSize] = {};
@@ -865,26 +1001,24 @@ bool save_credentials_from_body(const char *body)
     char weather_city[kSetupWeatherCityFieldSize] = {};
     form_value(body, kFormSsidKey, ssid, sizeof(ssid));
     form_value_fallback(body, kFormPasswordKey, kFormPasswordFallbackKey, pass, sizeof(pass));
-    form_value_fallback(body, kFormApiKeyKey, kFormApiKeyFallbackKey, api_key, sizeof(api_key));
-    form_value_fallback(body, kFormWeatherCityKey, kFormWeatherCityFallbackKey, weather_city, sizeof(weather_city));
-    trim_ascii(api_key);
-    trim_ascii(weather_city);
+    form_value_fallback_trimmed(body, kFormApiKeyKey, kFormApiKeyFallbackKey, api_key, sizeof(api_key));
+    form_value_fallback_trimmed(body, kFormWeatherCityKey, kFormWeatherCityFallbackKey, weather_city, sizeof(weather_city));
     if (ssid[0] == '\0') {
-        ESP_LOGW(TAG, "provisioning ignored empty ssid");
+        ESP_LOGW(TAG, "%s", PROVISIONING_EMPTY_SSID_LOG);
         return false;
     }
     if (api_key[0] == '\0' && g_weather_api_key[0] != '\0') {
         strlcpy(api_key, g_weather_api_key, sizeof(api_key));
     }
     if (api_key[0] == '\0') {
-        ESP_LOGW(TAG, "provisioning ignored empty api key for online setup");
+        ESP_LOGW(TAG, "%s", PROVISIONING_EMPTY_API_KEY_LOG);
         return false;
     }
     if (!is_weather_city_input_valid(weather_city)) {
-        ESP_LOGW(TAG, "provisioning ignored invalid weather city");
+        ESP_LOGW(TAG, "%s", PROVISIONING_INVALID_WEATHER_CITY_LOG);
         return false;
     }
-    ESP_LOGI(TAG, "provisioning saved ssid=%s pass_len=%u api_key=%s len=%u weather_city=%s city_len=%u",
+    ESP_LOGI(TAG, PROVISIONING_SAVED_FORMAT,
              ssid,
              (unsigned)strlen(pass),
              api_key[0] ? "set" : "empty",

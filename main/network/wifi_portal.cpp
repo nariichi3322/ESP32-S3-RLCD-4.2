@@ -34,10 +34,12 @@ constexpr uint16_t kCaptiveDnsPort = 53;
 constexpr uint32_t kCaptiveDnsTtlSeconds = 60;
 constexpr int kCaptiveDnsSocketTimeoutSec = 1;
 constexpr int kCaptiveDnsStopWaitAttempts = 15;
-constexpr TickType_t kCaptiveDnsStopWaitDelay = pdMS_TO_TICKS(100);
+constexpr uint32_t kCaptiveDnsStopWaitDelayMs = 100;
+constexpr TickType_t kCaptiveDnsStopWaitDelay = pdMS_TO_TICKS(kCaptiveDnsStopWaitDelayMs);
 constexpr uint32_t kCaptiveDnsTaskStack = 3072;
 constexpr UBaseType_t kCaptiveDnsTaskPriority = 3;
 constexpr BaseType_t kCaptiveDnsTaskCore = 0;
+constexpr const char *kCaptiveDnsTaskName = "captive_dns";
 constexpr uint8_t kSetupApChannel = 1;
 constexpr uint8_t kSetupApMaxConnections = 4;
 constexpr uint16_t kMaxListedApCount = 32;
@@ -67,6 +69,98 @@ constexpr const char *kPortalCacheNoStore = "no-store";
 constexpr const char *kPortalErrorNotEnoughMemory = "Not enough memory.";
 constexpr const char *kPortalErrorMissingQuery = "Missing query.";
 constexpr const char *kSetupApSsidFormat = "WeatherClock-%02X%02X";
+static_assert(kDnsHeaderSize > 0, "DNS header size must be positive");
+static_assert(kCaptiveDnsAnswerSize > 0, "captive DNS answer size must be positive");
+static_assert(kCaptiveDnsPacketSize >= kDnsHeaderSize + kCaptiveDnsAnswerSize,
+              "captive DNS packet must fit a header and answer");
+static_assert(kDnsFlagsOffset + 1 < kDnsHeaderSize, "DNS flags offset must fit header");
+static_assert(kDnsQuestionCountOffset + 1 < kDnsHeaderSize, "DNS question count offset must fit header");
+static_assert(kDnsAnswerCountOffset + 1 < kDnsHeaderSize, "DNS answer count offset must fit header");
+static_assert(kDnsAuthorityCountOffset + 1 < kDnsHeaderSize, "DNS authority count offset must fit header");
+static_assert(kDnsAdditionalCountOffset + 1 < kDnsHeaderSize, "DNS additional count offset must fit header");
+static_assert(kDnsIpv4AddressLength == 4, "DNS IPv4 address length must stay four bytes");
+static_assert(sizeof(kCaptiveDnsApIpOctets) == kDnsIpv4AddressLength,
+              "captive DNS AP IP octet table must match IPv4 length");
+static_assert(kDnsByteMask == 0xFF, "DNS byte mask must keep one byte");
+static_assert(kDnsByteShift8 == 8 && kDnsByteShift16 == 16 && kDnsByteShift24 == 24,
+              "DNS byte shifts must match network byte order packing");
+static_assert(kCaptiveDnsPort > 0, "captive DNS port must be positive");
+static_assert(kCaptiveDnsTtlSeconds > 0, "captive DNS TTL must be positive");
+static_assert(kCaptiveDnsSocketTimeoutSec > 0, "captive DNS socket timeout must be positive");
+static_assert(kCaptiveDnsStopWaitAttempts > 0, "captive DNS stop wait attempts must be positive");
+static_assert(kCaptiveDnsStopWaitDelayMs > 0, "captive DNS stop wait delay must be positive");
+static_assert(kCaptiveDnsStopWaitDelay > 0, "captive DNS stop wait delay must be positive");
+static_assert(kCaptiveDnsTaskStack > 0, "captive DNS task stack must be positive");
+static_assert(kCaptiveDnsTaskPriority > tskIDLE_PRIORITY, "captive DNS task priority must exceed idle");
+static_assert(kCaptiveDnsTaskCore >= 0, "captive DNS task core must be non-negative");
+static_assert(kSetupApChannel > 0, "setup AP channel must be positive");
+static_assert(kSetupApMaxConnections > 0, "setup AP max connections must be positive");
+static_assert(kMaxListedApCount > 0, "listed AP count must be positive");
+static_assert(kSetupHttpServerPort > 0, "setup HTTP server port must be positive");
+static_assert(kSetupHttpServerStackSize > 0, "setup HTTP server stack must be positive");
+static_assert(kPortalEscapedSsidSize > kPortalSubmitSsidFieldSize,
+              "escaped SSID buffer must exceed submitted SSID field size");
+static_assert(kPortalEscapedCitySize > kPortalWeatherCityNameSize,
+              "escaped city buffer must exceed weather city name buffer");
+static_assert(kPortalRootHtmlSize > kPortalSaveResultHtmlSize,
+              "portal root HTML buffer must exceed save result buffer");
+static_assert(kPortalRootHtmlSize > kPortalOfflineResultHtmlSize,
+              "portal root HTML buffer must exceed offline result buffer");
+static_assert(kPortalRequestBufferSize > kPortalSubmitSsidFieldSize,
+              "portal request buffer must exceed submitted SSID field size");
+static_assert(kPortalWeatherCityIdSize > 1, "portal weather city id buffer must fit text and NUL");
+static_assert(kPortalWeatherCityNameSize > 1, "portal weather city name buffer must fit text and NUL");
+static_assert(kPortalSaveWifiConnectWaitMs > 0, "portal save Wi-Fi wait must be positive");
+static_assert(kCaptiveDnsTaskName[0] != '\0', "captive DNS task name must be non-empty");
+static_assert(kPortalHtmlContentType[0] != '\0', "portal HTML content type must be non-empty");
+static_assert(kSetupApSsidFormat[0] != '\0', "setup AP SSID format must be non-empty");
+#define CAPTIVE_DNS_SOCKET_FAILED_LOG "captive dns socket failed"
+#define CAPTIVE_DNS_BIND_FAILED_LOG "captive dns bind failed"
+#define CAPTIVE_DNS_STARTED_LOG "captive dns started"
+#define CAPTIVE_DNS_STOPPED_LOG "captive dns stopped"
+#define CAPTIVE_DHCPS_STOP_FAILED_FORMAT "dhcps stop before captive setup failed: %s"
+#define CAPTIVE_DHCPS_DNS_OPTION_FAILED_FORMAT "dhcps dns option failed: %s"
+#define CAPTIVE_AP_DNS_SETUP_FAILED_FORMAT "ap dns setup failed: %s"
+#define CAPTIVE_DHCPS_URI_OPTION_FAILED_FORMAT "dhcps captive uri option failed: %s"
+#define CAPTIVE_DHCPS_RESTART_FAILED_FORMAT "dhcps restart after captive setup failed: %s"
+#define CAPTIVE_DNS_TASK_STILL_STOPPING_LOG "previous captive dns task still stopping"
+#define CAPTIVE_DNS_TASK_START_FAILED_LOG "captive dns task start failed"
+#define SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG "setup portal running without captive dns"
+#define PORTAL_HTTP_SERVER_START_FAILED_FORMAT "http server start failed: %s"
+#define PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT "http uri register failed: %s"
+#define PORTAL_HTML_APPEND_FAILED_LOG "setup html append failed"
+#define PORTAL_HTML_TRUNCATED_FORMAT "setup html truncated buffer=%u"
+#define WIFI_START_SKIPPED_OFFLINE_LOG "wifi start skipped in offline mode"
+#define WIFI_STA_ONLY_MODE_FAILED_FORMAT "wifi sta-only mode failed: %s"
+#define WIFI_POWER_SAVE_SETUP_FAILED_FORMAT "wifi power save setup failed: %s"
+#define WIFI_APSTA_MODE_FAILED_FORMAT "wifi apsta mode failed: %s"
+#define WIFI_SOFTAP_CONFIG_FAILED_FORMAT "wifi softap config failed: %s"
+#define WIFI_SETUP_POWER_SAVE_DISABLE_FAILED_FORMAT "wifi setup power save disable failed: %s"
+#define WIFI_SETUP_AP_ACTIVE_FORMAT "setup AP active ssid=%s"
+#define WIFI_SET_MODE_FAILED_FORMAT "wifi set mode failed: %s"
+#define WIFI_START_FAILED_FORMAT "wifi start failed: %s"
+#define WIFI_STOP_SKIPPED_OTA_LOG "wifi stop skipped during OTA"
+#define WIFI_DISCONNECT_DURING_STOP_FAILED_FORMAT "wifi disconnect during stop failed: %s"
+#define WIFI_STOP_FAILED_FORMAT "wifi stop failed: %s"
+#define WIFI_RADIO_OFF_LOG "wifi radio off"
+#define WIFI_STA_CONFIG_FAILED_FORMAT "wifi sta config failed: %s"
+#define WIFI_CONNECT_START_FAILED_FORMAT "wifi connect failed to start: %s"
+#define MANUAL_WEATHER_CITY_VALIDATED_FORMAT "manual weather city validated: %s id=%s"
+#define MANUAL_WEATHER_CITY_VALIDATION_FAILED_LOG "manual weather city validation failed, restoring auto location"
+#define MANUAL_WEATHER_CITY_VALIDATION_DEFERRED_LOG "manual weather city validation deferred after network/API error"
+#define WIFI_DISCONNECTED_FORMAT "wifi disconnected, reason=%d"
+#define WIFI_RECONNECT_START_FAILED_FORMAT "wifi reconnect failed to start: %s"
+#define WIFI_GOT_IP_EVENT_MISSING_LOG "got ip event missing data"
+#define WIFI_GOT_IP_FORMAT "got ip: " IPSTR
+#define WIFI_MAC_READ_FAILED_FORMAT "wifi mac read failed: %s"
+#define WIFI_STA_NETIF_CREATE_FAILED_LOG "wifi sta netif create failed"
+#define WIFI_AP_NETIF_CREATE_FAILED_LOG "wifi ap netif create failed"
+#define WIFI_INIT_FAILED_FORMAT "wifi init failed: %s"
+#define WIFI_STORAGE_SETUP_FAILED_FORMAT "wifi storage setup failed: %s"
+#define WIFI_EVENT_HANDLER_REGISTER_FAILED_FORMAT "wifi event handler register failed: %s"
+#define WIFI_IP_EVENT_HANDLER_REGISTER_FAILED_FORMAT "ip event handler register failed: %s"
+#define WIFI_INITIAL_MODE_SETUP_FAILED_FORMAT "wifi initial mode setup failed: %s"
+#define WIFI_INITIAL_SOFTAP_SETUP_FAILED_FORMAT "wifi initial softap setup failed: %s"
 constexpr const char *kPortalHtmlHeadPrefix =
     "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
 
@@ -99,6 +193,11 @@ public:
     uint16_t count() const
     {
         return count_;
+    }
+
+    explicit operator bool() const
+    {
+        return records_ != nullptr;
     }
 
     void set_count(uint16_t count)
@@ -136,6 +235,11 @@ public:
     size_t size() const
     {
         return size_;
+    }
+
+    explicit operator bool() const
+    {
+        return html_ != nullptr;
     }
 
 private:
@@ -227,7 +331,7 @@ void captive_dns_task(void *)
 {
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
     if (sock < 0) {
-        ESP_LOGW(TAG, "captive dns socket failed");
+        ESP_LOGW(TAG, CAPTIVE_DNS_SOCKET_FAILED_LOG);
         s_captive_dns_task_handle = nullptr;
         vTaskDelete(nullptr);
         return;
@@ -242,14 +346,14 @@ void captive_dns_task(void *)
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = htons(kCaptiveDnsPort);
     if (bind(sock, (sockaddr *)&addr, sizeof(addr)) != 0) {
-        ESP_LOGW(TAG, "captive dns bind failed");
+        ESP_LOGW(TAG, CAPTIVE_DNS_BIND_FAILED_LOG);
         close(sock);
         s_captive_dns_task_handle = nullptr;
         vTaskDelete(nullptr);
         return;
     }
 
-    ESP_LOGI(TAG, "captive dns started");
+    ESP_LOGI(TAG, CAPTIVE_DNS_STARTED_LOG);
     while (!s_captive_dns_stop) {
         uint8_t query[kCaptiveDnsPacketSize] = {};
         sockaddr_in from = {};
@@ -267,7 +371,7 @@ void captive_dns_task(void *)
 
     close(sock);
     s_captive_dns_task_handle = nullptr;
-    ESP_LOGI(TAG, "captive dns stopped");
+    ESP_LOGI(TAG, CAPTIVE_DNS_STOPPED_LOG);
     vTaskDelete(nullptr);
 }
 
@@ -278,7 +382,7 @@ void configure_captive_portal_dhcp()
     }
     esp_err_t err = esp_netif_dhcps_stop(s_ap_netif);
     if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) {
-        ESP_LOGW(TAG, "dhcps stop before captive setup failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, CAPTIVE_DHCPS_STOP_FAILED_FORMAT, esp_err_to_name(err));
     }
 
     uint8_t offer_dns = 1;
@@ -288,7 +392,7 @@ void configure_captive_portal_dhcp()
                                  &offer_dns,
                                  sizeof(offer_dns));
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "dhcps dns option failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, CAPTIVE_DHCPS_DNS_OPTION_FAILED_FORMAT, esp_err_to_name(err));
     }
 
     esp_netif_dns_info_t dns = {};
@@ -296,7 +400,7 @@ void configure_captive_portal_dhcp()
     dns.ip.u_addr.ip4.addr = ipaddr_addr(kSetupPortalIp);
     err = esp_netif_set_dns_info(s_ap_netif, ESP_NETIF_DNS_MAIN, &dns);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "ap dns setup failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, CAPTIVE_AP_DNS_SETUP_FAILED_FORMAT, esp_err_to_name(err));
     }
 
     err = esp_netif_dhcps_option(s_ap_netif,
@@ -305,12 +409,12 @@ void configure_captive_portal_dhcp()
                                  s_captive_portal_uri,
                                  strlen(s_captive_portal_uri));
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "dhcps captive uri option failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, CAPTIVE_DHCPS_URI_OPTION_FAILED_FORMAT, esp_err_to_name(err));
     }
 
     err = esp_netif_dhcps_start(s_ap_netif);
     if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
-        ESP_LOGW(TAG, "dhcps restart after captive setup failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, CAPTIVE_DHCPS_RESTART_FAILED_FORMAT, esp_err_to_name(err));
     }
 }
 } // namespace
@@ -331,10 +435,10 @@ void html_append(char *html, size_t html_len, const char *fmt, ...)
     va_end(args);
     if (written < 0) {
         html[used] = '\0';
-        ESP_LOGW(TAG, "setup html append failed");
+        ESP_LOGW(TAG, PORTAL_HTML_APPEND_FAILED_LOG);
     } else if (written >= (int)(html_len - used)) {
         html[html_len - 1] = '\0';
-        ESP_LOGW(TAG, "setup html truncated buffer=%u", (unsigned)html_len);
+        ESP_LOGW(TAG, PORTAL_HTML_TRUNCATED_FORMAT, (unsigned)html_len);
     }
 }
 
@@ -427,7 +531,7 @@ void append_wifi_scan_list(char *html, size_t html_len)
             max_records = kMaxListedApCount;
         }
         WifiScanRecords records(max_records);
-        if (records.data() == nullptr) {
+        if (!records) {
             html_append(html, html_len, "<p class='muted'>Not enough memory to list Wi-Fi.</p>");
             html_append(html, html_len, kPortalSectionCloseHtml);
             return;
@@ -466,14 +570,14 @@ bool apply_station_config(bool reconnect)
     sta_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
     esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &sta_config);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "wifi sta config failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_STA_CONFIG_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
     if (reconnect) {
         esp_wifi_disconnect();
         err = esp_wifi_connect();
         if (err != ESP_OK && err != ESP_ERR_WIFI_CONN) {
-            ESP_LOGW(TAG, "wifi connect failed to start: %s", esp_err_to_name(err));
+            ESP_LOGW(TAG, WIFI_CONNECT_START_FAILED_FORMAT, esp_err_to_name(err));
             return false;
         }
     }
@@ -497,7 +601,7 @@ esp_err_t root_get_handler(httpd_req_t *req)
     html_escape(g_wifi_ssid, safe_ssid, sizeof(safe_ssid));
     html_escape(g_manual_weather_city, safe_weather_city, sizeof(safe_weather_city));
     PortalHtmlBuffer html(kPortalRootHtmlSize);
-    if (html.data() == nullptr) {
+    if (!html) {
         return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
     }
     html_append(html.data(), html.size(),
@@ -548,15 +652,15 @@ static ManualWeatherCityValidationResult validate_saved_manual_weather_city()
                                                                   city_name,
                                                                   sizeof(city_name));
     if (status == kQweatherCityLookupOk) {
-        ESP_LOGI(TAG, "manual weather city validated: %s id=%s", city_name, city_id);
+        ESP_LOGI(TAG, MANUAL_WEATHER_CITY_VALIDATED_FORMAT, city_name, city_id);
         return kManualWeatherCityValidationOk;
     }
     if (status == kQweatherCityLookupNotFound) {
-        ESP_LOGW(TAG, "manual weather city validation failed, restoring auto location");
+        ESP_LOGW(TAG, MANUAL_WEATHER_CITY_VALIDATION_FAILED_LOG);
         (void)clear_manual_weather_city();
         return kManualWeatherCityValidationInvalid;
     }
-    ESP_LOGW(TAG, "manual weather city validation deferred after network/API error");
+    ESP_LOGW(TAG, MANUAL_WEATHER_CITY_VALIDATION_DEFERRED_LOG);
     return kManualWeatherCityValidationDeferred;
 }
 
@@ -699,6 +803,15 @@ esp_err_t register_http_handler(httpd_handle_t server, const char *uri, httpd_me
     return httpd_register_uri_handler(server, &route);
 }
 
+esp_err_t register_http_handler_if_ok(esp_err_t previous,
+                                      httpd_handle_t server,
+                                      const char *uri,
+                                      httpd_method_t method,
+                                      esp_err_t (*handler)(httpd_req_t *))
+{
+    return previous == ESP_OK ? register_http_handler(server, uri, method, handler) : previous;
+}
+
 bool start_captive_dns_server()
 {
     if (s_captive_dns_task_handle) {
@@ -709,13 +822,13 @@ bool start_captive_dns_server()
             vTaskDelay(kCaptiveDnsStopWaitDelay);
         }
         if (s_captive_dns_task_handle) {
-            ESP_LOGW(TAG, "previous captive dns task still stopping");
+            ESP_LOGW(TAG, CAPTIVE_DNS_TASK_STILL_STOPPING_LOG);
             return false;
         }
     }
     s_captive_dns_stop = false;
     BaseType_t ok = xTaskCreatePinnedToCore(captive_dns_task,
-                                            "captive_dns",
+                                            kCaptiveDnsTaskName,
                                             kCaptiveDnsTaskStack,
                                             nullptr,
                                             kCaptiveDnsTaskPriority,
@@ -723,7 +836,7 @@ bool start_captive_dns_server()
                                             kCaptiveDnsTaskCore);
     if (ok != pdPASS) {
         s_captive_dns_task_handle = nullptr;
-        ESP_LOGW(TAG, "captive dns task start failed");
+        ESP_LOGW(TAG, CAPTIVE_DNS_TASK_START_FAILED_LOG);
         return false;
     }
     return true;
@@ -743,7 +856,7 @@ bool start_http_server()
     if (g_http_server) {
         g_setup_portal_active = true;
         if (!start_captive_dns_server()) {
-            ESP_LOGW(TAG, "setup portal running without captive dns");
+            ESP_LOGW(TAG, SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG);
         }
         return true;
     }
@@ -756,38 +869,26 @@ bool start_http_server()
     if (err != ESP_OK) {
         g_http_server = nullptr;
         g_setup_portal_active = false;
-        ESP_LOGW(TAG, "http server start failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, PORTAL_HTTP_SERVER_START_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
 
-    err = register_http_handler(g_http_server, "/", HTTP_GET, root_get_handler);
-    if (err == ESP_OK) {
-        err = register_http_handler(g_http_server, "/save", HTTP_POST, save_post_handler);
-    }
-    if (err == ESP_OK) {
-        err = register_http_handler(g_http_server, "/save", HTTP_GET, save_get_handler);
-    }
-    if (err == ESP_OK) {
-        err = register_http_handler(g_http_server, "/favicon.ico", HTTP_GET, empty_asset_handler);
-    }
-    if (err == ESP_OK) {
-        err = register_http_handler(g_http_server, "/apple-touch-icon.png", HTTP_GET, empty_asset_handler);
-    }
-    if (err == ESP_OK) {
-        err = register_http_handler(g_http_server, "/apple-touch-icon-precomposed.png", HTTP_GET, empty_asset_handler);
-    }
-    if (err == ESP_OK) {
-        err = register_http_handler(g_http_server, "/*", HTTP_GET, captive_portal_handler);
-    }
+    err = register_http_handler_if_ok(err, g_http_server, "/", HTTP_GET, root_get_handler);
+    err = register_http_handler_if_ok(err, g_http_server, "/save", HTTP_POST, save_post_handler);
+    err = register_http_handler_if_ok(err, g_http_server, "/save", HTTP_GET, save_get_handler);
+    err = register_http_handler_if_ok(err, g_http_server, "/favicon.ico", HTTP_GET, empty_asset_handler);
+    err = register_http_handler_if_ok(err, g_http_server, "/apple-touch-icon.png", HTTP_GET, empty_asset_handler);
+    err = register_http_handler_if_ok(err, g_http_server, "/apple-touch-icon-precomposed.png", HTTP_GET, empty_asset_handler);
+    err = register_http_handler_if_ok(err, g_http_server, "/*", HTTP_GET, captive_portal_handler);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "http uri register failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT, esp_err_to_name(err));
         httpd_stop(g_http_server);
         g_http_server = nullptr;
         g_setup_portal_active = false;
         return false;
     }
     if (!start_captive_dns_server()) {
-        ESP_LOGW(TAG, "setup portal running without captive dns");
+        ESP_LOGW(TAG, SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG);
     }
     g_setup_portal_active = true;
     return true;
@@ -796,7 +897,7 @@ bool start_http_server()
 bool start_wifi_radio(bool enable_setup_portal)
 {
     if (g_offline_mode_ui_enabled && !enable_setup_portal) {
-        ESP_LOGI(TAG, "wifi start skipped in offline mode");
+        ESP_LOGI(TAG, WIFI_START_SKIPPED_OFFLINE_LOG);
         return false;
     }
     bool entering_setup_portal = enable_setup_portal && !g_setup_portal_active;
@@ -805,27 +906,27 @@ bool start_wifi_radio(bool enable_setup_portal)
             stop_http_server();
             esp_err_t mode_err = esp_wifi_set_mode(WIFI_MODE_STA);
             if (mode_err != ESP_OK) {
-                ESP_LOGW(TAG, "wifi sta-only mode failed: %s", esp_err_to_name(mode_err));
+                ESP_LOGW(TAG, WIFI_STA_ONLY_MODE_FAILED_FORMAT, esp_err_to_name(mode_err));
                 return false;
             }
             esp_err_t ps_err = esp_wifi_set_ps(WIFI_PS_MAX_MODEM);
             if (ps_err != ESP_OK) {
-                ESP_LOGW(TAG, "wifi power save setup failed: %s", esp_err_to_name(ps_err));
+                ESP_LOGW(TAG, WIFI_POWER_SAVE_SETUP_FAILED_FORMAT, esp_err_to_name(ps_err));
             }
         } else {
             esp_err_t mode_err = esp_wifi_set_mode(WIFI_MODE_APSTA);
             if (mode_err != ESP_OK) {
-                ESP_LOGW(TAG, "wifi apsta mode failed: %s", esp_err_to_name(mode_err));
+                ESP_LOGW(TAG, WIFI_APSTA_MODE_FAILED_FORMAT, esp_err_to_name(mode_err));
                 return false;
             }
             esp_err_t ap_err = configure_softap();
             if (ap_err != ESP_OK) {
-                ESP_LOGW(TAG, "wifi softap config failed: %s", esp_err_to_name(ap_err));
+                ESP_LOGW(TAG, WIFI_SOFTAP_CONFIG_FAILED_FORMAT, esp_err_to_name(ap_err));
                 return false;
             }
             esp_err_t ps_err = esp_wifi_set_ps(WIFI_PS_NONE);
             if (ps_err != ESP_OK) {
-                ESP_LOGW(TAG, "wifi setup power save disable failed: %s", esp_err_to_name(ps_err));
+                ESP_LOGW(TAG, WIFI_SETUP_POWER_SAVE_DISABLE_FAILED_FORMAT, esp_err_to_name(ps_err));
             }
             if (!g_have_wifi_creds) {
                 (void)esp_wifi_disconnect();
@@ -837,7 +938,7 @@ bool start_wifi_radio(bool enable_setup_portal)
             if (!start_http_server()) {
                 return false;
             }
-            ESP_LOGI(TAG, "setup AP active ssid=%s", g_ap_ssid);
+            ESP_LOGI(TAG, WIFI_SETUP_AP_ACTIVE_FORMAT, g_ap_ssid);
         }
         if (g_have_wifi_creds) {
             (void)apply_station_config(true);
@@ -851,13 +952,13 @@ bool start_wifi_radio(bool enable_setup_portal)
     g_wifi_stop_requested = false;
     esp_err_t err = esp_wifi_set_mode(enable_setup_portal ? WIFI_MODE_APSTA : WIFI_MODE_STA);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "wifi set mode failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_SET_MODE_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
     if (enable_setup_portal) {
         err = configure_softap();
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "wifi softap config failed: %s", esp_err_to_name(err));
+            ESP_LOGW(TAG, WIFI_SOFTAP_CONFIG_FAILED_FORMAT, esp_err_to_name(err));
             return false;
         }
     }
@@ -866,12 +967,12 @@ bool start_wifi_radio(bool enable_setup_portal)
     }
     err = esp_wifi_start();
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "wifi start failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_START_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
     esp_err_t ps_err = esp_wifi_set_ps(enable_setup_portal ? WIFI_PS_NONE : WIFI_PS_MAX_MODEM);
     if (ps_err != ESP_OK) {
-        ESP_LOGW(TAG, "wifi power save setup failed: %s", esp_err_to_name(ps_err));
+        ESP_LOGW(TAG, WIFI_POWER_SAVE_SETUP_FAILED_FORMAT, esp_err_to_name(ps_err));
     }
     if (enable_setup_portal) {
         if (!start_http_server()) {
@@ -883,7 +984,7 @@ bool start_wifi_radio(bool enable_setup_portal)
         if (entering_setup_portal) {
             request_setup_prompt_once();
         }
-        ESP_LOGI(TAG, "setup AP active ssid=%s", g_ap_ssid);
+        ESP_LOGI(TAG, WIFI_SETUP_AP_ACTIVE_FORMAT, g_ap_ssid);
     }
     g_wifi_radio_on = true;
     return true;
@@ -895,7 +996,7 @@ void stop_wifi_radio(bool force_setup_portal)
         return;
     }
     if ((g_ota_state == kOtaChecking || g_ota_state == kOtaUpdating) && !force_setup_portal) {
-        ESP_LOGI(TAG, "wifi stop skipped during OTA");
+        ESP_LOGI(TAG, WIFI_STOP_SKIPPED_OTA_LOG);
         return;
     }
     if (g_setup_portal_active && !force_setup_portal) {
@@ -908,18 +1009,18 @@ void stop_wifi_radio(bool force_setup_portal)
     g_wifi_stop_requested = true;
     esp_err_t err = esp_wifi_disconnect();
     if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
-        ESP_LOGW(TAG, "wifi disconnect during stop failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_DISCONNECT_DURING_STOP_FAILED_FORMAT, esp_err_to_name(err));
     }
     err = esp_wifi_stop();
     if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
-        ESP_LOGW(TAG, "wifi stop failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_STOP_FAILED_FORMAT, esp_err_to_name(err));
         g_wifi_stop_requested = false;
     } else {
         g_wifi_radio_on = false;
         g_wifi_stop_requested = false;
         xEventGroupClearBits(g_app_events, kWifiConnectedBit);
         g_sta_ip[0] = '\0';
-        ESP_LOGI(TAG, "wifi radio off");
+        ESP_LOGI(TAG, WIFI_RADIO_OFF_LOG);
     }
 }
 
@@ -931,21 +1032,21 @@ void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, v
         wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
         g_last_wifi_disconnect_reason = event ? event->reason : -1;
         g_sta_ip[0] = '\0';
-        ESP_LOGW(TAG, "wifi disconnected, reason=%d", event ? event->reason : -1);
+        ESP_LOGW(TAG, WIFI_DISCONNECTED_FORMAT, event ? event->reason : -1);
         xEventGroupClearBits(g_app_events, kWifiConnectedBit);
         if (g_have_wifi_creds && g_wifi_radio_on && !g_wifi_stop_requested) {
             esp_err_t err = esp_wifi_connect();
             if (err != ESP_OK && err != ESP_ERR_WIFI_CONN) {
-                ESP_LOGW(TAG, "wifi reconnect failed to start: %s", esp_err_to_name(err));
+                ESP_LOGW(TAG, WIFI_RECONNECT_START_FAILED_FORMAT, esp_err_to_name(err));
             }
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         if (!event) {
-            ESP_LOGW(TAG, "got ip event missing data");
+            ESP_LOGW(TAG, WIFI_GOT_IP_EVENT_MISSING_LOG);
             return;
         }
-        ESP_LOGI(TAG, "got ip: " IPSTR, IP2STR(&event->ip_info.ip));
+        ESP_LOGI(TAG, WIFI_GOT_IP_FORMAT, IP2STR(&event->ip_info.ip));
         snprintf(g_sta_ip, sizeof(g_sta_ip), IPSTR, IP2STR(&event->ip_info.ip));
         xEventGroupSetBits(g_app_events, kWifiConnectedBit);
     }
@@ -956,17 +1057,17 @@ void init_wifi()
     uint8_t mac[6] = {};
     esp_err_t err = esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "wifi mac read failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_MAC_READ_FAILED_FORMAT, esp_err_to_name(err));
     }
     snprintf(g_ap_ssid, sizeof(g_ap_ssid), kSetupApSsidFormat, mac[4], mac[5]);
 
     if (!esp_netif_create_default_wifi_sta()) {
-        ESP_LOGW(TAG, "wifi sta netif create failed");
+        ESP_LOGW(TAG, WIFI_STA_NETIF_CREATE_FAILED_LOG);
         return;
     }
     s_ap_netif = esp_netif_create_default_wifi_ap();
     if (!s_ap_netif) {
-        ESP_LOGW(TAG, "wifi ap netif create failed");
+        ESP_LOGW(TAG, WIFI_AP_NETIF_CREATE_FAILED_LOG);
         return;
     }
     configure_captive_portal_dhcp();
@@ -974,33 +1075,33 @@ void init_wifi()
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     err = esp_wifi_init(&cfg);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "wifi init failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_INIT_FAILED_FORMAT, esp_err_to_name(err));
         return;
     }
     err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "wifi storage setup failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_STORAGE_SETUP_FAILED_FORMAT, esp_err_to_name(err));
         return;
     }
     err = esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event_handler, nullptr, nullptr);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "wifi event handler register failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_EVENT_HANDLER_REGISTER_FAILED_FORMAT, esp_err_to_name(err));
         return;
     }
     err = esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event_handler, nullptr, nullptr);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "ip event handler register failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_IP_EVENT_HANDLER_REGISTER_FAILED_FORMAT, esp_err_to_name(err));
         return;
     }
 
     err = esp_wifi_set_mode(WIFI_MODE_APSTA);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "wifi initial mode setup failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_INITIAL_MODE_SETUP_FAILED_FORMAT, esp_err_to_name(err));
         return;
     }
     err = configure_softap();
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "wifi initial softap setup failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, WIFI_INITIAL_SOFTAP_SETUP_FAILED_FORMAT, esp_err_to_name(err));
         return;
     }
 

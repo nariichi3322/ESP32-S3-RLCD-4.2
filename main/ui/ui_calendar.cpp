@@ -4,6 +4,8 @@
 #include "calendar_lunar.h"
 #include "sensor_services.h"
 
+#define CALENDAR_CANVAS_CREATE_FAILED_LOG "calendar canvas create failed"
+
 static constexpr int kCalendarCanvasW = 364;
 static constexpr int kCalendarCanvasH = 228;
 static constexpr int kCalendarCanvasX = 18;
@@ -34,6 +36,7 @@ static constexpr int kCalendarSubTextY = 20;
 static constexpr int kCalendarSubTextH = 12;
 static constexpr int kTmYearOffset = 1900;
 static constexpr int kTmMonthOffset = 1;
+static constexpr int kMonthsPerYear = 12;
 static constexpr int kCalendarDayTextSize = 4; // "31" plus terminator, with one byte spare.
 static constexpr const char *kCalendarWeekdays[kCalendarWeekdayCount] = {"日", "一", "二", "三", "四", "五", "六"};
 
@@ -138,6 +141,11 @@ static void format_calendar_day_text(char *out, size_t out_len, int day)
         return;
     }
     out[0] = '\0';
+}
+
+static int calendar_month_key(const struct tm &local)
+{
+    return (local.tm_year + kTmYearOffset) * kMonthsPerYear + local.tm_mon;
 }
 
 static void draw_calendar_grid(const struct tm &local)
@@ -266,7 +274,7 @@ bool update_calendar_page(const struct tm &local)
 {
     build_calendar_page();
     bool changed = false;
-    int month_key = (local.tm_year + kTmYearOffset) * 12 + local.tm_mon;
+    int month_key = calendar_month_key(local);
     if (month_key != g_last_calendar_drawn_month || local.tm_mday != g_last_calendar_drawn_day) {
         g_last_calendar_drawn_month = month_key;
         g_last_calendar_drawn_day = local.tm_mday;
@@ -300,7 +308,7 @@ void build_calendar_page()
     }
     g_calendar_canvas = lv_canvas_create(screen);
     if (!g_calendar_canvas) {
-        ESP_LOGW(TAG, "calendar canvas create failed");
+        ESP_LOGW(TAG, "%s", CALENDAR_CANVAS_CREATE_FAILED_LOG);
     } else {
         lv_obj_clear_flag(g_calendar_canvas, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_pos(g_calendar_canvas, kCalendarCanvasX, kCalendarCanvasY);
