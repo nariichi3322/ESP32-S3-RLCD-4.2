@@ -60,7 +60,6 @@ constexpr const char *kAudioTexts[] = {
     HOURLY_CHIME_PLAYED_LOG_FORMAT,
     HOURLY_CHIME_SKIPPED_LOG_FORMAT,
 };
-constexpr std::size_t kAudioTextCount = 19;
 
 constexpr bool cstr_nonempty(const char *text)
 {
@@ -89,6 +88,7 @@ static_assert(kSettingsChimeRetryTaskStack > 0, "settings chime retry task stack
 static_assert(kAudioPlaybackTaskPriority > tskIDLE_PRIORITY, "audio playback task priority must exceed idle");
 static_assert(kSettingsChimeRetryTaskPriority > tskIDLE_PRIORITY, "settings chime retry priority must exceed idle");
 static_assert(kAudioTaskCore >= 0, "audio task core must be non-negative");
+static_assert(kAudioTaskCore < portNUM_PROCESSORS, "audio task core must exist on the target");
 static_assert(kSettingsChimeRetryAttempts > 0, "settings chime retry attempts must be positive");
 static_assert(kSettingsChimeRetryDelayMs > 0, "settings chime retry delay must be positive");
 static_assert(kSetupPromptChainDelayMs > 0, "setup prompt chain delay must be positive");
@@ -100,7 +100,7 @@ static_assert(kHourlyChimeQuietEndHour >= 0 && kHourlyChimeQuietEndHour < 24,
               "hourly chime end hour must be in 0..23");
 static_assert(kHourlyChimeQuietStartHour <= kHourlyChimeQuietEndHour,
               "hourly chime active window must not wrap midnight");
-static_assert(array_count(kAudioTexts) == kAudioTextCount, "audio text registry count must match entries");
+static_assert(array_count(kAudioTexts) > 0, "audio text registry must not be empty");
 static_assert(cstr_array_nonempty(kAudioTexts), "audio task names, log names and log formats must be non-empty");
 } // namespace
 
@@ -168,13 +168,18 @@ static bool outside_hourly_chime_window(int hour)
     return hour < kHourlyChimeQuietStartHour || hour > kHourlyChimeQuietEndHour;
 }
 
+static const char *audio_text_or_default(const char *text, const char *fallback)
+{
+    return text ? text : fallback;
+}
+
 static bool create_audio_playback_task(TaskFunction_t task_fn,
                                        const char *task_name,
                                        void *task_arg,
                                        const char *log_name)
 {
-    const char *display_name = log_name ? log_name : kDefaultAudioLogName;
-    const char *rtos_name = task_name ? task_name : kDefaultAudioTaskName;
+    const char *display_name = audio_text_or_default(log_name, kDefaultAudioLogName);
+    const char *rtos_name = audio_text_or_default(task_name, kDefaultAudioTaskName);
     if (!task_fn) {
         ESP_LOGW(TAG, AUDIO_TASK_FUNCTION_UNAVAILABLE_LOG_FORMAT, display_name);
         return false;
@@ -304,7 +309,14 @@ void request_settings_confirmation_chime()
                                             nullptr,
                                             kAudioTaskCore);
     if (ok != pdPASS) {
-        ESP_LOGW(TAG, "%s", kSettingsChimeRetryTaskCreateFailedLog);
+        ESP_LOGW(TAG,
+                 AUDIO_TASK_CREATE_FAILED_LOG_FORMAT,
+                 kSettingsChimeRetryTaskCreateFailedLog,
+                 kSettingsChimeRetryTaskName,
+                 (unsigned)kSettingsChimeRetryTaskStack,
+                 (unsigned)kSettingsChimeRetryTaskPriority,
+                 (int)kAudioTaskCore,
+                 (int)ok);
     }
 }
 

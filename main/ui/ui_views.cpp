@@ -35,12 +35,14 @@ constexpr const char *kUiWeatherTempFormat = "%s℃";
 constexpr const char *kUiWeatherHumidityFormat = "%s%%";
 constexpr uint32_t kDisplayFullReasonSingleWide = 1U << 0;
 constexpr uint32_t kDisplayFullReasonTooManyRanges = 1U << 1;
+constexpr uint32_t kDisplayFullReasonCoveredWide = 1U << 2;
 constexpr uint16_t kRlcdBlackThreshold = 0xC618;
 #define UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT "weather clock visible with %s weather, requesting sync"
 #define UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT "settings manual sync timeout: op=%d"
 #define UI_SETTINGS_TIMEOUT_RETURN_LOG "settings timeout, returning to clock"
 #define UI_GALLERY_SAYING_SYNC_REQUEST_LOG "gallery visible with missing/stale daily saying, requesting sync"
 #define DISPLAY_FLUSH_DIAG_LOG_FORMAT "display flush diag: page=%d partial=%lu ranges=%lu full=%lu reason_single=%lu reason_covered=%lu reason_ranges=%lu"
+#define DISPLAY_FULL_REASON_OVERLAP_ASSERT "display full-refresh reason bits must not overlap"
 
 constexpr const char *kUiFormatTexts[] = {
     kUiSensorTempFormat,
@@ -50,7 +52,6 @@ constexpr const char *kUiFormatTexts[] = {
     kUiWeatherTempFormat,
     kUiWeatherHumidityFormat,
 };
-constexpr size_t kUiFormatTextCount = 6;
 constexpr const char *kUiLogTexts[] = {
     UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT,
     UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT,
@@ -58,11 +59,22 @@ constexpr const char *kUiLogTexts[] = {
     UI_GALLERY_SAYING_SYNC_REQUEST_LOG,
     DISPLAY_FLUSH_DIAG_LOG_FORMAT,
 };
-constexpr size_t kUiLogTextCount = 5;
 
 constexpr bool cstr_nonempty(const char *text)
 {
     return text && text[0] != '\0';
+}
+
+constexpr size_t cstr_len(const char *text)
+{
+    size_t len = 0;
+    if (!text) {
+        return 0;
+    }
+    while (text[len] != '\0') {
+        ++len;
+    }
+    return len;
 }
 
 template <typename T, size_t N>
@@ -96,21 +108,32 @@ static_assert(kUiSecondsPerHour == kUiSecondsPerMinute * kUiMinutesPerHour,
               "UI seconds-per-hour constant must match minute/hour constants");
 static_assert(kUiSecondsPerDay == kUiSecondsPerHour * kUiHoursPerDay,
               "UI seconds-per-day constant must match hour/day constants");
+static_assert(kUiBoundaryWakeSlackMs >= 0, "UI boundary wake slack must be non-negative");
 static_assert(kUiNextSecondDelayMinMs > 0, "next-second delay minimum must be positive");
 static_assert(kUiNextSecondDelayMaxMs >= kUiMsPerSecond,
               "next-second delay maximum must cover one second");
+static_assert(kUiNextSecondDelayMaxMs >= kUiMsPerSecond + kUiBoundaryWakeSlackMs,
+              "next-second delay maximum must include boundary wake slack");
 static_assert(kUiSensorValueTextSize > 1, "sensor status text buffer must fit text and NUL");
 static_assert(kUiWeatherCityTextSize > 1, "weather city status text buffer must fit text and NUL");
 static_assert(kUiWeatherValueTextSize > 1, "weather value status text buffer must fit text and NUL");
-static_assert(array_count(kUiFormatTexts) == kUiFormatTextCount,
-              "UI format text registry count must match entries");
-static_assert(array_count(kUiLogTexts) == kUiLogTextCount, "UI log text registry count must match entries");
+static_assert(cstr_len(kUiSensorTempPlaceholder) + 1 <= kUiSensorValueTextSize,
+              "sensor temperature placeholder must fit status text buffer");
+static_assert(cstr_len(kUiSensorHumidityPlaceholder) + 1 <= kUiSensorValueTextSize,
+              "sensor humidity placeholder must fit status text buffer");
+static_assert(array_count(kUiFormatTexts) > 0, "UI format text registry must not be empty");
+static_assert(array_count(kUiLogTexts) > 0, "UI log text registry must not be empty");
 static_assert(cstr_array_nonempty(kUiFormatTexts), "UI status format and placeholder texts must be non-empty");
 static_assert(cstr_array_nonempty(kUiLogTexts), "UI main-loop log texts must be non-empty");
 static_assert(kDisplayFullReasonSingleWide != 0, "display full-refresh single-wide reason bit must be nonzero");
 static_assert(kDisplayFullReasonTooManyRanges != 0, "display full-refresh range-count reason bit must be nonzero");
+static_assert(kDisplayFullReasonCoveredWide != 0, "display full-refresh covered-width reason bit must be nonzero");
 static_assert((kDisplayFullReasonSingleWide & kDisplayFullReasonTooManyRanges) == 0,
-              "display full-refresh reason bits must not overlap");
+              DISPLAY_FULL_REASON_OVERLAP_ASSERT);
+static_assert((kDisplayFullReasonSingleWide & kDisplayFullReasonCoveredWide) == 0,
+              DISPLAY_FULL_REASON_OVERLAP_ASSERT);
+static_assert((kDisplayFullReasonTooManyRanges & kDisplayFullReasonCoveredWide) == 0,
+              DISPLAY_FULL_REASON_OVERLAP_ASSERT);
 static_assert(kRlcdBlackThreshold > 0, "RLCD black threshold must be nonzero");
 
 void copy_ui_text(char *out, size_t out_len, const char *text)
@@ -946,6 +969,9 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
             covered_width += ranges[i].x2 - ranges[i].x1 + 1;
         }
         bool covered_wide = covered_width >= kDisplayPartialMaxWidth;
+        if (covered_wide) {
+            full_reason_mask |= kDisplayFullReasonCoveredWide;
+        }
         if (force_full_refresh || covered_wide) {
             ++full_cycles;
             if (full_reason_mask & kDisplayFullReasonSingleWide) {
@@ -954,7 +980,7 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
             if (full_reason_mask & kDisplayFullReasonTooManyRanges) {
                 ++full_too_many_ranges;
             }
-            if (covered_wide) {
+            if (full_reason_mask & kDisplayFullReasonCoveredWide) {
                 ++full_covered_wide;
             }
             g_display.RLCD_Display();

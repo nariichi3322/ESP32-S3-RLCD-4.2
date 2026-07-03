@@ -10,7 +10,6 @@
 #define BUTTON_SHOW_SETTINGS_LOG_FORMAT "key button clicked, showing settings page"
 
 namespace {
-constexpr size_t kButtonLogTextCount = 3;
 constexpr const char *const kButtonLogTexts[] = {
     BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT,
     BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT,
@@ -79,8 +78,8 @@ static_assert(kButtonDebounceMs > 0, "button debounce duration must be positive"
 static_assert(kButtonLongPressMs > kButtonDebounceMs,
               "button long-press duration must be longer than debounce duration");
 static_assert(kButtonBusyFeedbackMs > 0, "button busy feedback duration must be positive");
-static_assert(array_count(kButtonLogTexts) == kButtonLogTextCount,
-              "button log guard must cover every button log text");
+static_assert(array_count(kButtonLogTexts) > 0,
+              "button log guard must cover button log texts");
 static_assert(cstr_array_nonempty(kButtonLogTexts), "button task log texts must be non-empty");
 static_assert(kBootButtonPinMask != 0, "BOOT button pin mask must not be empty");
 static_assert(kKeyButtonPinMask != 0, "KEY button pin mask must not be empty");

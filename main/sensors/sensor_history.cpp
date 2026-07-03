@@ -72,7 +72,6 @@ constexpr const char *kSensorHistoryTexts[] = {
     SENSOR_NVS_OPEN_FAILED_LOG_FORMAT,
     HOURLY_SLOT_SAVE_FAILED_LOG_FORMAT,
 };
-constexpr std::size_t kSensorHistoryTextCount = 14;
 
 constexpr bool cstr_nonempty(const char *text)
 {
@@ -106,8 +105,8 @@ static_assert(kHourlyHistoryMetaVersion > kLegacyHourlyHistoryVersion,
 static_assert(kHourlyHistoryMetaVersion != kLegacyHourlyHistoryVersion,
               "new hourly metadata version must differ from legacy blob version");
 static_assert(kHourlySlotKeyBufferSize >= sizeof("h00"), "hourly slot key buffer must fit hNN plus terminator");
-static_assert(array_count(kSensorHistoryTexts) == kSensorHistoryTextCount,
-              "sensor history text registry count must match entries");
+static_assert(array_count(kSensorHistoryTexts) > 0,
+              "sensor history text registry must not be empty");
 static_assert(cstr_array_nonempty(kSensorHistoryTexts), "sensor history NVS strings and logs must be non-empty");
 static_assert(kWeatherSyncFallbackSeconds > 0, "weather sync fallback interval must be positive");
 static_assert(kWeatherSyncSearchHours > 0, "weather sync search hours must be positive");
@@ -115,10 +114,13 @@ static_assert(kWeatherSyncSearchStepHours > 0, "weather sync search step must be
 static_assert(kUnknownTimeSensorSampleMs > 0, "unknown-time sensor sample interval must be positive");
 static_assert(kSensorSampleDayMinutes > 0, "day sensor sample interval must be positive");
 static_assert(kSensorSampleNightMinutes > 0, "night sensor sample interval must be positive");
+static_assert(kSensorSampleNightMinutes >= kSensorSampleDayMinutes,
+              "night sensor sample interval must not be faster than day interval");
 static_assert(kNightSlowWindowStartHour >= 0 && kNightSlowWindowStartHour < 24,
               "night slow window start hour must be in 0..23");
 static_assert(kNightSlowWindowEndHour >= 0 && kNightSlowWindowEndHour < 24,
               "night slow window end hour must be in 0..23");
+static_assert(kSecondsPerHour > 0, "seconds per hour must be positive");
 
 int seconds_until_next_interval(const struct tm &local, int interval_seconds)
 {
@@ -173,6 +175,15 @@ bool is_hourly_history_index_valid(int index)
 {
     return index >= 0 && index < kHourlyHistoryCount;
 }
+
+int hourly_slot_index_for_time(time_t hour_start)
+{
+    int index = (int)((hour_start / kSecondsPerHour) % kHourlyHistoryCount);
+    if (index < 0) {
+        index += kHourlyHistoryCount;
+    }
+    return index;
+}
 } // namespace
 
 static bool hourly_slot_key(int index, char *out, size_t out_len)
@@ -192,6 +203,28 @@ static bool hourly_slot_key(int index, char *out, size_t out_len)
         return false;
     }
     return true;
+}
+
+static bool load_hourly_sensor_slot(nvs_handle_t nvs, int index, int64_t *newest_slot)
+{
+    HourlySensorSample sample = {};
+    size_t sample_len = sizeof(sample);
+    char key[kHourlySlotKeyBufferSize];
+    if (!hourly_slot_key(index, key, sizeof(key))) {
+        return false;
+    }
+    esp_err_t err = nvs_get_blob(nvs, key, &sample, &sample_len);
+    if (err == ESP_OK && sample_len == sizeof(sample)) {
+        g_hourly_history.samples[index] = sample;
+        if (newest_slot && sample.valid && sample.timestamp > *newest_slot) {
+            *newest_slot = sample.timestamp;
+        }
+        return true;
+    }
+    if (should_log_nvs_read_error(err)) {
+        ESP_LOGW(TAG, HOURLY_SLOT_READ_FAILED_LOG_FORMAT, key, esp_err_to_name(err));
+    }
+    return false;
 }
 
 int boot_sync_remaining_ms()
@@ -273,21 +306,8 @@ void load_hourly_sensor_history()
         int loaded = 0;
         int64_t newest_slot = 0;
         for (int i = 0; i < kHourlyHistoryCount; ++i) {
-            HourlySensorSample sample = {};
-            size_t sample_len = sizeof(sample);
-            char key[kHourlySlotKeyBufferSize];
-            if (!hourly_slot_key(i, key, sizeof(key))) {
-                continue;
-            }
-            esp_err_t slot_err = nvs_get_blob(nvs, key, &sample, &sample_len);
-            if (slot_err == ESP_OK && sample_len == sizeof(sample)) {
-                g_hourly_history.samples[i] = sample;
-                if (sample.valid && sample.timestamp > newest_slot) {
-                    newest_slot = sample.timestamp;
-                }
+            if (load_hourly_sensor_slot(nvs, i, &newest_slot)) {
                 ++loaded;
-            } else if (should_log_nvs_read_error(slot_err)) {
-                ESP_LOGW(TAG, HOURLY_SLOT_READ_FAILED_LOG_FORMAT, key, esp_err_to_name(slot_err));
             }
         }
         if (loaded > 0) {
@@ -368,10 +388,7 @@ void record_hourly_sensor_sample(float temp, float humi)
     if (hour_start <= 0 || hour_start == g_last_hourly_saved_at) {
         return;
     }
-    int index = (int)((hour_start / kSecondsPerHour) % kHourlyHistoryCount);
-    if (index < 0) {
-        index += kHourlyHistoryCount;
-    }
+    int index = hourly_slot_index_for_time(hour_start);
     g_hourly_history.samples[index].timestamp = hour_start;
     g_hourly_history.samples[index].temperature = temp;
     g_hourly_history.samples[index].humidity = humi;

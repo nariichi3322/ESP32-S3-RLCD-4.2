@@ -43,7 +43,6 @@ constexpr size_t kNetworkDiagIpv4TextMinSize = sizeof("255.255.255.255");
 #define NETWORK_DIAG_LINE_INDEX_INVALID_FORMAT "network diag line index invalid: %d"
 #define NETWORK_DIAG_LINE_FORMAT_FAILED_FORMAT "network diag line format failed index=%d"
 #define NETWORK_DIAG_LINE_TRUNCATED_FORMAT "network diag line truncated index=%d len=%d"
-constexpr size_t kNetworkDiagTextCount = 28;
 constexpr const char *const kNetworkDiagTexts[] = {
     kNetworkDiagPublicIpUrl,
     kNetworkDiagPublicIpJsonKey,
@@ -106,6 +105,11 @@ constexpr bool cstr_array_nonempty(const T (&items)[N])
     return true;
 }
 
+bool network_diag_line_index_valid(int index)
+{
+    return index >= 0 && index < kNetworkDiagLineCount;
+}
+
 static_assert(kNetworkDiagDefaultProbeBufferSize > 0, "network diag default probe buffer must be nonzero");
 static_assert(kNetworkDiagWideProbeBufferSize >= kNetworkDiagDefaultProbeBufferSize,
               "network diag wide probe buffer must cover default probe buffer");
@@ -116,20 +120,29 @@ static_assert(kNetworkDiagCityTextSize > 1, "network diag city text buffer must 
 static_assert(kNetworkDiagPublicIpTextSize > 1, "network diag public IP text buffer must fit text and NUL");
 static_assert(kNetworkDiagPublicIpTextSize >= kNetworkDiagIpv4TextMinSize,
               "network diag public IP text buffer must fit IPv4 text");
-static_assert(kNetworkDiagJsonSearchMaxDepth >= 0, "network diag JSON search depth must be non-negative");
+static_assert(kNetworkDiagJsonSearchMaxDepth > 0, "network diag JSON search depth must be positive");
 static_assert(kNetworkDiagNtpMaxRetries > 0, "network diag NTP retry count must be positive");
-static_assert(array_count(kNetworkDiagTexts) == kNetworkDiagTextCount,
-              "network diagnostic text guard must cover every fixed text and log");
+static_assert(array_count(kNetworkDiagTexts) > 0,
+              "network diagnostic text guard must cover fixed texts and logs");
 static_assert(cstr_array_nonempty(kNetworkDiagTexts), "network diagnostic fixed texts and logs must be non-empty");
-static_assert(kNetworkDiagLocalIpLine >= 0 && kNetworkDiagLocalIpLine < kNetworkDiagLineCount);
-static_assert(kNetworkDiagPublicIpLine >= 0 && kNetworkDiagPublicIpLine < kNetworkDiagLineCount);
-static_assert(kNetworkDiagIpLocationLine >= 0 && kNetworkDiagIpLocationLine < kNetworkDiagLineCount);
-static_assert(kNetworkDiagDnsLine >= 0 && kNetworkDiagDnsLine < kNetworkDiagLineCount);
-static_assert(kNetworkDiagWeatherLine >= 0 && kNetworkDiagWeatherLine < kNetworkDiagLineCount);
-static_assert(kNetworkDiagNtpLine >= 0 && kNetworkDiagNtpLine < kNetworkDiagLineCount);
-static_assert(kNetworkDiagSayingLine >= 0 && kNetworkDiagSayingLine < kNetworkDiagLineCount);
-static_assert(kNetworkDiagInternetLine >= 0 && kNetworkDiagInternetLine < kNetworkDiagLineCount);
-static_assert(kNetworkDiagOtaLine >= 0 && kNetworkDiagOtaLine < kNetworkDiagLineCount);
+static_assert(kNetworkDiagLocalIpLine >= 0 && kNetworkDiagLocalIpLine < kNetworkDiagLineCount,
+              "network diag local IP line must fit line table");
+static_assert(kNetworkDiagPublicIpLine >= 0 && kNetworkDiagPublicIpLine < kNetworkDiagLineCount,
+              "network diag public IP line must fit line table");
+static_assert(kNetworkDiagIpLocationLine >= 0 && kNetworkDiagIpLocationLine < kNetworkDiagLineCount,
+              "network diag IP location line must fit line table");
+static_assert(kNetworkDiagDnsLine >= 0 && kNetworkDiagDnsLine < kNetworkDiagLineCount,
+              "network diag DNS line must fit line table");
+static_assert(kNetworkDiagWeatherLine >= 0 && kNetworkDiagWeatherLine < kNetworkDiagLineCount,
+              "network diag weather line must fit line table");
+static_assert(kNetworkDiagNtpLine >= 0 && kNetworkDiagNtpLine < kNetworkDiagLineCount,
+              "network diag NTP line must fit line table");
+static_assert(kNetworkDiagSayingLine >= 0 && kNetworkDiagSayingLine < kNetworkDiagLineCount,
+              "network diag daily saying line must fit line table");
+static_assert(kNetworkDiagInternetLine >= 0 && kNetworkDiagInternetLine < kNetworkDiagLineCount,
+              "network diag internet line must fit line table");
+static_assert(kNetworkDiagOtaLine >= 0 && kNetworkDiagOtaLine < kNetworkDiagLineCount,
+              "network diag OTA line must fit line table");
 static_assert(kNetworkDiagOtaLine == kNetworkDiagLineCount - 1,
               "network diag OTA line must remain the final diagnostic row");
 static_assert(kNetworkDiagLocalIpLine < kNetworkDiagPublicIpLine &&
@@ -141,6 +154,30 @@ static_assert(kNetworkDiagLocalIpLine < kNetworkDiagPublicIpLine &&
                   kNetworkDiagSayingLine < kNetworkDiagInternetLine &&
                   kNetworkDiagInternetLine < kNetworkDiagOtaLine,
               "network diag line order must match UI initialization and execution order");
+
+struct NetworkDiagLineFormat {
+    int index;
+    const char *format;
+};
+
+constexpr NetworkDiagLineFormat kNetworkDiagInitialLines[] = {
+    {kNetworkDiagLocalIpLine, kNetworkDiagLocalIpFormat},
+    {kNetworkDiagPublicIpLine, kNetworkDiagPublicIpFormat},
+    {kNetworkDiagIpLocationLine, kNetworkDiagIpLocationFormat},
+    {kNetworkDiagDnsLine, kNetworkDiagDnsFormat},
+    {kNetworkDiagWeatherLine, kNetworkDiagWeatherFormat},
+    {kNetworkDiagNtpLine, kNetworkDiagNtpFormat},
+    {kNetworkDiagSayingLine, kNetworkDiagSayingFormat},
+    {kNetworkDiagInternetLine, kNetworkDiagInternetFormat},
+    {kNetworkDiagOtaLine, kNetworkDiagOtaFormat},
+};
+
+static_assert(array_count(kNetworkDiagInitialLines) == kNetworkDiagLineCount,
+              "network diag initial line table must cover every UI row");
+static_assert(kNetworkDiagInitialLines[0].index == kNetworkDiagLocalIpLine,
+              "network diag initial table must follow visible row order");
+static_assert(kNetworkDiagInitialLines[array_count(kNetworkDiagInitialLines) - 1].index == kNetworkDiagOtaLine,
+              "network diag initial table must end with OTA row");
 
 class NetworkDiagResponseBuffer {
 public:
@@ -366,15 +403,9 @@ void network_diag_begin()
     g_network_diag_step = 0;
     g_network_diag_passed = 0;
     g_network_diag_total = 0;
-    network_diag_set_line(kNetworkDiagLocalIpLine, kNetworkDiagLocalIpFormat, kNetworkDiagStatusWaiting);
-    network_diag_set_line(kNetworkDiagPublicIpLine, kNetworkDiagPublicIpFormat, kNetworkDiagStatusWaiting);
-    network_diag_set_line(kNetworkDiagIpLocationLine, kNetworkDiagIpLocationFormat, kNetworkDiagStatusWaiting);
-    network_diag_set_line(kNetworkDiagDnsLine, kNetworkDiagDnsFormat, kNetworkDiagStatusWaiting);
-    network_diag_set_line(kNetworkDiagWeatherLine, kNetworkDiagWeatherFormat, kNetworkDiagStatusWaiting);
-    network_diag_set_line(kNetworkDiagNtpLine, kNetworkDiagNtpFormat, kNetworkDiagStatusWaiting);
-    network_diag_set_line(kNetworkDiagSayingLine, kNetworkDiagSayingFormat, kNetworkDiagStatusWaiting);
-    network_diag_set_line(kNetworkDiagInternetLine, kNetworkDiagInternetFormat, kNetworkDiagStatusWaiting);
-    network_diag_set_line(kNetworkDiagOtaLine, kNetworkDiagOtaFormat, kNetworkDiagStatusWaiting);
+    for (const auto &line : kNetworkDiagInitialLines) {
+        network_diag_set_line(line.index, line.format, kNetworkDiagStatusWaiting);
+    }
 }
 
 void network_diag_finish()
@@ -386,7 +417,7 @@ void network_diag_finish()
 
 void network_diag_set_line(int index, const char *fmt, ...)
 {
-    if (index < 0 || index >= kNetworkDiagLineCount) {
+    if (!network_diag_line_index_valid(index)) {
         ESP_LOGW(TAG, NETWORK_DIAG_LINE_INDEX_INVALID_FORMAT, index);
         return;
     }

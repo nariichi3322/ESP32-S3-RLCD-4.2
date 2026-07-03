@@ -48,6 +48,7 @@
 
 LV_FONT_DECLARE(qweather_icons_36);
 LV_FONT_DECLARE(zh_font_16);
+LV_FONT_DECLARE(zh_flip_lunar_22);
 
 extern const char *const TAG;
 extern const char *const APP_VERSION;
@@ -497,8 +498,17 @@ extern lv_obj_t *g_flip_clock_temp_mood_canvas;
 extern lv_color_t *g_flip_clock_temp_mood_canvas_buf;
 extern lv_obj_t *g_flip_clock_humi_mood_canvas;
 extern lv_color_t *g_flip_clock_humi_mood_canvas_buf;
+extern lv_obj_t *g_flip_clock_temp_trend_canvas;
+extern lv_color_t *g_flip_clock_temp_trend_canvas_buf;
+extern lv_obj_t *g_flip_clock_humi_trend_canvas;
+extern lv_color_t *g_flip_clock_humi_trend_canvas_buf;
 extern lv_obj_t *g_flip_clock_day_label;
+extern lv_obj_t *g_flip_clock_day_bold_label;
+extern lv_obj_t *g_flip_clock_day_bold_y_label;
 extern lv_obj_t *g_flip_clock_lunar_label;
+extern lv_obj_t *g_flip_clock_lunar_bold_x_label;
+extern lv_obj_t *g_flip_clock_lunar_bold_y_label;
+extern lv_obj_t *g_flip_clock_lunar_bold_xy_label;
 extern lv_obj_t *g_flip_clock_day_progress_canvas;
 extern lv_color_t *g_flip_clock_day_progress_canvas_buf;
 extern lv_obj_t *g_flip_clock_second_progress_canvas;
@@ -545,6 +555,8 @@ extern int g_last_flip_second_progress_filled;
 extern int g_last_flip_sensor_minute;
 extern int g_last_flip_temp_mood;
 extern int g_last_flip_humi_mood;
+extern int g_last_flip_temp_trend;
+extern int g_last_flip_humi_trend;
 extern int g_last_flip_date_key;
 extern int g_last_temp_trend_drawn;
 extern int g_last_humi_trend_drawn;

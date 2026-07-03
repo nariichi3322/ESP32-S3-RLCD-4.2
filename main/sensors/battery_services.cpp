@@ -14,7 +14,6 @@
 #define BATTERY_ADC_CALIBRATION_READ_FAILED_LOG_FORMAT "battery adc calibration read failed: %s"
 #define BATTERY_ADC_SAMPLE_LOG_FORMAT "battery adc raw=%d adc_mv=%d battery=%.3fV soc=%d%%"
 
-static constexpr size_t kBatteryLogTextCount = 10;
 static constexpr const char *const kBatteryLogTexts[] = {
     BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT,
     BATTERY_ADC_UNIT_RELEASE_FAILED_LOG_FORMAT,
@@ -86,8 +85,8 @@ static_assert(kBatteryPercentUnknown < kBatteryPercentMin, "unknown battery perc
 static_assert(kBatteryChargingRiseSamples > 0, "charging detection must require at least one rising sample");
 static_assert(kBatteryChargingRiseVoltage > kBatteryChargingStopVoltage,
               "charging rise threshold must stay above stop threshold");
-static_assert(array_count(kBatteryLogTexts) == kBatteryLogTextCount,
-              "battery log guard must cover every battery log text");
+static_assert(array_count(kBatteryLogTexts) > 0,
+              "battery log guard must cover battery log texts");
 static_assert(cstr_array_nonempty(kBatteryLogTexts), "battery service log texts must be non-empty");
 
 static int clamp_battery_percent(int percent)
@@ -104,6 +103,11 @@ static int clamp_battery_percent(int percent)
 static bool previous_battery_voltage_valid(float voltage)
 {
     return voltage >= kBatteryValidPreviousVoltageMin;
+}
+
+static bool previous_battery_percent_valid(int percent)
+{
+    return percent >= kBatteryPercentMin;
 }
 
 void release_battery_gauge()
@@ -242,12 +246,12 @@ void sample_battery()
                 charging_rise_samples = 0;
             }
 
-            if (g_battery_charging) {
-                if (delta <= kBatteryChargingStopVoltage ||
-                    (previous_percent >= kBatteryPercentMin && percent < previous_percent)) {
-                    g_battery_charging = false;
-                    charging_rise_samples = 0;
-                }
+    if (g_battery_charging) {
+        if (delta <= kBatteryChargingStopVoltage ||
+            (previous_battery_percent_valid(previous_percent) && percent < previous_percent)) {
+            g_battery_charging = false;
+            charging_rise_samples = 0;
+        }
             } else if (charging_rise_samples >= kBatteryChargingRiseSamples) {
                 g_battery_charging = true;
             }

@@ -5,6 +5,7 @@
 #include "sensor_services.h"
 #include "ui_views.h"
 
+#include "custom_assets.h"
 #include "esp_app_format.h"
 #include "esp_heap_caps.h"
 #include "esp_task_wdt.h"
@@ -113,10 +114,27 @@ static constexpr const char *kOtaManifestJsonSizeField = "size";
 static constexpr const char *kOtaManifestJsonNotesField = "notes";
 static constexpr const char *kOtaManifestSourceR2 = "R2";
 static constexpr const char *kOtaManifestSourceGithub = "GitHub";
+static constexpr const char *kOtaManifestSourceCustom = "Custom";
 static constexpr const char *kOtaUnknownManifestSource = "unknown";
 static constexpr const char *kOtaPlaceholderManifestHost = "example.invalid";
 static constexpr const char *kOtaRequestFallbackName = "request";
-static constexpr size_t kOtaStatusTextCount = 20;
+static constexpr int kOtaBuiltInManifestSourceCount = 2;
+static constexpr int kOtaBackupManifestSourceIndex = 1;
+static constexpr OtaManifestSource kOtaBuiltInManifestSources[] = {
+    {kOtaManifestSourceR2, kOtaManifestUrl},
+    {kOtaManifestSourceGithub, kOtaBackupManifestUrl},
+};
+#define OTA_TASK_WATCHDOG_SUBSCRIBE_SKIPPED_FORMAT "OTA task watchdog subscribe skipped: %s"
+#define OTA_TASK_WATCHDOG_UNSUBSCRIBE_FAILED_FORMAT "OTA task watchdog unsubscribe failed: %s"
+#define OTA_REQUEST_EVENT_GROUP_UNAVAILABLE_FORMAT "OTA %s skipped: event group unavailable"
+#define OTA_HEAP_DIAGNOSTIC_FORMAT "OTA heap %s: total=%d progress=%d dma_free=%u dma_largest=%u internal_free=%u internal_largest=%u psram_free=%u psram_largest=%u"
+static constexpr const char *kOtaAppMarkedValidLog = "OTA app marked valid";
+#define OTA_APP_VALID_MARK_FAILED_FORMAT "OTA app valid mark failed: %s"
+#define OTA_PREVIOUS_BREADCRUMB_FORMAT "previous OTA breadcrumb: phase=%d total=%d progress=%d%% reset=%d"
+static constexpr const char *kOtaManifestParseInvalidArgLog = "OTA manifest parse invalid arg";
+static constexpr const char *kOtaManifestJsonParseFailedLog = "OTA manifest JSON parse failed";
+#define OTA_MANIFEST_MISSING_REQUIRED_FIELDS_FORMAT "OTA manifest missing required fields version=%d url=%d sha=%d"
+#define OTA_MANIFEST_SHA_INVALID_FORMAT "OTA manifest sha invalid len=%u"
 static constexpr const char *kOtaStatusTexts[] = {
     kOtaStatusCheckFailed,
     kOtaStatusCheckingUpdate,
@@ -139,7 +157,6 @@ static constexpr const char *kOtaStatusTexts[] = {
     kOtaStatusNewVersionFormat,
     kOtaStatusFallbackError,
 };
-static constexpr size_t kOtaManifestTextCount = 9;
 static constexpr const char *kOtaManifestTexts[] = {
     kOtaManifestJsonVersionField,
     kOtaManifestJsonUrlField,
@@ -148,13 +165,45 @@ static constexpr const char *kOtaManifestTexts[] = {
     kOtaManifestJsonNotesField,
     kOtaManifestSourceR2,
     kOtaManifestSourceGithub,
+    kOtaManifestSourceCustom,
     kOtaUnknownManifestSource,
     kOtaPlaceholderManifestHost,
+    kOtaRequestFallbackName,
+};
+static constexpr const char *kOtaLogTexts[] = {
+    OTA_TASK_WATCHDOG_SUBSCRIBE_SKIPPED_FORMAT,
+    OTA_TASK_WATCHDOG_UNSUBSCRIBE_FAILED_FORMAT,
+    OTA_REQUEST_EVENT_GROUP_UNAVAILABLE_FORMAT,
+    OTA_HEAP_DIAGNOSTIC_FORMAT,
+    kOtaAppMarkedValidLog,
+    OTA_APP_VALID_MARK_FAILED_FORMAT,
+    OTA_PREVIOUS_BREADCRUMB_FORMAT,
+    kOtaManifestParseInvalidArgLog,
+    kOtaManifestJsonParseFailedLog,
+    OTA_MANIFEST_MISSING_REQUIRED_FIELDS_FORMAT,
+    OTA_MANIFEST_SHA_INVALID_FORMAT,
 };
 
 constexpr bool cstr_nonempty(const char *text)
 {
     return text && text[0] != '\0';
+}
+
+constexpr size_t cstr_len(const char *text)
+{
+    size_t len = 0;
+    if (!text) {
+        return 0;
+    }
+    while (text[len] != '\0') {
+        ++len;
+    }
+    return len;
+}
+
+constexpr bool ota_manifest_source_name_fits(const char *text)
+{
+    return cstr_nonempty(text) && cstr_len(text) < kOtaManifestSourceNameLen;
 }
 
 static const char *ota_request_name_or_fallback(const char *name)
@@ -179,17 +228,33 @@ constexpr bool cstr_array_nonempty(const T (&texts)[N])
     return true;
 }
 
-static_assert(array_count(kOtaStatusTexts) == kOtaStatusTextCount,
-              "OTA status text guard must cover every status text");
-static_assert(array_count(kOtaManifestTexts) == kOtaManifestTextCount,
-              "OTA manifest text guard must cover every manifest text");
+static_assert(array_count(kOtaStatusTexts) > 0,
+              "OTA status text guard must cover status texts");
+static_assert(array_count(kOtaManifestTexts) > 0,
+              "OTA manifest text guard must cover manifest texts");
+static_assert(array_count(kOtaLogTexts) > 0,
+              "OTA log text guard must cover diagnostic texts");
 static_assert(cstr_array_nonempty(kOtaStatusTexts), "OTA status texts must be non-empty");
 static_assert(cstr_array_nonempty(kOtaManifestTexts), "OTA manifest field texts must be non-empty");
+static_assert(cstr_array_nonempty(kOtaLogTexts), "OTA diagnostic texts must be non-empty");
+static_assert(array_count(kOtaBuiltInManifestSources) == kOtaBuiltInManifestSourceCount,
+              "OTA built-in manifest source list must cover R2 and GitHub");
+static_assert(kOtaBackupManifestSourceIndex >= 0 &&
+                  kOtaBackupManifestSourceIndex < kOtaBuiltInManifestSourceCount,
+              "OTA backup manifest source index must stay within built-in source list");
+static_assert(ota_manifest_source_name_fits(kOtaManifestSourceR2),
+              "R2 OTA manifest source name must fit UI storage");
+static_assert(ota_manifest_source_name_fits(kOtaManifestSourceGithub),
+              "GitHub OTA manifest source name must fit UI storage");
+static_assert(ota_manifest_source_name_fits(kOtaManifestSourceCustom),
+              "custom OTA manifest source name must fit UI storage");
+static_assert(ota_manifest_source_name_fits(kOtaUnknownManifestSource),
+              "unknown OTA manifest source name must fit UI storage");
 
 static void log_ota_heap(const char *stage, int downloaded, int progress)
 {
     ESP_LOGI(TAG,
-             "OTA heap %s: total=%d progress=%d dma_free=%u dma_largest=%u internal_free=%u internal_largest=%u psram_free=%u psram_largest=%u",
+             OTA_HEAP_DIAGNOSTIC_FORMAT,
              stage,
              downloaded,
              progress,
@@ -227,7 +292,7 @@ public:
             active_ = true;
             added_ = true;
         } else {
-            ESP_LOGW(TAG, "OTA task watchdog subscribe skipped: %s", esp_err_to_name(err));
+            ESP_LOGW(TAG, OTA_TASK_WATCHDOG_SUBSCRIBE_SKIPPED_FORMAT, esp_err_to_name(err));
         }
     }
 
@@ -236,7 +301,7 @@ public:
         if (added_) {
             esp_err_t err = esp_task_wdt_delete(nullptr);
             if (err != ESP_OK) {
-                ESP_LOGW(TAG, "OTA task watchdog unsubscribe failed: %s", esp_err_to_name(err));
+                ESP_LOGW(TAG, OTA_TASK_WATCHDOG_UNSUBSCRIBE_FAILED_FORMAT, esp_err_to_name(err));
             }
         }
     }
@@ -424,7 +489,7 @@ static void close_ota_http_client(esp_http_client_handle_t *client)
 static bool set_ota_event_bit(EventBits_t bit, const char *name)
 {
     if (!g_app_events) {
-        ESP_LOGW(TAG, "OTA %s skipped: event group unavailable", ota_request_name_or_fallback(name));
+        ESP_LOGW(TAG, OTA_REQUEST_EVENT_GROUP_UNAVAILABLE_FORMAT, ota_request_name_or_fallback(name));
         ota_set_status(kOtaFailed, kOtaStatusUnavailable, -1, kOtaFailureHoldMs);
         return false;
     }
@@ -532,7 +597,7 @@ void ota_mark_running_app_valid()
 {
     if (s_ota_breadcrumb.magic == kOtaBreadcrumbMagic) {
         ESP_LOGW(TAG,
-                 "previous OTA breadcrumb: phase=%d total=%d progress=%d%% reset=%d",
+                 OTA_PREVIOUS_BREADCRUMB_FORMAT,
                  s_ota_breadcrumb.phase,
                  s_ota_breadcrumb.total,
                  s_ota_breadcrumb.progress,
@@ -545,9 +610,9 @@ void ota_mark_running_app_valid()
         ota_state == ESP_OTA_IMG_PENDING_VERIFY) {
         esp_err_t err = esp_ota_mark_app_valid_cancel_rollback();
         if (err == ESP_OK) {
-            ESP_LOGI(TAG, "OTA app marked valid");
+            ESP_LOGI(TAG, "%s", kOtaAppMarkedValidLog);
         } else {
-            ESP_LOGW(TAG, "OTA app valid mark failed: %s", esp_err_to_name(err));
+            ESP_LOGW(TAG, OTA_APP_VALID_MARK_FAILED_FORMAT, esp_err_to_name(err));
         }
     }
 }
@@ -627,12 +692,12 @@ static void sha256_to_hex(const uint8_t *hash, char *out, size_t out_len)
 static bool parse_ota_manifest(const char *json, OtaManifest *manifest)
 {
     if (!json || !manifest) {
-        ESP_LOGW(TAG, "OTA manifest parse invalid arg");
+        ESP_LOGW(TAG, "%s", kOtaManifestParseInvalidArgLog);
         return false;
     }
     OtaJsonRoot root(json);
     if (!root) {
-        ESP_LOGW(TAG, "OTA manifest JSON parse failed");
+        ESP_LOGW(TAG, "%s", kOtaManifestJsonParseFailedLog);
         return false;
     }
     bool have_version = json_copy_string(root.get(),
@@ -658,14 +723,14 @@ static bool parse_ota_manifest(const char *json, OtaManifest *manifest)
                            manifest->notes,
                            sizeof(manifest->notes));
     if (!have_version || !have_url || !have_sha) {
-        ESP_LOGW(TAG, "OTA manifest missing required fields version=%d url=%d sha=%d",
+        ESP_LOGW(TAG, OTA_MANIFEST_MISSING_REQUIRED_FIELDS_FORMAT,
                  have_version,
                  have_url,
                  have_sha);
         return false;
     }
     if (!valid_sha256_string(manifest->sha256)) {
-        ESP_LOGW(TAG, "OTA manifest sha invalid len=%u", (unsigned)strlen(manifest->sha256));
+        ESP_LOGW(TAG, OTA_MANIFEST_SHA_INVALID_FORMAT, (unsigned)strlen(manifest->sha256));
         return false;
     }
     return true;
@@ -720,11 +785,17 @@ static bool fetch_ota_manifest_from_source(const OtaManifestSource &source, OtaM
 
 static bool fetch_ota_manifest(OtaManifest *manifest, char *source_name = nullptr, size_t source_name_len = 0)
 {
-    static const OtaManifestSource kSources[] = {
-        {kOtaManifestSourceR2, kOtaManifestUrl},
-        {kOtaManifestSourceGithub, kOtaBackupManifestUrl},
-    };
-    for (const auto &source : kSources) {
+    char custom_url[kOtaUrlLen] = {};
+    if (custom_assets_read_ota_manifest_url(custom_url, sizeof(custom_url))) {
+        OtaManifestSource custom_source = {kOtaManifestSourceCustom, custom_url};
+        if (fetch_ota_manifest_from_source(custom_source, manifest)) {
+            if (source_name && source_name_len > 0) {
+                strlcpy(source_name, custom_source.name, source_name_len);
+            }
+            return true;
+        }
+    }
+    for (const auto &source : kOtaBuiltInManifestSources) {
         if (fetch_ota_manifest_from_source(source, manifest)) {
             if (source_name && source_name_len > 0) {
                 strlcpy(source_name, source.name, source_name_len);
@@ -742,7 +813,8 @@ static bool fetch_backup_manifest_for_install(const OtaManifest &current, OtaMan
         return false;
     }
     OtaManifest candidate;
-    const OtaManifestSource backup_source = {kOtaManifestSourceGithub, kOtaBackupManifestUrl};
+    const OtaManifestSource &backup_source =
+        kOtaBuiltInManifestSources[kOtaBackupManifestSourceIndex];
     if (!fetch_ota_manifest_from_source(backup_source, &candidate)) {
         return false;
     }

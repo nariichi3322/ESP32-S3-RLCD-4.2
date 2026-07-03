@@ -30,6 +30,10 @@ static constexpr time_t kNetworkNtpRetryDelaySec = 5 * kSecondsPerMinute;
 static constexpr time_t kBootWeatherRefreshDelaySec = 8;
 static constexpr time_t kBootSayingRefreshDelaySec = 16;
 static constexpr size_t kBootSetupDetailTextSize = 64;
+static_assert(kBootWeatherRefreshDelaySec > 0,
+              "boot weather refresh delay must be positive");
+static_assert(kBootSayingRefreshDelaySec > kBootWeatherRefreshDelaySec,
+              "boot saying refresh delay must stay after boot weather refresh");
 static constexpr const char *kNetworkStatusOfflineModeEnabled = "离线模式已开启";
 static constexpr const char *kNetworkStatusWifiNotConfigured = "未配置 WiFi";
 static constexpr const char *kNetworkDiagLocalIpPlaceholder = "本地IP: --";

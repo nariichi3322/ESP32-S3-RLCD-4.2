@@ -60,7 +60,6 @@ constexpr const char *kNetworkDiagFixedTexts[] = {
     kNetworkDiagHintIdle,
     kNetworkDiagHintRunning,
 };
-constexpr size_t kNetworkDiagFixedTextCount = 8;
 constexpr int kSettingsOtaBarFrameX = 164;
 constexpr int kSettingsOtaBarFrameY = 203;
 constexpr int kSettingsOtaBarFrameW = 200;
@@ -100,7 +99,6 @@ constexpr const char *kSettingsOtaHintTexts[] = {
     kSettingsOtaHintRetry,
     kSettingsOtaHintCheck,
 };
-constexpr size_t kSettingsOtaHintTextCount = 9;
 
 constexpr bool cstr_nonempty(const char *text)
 {
@@ -220,7 +218,6 @@ constexpr const char *kSettingsSecondaryTexts[] = {
     kSettingsOrderExitSavedFeedback,
     kSettingsOrderExitSaveFailedFeedback,
 };
-constexpr size_t kSettingsSecondaryTextCount = 20;
 #define SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT "settings secondary text index out of range: %d"
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
 #define BATTERY_ICON_INVALID_ARG_LOG "battery icon invalid arg"
@@ -302,7 +299,24 @@ constexpr const char *kSetupInfoTexts[] = {
     kInfoReturnHintText,
     kSettingsLabelPlaceholder,
 };
-constexpr size_t kSetupInfoTextCount = 25;
+constexpr const char *kBootSettingsLogTexts[] = {
+    BOOT_ANIM_DONE_EVENT_SKIPPED_LOG,
+    BOOT_ANIM_CANVAS_CREATE_FAILED_LOG,
+    NETWORK_DIAG_LINE_LABEL_CREATE_FAILED_FORMAT,
+    SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT,
+    SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT,
+    SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT,
+    SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT,
+    SETTINGS_OTA_BAR_FRAME_CREATE_FAILED_LOG,
+    SETTINGS_OTA_BAR_FILL_CREATE_FAILED_LOG,
+    SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT,
+    SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT,
+    BATTERY_ICON_INVALID_ARG_LOG,
+    BATTERY_FRAME_CREATE_FAILED_LOG,
+    BATTERY_INNER_CREATE_FAILED_LOG,
+    BATTERY_TIP_CREATE_FAILED_LOG,
+    BATTERY_SEGMENT_CREATE_FAILED_FORMAT,
+};
 
 constexpr bool network_diag_texts_nonempty()
 {
@@ -319,6 +333,11 @@ constexpr bool setup_info_texts_nonempty()
     return cstr_array_nonempty(kSetupInfoTexts);
 }
 
+constexpr bool boot_settings_log_texts_nonempty()
+{
+    return cstr_array_nonempty(kBootSettingsLogTexts);
+}
+
 constexpr int kInfoTextX = 30;
 constexpr int kInfoTextW = 340;
 constexpr int kInfoSourceTextX = 0;
@@ -331,32 +350,37 @@ constexpr size_t kInfoWeatherLabelIndex = 2;
 constexpr size_t kInfoBatteryLabelIndex = 3;
 constexpr size_t kInfoVersionLabelIndex = 4;
 constexpr size_t kInfoSourceLabelIndex = kInfoLabelCount - 1;
-static_assert(kSettingsListRowCount == kSettingsSecondaryMaxCount);
-static_assert(kSettingsGridRowCount * kSettingsGridColumns >= kWorkPageCount);
-static_assert(array_count(kSettingsPrimaryItems) == kSettingsPrimaryCount);
-static_assert(array_count(kSettingsOtaHintTexts) == kSettingsOtaHintTextCount,
-              "settings OTA hint text guard must cover every status and hint");
-static_assert(array_count(kNetworkDiagFixedTexts) == kNetworkDiagFixedTextCount,
-              "network diagnostics text guard must cover every fixed text");
-static_assert(array_count(kSettingsSecondaryTexts) == kSettingsSecondaryTextCount,
-              "settings secondary text guard must cover every secondary text");
-static_assert(array_count(kSetupInfoTexts) == kSetupInfoTextCount,
-              "setup and info text guard must cover every fixed text");
+static_assert(kSettingsListRowCount == kSettingsSecondaryMaxCount,
+              "settings list rows must match secondary slot count");
+static_assert(kSettingsGridRowCount * kSettingsGridColumns >= kWorkPageCount,
+              "settings grid capacity must cover all work pages");
+static_assert(array_count(kSettingsPrimaryItems) == kSettingsPrimaryCount,
+              "settings primary item table must match primary count");
+static_assert(array_count(kSettingsOtaHintTexts) > 0, "settings OTA hint text registry must not be empty");
+static_assert(array_count(kNetworkDiagFixedTexts) > 0, "network diagnostics text registry must not be empty");
+static_assert(array_count(kSettingsSecondaryTexts) > 0, "settings secondary text registry must not be empty");
+static_assert(array_count(kSetupInfoTexts) > 0, "setup and info text registry must not be empty");
+static_assert(array_count(kBootSettingsLogTexts) > 0, "boot/settings log registry must not be empty");
 static_assert(settings_primary_items_nonempty(), "settings primary menu texts must be non-empty");
 static_assert(settings_ota_hint_texts_nonempty(), "settings OTA status and hint texts must be non-empty");
 static_assert(network_diag_texts_nonempty(), "network diagnostics fixed texts must be non-empty");
 static_assert(settings_secondary_texts_nonempty(), "settings secondary menu texts must be non-empty");
 static_assert(setup_info_texts_nonempty(), "setup and info fixed texts must be non-empty");
+static_assert(boot_settings_log_texts_nonempty(), "boot/settings log texts must be non-empty");
 static_assert(kBootAnimLvglLockTimeoutMs > 0, "boot animation LVGL lock timeout must be positive");
 static_assert(kBootAnimFinishLvglLockTimeoutMs >= kBootAnimLvglLockTimeoutMs,
               "boot animation finish lock timeout must cover the normal lock timeout");
 static_assert(kBootScreenLvglLockTimeoutMs >= kBootAnimFinishLvglLockTimeoutMs,
               "boot screen lock timeout must cover boot animation finish lock timeout");
 static_assert(kSettingsPrimaryExitBlockMs > 0, "settings primary exit block duration must be positive");
-static_assert(kNetworkDiagLocalIpLine < kNetworkDiagPublicIpLine);
-static_assert(kNetworkDiagPublicIpLine < kNetworkDiagGridFirstLine);
-static_assert(kNetworkDiagGridFirstLine <= kNetworkDiagWideLine);
-static_assert(kNetworkDiagWideLine < kNetworkDiagLineCount);
+static_assert(kNetworkDiagLocalIpLine < kNetworkDiagPublicIpLine,
+              "network diagnostics local IP line must precede public IP line");
+static_assert(kNetworkDiagPublicIpLine < kNetworkDiagGridFirstLine,
+              "network diagnostics public IP line must precede grid lines");
+static_assert(kNetworkDiagGridFirstLine <= kNetworkDiagWideLine,
+              "network diagnostics grid first line must not follow wide line");
+static_assert(kNetworkDiagWideLine < kNetworkDiagLineCount,
+              "network diagnostics wide line must fit line count");
 static_assert(kNetworkDiagGridColumns > 0, "network diagnostics grid must have columns");
 static_assert(kNetworkDiagWideW > 0 && kNetworkDiagGridW > 0,
               "network diagnostics line widths must be positive");
@@ -366,25 +390,31 @@ static_assert(kNetworkDiagSummaryTextSize > 1,
               "network diagnostics summary buffer must fit text and NUL");
 static_assert(kSettingsOtaLineTextSize > 1 && kSettingsOtaHintTextSize > 1,
               "settings OTA text buffers must fit text and NUL");
-static_assert(kSettingsOtaBarInset >= 0);
-static_assert(kSettingsOtaBarFillW > 0);
-static_assert(kSettingsOtaBarFillH > 0);
-static_assert(kSettingsOtaProgressMax > 0);
+static_assert(kSettingsOtaBarInset >= 0, "settings OTA progress inset must be non-negative");
+static_assert(kSettingsOtaBarFillW > 0, "settings OTA progress fill width must be positive");
+static_assert(kSettingsOtaBarFillH > 0, "settings OTA progress fill height must be positive");
+static_assert(kSettingsOtaProgressMax > 0, "settings OTA progress maximum must be positive");
 static_assert(kSettingsSecondaryTextSize > 1, "settings secondary text buffer must fit text and NUL");
 static_assert(kSettingsGridColumns > 0, "settings grid must have columns");
 static_assert(kSettingsGridColW > 0 && kSettingsSecondaryH > 0,
               "settings grid item size must be positive");
 static_assert(kSettingsListRowCount >= kSettingsPrimaryCount,
               "settings list rows must fit primary menu items");
-static_assert(kBatteryFrameW > 0 && kBatteryFrameH > 0);
-static_assert(kBatteryInnerW > 0 && kBatteryInnerH > 0);
-static_assert(kBatteryTipW > 0 && kBatteryTipH > 0);
-static_assert(kBatterySegmentCount > 0);
-static_assert(kBatterySegmentW > 0 && kBatterySegmentH > 0);
+static_assert(kBatteryFrameW > 0 && kBatteryFrameH > 0,
+              "battery frame size must be positive");
+static_assert(kBatteryInnerW > 0 && kBatteryInnerH > 0,
+              "battery inner size must be positive");
+static_assert(kBatteryTipW > 0 && kBatteryTipH > 0,
+              "battery tip size must be positive");
+static_assert(kBatterySegmentCount > 0, "battery segment count must be positive");
+static_assert(kBatterySegmentW > 0 && kBatterySegmentH > 0,
+              "battery segment size must be positive");
 static_assert(kBatterySegmentCount * kBatteryPercentPerSegment == 100,
               "battery segments must cover exactly 100 percent");
-static_assert(kInfoVersionLabelIndex < kInfoSourceLabelIndex);
-static_assert(kInfoSourceLabelIndex < kInfoLabelCount);
+static_assert(kInfoVersionLabelIndex < kInfoSourceLabelIndex,
+              "System Info version label must precede source label");
+static_assert(kInfoSourceLabelIndex < kInfoLabelCount,
+              "System Info source label index must fit label count");
 
 bool settings_secondary_index_valid(int index)
 {
@@ -426,7 +456,7 @@ bool center_align_label(lv_obj_t *label)
 void warn_if_center_align_failed(lv_obj_t *label, const char *message)
 {
     if (!center_align_label(label)) {
-        ESP_LOGW(TAG, "%s", message ? message : kLabelCreateFailedLog);
+        ESP_LOGW(TAG, "%s", cstr_nonempty(message) ? message : kLabelCreateFailedLog);
     }
 }
 }
@@ -675,7 +705,7 @@ void build_boot_info_page()
                                                 kInfoLinePlaceholder,
                                                 source_line ? &lv_font_montserrat_12 : &lv_font_montserrat_14);
         if (source_line) {
-            lv_obj_set_style_text_align(g_info_labels[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+            (void)center_align_label(g_info_labels[i]);
         }
     }
 

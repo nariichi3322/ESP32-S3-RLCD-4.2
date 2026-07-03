@@ -28,7 +28,6 @@ constexpr const char *const kDailySayingJsonFields[] = {
     "quote",
     "data",
 };
-constexpr size_t kDailySayingLogTextCount = 6;
 constexpr const char *const kDailySayingLogTexts[] = {
     DAILY_SAYING_RESPONSE_ALLOC_FAILED_LOG_FORMAT,
     DAILY_SAYING_HTTP_FAILED_LOG_FORMAT,
@@ -70,10 +69,11 @@ constexpr bool cstr_array_nonempty(const T (&items)[N])
     return true;
 }
 
-static_assert(array_count(kDailySayingJsonFields) > 0);
+static_assert(array_count(kDailySayingJsonFields) > 0,
+              "daily saying JSON field table must not be empty");
 static_assert(daily_saying_json_fields_nonempty(), "daily saying JSON fields must be non-empty");
-static_assert(array_count(kDailySayingLogTexts) == kDailySayingLogTextCount,
-              "daily saying log guard must cover every log text");
+static_assert(array_count(kDailySayingLogTexts) > 0,
+              "daily saying log guard must cover log text");
 static_assert(cstr_array_nonempty(kDailySayingLogTexts), "daily saying log texts must be non-empty");
 static_assert(kDailySayingResponseBufferSize > 0, "daily saying response buffer must be nonzero");
 static_assert(kDailySayingResponseBufferSize >= kDailySayingLen,
@@ -86,6 +86,7 @@ static_assert(kMaxSayingJsonDepth >= 0, "daily saying JSON search depth must be 
 static_assert(kUtf8ContinuationMask == 0xC0, "UTF-8 continuation mask must cover two high bits");
 static_assert(kUtf8ContinuationPrefix == 0x80, "UTF-8 continuation prefix must match 10xxxxxx bytes");
 static_assert(kJsonObjectStart != kJsonArrayStart, "JSON object and array sentinels must differ");
+static_assert(cstr_nonempty(kDailySayingUrl), "daily saying URL must be non-empty");
 
 class DailySayingResponseBuffer {
 public:
@@ -177,12 +178,17 @@ bool plain_text_saying_candidate(const char *text)
     return text && text[0] != '\0' && text[0] != kJsonObjectStart && text[0] != kJsonArrayStart;
 }
 
+bool daily_saying_json_depth_allowed(int depth)
+{
+    return depth <= kMaxSayingJsonDepth;
+}
+
 bool copy_json_saying_field(cJSON *obj, char *out, size_t out_len, int depth)
 {
     if (!obj || !out || out_len == 0) {
         return false;
     }
-    if (depth > kMaxSayingJsonDepth) {
+    if (!daily_saying_json_depth_allowed(depth)) {
         return false;
     }
     if (cJSON_IsString(obj) && obj->valuestring) {

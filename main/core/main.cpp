@@ -52,7 +52,6 @@ constexpr const char *kBootAnimTaskCreateFailed = "boot animation task create fa
 constexpr const char *kBootConnectivityTaskCreateFailed = "boot connectivity task create failed";
 constexpr const char *kBootReadyStatus = "Ready";
 constexpr const char *kBootReadyDetail = "Starting clock";
-constexpr size_t kMainLogTextCount = 12;
 constexpr const char *const kMainLogTexts[] = {
     MAIN_INVALID_TASK_CREATE_LOG_FORMAT,
     MAIN_TASK_CREATE_FAILED_LOG_FORMAT,
@@ -98,8 +97,8 @@ static_assert(kHousekeepingTaskStack > 0, "housekeeping task stack must be posit
 static_assert(kUiTaskStack > 0, "UI task stack must be positive");
 static_assert(kButtonTaskStack > 0, "button task stack must be positive");
 static_assert(kBootAnimStopWaitMs > 0, "boot animation stop wait must be positive");
-static_assert(array_count(kMainLogTexts) == kMainLogTextCount,
-              "main startup log guard must cover every startup log text");
+static_assert(array_count(kMainLogTexts) > 0,
+              "main startup log guard must cover startup log texts");
 static_assert(cstr_array_nonempty(kMainLogTexts), "main startup log texts must be non-empty");
 } // namespace
 

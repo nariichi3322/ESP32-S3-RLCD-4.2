@@ -17,7 +17,6 @@ constexpr int kHoursPerDay = 24;
 constexpr int kSecondsPerMinute = 60;
 constexpr int kMinutesPerHour = 60;
 constexpr int kSecondsPerHour = kSecondsPerMinute * kMinutesPerHour;
-constexpr int kHistoryAxisTickCount = 5;
 constexpr int kHistoryAxisValueCount = 3;
 constexpr int kHistoryAxisMaxIndex = 0;
 constexpr int kHistoryAxisMidIndex = 1;
@@ -44,8 +43,9 @@ constexpr int kHistoryPointRadius = 3;
 constexpr int kHistoryTimeLabelW = 48;
 constexpr int kHistoryTimeLabelH = 18;
 constexpr int kHistoryTimeLabelY = 274;
-constexpr int kHistoryTimeLabelCenterX[kHistoryAxisTickCount] = {42, 110, 178, 246, 314};
-constexpr int kHistoryAxisTickHours[kHistoryAxisTickCount] = {0, 6, 12, 18, 24};
+constexpr int kHistoryTimeLabelCenterX[] = {42, 110, 178, 246, 314};
+constexpr int kHistoryAxisTickHours[] = {0, 6, 12, 18, 24};
+constexpr int kHistoryAxisTickCount = static_cast<int>(array_count(kHistoryTimeLabelCenterX));
 constexpr int kHistoryAxisLabelX = 332;
 constexpr int kHistoryAxisLabelW = 56;
 constexpr int kHistoryAxisLabelH = 18;
@@ -108,6 +108,12 @@ static_assert(array_count(kHistoryAxisTickHours) == kHistoryAxisTickCount,
 #define HISTORY_TEMP_AXIS_LABEL_CREATE_FAILED_FORMAT "history temp axis label create failed index=%d"
 #define HISTORY_HUMI_AXIS_LABEL_CREATE_FAILED_FORMAT "history humi axis label create failed index=%d"
 } // namespace
+
+enum class HistoryLabelLogKind {
+    kTime,
+    kTempAxis,
+    kHumiAxis,
+};
 
 void style_history_value_badge(lv_obj_t *label)
 {
@@ -270,6 +276,28 @@ void style_work_page_sensor_summary(lv_obj_t *label)
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     lv_obj_set_style_border_width(label, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(label, 0, LV_PART_MAIN);
+}
+
+void align_history_label_or_log(lv_obj_t *label,
+                                lv_text_align_t align,
+                                HistoryLabelLogKind log_kind,
+                                int index)
+{
+    if (label) {
+        lv_obj_set_style_text_align(label, align, LV_PART_MAIN);
+    } else {
+        switch (log_kind) {
+        case HistoryLabelLogKind::kTime:
+            ESP_LOGW(TAG, HISTORY_TIME_LABEL_CREATE_FAILED_FORMAT, index);
+            break;
+        case HistoryLabelLogKind::kTempAxis:
+            ESP_LOGW(TAG, HISTORY_TEMP_AXIS_LABEL_CREATE_FAILED_FORMAT, index);
+            break;
+        case HistoryLabelLogKind::kHumiAxis:
+            ESP_LOGW(TAG, HISTORY_HUMI_AXIS_LABEL_CREATE_FAILED_FORMAT, index);
+            break;
+        }
+    }
 }
 
 void draw_history_chart_panel(lv_obj_t *canvas,
@@ -516,11 +544,10 @@ void build_history_page()
                                                         kHistoryTimeLabelH,
                                                         kHistoryTimePlaceholder,
                                                         &lv_font_montserrat_14);
-        if (g_history_time_labels[i]) {
-            lv_obj_set_style_text_align(g_history_time_labels[i], LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        } else {
-            ESP_LOGW(TAG, HISTORY_TIME_LABEL_CREATE_FAILED_FORMAT, i);
-        }
+        align_history_label_or_log(g_history_time_labels[i],
+                                   LV_TEXT_ALIGN_CENTER,
+                                   HistoryLabelLogKind::kTime,
+                                   i);
     }
     for (int i = 0; i < kHistoryAxisValueCount; ++i) {
         g_history_temp_axis_labels[i] = make_label(screen,
@@ -535,16 +562,14 @@ void build_history_page()
                                                    kHistoryAxisLabelW,
                                                    kHistoryAxisLabelH,
                                                    kHistoryAxisPlaceholder);
-        if (g_history_temp_axis_labels[i]) {
-            lv_obj_set_style_text_align(g_history_temp_axis_labels[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-        } else {
-            ESP_LOGW(TAG, HISTORY_TEMP_AXIS_LABEL_CREATE_FAILED_FORMAT, i);
-        }
-        if (g_history_humi_axis_labels[i]) {
-            lv_obj_set_style_text_align(g_history_humi_axis_labels[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-        } else {
-            ESP_LOGW(TAG, HISTORY_HUMI_AXIS_LABEL_CREATE_FAILED_FORMAT, i);
-        }
+        align_history_label_or_log(g_history_temp_axis_labels[i],
+                                   LV_TEXT_ALIGN_LEFT,
+                                   HistoryLabelLogKind::kTempAxis,
+                                   i);
+        align_history_label_or_log(g_history_humi_axis_labels[i],
+                                   LV_TEXT_ALIGN_LEFT,
+                                   HistoryLabelLogKind::kHumiAxis,
+                                   i);
     }
 
     g_history_temp_max_label = make_label_with_font(screen, 0, 0, kHistoryBadgeW, kHistoryBadgeH, kHistoryAxisPlaceholder, &lv_font_montserrat_12);

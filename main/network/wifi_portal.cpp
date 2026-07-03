@@ -7,11 +7,14 @@
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 
+#include <errno.h>
+
 namespace {
 TaskHandle_t s_captive_dns_task_handle = nullptr;
 volatile bool s_captive_dns_stop = false;
 esp_netif_t *s_ap_netif = nullptr;
-char s_captive_portal_uri[] = "http://192.168.4.1/";
+constexpr size_t kCaptivePortalUriSize = 64;
+char s_captive_portal_uri[kCaptivePortalUriSize] = {};
 constexpr int kDnsHeaderSize = 12;
 constexpr int kCaptiveDnsAnswerSize = 16;
 constexpr int kCaptiveDnsPacketSize = 512;
@@ -73,6 +76,22 @@ constexpr const char *kPortalHeaderCacheControl = "Cache-Control";
 constexpr const char *kPortalCacheNoStore = "no-store";
 constexpr const char *kPortalErrorNotEnoughMemory = "Not enough memory.";
 constexpr const char *kPortalErrorMissingQuery = "Missing query.";
+constexpr const char *kPortalWeatherCityInvalidMessage =
+    "Weather city is not recognized by QWeather. Auto location has been restored.";
+constexpr const char *kPortalWeatherCityDeferredMessage =
+    "Weather city was saved, but online validation timed out. The next weather sync will retry.";
+constexpr const char *kPortalSaveConnectedTitle = "Connected";
+constexpr const char *kPortalSaveConnectingTitle = "Saved, still connecting";
+constexpr const char *kPortalSaveMissingTitle = "Missing setup data";
+constexpr const char *kPortalSaveConnectedBody = "The clock has joined your Wi-Fi network.";
+constexpr const char *kPortalSaveConnectingBody =
+    "The clock saved your settings but did not get an IP yet. Check the password or router signal, then try again.";
+constexpr const char *kPortalSaveMissingBody =
+    "Enter Wi-Fi and QWeather API Key, or set date and time for offline mode.";
+constexpr const char *kPortalOfflineSavedTitle = "Offline mode enabled";
+constexpr const char *kPortalOfflineInvalidTitle = "Invalid date or time";
+constexpr const char *kPortalOfflineSavedBody = "The clock will use the RTC time and skip all network updates.";
+constexpr const char *kPortalOfflineInvalidBody = "Please enter a valid date and time, or configure Wi-Fi and API Key.";
 constexpr const char *kSetupApSsidFormat = "WeatherClock-%02X%02X";
 constexpr const char *kPortalFixedTexts[] = {
     kCaptiveDnsTaskName,
@@ -87,13 +106,35 @@ constexpr const char *kPortalFixedTexts[] = {
     kPortalCacheNoStore,
     kPortalErrorNotEnoughMemory,
     kPortalErrorMissingQuery,
+    kPortalWeatherCityInvalidMessage,
+    kPortalWeatherCityDeferredMessage,
+    kPortalSaveConnectedTitle,
+    kPortalSaveConnectingTitle,
+    kPortalSaveMissingTitle,
+    kPortalSaveConnectedBody,
+    kPortalSaveConnectingBody,
+    kPortalSaveMissingBody,
+    kPortalOfflineSavedTitle,
+    kPortalOfflineInvalidTitle,
+    kPortalOfflineSavedBody,
+    kPortalOfflineInvalidBody,
     kSetupApSsidFormat,
 };
-constexpr size_t kPortalFixedTextCount = 13;
-
 constexpr bool cstr_nonempty(const char *text)
 {
     return text && text[0] != '\0';
+}
+
+constexpr size_t cstr_len(const char *text)
+{
+    size_t len = 0;
+    if (!text) {
+        return 0;
+    }
+    while (text[len] != '\0') {
+        ++len;
+    }
+    return len;
 }
 
 template <typename T, size_t N>
@@ -141,6 +182,8 @@ static_assert(kCaptiveDnsStopWaitDelay > 0, "captive DNS stop wait delay must be
 static_assert(kCaptiveDnsTaskStack > 0, "captive DNS task stack must be positive");
 static_assert(kCaptiveDnsTaskPriority > tskIDLE_PRIORITY, "captive DNS task priority must exceed idle");
 static_assert(kCaptiveDnsTaskCore >= 0, "captive DNS task core must be non-negative");
+static_assert(kCaptivePortalUriSize > cstr_len(kSetupPortalUrl),
+              "mutable captive portal URI must fit setup portal URL and NUL");
 static_assert(kSetupApChannel > 0, "setup AP channel must be positive");
 static_assert(kSetupApMaxConnections > 0, "setup AP max connections must be positive");
 static_assert(kMaxListedApCount > 0, "listed AP count must be positive");
@@ -154,19 +197,21 @@ static_assert(kPortalRootHtmlSize > kPortalSaveResultHtmlSize,
               "portal root HTML buffer must exceed save result buffer");
 static_assert(kPortalRootHtmlSize > kPortalOfflineResultHtmlSize,
               "portal root HTML buffer must exceed offline result buffer");
+static_assert(kPortalSaveExtraTextSize > 1, "portal save extra text buffer must fit text and NUL");
 static_assert(kPortalRequestBufferSize > kPortalSubmitSsidFieldSize,
               "portal request buffer must exceed submitted SSID field size");
 static_assert(kPortalWeatherCityIdSize > 1, "portal weather city id buffer must fit text and NUL");
 static_assert(kPortalWeatherCityNameSize > 1, "portal weather city name buffer must fit text and NUL");
 static_assert(kPortalSaveWifiConnectWaitMs > 0, "portal save Wi-Fi wait must be positive");
-static_assert(kCaptiveDnsTaskName[0] != '\0', "captive DNS task name must be non-empty");
-static_assert(kPortalHtmlContentType[0] != '\0', "portal HTML content type must be non-empty");
-static_assert(kSetupApSsidFormat[0] != '\0', "setup AP SSID format must be non-empty");
-static_assert(array_count(kPortalFixedTexts) == kPortalFixedTextCount,
-              "portal fixed text registry count must match entries");
+static_assert(cstr_nonempty(kCaptiveDnsTaskName), "captive DNS task name must be non-empty");
+static_assert(cstr_nonempty(kPortalHtmlContentType), "portal HTML content type must be non-empty");
+static_assert(cstr_nonempty(kSetupApSsidFormat), "setup AP SSID format must be non-empty");
+static_assert(array_count(kPortalFixedTexts) > 0,
+              "portal fixed text registry must not be empty");
 static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must be non-empty");
 #define CAPTIVE_DNS_SOCKET_FAILED_LOG "captive dns socket failed"
 #define CAPTIVE_DNS_BIND_FAILED_LOG "captive dns bind failed"
+#define CAPTIVE_DNS_TIMEOUT_SETUP_FAILED_FORMAT "captive dns timeout setup failed errno=%d"
 #define CAPTIVE_DNS_STARTED_LOG "captive dns started"
 #define CAPTIVE_DNS_STOPPED_LOG "captive dns stopped"
 #define CAPTIVE_DHCPS_STOP_FAILED_FORMAT "dhcps stop before captive setup failed: %s"
@@ -181,6 +226,7 @@ static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must b
 #define PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT "http uri register failed: %s"
 #define PORTAL_HTML_APPEND_FAILED_LOG "setup html append failed"
 #define PORTAL_HTML_TRUNCATED_FORMAT "setup html truncated buffer=%u"
+#define PORTAL_POST_BODY_TRUNCATED_FORMAT "setup POST body truncated content_len=%d buffer=%u"
 #define WIFI_START_SKIPPED_OFFLINE_LOG "wifi start skipped in offline mode"
 #define WIFI_STA_ONLY_MODE_FAILED_FORMAT "wifi sta-only mode failed: %s"
 #define WIFI_POWER_SAVE_SETUP_FAILED_FORMAT "wifi power save setup failed: %s"
@@ -212,6 +258,59 @@ static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must b
 #define WIFI_IP_EVENT_HANDLER_REGISTER_FAILED_FORMAT "ip event handler register failed: %s"
 #define WIFI_INITIAL_MODE_SETUP_FAILED_FORMAT "wifi initial mode setup failed: %s"
 #define WIFI_INITIAL_SOFTAP_SETUP_FAILED_FORMAT "wifi initial softap setup failed: %s"
+constexpr const char *kPortalLogTexts[] = {
+    CAPTIVE_DNS_SOCKET_FAILED_LOG,
+    CAPTIVE_DNS_BIND_FAILED_LOG,
+    CAPTIVE_DNS_TIMEOUT_SETUP_FAILED_FORMAT,
+    CAPTIVE_DNS_STARTED_LOG,
+    CAPTIVE_DNS_STOPPED_LOG,
+    CAPTIVE_DHCPS_STOP_FAILED_FORMAT,
+    CAPTIVE_DHCPS_DNS_OPTION_FAILED_FORMAT,
+    CAPTIVE_AP_DNS_SETUP_FAILED_FORMAT,
+    CAPTIVE_DHCPS_URI_OPTION_FAILED_FORMAT,
+    CAPTIVE_DHCPS_RESTART_FAILED_FORMAT,
+    CAPTIVE_DNS_TASK_STILL_STOPPING_LOG,
+    CAPTIVE_DNS_TASK_START_FAILED_LOG,
+    SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG,
+    PORTAL_HTTP_SERVER_START_FAILED_FORMAT,
+    PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT,
+    PORTAL_HTML_APPEND_FAILED_LOG,
+    PORTAL_HTML_TRUNCATED_FORMAT,
+    PORTAL_POST_BODY_TRUNCATED_FORMAT,
+    WIFI_START_SKIPPED_OFFLINE_LOG,
+    WIFI_STA_ONLY_MODE_FAILED_FORMAT,
+    WIFI_POWER_SAVE_SETUP_FAILED_FORMAT,
+    WIFI_APSTA_MODE_FAILED_FORMAT,
+    WIFI_SOFTAP_CONFIG_FAILED_FORMAT,
+    WIFI_SETUP_POWER_SAVE_DISABLE_FAILED_FORMAT,
+    WIFI_SETUP_AP_ACTIVE_FORMAT,
+    WIFI_SET_MODE_FAILED_FORMAT,
+    WIFI_START_FAILED_FORMAT,
+    WIFI_STOP_SKIPPED_OTA_LOG,
+    WIFI_DISCONNECT_DURING_STOP_FAILED_FORMAT,
+    WIFI_STOP_FAILED_FORMAT,
+    WIFI_RADIO_OFF_LOG,
+    WIFI_STA_CONFIG_FAILED_FORMAT,
+    WIFI_CONNECT_START_FAILED_FORMAT,
+    MANUAL_WEATHER_CITY_VALIDATED_FORMAT,
+    MANUAL_WEATHER_CITY_VALIDATION_FAILED_LOG,
+    MANUAL_WEATHER_CITY_VALIDATION_DEFERRED_LOG,
+    WIFI_DISCONNECTED_FORMAT,
+    WIFI_RECONNECT_START_FAILED_FORMAT,
+    WIFI_GOT_IP_EVENT_MISSING_LOG,
+    WIFI_GOT_IP_FORMAT,
+    WIFI_MAC_READ_FAILED_FORMAT,
+    WIFI_STA_NETIF_CREATE_FAILED_LOG,
+    WIFI_AP_NETIF_CREATE_FAILED_LOG,
+    WIFI_INIT_FAILED_FORMAT,
+    WIFI_STORAGE_SETUP_FAILED_FORMAT,
+    WIFI_EVENT_HANDLER_REGISTER_FAILED_FORMAT,
+    WIFI_IP_EVENT_HANDLER_REGISTER_FAILED_FORMAT,
+    WIFI_INITIAL_MODE_SETUP_FAILED_FORMAT,
+    WIFI_INITIAL_SOFTAP_SETUP_FAILED_FORMAT,
+};
+static_assert(array_count(kPortalLogTexts) > 0, "portal log text registry must not be empty");
+static_assert(cstr_array_nonempty(kPortalLogTexts), "portal log texts must be non-empty");
 constexpr const char *kPortalHtmlHeadPrefix =
     "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
 
@@ -390,7 +489,9 @@ void captive_dns_task(void *)
 
     timeval timeout = {};
     timeout.tv_sec = kCaptiveDnsSocketTimeoutSec;
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
+        ESP_LOGW(TAG, CAPTIVE_DNS_TIMEOUT_SETUP_FAILED_FORMAT, errno);
+    }
 
     sockaddr_in addr = {};
     addr.sin_family = AF_INET;
@@ -454,6 +555,7 @@ void configure_captive_portal_dhcp()
         ESP_LOGW(TAG, CAPTIVE_AP_DNS_SETUP_FAILED_FORMAT, esp_err_to_name(err));
     }
 
+    strlcpy(s_captive_portal_uri, kSetupPortalUrl, sizeof(s_captive_portal_uri));
     err = esp_netif_dhcps_option(s_ap_netif,
                                  ESP_NETIF_OP_SET,
                                  ESP_NETIF_CAPTIVEPORTAL_URI,
@@ -724,9 +826,10 @@ esp_err_t send_save_result_page(httpd_req_t *req, bool saved, bool connected, co
     html_escape(g_has_manual_weather_city ? g_manual_weather_city : "Auto", safe_city, sizeof(safe_city));
     html_escape(extra_message ? extra_message : "", safe_extra, sizeof(safe_extra));
     char html[kPortalSaveResultHtmlSize] = {};
-    const char *title = saved ? (connected ? "Connected" : "Saved, still connecting") : "Missing setup data";
-    const char *body = saved ? (connected ? "The clock has joined your Wi-Fi network." : "The clock saved your settings but did not get an IP yet. Check the password or router signal, then try again.")
-                             : "Enter Wi-Fi and QWeather API Key, or set date and time for offline mode.";
+    const char *title = saved ? (connected ? kPortalSaveConnectedTitle : kPortalSaveConnectingTitle)
+                              : kPortalSaveMissingTitle;
+    const char *body = saved ? (connected ? kPortalSaveConnectedBody : kPortalSaveConnectingBody)
+                             : kPortalSaveMissingBody;
     html_append(html, sizeof(html),
                 "%s"
                 "<title>WeatherClock Setup</title><style>"
@@ -764,8 +867,8 @@ esp_err_t send_offline_result_page(httpd_req_t *req, bool saved)
                 "</style></head><body><main class='wrap'><section class='panel'><div class='state'>%s</div><h1>%s</h1><p>%s</p><a href='/'>Back to setup</a></section></main></body></html>",
                 kPortalHtmlHeadPrefix,
                 saved ? "OK" : "!",
-                saved ? "Offline mode enabled" : "Invalid date or time",
-                saved ? "The clock will use the RTC time and skip all network updates." : "Please enter a valid date and time, or configure Wi-Fi and API Key.");
+                saved ? kPortalOfflineSavedTitle : kPortalOfflineInvalidTitle,
+                saved ? kPortalOfflineSavedBody : kPortalOfflineInvalidBody);
     return send_portal_html(req, html);
 }
 
@@ -792,9 +895,9 @@ static esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
     if (connected && g_has_manual_weather_city) {
         ManualWeatherCityValidationResult city_result = validate_saved_manual_weather_city();
         if (city_result == kManualWeatherCityValidationInvalid) {
-            extra_message = "Weather city is not recognized by QWeather. Auto location has been restored.";
+            extra_message = kPortalWeatherCityInvalidMessage;
         } else if (city_result == kManualWeatherCityValidationDeferred) {
-            extra_message = "Weather city was saved, but online validation timed out. The next weather sync will retry.";
+            extra_message = kPortalWeatherCityDeferredMessage;
         }
     }
     esp_err_t err = send_save_result_page(req, saved, connected, extra_message);
@@ -817,10 +920,7 @@ esp_err_t save_post_handler(httpd_req_t *req)
     }
     body[total] = '\0';
     if (total < req->content_len) {
-        ESP_LOGW(TAG,
-                 "setup POST body truncated content_len=%d buffer=%u",
-                 req->content_len,
-                 (unsigned)sizeof(body));
+        ESP_LOGW(TAG, PORTAL_POST_BODY_TRUNCATED_FORMAT, req->content_len, (unsigned)sizeof(body));
     }
 
     return handle_setup_save(req, body);

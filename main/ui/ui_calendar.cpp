@@ -46,7 +46,8 @@ constexpr size_t array_count(const T (&)[N])
     return N;
 }
 
-static_assert(array_count(kCalendarWeekdays) == kCalendarWeekdayCount);
+static_assert(array_count(kCalendarWeekdays) == kCalendarWeekdayCount,
+              "calendar weekday label table must match weekday count");
 
 static void canvas_fill_rect_safe(lv_obj_t *canvas, int w, int h, int x, int y, int rw, int rh, lv_color_t color)
 {

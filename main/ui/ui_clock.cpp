@@ -51,6 +51,37 @@ constexpr const char *kFactoryResetFailedFeedback = "恢复失败";
 constexpr size_t kSettingsFeedbackTextSize = 32;
 constexpr size_t kClockDateTextSize = 48;
 constexpr const char *kClockDateFormat = "%04d/%02d/%02d / %s";
+constexpr const char *kClockSettingsFeedbackTexts[] = {
+    kSettingsSaveFailedFeedback,
+    kSettingsOrderSavedFeedback,
+    kSettingsSyncBusyFeedback,
+    kSettingsOfflineEnabledFeedback,
+    kSettingsOfflineDisabledFeedback,
+    kManualWeatherCityEditFeedback,
+    kManualWeatherCityClearConfirmFeedback,
+    kManualWeatherCityAutoFeedback,
+    kManualNtpSyncFeedback,
+    kManualWeatherSyncFeedback,
+    kManualSayingSyncFeedback,
+    kSoundVolumeFeedbackFormat,
+    kSoundIndexFeedbackFormat,
+    kHourlyChimeEnabledFeedback,
+    kHourlyChimeDisabledFeedback,
+    kAllDayChimeEnabledFeedback,
+    kAllDayChimeDisabledFeedback,
+    kPageOrderInstructionFeedback,
+    kWeatherClockRequiredFeedback,
+    kWorkPageFeedbackFormat,
+    kWorkPageEnabledSuffix,
+    kWorkPageDisabledSuffix,
+    kOfflineSetupConfirmFeedback,
+    kSetupStartFailedFeedback,
+    kOfflineSetupInstructionFeedback,
+    kNetworkDiagSyncFeedback,
+    kFactoryResetConfirmFeedback,
+    kFactoryResetFailedFeedback,
+    kClockDateFormat,
+};
 #define HOURLY_CHIME_SETTING_LOG_FORMAT "hourly chime %s"
 #define ALL_DAY_CHIME_SETTING_LOG_FORMAT "hourly chime all-day %s"
 #define CHIME_SETTING_ENABLED_LOG_VALUE "enabled"
@@ -73,6 +104,69 @@ constexpr const char *kClockDateFormat = "%04d/%02d/%02d / %s";
 #define CLOCK_TREND_CANVAS_CREATE_FAILED_FORMAT "clock trend canvas create failed name=%s"
 #define CLOCK_FILL_CANVAS_CREATE_FAILED_FORMAT "clock fill canvas create failed name=%s"
 #define SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT "setup status label create failed index=%d"
+constexpr const char *kClockComponentFallbackName = "component";
+constexpr const char *kClockLogTexts[] = {
+    HOURLY_CHIME_SETTING_LOG_FORMAT,
+    ALL_DAY_CHIME_SETTING_LOG_FORMAT,
+    CHIME_SETTING_ENABLED_LOG_VALUE,
+    CHIME_SETTING_DISABLED_LOG_VALUE,
+    MANUAL_WEATHER_CITY_CLEARED_SYNC_LOG,
+    MANUAL_NTP_SYNC_REQUESTED_LOG,
+    MANUAL_WEATHER_SYNC_REQUESTED_LOG,
+    MANUAL_SAYING_SYNC_REQUESTED_LOG,
+    MANUAL_NETWORK_DIAG_REQUESTED_LOG,
+    FACTORY_RESET_CONFIRM_REQUESTED_LOG,
+    FACTORY_RESET_REQUESTED_LOG,
+    SYSTEM_INFO_REQUESTED_LOG,
+    CLOCK_DATE_LABEL_CREATE_FAILED_LOG,
+    CLOCK_ALERT_PILL_CREATE_FAILED_LOG,
+    CLOCK_ALERT_ICON_CANVAS_CREATE_FAILED_LOG,
+    CLOCK_ALERT_LABEL_CREATE_FAILED_LOG,
+    CLOCK_STATUS_ICON_CANVAS_CREATE_FAILED_FORMAT,
+    CLOCK_LABEL_CREATE_FAILED_FORMAT,
+    CLOCK_ICON_CANVAS_CREATE_FAILED_FORMAT,
+    CLOCK_TREND_CANVAS_CREATE_FAILED_FORMAT,
+    CLOCK_FILL_CANVAS_CREATE_FAILED_FORMAT,
+    SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT,
+    kClockComponentFallbackName,
+};
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (size_t i = 0; i < N; ++i) {
+        if (!cstr_nonempty(items[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
+constexpr bool chime_volume_levels_ordered_and_bounded()
+{
+    int previous = 0;
+    for (int volume : kChimeVolumeLevels) {
+        if (volume <= 0 || volume > 100 || volume <= previous) {
+            return false;
+        }
+        previous = volume;
+    }
+    return true;
+}
+
+static_assert(array_count(kChimeVolumeLevels) > 0, "chime volume level list must not be empty");
+static_assert(chime_volume_levels_ordered_and_bounded(),
+              "chime volume levels must be ordered percentages in 1..100");
+static_assert(array_count(kClockSettingsFeedbackTexts) > 0,
+              "clock settings feedback registry must not be empty");
+static_assert(array_count(kClockLogTexts) > 0, "clock log registry must not be empty");
+static_assert(cstr_array_nonempty(kClockSettingsFeedbackTexts),
+              "clock settings feedback texts must be non-empty");
+static_assert(cstr_array_nonempty(kClockLogTexts), "clock log texts must be non-empty");
 constexpr int kTmYearOffset = 1900;
 constexpr int kTmMonthOffset = 1;
 constexpr int kSecondsPerMinute = 60;
@@ -157,6 +251,11 @@ constexpr int kSetupStatusLabelX = 26;
 constexpr int kSetupStatusLabelWidth = 348;
 constexpr int kSetupStatusLabelHeight = 18;
 
+const char *clock_component_name(const char *name)
+{
+    return cstr_nonempty(name) ? name : kClockComponentFallbackName;
+}
+
 void configure_clock_canvas(lv_obj_t *canvas, int x, int y, int width, int height)
 {
     if (!canvas) {
@@ -201,7 +300,7 @@ void build_clock_status_icon(lv_obj_t *screen,
 void center_clock_label_if_created(lv_obj_t *label, const char *name)
 {
     if (!label) {
-        ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, name);
+        ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, clock_component_name(name));
         return;
     }
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -226,7 +325,7 @@ void build_clock_lower_icon(lv_obj_t *screen,
     }
     *canvas = lv_canvas_create(screen);
     if (!*canvas) {
-        ESP_LOGW(TAG, CLOCK_ICON_CANVAS_CREATE_FAILED_FORMAT, name);
+        ESP_LOGW(TAG, CLOCK_ICON_CANVAS_CREATE_FAILED_FORMAT, clock_component_name(name));
         return;
     }
     configure_clock_canvas(*canvas, x, y, width, height);
@@ -252,7 +351,7 @@ void build_clock_trend_canvas(lv_obj_t *screen,
     }
     *canvas = lv_canvas_create(screen);
     if (!*canvas) {
-        ESP_LOGW(TAG, CLOCK_TREND_CANVAS_CREATE_FAILED_FORMAT, name);
+        ESP_LOGW(TAG, CLOCK_TREND_CANVAS_CREATE_FAILED_FORMAT, clock_component_name(name));
         return;
     }
     configure_clock_canvas(*canvas, x, y, TREND_ICON_WIDTH, TREND_ICON_HEIGHT);
@@ -279,7 +378,7 @@ void build_clock_fill_canvas(lv_obj_t *screen,
     }
     *canvas = lv_canvas_create(screen);
     if (!*canvas) {
-        ESP_LOGW(TAG, CLOCK_FILL_CANVAS_CREATE_FAILED_FORMAT, name);
+        ESP_LOGW(TAG, CLOCK_FILL_CANVAS_CREATE_FAILED_FORMAT, clock_component_name(name));
         return;
     }
     configure_clock_canvas(*canvas, x, y, width, height);

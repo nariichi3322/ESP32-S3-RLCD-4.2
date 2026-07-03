@@ -18,7 +18,8 @@ add_executable(weather_clock_sdl
     "main.cpp"
     "../main/assets/boot_anim.c"
     "../main/assets/qweather_icons_36.c"
-    "../main/assets/zh_font_16.c")
+    "../main/assets/zh_font_16.c"
+    "../main/assets/zh_flip_lunar_22.c")
 
 target_include_directories(weather_clock_sdl PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}"

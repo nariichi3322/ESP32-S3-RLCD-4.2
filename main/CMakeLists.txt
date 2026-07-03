@@ -35,6 +35,7 @@ idf_component_register(
         "assets/boot_anim.c"
         "assets/qweather_icons_36.c"
         "assets/zh_font_16.c"
+        "assets/zh_flip_lunar_22.c"
     INCLUDE_DIRS
         "."
         "core"

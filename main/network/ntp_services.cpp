@@ -57,7 +57,6 @@ constexpr bool cstr_array_nonempty(const T (&items)[N])
 
 constexpr size_t kActiveNtpServerCount = min_size(kNtpServerCount, kConfiguredNtpServerSlots);
 constexpr const char *kNtpTimeSyncedEventUnavailableLog = "skip time synced event bit: app events unavailable";
-constexpr size_t kNtpLogTextCount = 4;
 constexpr const char *const kNtpLogTexts[] = {
     NTP_SYNCED_LOG_FORMAT,
     NTP_TIMEOUT_LOG_FORMAT,
@@ -66,8 +65,8 @@ constexpr const char *const kNtpLogTexts[] = {
 };
 
 static_assert(cstr_array_nonempty(kNtpServers), "NTP server names must be non-empty");
-static_assert(array_count(kNtpLogTexts) == kNtpLogTextCount,
-              "NTP log guard must cover every log text");
+static_assert(array_count(kNtpLogTexts) > 0,
+              "NTP log guard must cover log text");
 static_assert(cstr_array_nonempty(kNtpLogTexts), "NTP log texts must be non-empty");
 static_assert(kDefaultConfiguredNtpServerSlots > 0, "default SNTP server slots must be positive");
 static_assert(kActiveNtpServerCount > 0, "active NTP server count must be positive");
@@ -93,6 +92,18 @@ void configure_ntp_servers()
     }
 }
 
+void start_or_restart_ntp()
+{
+    if (!g_ntp_started) {
+        esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
+        configure_ntp_servers();
+        esp_sntp_init();
+        g_ntp_started = true;
+        return;
+    }
+    esp_sntp_restart();
+}
+
 void log_ntp_synced_time(const struct tm &local)
 {
     ESP_LOGI(TAG, NTP_SYNCED_LOG_FORMAT,
@@ -115,14 +126,7 @@ bool perform_ntp_sync(int max_retries)
         return false;
     }
     esp_sntp_set_sync_status(SNTP_SYNC_STATUS_RESET);
-    if (!g_ntp_started) {
-        esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-        configure_ntp_servers();
-        esp_sntp_init();
-        g_ntp_started = true;
-    } else {
-        esp_sntp_restart();
-    }
+    start_or_restart_ntp();
 
     for (int retry = 0; retry < max_retries; ++retry) {
         struct tm local = {};

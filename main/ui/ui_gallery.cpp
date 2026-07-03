@@ -15,7 +15,6 @@ static uint8_t s_custom_gallery_image[CLOCK_GALLERY_IMAGE_BYTES_PER_ROW * CLOCK_
 static constexpr int kGalleryTimeCanvasW = 112;
 static constexpr int kGalleryTimeCanvasH = 198;
 static constexpr int kGalleryMinutesPerHour = 60;
-static constexpr int kGalleryBlockDigitCount = 10;
 static constexpr int kGalleryBlockDigitRows = 7;
 static constexpr int kGalleryBlockDigitCols = 5;
 static constexpr int kGalleryBlockDigitScale = 10;
@@ -26,7 +25,13 @@ static constexpr int kGalleryBlockNumberW = kGalleryBlockDigitW * 2 + kGalleryBl
 static constexpr int kGalleryTimeHourY = 15;
 static constexpr int kGalleryTimeMinuteY = 116;
 
-static const char *const kBlockDigits[kGalleryBlockDigitCount][kGalleryBlockDigitRows] = {
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+static const char *const kBlockDigits[][kGalleryBlockDigitRows] = {
     {"11111", "10001", "10011", "10101", "11001", "10001", "11111"},
     {"00100", "01100", "00100", "00100", "00100", "00100", "01110"},
     {"11110", "00001", "00001", "11110", "10000", "10000", "11111"},
@@ -38,14 +43,9 @@ static const char *const kBlockDigits[kGalleryBlockDigitCount][kGalleryBlockDigi
     {"01110", "10001", "10001", "01110", "10001", "10001", "01110"},
     {"01110", "10001", "10001", "01111", "00001", "00001", "11110"},
 };
+static constexpr int kGalleryBlockDigitCount = static_cast<int>(array_count(kBlockDigits));
 
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-static_assert(array_count(kBlockDigits) == kGalleryBlockDigitCount);
+static_assert(kGalleryBlockDigitCount > 0, "Gallery block digit table must not be empty");
 static_assert(kGalleryTimeCanvasW > 0 && kGalleryTimeCanvasH > 0, "Gallery time canvas dimensions must be positive");
 static_assert(kGalleryMinutesPerHour > 0, "Gallery minutes per hour must be positive");
 static_assert(kGalleryBlockDigitCount == 10, "Gallery block digit table must contain decimal digits");
@@ -112,6 +112,16 @@ static bool update_gallery_saying_label()
     }
     const char *text = g_daily_saying[0] ? g_daily_saying : "";
     return set_label_text_if_changed(g_gallery_saying_label, text);
+}
+
+static void style_gallery_saying_label(lv_obj_t *label)
+{
+    if (!label) {
+        return;
+    }
+    lv_obj_set_style_text_font(label, &zh_font_16, LV_PART_MAIN);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
 }
 
 static bool update_gallery_image_for_hour(int hour)
@@ -231,9 +241,7 @@ void build_gallery_page()
     if (!g_gallery_saying_label) {
         ESP_LOGW(TAG, "%s", GALLERY_SAYING_LABEL_CREATE_FAILED_LOG);
     } else {
-        lv_obj_set_style_text_font(g_gallery_saying_label, &zh_font_16, LV_PART_MAIN);
-        lv_obj_set_style_text_align(g_gallery_saying_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_label_set_long_mode(g_gallery_saying_label, LV_LABEL_LONG_DOT);
+        style_gallery_saying_label(g_gallery_saying_label);
     }
 
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);

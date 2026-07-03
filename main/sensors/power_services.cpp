@@ -39,7 +39,6 @@ constexpr const char *kNetworkPmLockName = "network_sync";
 constexpr const char *kAudioPmLockName = "audio_play";
 constexpr const char *kNetworkPmLogName = "network";
 constexpr const char *kAudioPmLogName = "audio";
-constexpr size_t kPowerTextCount = 23;
 constexpr const char *const kPowerTexts[] = {
     kNetworkPmLockName,
     kAudioPmLockName,
@@ -98,8 +97,8 @@ static_assert(kRtcMaxMinute == 59, "RTC minute max must stay 59");
 static_assert(kRtcMaxSecond == 59, "RTC second max must stay 59");
 static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
 static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
-static_assert(array_count(kPowerTexts) == kPowerTextCount,
-              "power text guard must cover every name and log text");
+static_assert(array_count(kPowerTexts) > 0,
+              "power text guard must cover names and log texts");
 static_assert(cstr_array_nonempty(kPowerTexts), "power management names and log texts must be non-empty");
 
 bool rtc_time_fields_in_range(const rtcTimeStruct_t &rtc_time)

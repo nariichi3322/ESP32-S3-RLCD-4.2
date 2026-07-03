@@ -24,16 +24,41 @@ constexpr int kDisplaySettingPages[kDisplaySettingsPageItemCount] = {
     kWorkPageWeatherBoard,
     kWorkPageFlipClock,
 };
+constexpr const char *kWorkPageNames[kWorkPageCount] = {
+    "天气时钟",
+    "温度历史",
+    "图片时钟",
+    "日历",
+    "天气看板",
+    "翻页时钟",
+};
+constexpr const char *kUnknownWorkPageName = "未知页面";
 
 bool is_work_page_index(int page)
 {
     return page >= kFirstWorkPage && page < kWorkPageCount;
 }
 
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
     return N;
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *item : items) {
+        if (!cstr_nonempty(item)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 template <typename T, size_t N>
@@ -69,6 +94,32 @@ lv_obj_t *work_page_root_or_fallback(lv_obj_t *root)
     return root ? root : g_clock_root;
 }
 
+lv_obj_t *build_work_page_root(int page)
+{
+    switch (page) {
+    case kWorkPageWeatherClock:
+        build_clock_ui();
+        return g_clock_root;
+    case kWorkPageHistory:
+        build_history_page();
+        return work_page_root_or_fallback(g_history_root);
+    case kWorkPageGallery:
+        build_gallery_page();
+        return work_page_root_or_fallback(g_gallery_root);
+    case kWorkPageCalendar:
+        build_calendar_page();
+        return work_page_root_or_fallback(g_calendar_root);
+    case kWorkPageWeatherBoard:
+        build_weather_board_page();
+        return work_page_root_or_fallback(g_weather_board_root);
+    case kWorkPageFlipClock:
+        build_flip_clock_page();
+        return work_page_root_or_fallback(g_flip_clock_root);
+    default:
+        return g_clock_root;
+    }
+}
+
 static_assert(kFirstWorkPage == 0, "work page ids must start at zero");
 static_assert(kFallbackWorkPage == kWorkPageWeatherClock, "fallback page must remain weather clock");
 static_assert(kAuxPageRootCount == 3, "auxiliary roots are info, network diagnostics and settings");
@@ -79,6 +130,10 @@ static_assert(array_count(kDefaultWorkPageOrder) == kWorkPageCount,
               "default work page order must cover every work page");
 static_assert(array_count(kDisplaySettingPages) == kDisplaySettingsPageItemCount,
               "display setting page mapping must match the settings item count");
+static_assert(array_count(kWorkPageNames) == kWorkPageCount,
+              "work page names must cover every work page");
+static_assert(cstr_array_nonempty(kWorkPageNames), "work page names must be non-empty");
+static_assert(cstr_nonempty(kUnknownWorkPageName), "unknown work page name must be non-empty");
 static_assert(page_list_covers_each_work_page_once(kDefaultWorkPageOrder),
               "default work page order must include every work page exactly once");
 static_assert(page_list_covers_each_work_page_once(kDisplaySettingPages),
@@ -142,31 +197,7 @@ lv_obj_t *active_work_page_root()
         g_active_work_page = kFallbackWorkPage;
     }
     ensure_active_work_page_enabled();
-    if (g_active_work_page == kWorkPageWeatherClock) {
-        build_clock_ui();
-        return g_clock_root;
-    }
-    if (g_active_work_page == kWorkPageHistory) {
-        build_history_page();
-        return work_page_root_or_fallback(g_history_root);
-    }
-    if (g_active_work_page == kWorkPageGallery) {
-        build_gallery_page();
-        return work_page_root_or_fallback(g_gallery_root);
-    }
-    if (g_active_work_page == kWorkPageCalendar) {
-        build_calendar_page();
-        return work_page_root_or_fallback(g_calendar_root);
-    }
-    if (g_active_work_page == kWorkPageWeatherBoard) {
-        build_weather_board_page();
-        return work_page_root_or_fallback(g_weather_board_root);
-    }
-    if (g_active_work_page == kWorkPageFlipClock) {
-        build_flip_clock_page();
-        return work_page_root_or_fallback(g_flip_clock_root);
-    }
-    return g_clock_root;
+    return build_work_page_root(g_active_work_page);
 }
 
 void show_active_work_page()
@@ -187,20 +218,10 @@ bool is_work_page_enabled(int page)
 
 const char *work_page_name(int page)
 {
-    static const char *kPageNames[kWorkPageCount] = {
-        "天气时钟",
-        "温度历史",
-        "图片时钟",
-        "日历",
-        "天气看板",
-        "翻页时钟",
-    };
-    constexpr size_t kPageNameCount = array_count(kPageNames);
-    static_assert(kPageNameCount == kWorkPageCount, "work page names must cover every work page");
     if (!is_work_page_index(page)) {
-        return "未知页面";
+        return kUnknownWorkPageName;
     }
-    return kPageNames[page];
+    return kWorkPageNames[page];
 }
 
 int display_settings_item_work_page(int item)
@@ -347,8 +368,15 @@ void clear_clock_object_refs()
     g_flip_clock_humidity_bold_y_label = nullptr;
     g_flip_clock_temp_mood_canvas = nullptr;
     g_flip_clock_humi_mood_canvas = nullptr;
+    g_flip_clock_temp_trend_canvas = nullptr;
+    g_flip_clock_humi_trend_canvas = nullptr;
     g_flip_clock_day_label = nullptr;
+    g_flip_clock_day_bold_label = nullptr;
+    g_flip_clock_day_bold_y_label = nullptr;
     g_flip_clock_lunar_label = nullptr;
+    g_flip_clock_lunar_bold_x_label = nullptr;
+    g_flip_clock_lunar_bold_y_label = nullptr;
+    g_flip_clock_lunar_bold_xy_label = nullptr;
     g_flip_clock_day_progress_canvas = nullptr;
     g_flip_clock_second_progress_canvas = nullptr;
     clear_pointer_array(g_battery_segments);
@@ -379,6 +407,8 @@ void clear_clock_object_refs()
     g_last_flip_clock_second = -1;
     g_last_flip_temp_mood = -1;
     g_last_flip_humi_mood = -1;
+    g_last_flip_temp_trend = 99;
+    g_last_flip_humi_trend = 99;
     g_last_flip_date_key = -1;
     g_last_flip_day_progress_filled = -1;
     g_last_flip_second_progress_filled = -1;

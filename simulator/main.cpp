@@ -18,11 +18,12 @@
 
 LV_FONT_DECLARE(qweather_icons_36);
 LV_FONT_DECLARE(zh_font_16);
+LV_FONT_DECLARE(zh_flip_lunar_22);
 
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.4.45";
+static const char *APP_VERSION = "v1.4.46";
 static const char *const kPreviewWeekDaysFull[] = {
     "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六",
 };
@@ -1379,12 +1380,29 @@ static void build_flip_clock_preview_ui()
     lv_obj_set_style_clip_corner(date_panel, true, LV_PART_MAIN);
     char day_text[8];
     snprintf(day_text, sizeof(day_text), "%d", local.tm_mday);
-    lv_obj_t *day = make_label_with_font(screen, 270, 198, 112, 52, day_text, &lv_font_montserrat_48);
-    lv_obj_set_style_text_align(day, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_text_color(day, lv_color_white(), LV_PART_MAIN);
-    lv_obj_t *lunar = make_label_with_font(screen, 270, 250, 112, 28, "初八", &zh_font_16);
-    lv_obj_set_style_text_align(lunar, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_text_color(lunar, lv_color_white(), LV_PART_MAIN);
+    lv_obj_t *day = make_label_with_font(screen, 270, 196, 112, 52, day_text, &lv_font_montserrat_48);
+    lv_obj_t *day_bold_x = make_label_with_font(screen, 271, 196, 112, 52, day_text, &lv_font_montserrat_48);
+    lv_obj_t *day_bold_y = make_label_with_font(screen, 270, 197, 112, 52, day_text, &lv_font_montserrat_48);
+    lv_obj_t *day_labels[] = {day, day_bold_x, day_bold_y};
+    for (lv_obj_t *label : day_labels) {
+        if (!label) {
+            continue;
+        }
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+    }
+    lv_obj_t *lunar = make_label_with_font(screen, 270, 243, 112, 42, "初八", &zh_flip_lunar_22);
+    lv_obj_t *lunar_bold_x = make_label_with_font(screen, 271, 243, 112, 42, "初八", &zh_flip_lunar_22);
+    lv_obj_t *lunar_bold_y = make_label_with_font(screen, 270, 244, 112, 42, "初八", &zh_flip_lunar_22);
+    lv_obj_t *lunar_bold_xy = make_label_with_font(screen, 271, 244, 112, 42, "初八", &zh_flip_lunar_22);
+    lv_obj_t *lunar_labels[] = {lunar, lunar_bold_x, lunar_bold_y, lunar_bold_xy};
+    for (lv_obj_t *label : lunar_labels) {
+        if (!label) {
+            continue;
+        }
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+    }
 }
 
 static void build_info_preview_ui()

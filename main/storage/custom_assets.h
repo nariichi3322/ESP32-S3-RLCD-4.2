@@ -8,7 +8,11 @@ static constexpr uint32_t kCustomAssetsMagic = 0x31414357; // WCA1
 static constexpr uint16_t kCustomAssetsVersion = 1;
 static constexpr uint16_t kCustomAssetTypeMainGif = 1;
 static constexpr uint16_t kCustomAssetTypeGalleryImage = 2;
+static constexpr uint16_t kCustomAssetTypeWeatherCity = 3;
+static constexpr uint16_t kCustomAssetTypeOtaManifestUrl = 4;
 static constexpr int kCustomAssetMaxEntries = 32;
+static constexpr size_t kCustomAssetWeatherCityMaxLen = 31;
+static constexpr size_t kCustomAssetOtaManifestUrlMaxLen = 255;
 
 struct CustomAssetsHeader {
     uint32_t magic;
@@ -39,3 +43,5 @@ bool custom_assets_has_main_gif();
 int custom_assets_gallery_count();
 bool custom_assets_read_main_gif_frame(int frame, uint8_t *out, size_t out_len);
 bool custom_assets_read_gallery_image(int index, uint8_t *out, size_t out_len);
+bool custom_assets_read_weather_city(char *out, size_t out_len);
+bool custom_assets_read_ota_manifest_url(char *out, size_t out_len);

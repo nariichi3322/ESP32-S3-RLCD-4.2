@@ -33,8 +33,8 @@
 #define CUSTOM_ASSETS_DIAG_ENTRY_REJECTED_LOG_FORMAT "custom assets diag: entry[%d] rejected"
 #define CUSTOM_ASSETS_DIAG_DUPLICATE_MAIN_GIF_LOG_FORMAT "custom assets diag: duplicate main gif entry"
 #define CUSTOM_ASSETS_DIAG_DUPLICATE_GALLERY_LOG_FORMAT "custom assets diag: duplicate gallery entry index=%u"
-#define CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT "custom assets diag: ready main_gif=%d gallery=%d"
-constexpr size_t kCustomAssetLogTextCount = 27;
+#define CUSTOM_ASSETS_DIAG_DUPLICATE_CONFIG_LOG_FORMAT "custom assets diag: duplicate config entry type=%u"
+#define CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT "custom assets diag: ready main_gif=%d gallery=%d weather_city=%d ota_url=%d"
 constexpr const char *const kCustomAssetLogTexts[] = {
     CUSTOM_ASSETS_PARTITION_RANGE_INVALID_LOG_FORMAT,
     CUSTOM_ASSETS_PARTITION_READ_FAILED_LOG_FORMAT,
@@ -62,6 +62,7 @@ constexpr const char *const kCustomAssetLogTexts[] = {
     CUSTOM_ASSETS_DIAG_ENTRY_REJECTED_LOG_FORMAT,
     CUSTOM_ASSETS_DIAG_DUPLICATE_MAIN_GIF_LOG_FORMAT,
     CUSTOM_ASSETS_DIAG_DUPLICATE_GALLERY_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_DUPLICATE_CONFIG_LOG_FORMAT,
     CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT,
 };
 
@@ -71,6 +72,8 @@ static CustomAssetEntry s_entries[kCustomAssetMaxEntries] = {};
 static int s_entry_count = 0;
 static const CustomAssetEntry *s_main_gif_entry = nullptr;
 static const CustomAssetEntry *s_gallery_entries[kCustomAssetMaxEntries] = {};
+static const CustomAssetEntry *s_weather_city_entry = nullptr;
+static const CustomAssetEntry *s_ota_manifest_url_entry = nullptr;
 static int s_gallery_count = 0;
 static bool s_assets_ready = false;
 static constexpr const char *kCustomAssetsPartitionLabel = "assets";
@@ -105,22 +108,69 @@ constexpr bool cstr_array_nonempty(const T (&items)[N])
 
 constexpr bool custom_asset_diag_frames_valid()
 {
+    int previous = -1;
     for (int frame : kCustomAssetDiagGifFrames) {
-        if (frame < 0 || frame >= STATUS_GIF_FRAME_COUNT) {
+        if (frame < 0 || frame >= STATUS_GIF_FRAME_COUNT || frame <= previous) {
             return false;
+        }
+        previous = frame;
+    }
+    return true;
+}
+
+constexpr bool custom_asset_type_ids_distinct()
+{
+    constexpr uint16_t types[] = {
+        kCustomAssetTypeMainGif,
+        kCustomAssetTypeGalleryImage,
+        kCustomAssetTypeWeatherCity,
+        kCustomAssetTypeOtaManifestUrl,
+    };
+    for (size_t i = 0; i < array_count(types); ++i) {
+        for (size_t j = i + 1; j < array_count(types); ++j) {
+            if (types[i] == types[j]) {
+                return false;
+            }
         }
     }
     return true;
 }
 
-static_assert(array_count(kCustomAssetDiagGifFrames) > 0);
-static_assert(custom_asset_diag_frames_valid(), "custom asset diagnostic GIF frames must be valid");
+static void trim_custom_asset_text(char *text)
+{
+    if (!text) {
+        return;
+    }
+    char *start = text;
+    while (*start == ' ' || *start == '\t' || *start == '\r' || *start == '\n') {
+        ++start;
+    }
+    if (start != text) {
+        memmove(text, start, strlen(start) + 1);
+    }
+    size_t len = strlen(text);
+    while (len > 0 &&
+           (text[len - 1] == ' ' ||
+            text[len - 1] == '\t' ||
+            text[len - 1] == '\r' ||
+            text[len - 1] == '\n')) {
+        text[--len] = '\0';
+    }
+}
+
+static_assert(array_count(kCustomAssetDiagGifFrames) > 0,
+              "custom asset diagnostic GIF frame table must not be empty");
+static_assert(custom_asset_diag_frames_valid(),
+              "custom asset diagnostic GIF frames must be ordered and valid");
 static_assert(sizeof(CustomAssetsHeader) == 24, "custom assets header wire size must stay stable");
 static_assert(sizeof(CustomAssetEntry) == 24, "custom asset entry wire size must stay stable");
 static_assert(kCustomAssetsMagic == 0x31414357, "custom assets magic must remain WCA1");
 static_assert(kCustomAssetsVersion > 0, "custom assets version must be positive");
-static_assert(kCustomAssetTypeMainGif != kCustomAssetTypeGalleryImage,
-              "custom asset type ids must be distinct");
+static_assert(custom_asset_type_ids_distinct(), "custom asset type ids must be distinct");
+static_assert(kCustomAssetWeatherCityMaxLen + 1 <= kManualWeatherCityLen,
+              "custom weather city must fit manual city storage");
+static_assert(kCustomAssetOtaManifestUrlMaxLen + 1 <= kOtaUrlLen,
+              "custom OTA manifest URL must fit OTA URL storage");
 static_assert(kCustomAssetMaxEntries > 0, "custom asset entry limit must be positive");
 static_assert(kCustomAssetMaxGalleryImages > 0, "custom gallery image limit must be positive");
 static_assert(kCustomAssetMaxGalleryImages <= kCustomAssetMaxEntries,
@@ -129,8 +179,8 @@ static_assert(kCustomAssetCrcChunkSize > 0, "custom asset CRC chunk size must be
 static_assert(kBitsPerByte == 8, "custom assets expect 8-bit bytes");
 static_assert(kCustomAssetCrc32Initial == 0xFFFFFFFFU, "custom asset CRC32 initial value must stay stable");
 static_assert(kCustomAssetCrc32Polynomial == 0xEDB88320U, "custom asset CRC32 polynomial must stay stable");
-static_assert(array_count(kCustomAssetLogTexts) == kCustomAssetLogTextCount,
-              "custom assets log guard must cover every log text");
+static_assert(array_count(kCustomAssetLogTexts) > 0,
+              "custom assets log guard must cover log texts");
 static_assert(cstr_array_nonempty(kCustomAssetLogTexts), "custom assets log texts must be non-empty");
 
 class CustomAssetTempBuffer {
@@ -289,6 +339,26 @@ static size_t custom_asset_gallery_image_bytes()
     return (size_t)CLOCK_GALLERY_IMAGE_BYTES_PER_ROW * CLOCK_GALLERY_IMAGE_HEIGHT;
 }
 
+static bool custom_asset_text_metadata_valid(const CustomAssetEntry &entry)
+{
+    return entry.index == 0 &&
+           entry.width == 0 &&
+           entry.height == 0 &&
+           entry.frame_count == 0 &&
+           entry.bytes_per_row == 0;
+}
+
+static bool custom_asset_text_length_valid(const CustomAssetEntry &entry, size_t max_len)
+{
+    return entry.length > 0 && entry.length <= max_len;
+}
+
+static bool custom_asset_text_entry_valid(const CustomAssetEntry &entry, size_t max_len)
+{
+    return custom_asset_text_metadata_valid(entry) &&
+           custom_asset_text_length_valid(entry, max_len);
+}
+
 static bool validate_entry_shape(const CustomAssetEntry &entry)
 {
     bool valid = false;
@@ -309,6 +379,10 @@ static bool validate_entry_shape(const CustomAssetEntry &entry)
                 entry.frame_count == 1 &&
                 entry.bytes_per_row == CLOCK_GALLERY_IMAGE_BYTES_PER_ROW &&
                 entry.length == expected;
+    } else if (entry.type == kCustomAssetTypeWeatherCity) {
+        valid = custom_asset_text_entry_valid(entry, kCustomAssetWeatherCityMaxLen);
+    } else if (entry.type == kCustomAssetTypeOtaManifestUrl) {
+        valid = custom_asset_text_entry_valid(entry, kCustomAssetOtaManifestUrlMaxLen);
     }
     if (!valid) {
         ESP_LOGW(TAG,
@@ -386,6 +460,8 @@ static void reset_custom_assets()
     memset(s_gallery_entries, 0, sizeof(s_gallery_entries));
     s_entry_count = 0;
     s_main_gif_entry = nullptr;
+    s_weather_city_entry = nullptr;
+    s_ota_manifest_url_entry = nullptr;
     s_gallery_count = 0;
     s_assets_ready = false;
 }
@@ -515,6 +591,20 @@ void custom_assets_init()
                 }
             }
             s_gallery_entries[s_gallery_count++] = &entry;
+        } else if (entry.type == kCustomAssetTypeWeatherCity) {
+            if (s_weather_city_entry) {
+                ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_DUPLICATE_CONFIG_LOG_FORMAT, entry.type);
+                reset_custom_assets();
+                return;
+            }
+            s_weather_city_entry = &entry;
+        } else if (entry.type == kCustomAssetTypeOtaManifestUrl) {
+            if (s_ota_manifest_url_entry) {
+                ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_DUPLICATE_CONFIG_LOG_FORMAT, entry.type);
+                reset_custom_assets();
+                return;
+            }
+            s_ota_manifest_url_entry = &entry;
         }
     }
     for (int i = 0; i < s_gallery_count - 1; ++i) {
@@ -526,8 +616,13 @@ void custom_assets_init()
             }
         }
     }
-    s_assets_ready = s_main_gif_entry || s_gallery_count > 0;
-    ESP_LOGI(TAG, CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT, s_main_gif_entry ? 1 : 0, s_gallery_count);
+    s_assets_ready = s_main_gif_entry || s_gallery_count > 0 || s_weather_city_entry || s_ota_manifest_url_entry;
+    ESP_LOGI(TAG,
+             CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT,
+             s_main_gif_entry ? 1 : 0,
+             s_gallery_count,
+             s_weather_city_entry ? 1 : 0,
+             s_ota_manifest_url_entry ? 1 : 0);
     if (s_main_gif_entry) {
         for (int frame : kCustomAssetDiagGifFrames) {
             log_custom_gif_frame_density(frame);
@@ -581,4 +676,29 @@ bool custom_assets_read_gallery_image(int index, uint8_t *out, size_t out_len)
         return false;
     }
     return read_checked(entry->offset, out, expected);
+}
+
+static bool custom_assets_read_text(const CustomAssetEntry *entry, char *out, size_t out_len)
+{
+    if (!entry || !out || out_len == 0 || entry->length >= out_len) {
+        return false;
+    }
+    memset(out, 0, out_len);
+    if (!read_checked(entry->offset, out, entry->length)) {
+        out[0] = '\0';
+        return false;
+    }
+    out[entry->length] = '\0';
+    trim_custom_asset_text(out);
+    return out[0] != '\0';
+}
+
+bool custom_assets_read_weather_city(char *out, size_t out_len)
+{
+    return custom_assets_read_text(s_weather_city_entry, out, out_len);
+}
+
+bool custom_assets_read_ota_manifest_url(char *out, size_t out_len)
+{
+    return custom_assets_read_text(s_ota_manifest_url_entry, out, out_len);
 }

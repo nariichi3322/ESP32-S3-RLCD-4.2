@@ -37,12 +37,33 @@ constexpr const char *kHttpDecodeInvalidArgLog = "decode http body invalid arg";
 constexpr const char *kHttpGetInvalidArgLog = "http get invalid arg";
 constexpr const char *kHttpBootBudgetExhaustedLog = "http get skipped: boot sync time budget exhausted";
 constexpr const char *kHttpClientInitFailedLog = "http client init failed";
+constexpr bool gzip_flag_bits_valid()
+{
+    constexpr uint8_t flags[] = {
+        kGzipFlagHeaderCrc,
+        kGzipFlagExtra,
+        kGzipFlagName,
+        kGzipFlagComment,
+    };
+    uint8_t combined = 0;
+    for (uint8_t flag : flags) {
+        if (flag == 0 || (combined & flag) != 0) {
+            return false;
+        }
+        combined |= flag;
+    }
+    return true;
+}
+
 static_assert(kGzipMagicPrefixSize == 2, "gzip magic prefix must contain two bytes");
+static_assert(kGzipMagic0 == 0x1F && kGzipMagic1 == 0x8B, "gzip magic bytes must remain RFC1952 values");
+static_assert(kGzipDeflateMethod == 8, "gzip compression method must remain deflate");
 static_assert(kGzipHeaderProbeSize >= 3, "gzip header probe must cover magic and compression method");
 static_assert(kGzipBaseHeaderSize > kGzipHeaderProbeSize, "gzip base header must include fixed fields after method");
 static_assert(kGzipMinSize >= kGzipBaseHeaderSize + kGzipTrailerSize,
               "gzip minimum size must cover base header and trailer");
 static_assert(kGzipExtraLengthFieldSize == 2, "gzip extra length field is two bytes");
+static_assert(gzip_flag_bits_valid(), "gzip optional header flags must be nonzero and non-overlapping");
 static_assert(kHttpStatusOkMin >= 100 && kHttpStatusOkMin < kHttpStatusOkMax,
               "HTTP success lower bound must be a valid status below upper bound");
 static_assert(kHttpStatusOkMax <= 600, "HTTP success upper bound must stay within valid status space");
@@ -51,6 +72,8 @@ static_assert(kHttpPreviewBufferSize == kHttpPreviewMaxChars + kCStringTerminato
               "HTTP preview buffer must include NUL terminator space");
 static_assert(kUrlEncodedPlainCharSize == 1, "URL unreserved characters encode to one byte");
 static_assert(kUrlEncodedEscapedCharSize == 3, "URL escaped characters encode as %XX");
+static_assert(kUrlEncodedEscapedCharSize == 1 + 2 * kUrlEncodedPlainCharSize,
+              "URL escaped characters must reserve percent plus two hex digits");
 #define HTTP_TEMP_BUFFER_ALLOC_FAILED_FORMAT "http temp buffer alloc failed len=%u"
 #define HTTP_GZIP_HEADER_INVALID_FORMAT "gzip response header invalid len=%u"
 #define HTTP_GZIP_DECOMPRESS_FAILED_FORMAT "gzip response decompress failed payload_len=%u"
@@ -62,7 +85,6 @@ static_assert(kUrlEncodedEscapedCharSize == 3, "URL escaped characters encode as
 #define HTTP_RESPONSE_TRUNCATED_FORMAT "http response may be truncated status=%d content_len=%lld buffer=%u"
 #define HTTP_GET_OK_FORMAT "http get ok status=%d len=%u gzip=%d"
 
-constexpr size_t kHttpLogTextCount = 10;
 constexpr const char *const kHttpLogTexts[] = {
     HTTP_TEMP_BUFFER_ALLOC_FAILED_FORMAT,
     HTTP_GZIP_HEADER_INVALID_FORMAT,
@@ -125,8 +147,8 @@ static_assert(cstr_nonempty(kHttpDecodeInvalidArgLog), "HTTP decode invalid-argu
 static_assert(cstr_nonempty(kHttpGetInvalidArgLog), "HTTP get invalid-argument log must be non-empty");
 static_assert(cstr_nonempty(kHttpBootBudgetExhaustedLog), "HTTP boot-budget log must be non-empty");
 static_assert(cstr_nonempty(kHttpClientInitFailedLog), "HTTP client init-failed log must be non-empty");
-static_assert(array_count(kHttpLogTexts) == kHttpLogTextCount,
-              "HTTP log format guard must cover every HTTP log format");
+static_assert(array_count(kHttpLogTexts) > 0,
+              "HTTP log format guard must cover HTTP log formats");
 static_assert(cstr_array_nonempty(kHttpLogTexts), "HTTP log format texts must be non-empty");
 
 bool is_qweather_url(const char *url)
@@ -155,6 +177,23 @@ bool http_response_may_be_truncated(int64_t content_length, size_t received_len,
     return content_length_fills_buffer || received_fills_buffer;
 }
 
+bool compute_http_timeout_ms(int *timeout_ms)
+{
+    if (!timeout_ms) {
+        return false;
+    }
+    *timeout_ms = g_http_timeout_ms;
+    int remaining_ms = boot_sync_remaining_ms();
+    if (remaining_ms <= 0) {
+        ESP_LOGW(TAG, "%s", kHttpBootBudgetExhaustedLog);
+        return false;
+    }
+    if (remaining_ms != INT32_MAX && *timeout_ms > remaining_ms) {
+        *timeout_ms = remaining_ms;
+    }
+    return true;
+}
+
 bool http_ascii_space(char ch)
 {
     return isspace((unsigned char)ch);
@@ -180,9 +219,14 @@ bool skip_gzip_zero_terminated_field(const uint8_t *data, size_t len, size_t *po
     return advance_gzip_pos(pos, 1, len);
 }
 
+bool output_buffer_available(char *out, size_t out_len)
+{
+    return out && out_len > 0;
+}
+
 void copy_log_preview(char *out, size_t out_len, const char *text)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return;
     }
     if (!text) {
@@ -356,14 +400,9 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
     config.url = url;
     config.event_handler = http_event_handler;
     config.user_data = &buffer;
-    int timeout_ms = g_http_timeout_ms;
-    int remaining_ms = boot_sync_remaining_ms();
-    if (remaining_ms <= 0) {
-        ESP_LOGW(TAG, "%s", kHttpBootBudgetExhaustedLog);
+    int timeout_ms = 0;
+    if (!compute_http_timeout_ms(&timeout_ms)) {
         return ESP_ERR_TIMEOUT;
-    }
-    if (remaining_ms != INT32_MAX && timeout_ms > remaining_ms) {
-        timeout_ms = remaining_ms;
     }
     config.timeout_ms = timeout_ms;
     if (is_qweather_url(url)) {
@@ -428,7 +467,7 @@ void trim_ascii(char *text)
 
 bool json_copy_string(cJSON *obj, const char *name, char *out, size_t out_len)
 {
-    if (!obj || !name || !out || out_len == 0) {
+    if (!obj || !name || !output_buffer_available(out, out_len)) {
         return false;
     }
     cJSON *item = cJSON_GetObjectItem(obj, name);

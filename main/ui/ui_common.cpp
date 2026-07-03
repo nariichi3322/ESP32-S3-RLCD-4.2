@@ -350,6 +350,13 @@ int draw_dseg_text(lv_obj_t *canvas, const DsegFont &font, const char *text, int
     return x_cursor;
 }
 
+static void format_two_digit_second_text(char out[kSecondTextSize], int second)
+{
+    out[0] = static_cast<char>('0' + second / kDecimalBase);
+    out[1] = static_cast<char>('0' + second % kDecimalBase);
+    out[2] = '\0';
+}
+
 void draw_time_canvas(const struct tm &local)
 {
     if (!g_time_canvas) {
@@ -369,11 +376,8 @@ void draw_second_canvas(const struct tm &local)
         return;
     }
     lv_canvas_fill_bg(g_second_canvas, lv_color_white(), LV_OPA_COVER);
-    char ss[kSecondTextSize] = {
-        (char)('0' + local.tm_sec / kDecimalBase),
-        (char)('0' + local.tm_sec % kDecimalBase),
-        '\0',
-    };
+    char ss[kSecondTextSize];
+    format_two_digit_second_text(ss, local.tm_sec);
     draw_dseg_text(g_second_canvas, kDSEG36Font, ss, 0, 40);
     lv_obj_invalidate(g_second_canvas);
 }
@@ -436,6 +440,38 @@ void draw_status_gif_frame(int frame)
     }
 }
 
+static const char *label_text_or_empty(const char *text)
+{
+    return text ? text : "";
+}
+
+static void copy_invalid_time_text(char *out, size_t out_len)
+{
+    strlcpy(out, kInvalidTimeText, out_len);
+}
+
+static bool time_year_valid(int year)
+{
+    return year >= kMinValidYear && year <= kMaxValidYear;
+}
+
+static void format_full_datetime_text(char *out, size_t out_len, const struct tm &local, int year)
+{
+    char formatted[kDateTimeTextSize];
+    int written = snprintf(formatted, sizeof(formatted), kFullDateTimeFormat,
+                           year,
+                           local.tm_mon + kTmMonthOffset,
+                           local.tm_mday,
+                           local.tm_hour,
+                           local.tm_min,
+                           local.tm_sec);
+    if (written < 0 || written >= static_cast<int>(sizeof(formatted))) {
+        copy_invalid_time_text(out, out_len);
+        return;
+    }
+    strlcpy(out, formatted, out_len);
+}
+
 lv_obj_t *make_label_with_font(lv_obj_t *parent, int x, int y, int w, int h, const char *text, const lv_font_t *font)
 {
     if (!parent) {
@@ -453,7 +489,7 @@ lv_obj_t *make_label_with_font(lv_obj_t *parent, int x, int y, int w, int h, con
     }
     lv_obj_set_pos(label, x, y);
     lv_obj_set_size(label, w, h);
-    lv_label_set_text(label, text ? text : "");
+    lv_label_set_text(label, label_text_or_empty(text));
     lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(label, lv_color_black(), LV_PART_MAIN);
     if (font) {
@@ -473,9 +509,7 @@ bool set_label_text_if_changed(lv_obj_t *label, const char *text)
     if (!label) {
         return false;
     }
-    if (!text) {
-        text = "";
-    }
+    text = label_text_or_empty(text);
     const char *current = lv_label_get_text(label);
     if (current == nullptr || strcmp(current, text) != 0) {
         lv_label_set_text(label, text);
@@ -490,23 +524,15 @@ void format_time_or_dash(time_t value, char *out, size_t out_len)
         return;
     }
     if (value <= 0) {
-        strlcpy(out, kInvalidTimeText, out_len);
+        copy_invalid_time_text(out, out_len);
         return;
     }
     struct tm local = {};
     localtime_r(&value, &local);
     const int year = local.tm_year + kTmYearOffset;
-    if (year < kMinValidYear || year > kMaxValidYear) {
-        strlcpy(out, kInvalidTimeText, out_len);
+    if (!time_year_valid(year)) {
+        copy_invalid_time_text(out, out_len);
         return;
     }
-    char formatted[kDateTimeTextSize];
-    snprintf(formatted, sizeof(formatted), kFullDateTimeFormat,
-             year,
-             local.tm_mon + kTmMonthOffset,
-             local.tm_mday,
-             local.tm_hour,
-             local.tm_min,
-             local.tm_sec);
-    strlcpy(out, formatted, out_len);
+    format_full_datetime_text(out, out_len, local, year);
 }
