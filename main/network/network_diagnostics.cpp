@@ -43,6 +43,37 @@ constexpr size_t kNetworkDiagIpv4TextMinSize = sizeof("255.255.255.255");
 #define NETWORK_DIAG_LINE_INDEX_INVALID_FORMAT "network diag line index invalid: %d"
 #define NETWORK_DIAG_LINE_FORMAT_FAILED_FORMAT "network diag line format failed index=%d"
 #define NETWORK_DIAG_LINE_TRUNCATED_FORMAT "network diag line truncated index=%d len=%d"
+constexpr size_t kNetworkDiagTextCount = 28;
+constexpr const char *const kNetworkDiagTexts[] = {
+    kNetworkDiagPublicIpUrl,
+    kNetworkDiagPublicIpJsonKey,
+    kNetworkDiagQweatherDnsHost,
+    kNetworkDiagGithubDnsHost,
+    kNetworkDiagStatusWaiting,
+    kNetworkDiagStatusChecking,
+    kNetworkDiagStatusFailed,
+    kNetworkDiagStatusOk,
+    kNetworkDiagPlaceholder,
+    kNetworkDiagLocalIpFormat,
+    kNetworkDiagPublicIpFormat,
+    kNetworkDiagIpLocationFormat,
+    kNetworkDiagIpLocationCityFormat,
+    kNetworkDiagDnsFormat,
+    kNetworkDiagWeatherFormat,
+    kNetworkDiagNtpFormat,
+    kNetworkDiagSayingFormat,
+    kNetworkDiagInternetFormat,
+    kNetworkDiagOtaFormat,
+    NETWORK_DIAG_RESPONSE_ALLOC_FAILED_FORMAT,
+    NETWORK_DIAG_DNS_INVALID_HOST_LOG,
+    NETWORK_DIAG_DNS_LOOKUP_FAILED_FORMAT,
+    NETWORK_DIAG_HTTP_PROBE_INVALID_ARG_LOG,
+    NETWORK_DIAG_PUBLIC_IP_PARSE_FAILED_LOG,
+    NETWORK_DIAG_PUBLIC_IP_HTTP_FAILED_LOG,
+    NETWORK_DIAG_LINE_INDEX_INVALID_FORMAT,
+    NETWORK_DIAG_LINE_FORMAT_FAILED_FORMAT,
+    NETWORK_DIAG_LINE_TRUNCATED_FORMAT,
+};
 constexpr int kNetworkDiagLocalIpLine = 0;
 constexpr int kNetworkDiagPublicIpLine = 1;
 constexpr int kNetworkDiagIpLocationLine = 2;
@@ -52,6 +83,29 @@ constexpr int kNetworkDiagNtpLine = 5;
 constexpr int kNetworkDiagSayingLine = 6;
 constexpr int kNetworkDiagInternetLine = 7;
 constexpr int kNetworkDiagOtaLine = 8;
+
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *item : items) {
+        if (!cstr_nonempty(item)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static_assert(kNetworkDiagDefaultProbeBufferSize > 0, "network diag default probe buffer must be nonzero");
 static_assert(kNetworkDiagWideProbeBufferSize >= kNetworkDiagDefaultProbeBufferSize,
               "network diag wide probe buffer must cover default probe buffer");
@@ -64,10 +118,9 @@ static_assert(kNetworkDiagPublicIpTextSize >= kNetworkDiagIpv4TextMinSize,
               "network diag public IP text buffer must fit IPv4 text");
 static_assert(kNetworkDiagJsonSearchMaxDepth >= 0, "network diag JSON search depth must be non-negative");
 static_assert(kNetworkDiagNtpMaxRetries > 0, "network diag NTP retry count must be positive");
-static_assert(kNetworkDiagPublicIpUrl[0] != '\0', "network diag public IP URL must be non-empty");
-static_assert(kNetworkDiagPublicIpJsonKey[0] != '\0', "network diag public IP JSON key must be non-empty");
-static_assert(kNetworkDiagQweatherDnsHost[0] != '\0', "network diag QWeather DNS host must be non-empty");
-static_assert(kNetworkDiagGithubDnsHost[0] != '\0', "network diag GitHub DNS host must be non-empty");
+static_assert(array_count(kNetworkDiagTexts) == kNetworkDiagTextCount,
+              "network diagnostic text guard must cover every fixed text and log");
+static_assert(cstr_array_nonempty(kNetworkDiagTexts), "network diagnostic fixed texts and logs must be non-empty");
 static_assert(kNetworkDiagLocalIpLine >= 0 && kNetworkDiagLocalIpLine < kNetworkDiagLineCount);
 static_assert(kNetworkDiagPublicIpLine >= 0 && kNetworkDiagPublicIpLine < kNetworkDiagLineCount);
 static_assert(kNetworkDiagIpLocationLine >= 0 && kNetworkDiagIpLocationLine < kNetworkDiagLineCount);

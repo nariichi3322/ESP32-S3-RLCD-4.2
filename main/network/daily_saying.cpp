@@ -28,6 +28,15 @@ constexpr const char *const kDailySayingJsonFields[] = {
     "quote",
     "data",
 };
+constexpr size_t kDailySayingLogTextCount = 6;
+constexpr const char *const kDailySayingLogTexts[] = {
+    DAILY_SAYING_RESPONSE_ALLOC_FAILED_LOG_FORMAT,
+    DAILY_SAYING_HTTP_FAILED_LOG_FORMAT,
+    DAILY_SAYING_PARSE_FAILED_LOG_FORMAT,
+    DAILY_SAYING_TOO_LONG_LOG_FORMAT,
+    DAILY_SAYING_UPDATE_FAILED_LOG_FORMAT,
+    DAILY_SAYING_UPDATED_LOG_FORMAT,
+};
 
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
@@ -50,8 +59,22 @@ constexpr bool daily_saying_json_fields_nonempty()
     return true;
 }
 
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *item : items) {
+        if (!cstr_nonempty(item)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static_assert(array_count(kDailySayingJsonFields) > 0);
 static_assert(daily_saying_json_fields_nonempty(), "daily saying JSON fields must be non-empty");
+static_assert(array_count(kDailySayingLogTexts) == kDailySayingLogTextCount,
+              "daily saying log guard must cover every log text");
+static_assert(cstr_array_nonempty(kDailySayingLogTexts), "daily saying log texts must be non-empty");
 static_assert(kDailySayingResponseBufferSize > 0, "daily saying response buffer must be nonzero");
 static_assert(kDailySayingResponseBufferSize >= kDailySayingLen,
               "daily saying response buffer must cover cached saying text");

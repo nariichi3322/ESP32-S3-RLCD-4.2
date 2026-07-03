@@ -2,7 +2,7 @@
 #include "app_state.h"
 
 const char *const TAG = "WeatherClock";
-const char *const APP_VERSION = "v1.4.43";
+const char *const APP_VERSION = "v1.4.45";
 #ifndef WEATHER_CLOCK_BUILD_DATE
 #define WEATHER_CLOCK_BUILD_DATE "unknown"
 #endif
@@ -221,6 +221,12 @@ lv_obj_t *g_flip_clock_sensor_bold_y_label;
 lv_obj_t *g_flip_clock_humidity_label;
 lv_obj_t *g_flip_clock_humidity_bold_label;
 lv_obj_t *g_flip_clock_humidity_bold_y_label;
+lv_obj_t *g_flip_clock_temp_mood_canvas;
+lv_color_t *g_flip_clock_temp_mood_canvas_buf;
+lv_obj_t *g_flip_clock_humi_mood_canvas;
+lv_color_t *g_flip_clock_humi_mood_canvas_buf;
+lv_obj_t *g_flip_clock_day_label;
+lv_obj_t *g_flip_clock_lunar_label;
 lv_obj_t *g_flip_clock_day_progress_canvas;
 lv_color_t *g_flip_clock_day_progress_canvas_buf;
 lv_obj_t *g_flip_clock_second_progress_canvas;
@@ -265,6 +271,9 @@ int g_last_flip_clock_second = -1;
 int g_last_flip_day_progress_filled = -1;
 int g_last_flip_second_progress_filled = -1;
 int g_last_flip_sensor_minute = -1;
+int g_last_flip_temp_mood = -1;
+int g_last_flip_humi_mood = -1;
+int g_last_flip_date_key = -1;
 int g_last_temp_trend_drawn = 99;
 int g_last_humi_trend_drawn = 99;
 uint32_t g_last_history_drawn_version = (uint32_t)-1;

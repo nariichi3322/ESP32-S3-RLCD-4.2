@@ -3,6 +3,8 @@
 
 #include "ui_views.h"
 
+#include <cstddef>
+
 #define SENSOR_INTERVAL_INVALID_LOG_FORMAT "sensor interval invalid: %d"
 #define HOURLY_SLOT_KEY_INDEX_INVALID_LOG_FORMAT "hourly sensor slot key index invalid: %d"
 #define HOURLY_SLOT_KEY_TRUNCATED_LOG_FORMAT "hourly sensor slot key truncated index=%d"
@@ -54,9 +56,44 @@ constexpr int kSensorSampleNightMinutes = 2;
 constexpr int kNightSlowWindowStartHour = 22;
 constexpr int kNightSlowWindowEndHour = 6;
 constexpr int kTmYearOffset = 1900;
+constexpr const char *kSensorHistoryTexts[] = {
+    kSensorNvsNamespace,
+    kHourlyHistoryMetaKey,
+    kLegacyHourlyHistoryKey,
+    kHourlySlotKeyFormat,
+    SENSOR_INTERVAL_INVALID_LOG_FORMAT,
+    HOURLY_SLOT_KEY_INDEX_INVALID_LOG_FORMAT,
+    HOURLY_SLOT_KEY_TRUNCATED_LOG_FORMAT,
+    SENSOR_HISTORY_NVS_OPEN_FAILED_LOG_FORMAT,
+    HOURLY_SLOT_READ_FAILED_LOG_FORMAT,
+    HOURLY_META_READ_FAILED_LOG_FORMAT,
+    LEGACY_HOURLY_HISTORY_READ_FAILED_LOG_FORMAT,
+    HOURLY_SLOT_INDEX_INVALID_LOG_FORMAT,
+    SENSOR_NVS_OPEN_FAILED_LOG_FORMAT,
+    HOURLY_SLOT_SAVE_FAILED_LOG_FORMAT,
+};
+constexpr std::size_t kSensorHistoryTextCount = 14;
+
 constexpr bool cstr_nonempty(const char *text)
 {
     return text && text[0] != '\0';
+}
+
+template <std::size_t N>
+constexpr std::size_t array_count(const char *const (&)[N])
+{
+    return N;
+}
+
+template <std::size_t N>
+constexpr bool cstr_array_nonempty(const char *const (&items)[N])
+{
+    for (const char *item : items) {
+        if (!cstr_nonempty(item)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static_assert(kHourlyHistoryCount > 0, "hourly history must keep at least one slot");
@@ -69,10 +106,9 @@ static_assert(kHourlyHistoryMetaVersion > kLegacyHourlyHistoryVersion,
 static_assert(kHourlyHistoryMetaVersion != kLegacyHourlyHistoryVersion,
               "new hourly metadata version must differ from legacy blob version");
 static_assert(kHourlySlotKeyBufferSize >= sizeof("h00"), "hourly slot key buffer must fit hNN plus terminator");
-static_assert(cstr_nonempty(kSensorNvsNamespace), "sensor NVS namespace must be non-empty");
-static_assert(cstr_nonempty(kHourlyHistoryMetaKey), "hourly history metadata key must be non-empty");
-static_assert(cstr_nonempty(kLegacyHourlyHistoryKey), "legacy hourly history key must be non-empty");
-static_assert(cstr_nonempty(kHourlySlotKeyFormat), "hourly history slot key format must be non-empty");
+static_assert(array_count(kSensorHistoryTexts) == kSensorHistoryTextCount,
+              "sensor history text registry count must match entries");
+static_assert(cstr_array_nonempty(kSensorHistoryTexts), "sensor history NVS strings and logs must be non-empty");
 static_assert(kWeatherSyncFallbackSeconds > 0, "weather sync fallback interval must be positive");
 static_assert(kWeatherSyncSearchHours > 0, "weather sync search hours must be positive");
 static_assert(kWeatherSyncSearchStepHours > 0, "weather sync search step must be positive");

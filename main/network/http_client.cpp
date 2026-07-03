@@ -62,9 +62,40 @@ static_assert(kUrlEncodedEscapedCharSize == 3, "URL escaped characters encode as
 #define HTTP_RESPONSE_TRUNCATED_FORMAT "http response may be truncated status=%d content_len=%lld buffer=%u"
 #define HTTP_GET_OK_FORMAT "http get ok status=%d len=%u gzip=%d"
 
+constexpr size_t kHttpLogTextCount = 10;
+constexpr const char *const kHttpLogTexts[] = {
+    HTTP_TEMP_BUFFER_ALLOC_FAILED_FORMAT,
+    HTTP_GZIP_HEADER_INVALID_FORMAT,
+    HTTP_GZIP_DECOMPRESS_FAILED_FORMAT,
+    HTTP_GZIP_DECOMPRESSED_FORMAT,
+    HTTP_PARSE_EMPTY_RESPONSE_FORMAT,
+    HTTP_PARSE_FAILED_FORMAT,
+    HTTP_GET_FAILED_WITH_BODY_FORMAT,
+    HTTP_GET_FAILED_FORMAT,
+    HTTP_RESPONSE_TRUNCATED_FORMAT,
+    HTTP_GET_OK_FORMAT,
+};
+
 constexpr bool cstr_nonempty(const char *text)
 {
     return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *item : items) {
+        if (!cstr_nonempty(item)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 constexpr size_t cstr_len(const char *text)
@@ -94,6 +125,9 @@ static_assert(cstr_nonempty(kHttpDecodeInvalidArgLog), "HTTP decode invalid-argu
 static_assert(cstr_nonempty(kHttpGetInvalidArgLog), "HTTP get invalid-argument log must be non-empty");
 static_assert(cstr_nonempty(kHttpBootBudgetExhaustedLog), "HTTP boot-budget log must be non-empty");
 static_assert(cstr_nonempty(kHttpClientInitFailedLog), "HTTP client init-failed log must be non-empty");
+static_assert(array_count(kHttpLogTexts) == kHttpLogTextCount,
+              "HTTP log format guard must cover every HTTP log format");
+static_assert(cstr_array_nonempty(kHttpLogTexts), "HTTP log format texts must be non-empty");
 
 bool is_qweather_url(const char *url)
 {

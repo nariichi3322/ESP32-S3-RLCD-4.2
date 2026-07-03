@@ -35,14 +35,14 @@ constexpr size_t kSetupWeatherCityFieldSize = kManualWeatherCityLen;
 constexpr uint8_t kNvsUnsetU8 = 0xFF;
 constexpr uint8_t kDefaultChimeVolumePercent = 80;
 constexpr uint8_t kValidChimeVolumePercent[] = {20, 40, 60, 80, 100};
+constexpr size_t kLegacyPageOrderV1Count = 4;
+constexpr size_t kPageOrderV2Count = 5;
 constexpr uint8_t kWeatherClockPageMask = (uint8_t)(1U << kWorkPageWeatherClock);
-constexpr uint8_t kLegacyPageMaskV1KnownBits = (uint8_t)((1U << 4) - 1);
-constexpr uint8_t kPageMaskV2KnownBits = (uint8_t)((1U << 5) - 1);
+constexpr uint8_t kLegacyPageMaskV1KnownBits = (uint8_t)((1U << kLegacyPageOrderV1Count) - 1);
+constexpr uint8_t kPageMaskV2KnownBits = (uint8_t)((1U << kPageOrderV2Count) - 1);
 constexpr uint8_t kPageMaskV3KnownBits = (uint8_t)((1U << kWorkPageCount) - 1);
 constexpr uint8_t kWeatherBoardPageMask = (uint8_t)(1U << kWorkPageWeatherBoard);
 constexpr uint8_t kFlipClockPageMask = (uint8_t)(1U << kWorkPageFlipClock);
-constexpr size_t kLegacyPageOrderV1Count = 4;
-constexpr size_t kPageOrderV2Count = 5;
 constexpr int kTmYearOffset = 1900;
 constexpr int kTmMonthOffset = 1;
 constexpr int kManualTimeMinMonth = 1;
@@ -111,6 +111,38 @@ constexpr const char *kFormApiKeyFallbackKey = "weather";
 constexpr const char *kFormWeatherCityKey = "weather_city";
 constexpr const char *kFormWeatherCityFallbackKey = "city";
 constexpr const char *kInvalidWeatherCityChars = "&=?#%/\\<>\"'";
+constexpr size_t kFormConfigTextCount = 9; // Primary and fallback setup form keys.
+constexpr const char *kFormConfigTexts[] = {
+    kFormManualTimeKey,
+    kFormManualTimeFallbackKey,
+    kFormSsidKey,
+    kFormPasswordKey,
+    kFormPasswordFallbackKey,
+    kFormApiKeyKey,
+    kFormApiKeyFallbackKey,
+    kFormWeatherCityKey,
+    kFormWeatherCityFallbackKey,
+};
+constexpr size_t kNvsConfigTextCount = 17; // Namespace plus every NVS key in this module.
+constexpr const char *kNvsConfigTexts[] = {
+    kWifiNvsNamespace,
+    kWifiSsidKey,
+    kWifiPassKey,
+    kWeatherApiKeyKey,
+    kManualWeatherCityKey,
+    kLegacyApiHostKey,
+    kOfflineModeKey,
+    kHourlyChimeKey,
+    kHourlyAllDayKey,
+    kChimeVolumeKey,
+    kChimeSoundKey,
+    kPageMaskV1Key,
+    kPageMaskV2Key,
+    kPageMaskV3Key,
+    kPageOrderV1Key,
+    kPageOrderV2Key,
+    kPageOrderV3Key,
+};
 constexpr const char *kClearConfigKeys[] = {
     kWifiSsidKey,
     kWifiPassKey,
@@ -119,6 +151,34 @@ constexpr const char *kClearConfigKeys[] = {
     kLegacyApiHostKey,
     kOfflineModeKey,
 };
+constexpr const char *kConfigEventTexts[] = {
+    kConfigEventReasonFallback,
+    kConfigEventReasonNetworkRequestReset,
+    kConfigEventReasonFactoryReset,
+    kConfigEventReasonOfflineManualTime,
+    kConfigEventReasonProvisioningSave,
+    kConfigEventActionClear,
+    kConfigEventActionSet,
+};
+constexpr size_t kConfigEventTextCount = 7;
+constexpr const char *kNvsActionTexts[] = {
+    kNvsActionAccessingConfig,
+    kNvsActionLoadingConfig,
+    kNvsActionSavingOfflineMode,
+    kNvsActionSavingConfig,
+    kNvsActionSavingWeatherCity,
+    kNvsActionClearingWeatherCity,
+    kNvsActionSavingHourlyReminder,
+    kNvsActionSavingPageSettings,
+    kNvsActionSavingPageOrder,
+    kNvsActionClearingConfig,
+};
+constexpr size_t kNvsActionTextCount = 10;
+constexpr const char *kConfigWarningTexts[] = {
+    kEmptyWifiSsidSaveLog,
+    kInvalidWeatherCitySaveLog,
+};
+constexpr size_t kConfigWarningTextCount = 2;
 
 constexpr bool cstr_nonempty(const char *text)
 {
@@ -129,6 +189,17 @@ template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
     return N;
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *text : items) {
+        if (!cstr_nonempty(text)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 constexpr bool valid_chime_volumes_include_default()
@@ -143,37 +214,32 @@ constexpr bool valid_chime_volumes_include_default()
 
 constexpr bool clear_config_keys_nonempty()
 {
-    for (const char *key : kClearConfigKeys) {
-        if (!cstr_nonempty(key)) {
-            return false;
-        }
-    }
-    return true;
+    return cstr_array_nonempty(kClearConfigKeys);
+}
+
+constexpr bool nvs_config_texts_nonempty()
+{
+    return cstr_array_nonempty(kNvsConfigTexts);
+}
+
+constexpr bool form_config_texts_nonempty()
+{
+    return cstr_array_nonempty(kFormConfigTexts);
 }
 
 constexpr bool config_event_texts_nonempty()
 {
-    return cstr_nonempty(kConfigEventReasonFallback) &&
-           cstr_nonempty(kConfigEventReasonNetworkRequestReset) &&
-           cstr_nonempty(kConfigEventReasonFactoryReset) &&
-           cstr_nonempty(kConfigEventReasonOfflineManualTime) &&
-           cstr_nonempty(kConfigEventReasonProvisioningSave) &&
-           cstr_nonempty(kConfigEventActionClear) &&
-           cstr_nonempty(kConfigEventActionSet);
+    return cstr_array_nonempty(kConfigEventTexts);
 }
 
 constexpr bool nvs_action_texts_nonempty()
 {
-    return cstr_nonempty(kNvsActionAccessingConfig) &&
-           cstr_nonempty(kNvsActionLoadingConfig) &&
-           cstr_nonempty(kNvsActionSavingOfflineMode) &&
-           cstr_nonempty(kNvsActionSavingConfig) &&
-           cstr_nonempty(kNvsActionSavingWeatherCity) &&
-           cstr_nonempty(kNvsActionClearingWeatherCity) &&
-           cstr_nonempty(kNvsActionSavingHourlyReminder) &&
-           cstr_nonempty(kNvsActionSavingPageSettings) &&
-           cstr_nonempty(kNvsActionSavingPageOrder) &&
-           cstr_nonempty(kNvsActionClearingConfig);
+    return cstr_array_nonempty(kNvsActionTexts);
+}
+
+constexpr bool config_warning_texts_nonempty()
+{
+    return cstr_array_nonempty(kConfigWarningTexts);
 }
 
 static_assert(kFormEncodedBufferSize > 0, "form encoded scratch buffer must be nonzero");
@@ -183,23 +249,9 @@ static_assert(kSetupPasswordFieldSize > 1, "setup password field must fit text a
 static_assert(kSetupApiKeyFieldSize > 1, "setup API key field must fit text and NUL");
 static_assert(kSetupWeatherCityFieldSize == kManualWeatherCityLen,
               "setup weather city field must match runtime city buffer");
-static_assert(cstr_nonempty(kWifiNvsNamespace), "Wi-Fi NVS namespace must be non-empty");
-static_assert(cstr_nonempty(kWifiSsidKey), "Wi-Fi SSID NVS key must be non-empty");
-static_assert(cstr_nonempty(kWifiPassKey), "Wi-Fi password NVS key must be non-empty");
-static_assert(cstr_nonempty(kWeatherApiKeyKey), "weather API key NVS key must be non-empty");
-static_assert(cstr_nonempty(kManualWeatherCityKey), "manual weather city NVS key must be non-empty");
-static_assert(cstr_nonempty(kLegacyApiHostKey), "legacy API host NVS key must be non-empty");
-static_assert(cstr_nonempty(kOfflineModeKey), "offline mode NVS key must be non-empty");
-static_assert(cstr_nonempty(kHourlyChimeKey), "hourly chime NVS key must be non-empty");
-static_assert(cstr_nonempty(kHourlyAllDayKey), "all-day chime NVS key must be non-empty");
-static_assert(cstr_nonempty(kChimeVolumeKey), "chime volume NVS key must be non-empty");
-static_assert(cstr_nonempty(kChimeSoundKey), "chime sound NVS key must be non-empty");
-static_assert(cstr_nonempty(kPageMaskV1Key), "page mask v1 NVS key must be non-empty");
-static_assert(cstr_nonempty(kPageMaskV2Key), "page mask v2 NVS key must be non-empty");
-static_assert(cstr_nonempty(kPageMaskV3Key), "page mask v3 NVS key must be non-empty");
-static_assert(cstr_nonempty(kPageOrderV1Key), "page order v1 NVS key must be non-empty");
-static_assert(cstr_nonempty(kPageOrderV2Key), "page order v2 NVS key must be non-empty");
-static_assert(cstr_nonempty(kPageOrderV3Key), "page order v3 NVS key must be non-empty");
+static_assert(array_count(kNvsConfigTexts) == kNvsConfigTextCount,
+              "NVS config text guard must cover namespace and every NVS key");
+static_assert(nvs_config_texts_nonempty(), "NVS namespace and config keys must be non-empty");
 static_assert(array_count(kValidChimeVolumePercent) > 0, "valid chime volume list must not be empty");
 static_assert(valid_chime_volumes_include_default(), "default chime volume must be selectable");
 static_assert(array_count(kClearConfigKeys) > 0, "clear config key list must not be empty");
@@ -208,21 +260,22 @@ static_assert(kManualTimeRequiredFieldCount == 5, "manual time requires year/mon
 static_assert(cstr_nonempty(kManualTimeIsoSecondsFormat), "manual ISO time format must be non-empty");
 static_assert(cstr_nonempty(kManualTimeSpaceSecondsFormat), "manual space time format must be non-empty");
 static_assert(cstr_nonempty(kManualTimeSpaceMinutesFormat), "manual minute time format must be non-empty");
-static_assert(cstr_nonempty(kFormManualTimeKey), "manual time form key must be non-empty");
-static_assert(cstr_nonempty(kFormManualTimeFallbackKey), "manual time fallback form key must be non-empty");
-static_assert(cstr_nonempty(kFormSsidKey), "SSID form key must be non-empty");
-static_assert(cstr_nonempty(kFormPasswordKey), "password form key must be non-empty");
-static_assert(cstr_nonempty(kFormPasswordFallbackKey), "password fallback form key must be non-empty");
-static_assert(cstr_nonempty(kFormApiKeyKey), "API key form key must be non-empty");
-static_assert(cstr_nonempty(kFormApiKeyFallbackKey), "API key fallback form key must be non-empty");
-static_assert(cstr_nonempty(kFormWeatherCityKey), "weather city form key must be non-empty");
-static_assert(cstr_nonempty(kFormWeatherCityFallbackKey), "weather city fallback form key must be non-empty");
+static_assert(array_count(kFormConfigTexts) == kFormConfigTextCount,
+              "form config text guard must cover primary and fallback form keys");
+static_assert(form_config_texts_nonempty(), "setup form keys must be non-empty");
 static_assert(cstr_nonempty(kInvalidWeatherCityChars), "invalid weather city character list must be non-empty");
 static_assert(cstr_nonempty(kConfigEventReasonFallback), "config event fallback reason must be non-empty");
 static_assert(cstr_nonempty(kConfigEventActionClear), "config event clear action must be non-empty");
 static_assert(cstr_nonempty(kConfigEventActionSet), "config event set action must be non-empty");
+static_assert(array_count(kConfigEventTexts) == kConfigEventTextCount,
+              "config event text guard must cover every reason/action");
+static_assert(array_count(kNvsActionTexts) == kNvsActionTextCount,
+              "NVS action text guard must cover every action");
+static_assert(array_count(kConfigWarningTexts) == kConfigWarningTextCount,
+              "configuration warning text guard must cover every warning");
 static_assert(config_event_texts_nonempty(), "config event reason/action texts must be non-empty");
 static_assert(nvs_action_texts_nonempty(), "NVS action texts must be non-empty");
+static_assert(config_warning_texts_nonempty(), "configuration warning texts must be non-empty");
 static_assert(kManualTimeMinMonth == 1 && kManualTimeMaxMonth == 12, "manual time month range must be 1..12");
 static_assert(kManualTimeMinDay == 1 && kManualTimeMaxDay == 31, "manual time day range must be 1..31");
 static_assert(kManualTimeMinHour == 0 && kManualTimeMaxHour == 23, "manual time hour range must be 0..23");

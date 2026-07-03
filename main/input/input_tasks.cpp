@@ -10,6 +10,12 @@
 #define BUTTON_SHOW_SETTINGS_LOG_FORMAT "key button clicked, showing settings page"
 
 namespace {
+constexpr size_t kButtonLogTextCount = 3;
+constexpr const char *const kButtonLogTexts[] = {
+    BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT,
+    BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT,
+    BUTTON_SHOW_SETTINGS_LOG_FORMAT,
+};
 constexpr int kButtonDebounceMs = 18;
 constexpr int kButtonLongPressMs = 1200;
 constexpr int kButtonBusyFeedbackMs = 2000;
@@ -26,17 +32,38 @@ constexpr int kLowRefreshButtonIdlePages[] = {
     kWorkPageWeatherBoard,
 };
 
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
     return N;
 }
 
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *item : items) {
+        if (!cstr_nonempty(item)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+constexpr bool work_page_id_valid(int page)
+{
+    return page >= kWorkPageWeatherClock && page < kWorkPageCount;
+}
+
 constexpr bool low_refresh_button_idle_pages_valid()
 {
     for (size_t i = 0; i < array_count(kLowRefreshButtonIdlePages); ++i) {
         int page = kLowRefreshButtonIdlePages[i];
-        if (page < 0 || page >= kWorkPageCount) {
+        if (!work_page_id_valid(page)) {
             return false;
         }
         for (size_t j = i + 1; j < array_count(kLowRefreshButtonIdlePages); ++j) {
@@ -52,6 +79,9 @@ static_assert(kButtonDebounceMs > 0, "button debounce duration must be positive"
 static_assert(kButtonLongPressMs > kButtonDebounceMs,
               "button long-press duration must be longer than debounce duration");
 static_assert(kButtonBusyFeedbackMs > 0, "button busy feedback duration must be positive");
+static_assert(array_count(kButtonLogTexts) == kButtonLogTextCount,
+              "button log guard must cover every button log text");
+static_assert(cstr_array_nonempty(kButtonLogTexts), "button task log texts must be non-empty");
 static_assert(kBootButtonPinMask != 0, "BOOT button pin mask must not be empty");
 static_assert(kKeyButtonPinMask != 0, "KEY button pin mask must not be empty");
 static_assert(kButtonInputPinMask == (kBootButtonPinMask | kKeyButtonPinMask),

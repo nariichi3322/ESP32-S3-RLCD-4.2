@@ -345,6 +345,10 @@ void clear_clock_object_refs()
     g_flip_clock_humidity_label = nullptr;
     g_flip_clock_humidity_bold_label = nullptr;
     g_flip_clock_humidity_bold_y_label = nullptr;
+    g_flip_clock_temp_mood_canvas = nullptr;
+    g_flip_clock_humi_mood_canvas = nullptr;
+    g_flip_clock_day_label = nullptr;
+    g_flip_clock_lunar_label = nullptr;
     g_flip_clock_day_progress_canvas = nullptr;
     g_flip_clock_second_progress_canvas = nullptr;
     clear_pointer_array(g_battery_segments);
@@ -373,6 +377,9 @@ void clear_clock_object_refs()
     g_last_flip_clock_hour = -1;
     g_last_flip_clock_minute = -1;
     g_last_flip_clock_second = -1;
+    g_last_flip_temp_mood = -1;
+    g_last_flip_humi_mood = -1;
+    g_last_flip_date_key = -1;
     g_last_flip_day_progress_filled = -1;
     g_last_flip_second_progress_filled = -1;
     g_last_flip_sensor_minute = -1;

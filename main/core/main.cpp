@@ -52,6 +52,44 @@ constexpr const char *kBootAnimTaskCreateFailed = "boot animation task create fa
 constexpr const char *kBootConnectivityTaskCreateFailed = "boot connectivity task create failed";
 constexpr const char *kBootReadyStatus = "Ready";
 constexpr const char *kBootReadyDetail = "Starting clock";
+constexpr size_t kMainLogTextCount = 12;
+constexpr const char *const kMainLogTexts[] = {
+    MAIN_INVALID_TASK_CREATE_LOG_FORMAT,
+    MAIN_TASK_CREATE_FAILED_LOG_FORMAT,
+    MAIN_NVS_INIT_REQUIRES_ERASE_LOG_FORMAT,
+    MAIN_NVS_ERASE_FAILED_LOG_FORMAT,
+    MAIN_NVS_REINIT_FAILED_LOG_FORMAT,
+    MAIN_NVS_INIT_FAILED_LOG_FORMAT,
+    MAIN_EVENT_GROUP_CREATE_FAILED_LOG_FORMAT,
+    MAIN_NETIF_INIT_FAILED_LOG_FORMAT,
+    MAIN_EVENT_LOOP_INIT_FAILED_LOG_FORMAT,
+    MAIN_INVALID_BOOT_TASK_LOG_FORMAT,
+    MAIN_BOOT_TASK_CREATE_FAILED_LOG_FORMAT,
+    MAIN_SHTC3_ALLOCATION_FAILED_LOG_FORMAT,
+};
+
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *item : items) {
+        if (!cstr_nonempty(item)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static_assert(kBootAnimTaskStack > 0, "boot animation task stack must be positive");
 static_assert(kBootSyncTaskStack > 0, "boot sync task stack must be positive");
 static_assert(kNetworkSyncTaskStack > 0, "network sync task stack must be positive");
@@ -60,6 +98,9 @@ static_assert(kHousekeepingTaskStack > 0, "housekeeping task stack must be posit
 static_assert(kUiTaskStack > 0, "UI task stack must be positive");
 static_assert(kButtonTaskStack > 0, "button task stack must be positive");
 static_assert(kBootAnimStopWaitMs > 0, "boot animation stop wait must be positive");
+static_assert(array_count(kMainLogTexts) == kMainLogTextCount,
+              "main startup log guard must cover every startup log text");
+static_assert(cstr_array_nonempty(kMainLogTexts), "main startup log texts must be non-empty");
 } // namespace
 
 static void create_app_task(TaskFunction_t task,

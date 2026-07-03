@@ -34,6 +34,36 @@
 #define CUSTOM_ASSETS_DIAG_DUPLICATE_MAIN_GIF_LOG_FORMAT "custom assets diag: duplicate main gif entry"
 #define CUSTOM_ASSETS_DIAG_DUPLICATE_GALLERY_LOG_FORMAT "custom assets diag: duplicate gallery entry index=%u"
 #define CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT "custom assets diag: ready main_gif=%d gallery=%d"
+constexpr size_t kCustomAssetLogTextCount = 27;
+constexpr const char *const kCustomAssetLogTexts[] = {
+    CUSTOM_ASSETS_PARTITION_RANGE_INVALID_LOG_FORMAT,
+    CUSTOM_ASSETS_PARTITION_READ_FAILED_LOG_FORMAT,
+    CUSTOM_ASSETS_READ_FAILED_LOG_FORMAT,
+    CUSTOM_ASSETS_ENTRY_BEFORE_PAYLOAD_LOG_FORMAT,
+    CUSTOM_ASSETS_ENTRY_OFFSET_INVALID_LOG_FORMAT,
+    CUSTOM_ASSETS_ENTRY_LENGTH_INVALID_LOG_FORMAT,
+    CUSTOM_ASSETS_ENTRY_SHAPE_INVALID_LOG_FORMAT,
+    CUSTOM_ASSETS_ENTRY_CRC_MISMATCH_LOG_FORMAT,
+    CUSTOM_ASSETS_HEADER_CRC_ALLOC_FAILED_LOG_FORMAT,
+    CUSTOM_ASSETS_HEADER_CRC_MISMATCH_LOG_FORMAT,
+    CUSTOM_ASSETS_PAYLOAD_RANGE_INVALID_LOG_FORMAT,
+    CUSTOM_ASSETS_PAYLOAD_CRC_MISMATCH_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_GIF_FRAME_READ_FAILED_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_GIF_FRAME_DENSITY_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_INIT_ENTER_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_PARTITION_NOT_FOUND_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_PARTITION_FOUND_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_HEADER_READ_FAILED_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_HEADER_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_NO_VALID_PACKAGE_LOG_FORMAT,
+    CUSTOM_ASSETS_HEADER_SIZE_INVALID_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_ENTRIES_READ_FAILED_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_ENTRY_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_ENTRY_REJECTED_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_DUPLICATE_MAIN_GIF_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_DUPLICATE_GALLERY_LOG_FORMAT,
+    CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT,
+};
 
 static const esp_partition_t *s_assets_partition = nullptr;
 static CustomAssetsHeader s_assets_header = {};
@@ -55,6 +85,22 @@ template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
     return N;
+}
+
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *item : items) {
+        if (!cstr_nonempty(item)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 constexpr bool custom_asset_diag_frames_valid()
@@ -83,6 +129,9 @@ static_assert(kCustomAssetCrcChunkSize > 0, "custom asset CRC chunk size must be
 static_assert(kBitsPerByte == 8, "custom assets expect 8-bit bytes");
 static_assert(kCustomAssetCrc32Initial == 0xFFFFFFFFU, "custom asset CRC32 initial value must stay stable");
 static_assert(kCustomAssetCrc32Polynomial == 0xEDB88320U, "custom asset CRC32 polynomial must stay stable");
+static_assert(array_count(kCustomAssetLogTexts) == kCustomAssetLogTextCount,
+              "custom assets log guard must cover every log text");
+static_assert(cstr_array_nonempty(kCustomAssetLogTexts), "custom assets log texts must be non-empty");
 
 class CustomAssetTempBuffer {
 public:

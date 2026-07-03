@@ -39,10 +39,16 @@ constexpr size_t min_size(size_t a, size_t b)
     return a < b ? a : b;
 }
 
-constexpr bool ntp_servers_nonempty()
+constexpr bool cstr_nonempty(const char *text)
 {
-    for (const char *server : kNtpServers) {
-        if (!server || server[0] == '\0') {
+    return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *text : items) {
+        if (!cstr_nonempty(text)) {
             return false;
         }
     }
@@ -51,7 +57,18 @@ constexpr bool ntp_servers_nonempty()
 
 constexpr size_t kActiveNtpServerCount = min_size(kNtpServerCount, kConfiguredNtpServerSlots);
 constexpr const char *kNtpTimeSyncedEventUnavailableLog = "skip time synced event bit: app events unavailable";
-static_assert(ntp_servers_nonempty(), "NTP server names must be non-empty");
+constexpr size_t kNtpLogTextCount = 4;
+constexpr const char *const kNtpLogTexts[] = {
+    NTP_SYNCED_LOG_FORMAT,
+    NTP_TIMEOUT_LOG_FORMAT,
+    NTP_INVALID_RETRY_COUNT_LOG_FORMAT,
+    kNtpTimeSyncedEventUnavailableLog,
+};
+
+static_assert(cstr_array_nonempty(kNtpServers), "NTP server names must be non-empty");
+static_assert(array_count(kNtpLogTexts) == kNtpLogTextCount,
+              "NTP log guard must cover every log text");
+static_assert(cstr_array_nonempty(kNtpLogTexts), "NTP log texts must be non-empty");
 static_assert(kDefaultConfiguredNtpServerSlots > 0, "default SNTP server slots must be positive");
 static_assert(kActiveNtpServerCount > 0, "active NTP server count must be positive");
 static_assert(kActiveNtpServerCount <= kNtpServerCount, "active NTP server count must fit server list");

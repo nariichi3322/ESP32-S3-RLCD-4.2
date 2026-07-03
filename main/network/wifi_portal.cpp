@@ -15,6 +15,11 @@ char s_captive_portal_uri[] = "http://192.168.4.1/";
 constexpr int kDnsHeaderSize = 12;
 constexpr int kCaptiveDnsAnswerSize = 16;
 constexpr int kCaptiveDnsPacketSize = 512;
+constexpr int kDnsNamePointerSize = 2;
+constexpr int kDnsTypeFieldSize = 2;
+constexpr int kDnsClassFieldSize = 2;
+constexpr int kDnsTtlFieldSize = 4;
+constexpr int kDnsRdLengthFieldSize = 2;
 constexpr int kDnsFlagsOffset = 2;
 constexpr int kDnsQuestionCountOffset = 4;
 constexpr int kDnsAnswerCountOffset = 6;
@@ -69,8 +74,51 @@ constexpr const char *kPortalCacheNoStore = "no-store";
 constexpr const char *kPortalErrorNotEnoughMemory = "Not enough memory.";
 constexpr const char *kPortalErrorMissingQuery = "Missing query.";
 constexpr const char *kSetupApSsidFormat = "WeatherClock-%02X%02X";
+constexpr const char *kPortalFixedTexts[] = {
+    kCaptiveDnsTaskName,
+    kPortalSectionCloseHtml,
+    kPortalHtmlContentType,
+    kPortalHttpStatusInternalError,
+    kPortalHttpStatusBadRequest,
+    kPortalHttpStatusNoContent,
+    kPortalHttpStatusFound,
+    kPortalHeaderLocation,
+    kPortalHeaderCacheControl,
+    kPortalCacheNoStore,
+    kPortalErrorNotEnoughMemory,
+    kPortalErrorMissingQuery,
+    kSetupApSsidFormat,
+};
+constexpr size_t kPortalFixedTextCount = 13;
+
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *text : items) {
+        if (!cstr_nonempty(text)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static_assert(kDnsHeaderSize > 0, "DNS header size must be positive");
 static_assert(kCaptiveDnsAnswerSize > 0, "captive DNS answer size must be positive");
+static_assert(kCaptiveDnsAnswerSize ==
+                  kDnsNamePointerSize + kDnsTypeFieldSize + kDnsClassFieldSize +
+                      kDnsTtlFieldSize + kDnsRdLengthFieldSize + kDnsIpv4AddressLength,
+              "captive DNS answer size must match the encoded A-record layout");
 static_assert(kCaptiveDnsPacketSize >= kDnsHeaderSize + kCaptiveDnsAnswerSize,
               "captive DNS packet must fit a header and answer");
 static_assert(kDnsFlagsOffset + 1 < kDnsHeaderSize, "DNS flags offset must fit header");
@@ -114,6 +162,9 @@ static_assert(kPortalSaveWifiConnectWaitMs > 0, "portal save Wi-Fi wait must be 
 static_assert(kCaptiveDnsTaskName[0] != '\0', "captive DNS task name must be non-empty");
 static_assert(kPortalHtmlContentType[0] != '\0', "portal HTML content type must be non-empty");
 static_assert(kSetupApSsidFormat[0] != '\0', "setup AP SSID format must be non-empty");
+static_assert(array_count(kPortalFixedTexts) == kPortalFixedTextCount,
+              "portal fixed text registry count must match entries");
+static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must be non-empty");
 #define CAPTIVE_DNS_SOCKET_FAILED_LOG "captive dns socket failed"
 #define CAPTIVE_DNS_BIND_FAILED_LOG "captive dns bind failed"
 #define CAPTIVE_DNS_STARTED_LOG "captive dns started"

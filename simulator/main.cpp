@@ -12,6 +12,7 @@
 #include "dseg_digits.h"
 #include "boot_anim.h"
 #include "clock_gallery_images.h"
+#include "flip_sensor_icons.h"
 #include "status_gif_60.h"
 #include "ui_icons.h"
 
@@ -21,7 +22,7 @@ LV_FONT_DECLARE(zh_font_16);
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.4.43";
+static const char *APP_VERSION = "v1.4.45";
 static const char *const kPreviewWeekDaysFull[] = {
     "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六",
 };
@@ -112,6 +113,8 @@ static std::vector<lv_color_t> g_flip_card_pixels[3] = {
 };
 static std::vector<lv_color_t> g_flip_day_progress_pixels(kProgressCanvasW * kProgressCanvasH);
 static std::vector<lv_color_t> g_flip_second_progress_pixels(kProgressCanvasW * kProgressCanvasH);
+static std::vector<lv_color_t> g_flip_temp_mood_pixels(FLIP_SENSOR_ICON_WIDTH * FLIP_SENSOR_ICON_HEIGHT);
+static std::vector<lv_color_t> g_flip_humi_mood_pixels(FLIP_SENSOR_ICON_WIDTH * FLIP_SENSOR_ICON_HEIGHT);
 
 struct PreviewHistorySample {
     float temp;
@@ -1318,22 +1321,70 @@ static void build_flip_clock_preview_ui()
         lv_canvas_set_buffer(card, g_flip_card_pixels[i].data(), kFlipCardW, kFlipCardH, LV_IMG_CF_TRUE_COLOR);
         draw_preview_flip_card(card, values[i]);
     }
-    lv_obj_t *sensor_panel = make_bar(screen, 18, 216, 364, 60);
+    lv_obj_t *sensor_panel = make_bar(screen, 18, 198, 238, 88);
     set_obj_black(sensor_panel, true);
-    lv_obj_set_style_radius(sensor_panel, 14, LV_PART_MAIN);
+    lv_obj_set_style_radius(sensor_panel, 18, LV_PART_MAIN);
     lv_obj_set_style_clip_corner(sensor_panel, true, LV_PART_MAIN);
-    lv_obj_t *temp = make_label_with_font(screen, 34, 218, 166, 58, "25.6C", &lv_font_montserrat_48);
+    lv_obj_t *temp = make_label_with_font(screen, 34, 204, 148, 36, "25.6C", &lv_font_montserrat_24);
     lv_obj_set_style_text_align(temp, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     lv_obj_set_style_text_color(temp, lv_color_white(), LV_PART_MAIN);
-    lv_obj_t *temp_bold = make_label_with_font(screen, 35, 218, 166, 58, "25.6C", &lv_font_montserrat_48);
+    lv_obj_t *temp_bold = make_label_with_font(screen, 35, 204, 148, 36, "25.6C", &lv_font_montserrat_24);
     lv_obj_set_style_text_align(temp_bold, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     lv_obj_set_style_text_color(temp_bold, lv_color_white(), LV_PART_MAIN);
-    lv_obj_t *humi = make_label_with_font(screen, 200, 218, 166, 58, "46%", &lv_font_montserrat_48);
-    lv_obj_set_style_text_align(humi, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    lv_obj_t *humi = make_label_with_font(screen, 34, 243, 148, 36, "46%", &lv_font_montserrat_24);
+    lv_obj_set_style_text_align(humi, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     lv_obj_set_style_text_color(humi, lv_color_white(), LV_PART_MAIN);
-    lv_obj_t *humi_bold = make_label_with_font(screen, 199, 218, 166, 58, "46%", &lv_font_montserrat_48);
-    lv_obj_set_style_text_align(humi_bold, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    lv_obj_t *humi_bold = make_label_with_font(screen, 35, 243, 148, 36, "46%", &lv_font_montserrat_24);
+    lv_obj_set_style_text_align(humi_bold, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     lv_obj_set_style_text_color(humi_bold, lv_color_white(), LV_PART_MAIN);
+    lv_obj_t *temp_mood = lv_canvas_create(screen);
+    lv_obj_clear_flag(temp_mood, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(temp_mood, 200, 204);
+    lv_obj_set_size(temp_mood, FLIP_SENSOR_ICON_WIDTH, FLIP_SENSOR_ICON_HEIGHT);
+    lv_obj_set_style_border_width(temp_mood, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(temp_mood, 0, LV_PART_MAIN);
+    lv_canvas_set_buffer(temp_mood,
+                         g_flip_temp_mood_pixels.data(),
+                         FLIP_SENSOR_ICON_WIDTH,
+                         FLIP_SENSOR_ICON_HEIGHT,
+                         LV_IMG_CF_TRUE_COLOR);
+    draw_1bit_icon(temp_mood,
+                   FLIP_SENSOR_ICON_WIDTH,
+                   FLIP_SENSOR_ICON_HEIGHT,
+                   FLIP_SENSOR_ICON_BYTES_PER_ROW,
+                   flip_temp_comfort_icon_bits,
+                   lv_color_white(),
+                   lv_color_black());
+    lv_obj_t *humi_mood = lv_canvas_create(screen);
+    lv_obj_clear_flag(humi_mood, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(humi_mood, 200, 244);
+    lv_obj_set_size(humi_mood, FLIP_SENSOR_ICON_WIDTH, FLIP_SENSOR_ICON_HEIGHT);
+    lv_obj_set_style_border_width(humi_mood, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(humi_mood, 0, LV_PART_MAIN);
+    lv_canvas_set_buffer(humi_mood,
+                         g_flip_humi_mood_pixels.data(),
+                         FLIP_SENSOR_ICON_WIDTH,
+                         FLIP_SENSOR_ICON_HEIGHT,
+                         LV_IMG_CF_TRUE_COLOR);
+    draw_1bit_icon(humi_mood,
+                   FLIP_SENSOR_ICON_WIDTH,
+                   FLIP_SENSOR_ICON_HEIGHT,
+                   FLIP_SENSOR_ICON_BYTES_PER_ROW,
+                   flip_humi_comfort_icon_bits,
+                   lv_color_white(),
+                   lv_color_black());
+    lv_obj_t *date_panel = make_bar(screen, 270, 198, 112, 88);
+    set_obj_black(date_panel, true);
+    lv_obj_set_style_radius(date_panel, 18, LV_PART_MAIN);
+    lv_obj_set_style_clip_corner(date_panel, true, LV_PART_MAIN);
+    char day_text[8];
+    snprintf(day_text, sizeof(day_text), "%d", local.tm_mday);
+    lv_obj_t *day = make_label_with_font(screen, 270, 198, 112, 52, day_text, &lv_font_montserrat_48);
+    lv_obj_set_style_text_align(day, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_style_text_color(day, lv_color_white(), LV_PART_MAIN);
+    lv_obj_t *lunar = make_label_with_font(screen, 270, 250, 112, 28, "初八", &zh_font_16);
+    lv_obj_set_style_text_align(lunar, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_set_style_text_color(lunar, lv_color_white(), LV_PART_MAIN);
 }
 
 static void build_info_preview_ui()

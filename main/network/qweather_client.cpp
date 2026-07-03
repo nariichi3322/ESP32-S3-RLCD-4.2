@@ -174,6 +174,28 @@ constexpr const char *kIpGeoCitySuffix = "市";
 constexpr const char *kWeatherAlertSuffix = "预警";
 constexpr const char *kWeatherAlertEventColorFormat = "%s%s%s";
 constexpr const char *kWeatherAlertEventOnlyFormat = "%s%s";
+constexpr const char *kQweatherEndpointAndAdviceTexts[] = {
+    kQweatherApiHost,
+    kQweatherGeoApiHost,
+    kIpGeolocationUrl,
+    kQweatherCityLookupUrlFormat,
+    kQweatherAlertUrlFormat,
+    kQweatherNowUrlFormat,
+    kQweatherDailyUrlFormat,
+    kQweatherAirUrlFormat,
+    kIpGeoCoordinateFormat,
+    kIpRegionDelimiter,
+    kIpGeoCitySuffix,
+    kWeatherAlertSuffix,
+    kWeatherAlertEventColorFormat,
+    kWeatherAlertEventOnlyFormat,
+    kWeatherAdviceRainOrSnow,
+    kWeatherAdviceHot,
+    kWeatherAdviceCold,
+    kWeatherAdviceLargeTempGap,
+    kWeatherAdviceCalm,
+};
+constexpr size_t kQweatherEndpointAndAdviceTextCount = 19;
 constexpr const char *kQweatherDefaultStage = "request";
 constexpr const char *kQweatherStageIpLocation = "ip location";
 constexpr const char *kQweatherStageCity = "city";
@@ -224,6 +246,46 @@ constexpr const char *kQweatherAirJsonAqiField = "aqi";
 constexpr const char *kQweatherAirJsonCategoryField = "category";
 constexpr const char *kQweatherAirJsonPrimaryField = "primary";
 constexpr const char *kQweatherAirJsonPm25Field = "pm2p5";
+constexpr const char *kQweatherJsonFieldTexts[] = {
+    kIpGeoJsonLatitudeField,
+    kIpGeoJsonLongitudeField,
+    kIpGeoJsonRegionField,
+    kQweatherJsonCodeField,
+    kQweatherSuccessCode,
+    kQweatherMissingCodeText,
+    kQweatherJsonLocationField,
+    kQweatherJsonIdField,
+    kQweatherJsonNameField,
+    kQweatherJsonLatField,
+    kQweatherJsonLonField,
+    kQweatherJsonNowField,
+    kQweatherNowJsonTextField,
+    kQweatherNowJsonIconField,
+    kQweatherNowJsonTempField,
+    kQweatherNowJsonHumidityField,
+    kQweatherAlertJsonAlertsField,
+    kQweatherAlertJsonEventTypeField,
+    kQweatherAlertJsonColorField,
+    kQweatherAlertJsonEventNameField,
+    kQweatherAlertJsonColorCodeField,
+    kQweatherAlertJsonHeadlineField,
+    kQweatherDailyJsonDailyField,
+    kQweatherDailyJsonDateField,
+    kQweatherDailyJsonTextDayField,
+    kQweatherDailyJsonIconDayField,
+    kQweatherDailyJsonTempMaxField,
+    kQweatherDailyJsonTempMinField,
+    kQweatherDailyJsonHumidityField,
+    kQweatherDailyJsonWindDirDayField,
+    kQweatherDailyJsonWindScaleDayField,
+    kQweatherDailyJsonSunriseField,
+    kQweatherDailyJsonSunsetField,
+    kQweatherAirJsonAqiField,
+    kQweatherAirJsonCategoryField,
+    kQweatherAirJsonPrimaryField,
+    kQweatherAirJsonPm25Field,
+};
+constexpr size_t kQweatherJsonFieldTextCount = 37;
 #define QWEATHER_URL_INVALID_ARG_FORMAT "qweather url invalid arg stage=%s"
 #define QWEATHER_URL_TOO_LONG_FORMAT "qweather %s url too long"
 #define QWEATHER_RESPONSE_SIZE_INVALID_FORMAT "qweather %s response size invalid"
@@ -266,6 +328,103 @@ constexpr const char *kWeatherFetchStatusCached = "cached";
 #define WEATHER_USING_IP_COORDINATES_FORMAT "using ip coordinates for weather now: %s"
 constexpr const char *kWeatherIpLookupUpdateFailedLog = "weather update failed after ip lookup";
 constexpr const char *kWeatherIpGeolocationLookupFailedLog = "ip geolocation lookup failed";
+constexpr size_t kQweatherFixedWarningTextCount = 15;
+constexpr const char *kQweatherFixedWarningTexts[] = {
+    kIpLocationInvalidArgLog,
+    kIpLocationCoordinateTooLongLog,
+    kIpLocationMissingCoordinateLog,
+    kQweatherCityInvalidArgLog,
+    kQweatherCityLocationTooLongLog,
+    kQweatherCityHttpFailedLog,
+    kQweatherAlertInvalidArgLog,
+    kQweatherAlertHttpFailedLog,
+    kQweatherNowInvalidArgLog,
+    kQweatherNowLocationTooLongLog,
+    kQweatherNowHttpFailedLog,
+    kQweatherDailyInvalidArgLog,
+    kQweatherDailyLocationTooLongLog,
+    kQweatherAirInvalidArgLog,
+    kQweatherAirLocationTooLongLog,
+};
+constexpr size_t kQweatherStageAndStatusTextCount = 17;
+constexpr const char *kQweatherStageAndStatusTexts[] = {
+    kQweatherDefaultStage,
+    kQweatherStageIpLocation,
+    kQweatherStageCity,
+    kQweatherStageAlert,
+    kQweatherStageNow,
+    kQweatherStageDaily,
+    kQweatherStageAir,
+    kQweatherPreviewCityLabel,
+    kQweatherPreviewAlertLabel,
+    kQweatherPreviewNowLabel,
+    kQweatherPreviewDailyLabel,
+    kQweatherPreviewAirLabel,
+    kQweatherUnknownStage,
+    kWeatherFetchStatusOk,
+    kWeatherFetchStatusCached,
+    kWeatherIpLookupUpdateFailedLog,
+    kWeatherIpGeolocationLookupFailedLog,
+};
+
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&texts)[N])
+{
+    for (const char *text : texts) {
+        if (!cstr_nonempty(text)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+constexpr bool qweather_json_field_texts_nonempty()
+{
+    return cstr_array_nonempty(kQweatherJsonFieldTexts);
+}
+
+constexpr bool qweather_stage_and_status_texts_nonempty()
+{
+    return cstr_array_nonempty(kQweatherStageAndStatusTexts);
+}
+
+constexpr bool qweather_fixed_warning_texts_nonempty()
+{
+    return cstr_array_nonempty(kQweatherFixedWarningTexts);
+}
+
+constexpr bool qweather_endpoint_and_advice_texts_nonempty()
+{
+    return cstr_array_nonempty(kQweatherEndpointAndAdviceTexts);
+}
+
+static_assert(array_count(kQweatherJsonFieldTexts) == kQweatherJsonFieldTextCount,
+              "QWeather JSON field guard must cover every parsed field");
+static_assert(qweather_json_field_texts_nonempty(),
+              "QWeather JSON field and business code strings must be non-empty");
+static_assert(array_count(kQweatherStageAndStatusTexts) == kQweatherStageAndStatusTextCount,
+              "QWeather stage/status guard must cover every stage and status text");
+static_assert(array_count(kQweatherFixedWarningTexts) == kQweatherFixedWarningTextCount,
+              "QWeather fixed warning guard must cover every fixed warning text");
+static_assert(array_count(kQweatherEndpointAndAdviceTexts) == kQweatherEndpointAndAdviceTextCount,
+              "QWeather endpoint/advice guard must cover every text");
+static_assert(qweather_stage_and_status_texts_nonempty(),
+              "QWeather stage, preview, status and fixed log texts must be non-empty");
+static_assert(qweather_fixed_warning_texts_nonempty(),
+              "QWeather fixed warning texts must be non-empty");
+static_assert(qweather_endpoint_and_advice_texts_nonempty(),
+              "QWeather endpoint, location, alert and advice texts must be non-empty");
 
 struct WarningColorInfo {
     const char *code;

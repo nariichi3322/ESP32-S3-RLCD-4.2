@@ -50,6 +50,17 @@ constexpr const char *kNetworkDiagSummaryIdle = "等待开始";
 constexpr const char *kNetworkDiagLinePlaceholder = "--";
 constexpr const char *kNetworkDiagHintIdle = "Hold KEY to return";
 constexpr const char *kNetworkDiagHintRunning = "Checking... Hold KEY to return";
+constexpr const char *kNetworkDiagFixedTexts[] = {
+    kNetworkDiagTitle,
+    kNetworkDiagSummaryReady,
+    kNetworkDiagSummaryRunning,
+    kNetworkDiagSummaryDone,
+    kNetworkDiagSummaryIdle,
+    kNetworkDiagLinePlaceholder,
+    kNetworkDiagHintIdle,
+    kNetworkDiagHintRunning,
+};
+constexpr size_t kNetworkDiagFixedTextCount = 8;
 constexpr int kSettingsOtaBarFrameX = 164;
 constexpr int kSettingsOtaBarFrameY = 203;
 constexpr int kSettingsOtaBarFrameW = 200;
@@ -78,23 +89,38 @@ constexpr const char *kSettingsOtaHintChecking = "正在检查，请等待";
 constexpr const char *kSettingsOtaHintRebooting = "即将重启";
 constexpr const char *kSettingsOtaHintRetry = "BOOT重新检查";
 constexpr const char *kSettingsOtaHintCheck = "BOOT开始检查";
+constexpr const char *kSettingsOtaHintTexts[] = {
+    kSettingsOtaUpdatingWithSpeedFormat,
+    kSettingsOtaUpdatingFormat,
+    kSettingsOtaCurrentVersionFormat,
+    kSettingsOtaHintDownloading,
+    kSettingsOtaHintInstall,
+    kSettingsOtaHintChecking,
+    kSettingsOtaHintRebooting,
+    kSettingsOtaHintRetry,
+    kSettingsOtaHintCheck,
+};
+constexpr size_t kSettingsOtaHintTextCount = 9;
 
 constexpr bool cstr_nonempty(const char *text)
 {
     return text && text[0] != '\0';
 }
 
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (size_t i = 0; i < N; ++i) {
+        if (!cstr_nonempty(items[i])) {
+            return false;
+        }
+    }
+    return true;
+}
+
 constexpr bool settings_ota_hint_texts_nonempty()
 {
-    return cstr_nonempty(kSettingsOtaUpdatingWithSpeedFormat) &&
-           cstr_nonempty(kSettingsOtaUpdatingFormat) &&
-           cstr_nonempty(kSettingsOtaCurrentVersionFormat) &&
-           cstr_nonempty(kSettingsOtaHintDownloading) &&
-           cstr_nonempty(kSettingsOtaHintInstall) &&
-           cstr_nonempty(kSettingsOtaHintChecking) &&
-           cstr_nonempty(kSettingsOtaHintRebooting) &&
-           cstr_nonempty(kSettingsOtaHintRetry) &&
-           cstr_nonempty(kSettingsOtaHintCheck);
+    return cstr_array_nonempty(kSettingsOtaHintTexts);
 }
 
 int settings_ota_progress_fill_width(int progress)
@@ -172,6 +198,29 @@ constexpr const char *kSettingsCheckUpdateText = "检查更新";
 constexpr uint32_t kSettingsOrderExitFeedbackMs = 2500;
 constexpr const char *kSettingsOrderExitSavedFeedback = "页面顺序已保存";
 constexpr const char *kSettingsOrderExitSaveFailedFeedback = "保存失败";
+constexpr const char *kSettingsSecondaryTexts[] = {
+    kSettingsNetworkSyncTimeText,
+    kSettingsNetworkSyncWeatherText,
+    kSettingsNetworkSayingText,
+    kSettingsWeatherCityManualFormat,
+    kSettingsWeatherCityAutoText,
+    kSettingsSoundVolumeFormat,
+    kSettingsSoundChoiceFormat,
+    kSettingsHourlyText,
+    kSettingsAllDayText,
+    kSettingsPageOrderText,
+    kSettingsOfflineFormat,
+    kSettingsOfflineOnText,
+    kSettingsOfflineOffText,
+    kSettingsNetworkDiagText,
+    kSettingsFactoryResetConfirmText,
+    kSettingsFactoryResetText,
+    kSettingsSystemInfoText,
+    kSettingsCheckUpdateText,
+    kSettingsOrderExitSavedFeedback,
+    kSettingsOrderExitSaveFailedFeedback,
+};
+constexpr size_t kSettingsSecondaryTextCount = 20;
 #define SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT "settings secondary text index out of range: %d"
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
 #define BATTERY_ICON_INVALID_ARG_LOG "battery icon invalid arg"
@@ -226,6 +275,50 @@ constexpr const char *kProjectSourceUrl = "github.com/wickenzh/ESP32-S3-RLCD-4.2
 constexpr const char *kInfoLinePlaceholder = "--";
 constexpr const char *kInfoReturnHintText = "Hold KEY to return";
 constexpr const char *kSettingsLabelPlaceholder = "--";
+constexpr const char *kSetupInfoTexts[] = {
+    kLabelCreateFailedLog,
+    kBootTitleText,
+    kBootInitialStatusText,
+    kBootInitialDetailText,
+    kSetupStatusTitle,
+    kSetupStatusPlaceholder,
+    kSetupApSsidFormat,
+    kSetupApPasswordFormat,
+    kSetupPortalIpFormat,
+    kSetupStaSsidFormat,
+    kSetupStaIpFormat,
+    kSetupStaIpReasonFormat,
+    kSetupStaIpPlaceholder,
+    kInfoLastNtpFormat,
+    kInfoWifiFormat,
+    kInfoLastWeatherFormat,
+    kInfoBatteryFullFormat,
+    kInfoBatteryPercentOnlyFormat,
+    kInfoBatteryPlaceholder,
+    kInfoVersionFormat,
+    kInfoSourceFormat,
+    kProjectSourceUrl,
+    kInfoLinePlaceholder,
+    kInfoReturnHintText,
+    kSettingsLabelPlaceholder,
+};
+constexpr size_t kSetupInfoTextCount = 25;
+
+constexpr bool network_diag_texts_nonempty()
+{
+    return cstr_array_nonempty(kNetworkDiagFixedTexts);
+}
+
+constexpr bool settings_secondary_texts_nonempty()
+{
+    return cstr_array_nonempty(kSettingsSecondaryTexts);
+}
+
+constexpr bool setup_info_texts_nonempty()
+{
+    return cstr_array_nonempty(kSetupInfoTexts);
+}
+
 constexpr int kInfoTextX = 30;
 constexpr int kInfoTextW = 340;
 constexpr int kInfoSourceTextX = 0;
@@ -241,16 +334,48 @@ constexpr size_t kInfoSourceLabelIndex = kInfoLabelCount - 1;
 static_assert(kSettingsListRowCount == kSettingsSecondaryMaxCount);
 static_assert(kSettingsGridRowCount * kSettingsGridColumns >= kWorkPageCount);
 static_assert(array_count(kSettingsPrimaryItems) == kSettingsPrimaryCount);
+static_assert(array_count(kSettingsOtaHintTexts) == kSettingsOtaHintTextCount,
+              "settings OTA hint text guard must cover every status and hint");
+static_assert(array_count(kNetworkDiagFixedTexts) == kNetworkDiagFixedTextCount,
+              "network diagnostics text guard must cover every fixed text");
+static_assert(array_count(kSettingsSecondaryTexts) == kSettingsSecondaryTextCount,
+              "settings secondary text guard must cover every secondary text");
+static_assert(array_count(kSetupInfoTexts) == kSetupInfoTextCount,
+              "setup and info text guard must cover every fixed text");
 static_assert(settings_primary_items_nonempty(), "settings primary menu texts must be non-empty");
 static_assert(settings_ota_hint_texts_nonempty(), "settings OTA status and hint texts must be non-empty");
+static_assert(network_diag_texts_nonempty(), "network diagnostics fixed texts must be non-empty");
+static_assert(settings_secondary_texts_nonempty(), "settings secondary menu texts must be non-empty");
+static_assert(setup_info_texts_nonempty(), "setup and info fixed texts must be non-empty");
+static_assert(kBootAnimLvglLockTimeoutMs > 0, "boot animation LVGL lock timeout must be positive");
+static_assert(kBootAnimFinishLvglLockTimeoutMs >= kBootAnimLvglLockTimeoutMs,
+              "boot animation finish lock timeout must cover the normal lock timeout");
+static_assert(kBootScreenLvglLockTimeoutMs >= kBootAnimFinishLvglLockTimeoutMs,
+              "boot screen lock timeout must cover boot animation finish lock timeout");
+static_assert(kSettingsPrimaryExitBlockMs > 0, "settings primary exit block duration must be positive");
 static_assert(kNetworkDiagLocalIpLine < kNetworkDiagPublicIpLine);
 static_assert(kNetworkDiagPublicIpLine < kNetworkDiagGridFirstLine);
 static_assert(kNetworkDiagGridFirstLine <= kNetworkDiagWideLine);
 static_assert(kNetworkDiagWideLine < kNetworkDiagLineCount);
+static_assert(kNetworkDiagGridColumns > 0, "network diagnostics grid must have columns");
+static_assert(kNetworkDiagWideW > 0 && kNetworkDiagGridW > 0,
+              "network diagnostics line widths must be positive");
+static_assert(kNetworkDiagWideW >= kNetworkDiagGridW,
+              "network diagnostics wide line must fit grid line width");
+static_assert(kNetworkDiagSummaryTextSize > 1,
+              "network diagnostics summary buffer must fit text and NUL");
+static_assert(kSettingsOtaLineTextSize > 1 && kSettingsOtaHintTextSize > 1,
+              "settings OTA text buffers must fit text and NUL");
 static_assert(kSettingsOtaBarInset >= 0);
 static_assert(kSettingsOtaBarFillW > 0);
 static_assert(kSettingsOtaBarFillH > 0);
 static_assert(kSettingsOtaProgressMax > 0);
+static_assert(kSettingsSecondaryTextSize > 1, "settings secondary text buffer must fit text and NUL");
+static_assert(kSettingsGridColumns > 0, "settings grid must have columns");
+static_assert(kSettingsGridColW > 0 && kSettingsSecondaryH > 0,
+              "settings grid item size must be positive");
+static_assert(kSettingsListRowCount >= kSettingsPrimaryCount,
+              "settings list rows must fit primary menu items");
 static_assert(kBatteryFrameW > 0 && kBatteryFrameH > 0);
 static_assert(kBatteryInnerW > 0 && kBatteryInnerH > 0);
 static_assert(kBatteryTipW > 0 && kBatteryTipH > 0);

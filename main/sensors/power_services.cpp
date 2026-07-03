@@ -39,6 +39,55 @@ constexpr const char *kNetworkPmLockName = "network_sync";
 constexpr const char *kAudioPmLockName = "audio_play";
 constexpr const char *kNetworkPmLogName = "network";
 constexpr const char *kAudioPmLogName = "audio";
+constexpr size_t kPowerTextCount = 23;
+constexpr const char *const kPowerTexts[] = {
+    kNetworkPmLockName,
+    kAudioPmLockName,
+    kNetworkPmLogName,
+    kAudioPmLogName,
+    POWER_PM_LOCK_MUTEX_UNAVAILABLE_LOG_FORMAT,
+    POWER_PM_LOCK_MUTEX_TIMEOUT_LOG_FORMAT,
+    POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT,
+    POWER_PM_LOCK_RELEASE_ZERO_LOG_FORMAT,
+    POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT,
+    POWER_SETUP_FAILED_LOG_FORMAT,
+    POWER_SETUP_OK_LOG_FORMAT,
+    POWER_MUTEX_CREATE_FAILED_LOG_FORMAT,
+    POWER_NETWORK_LOCK_CREATE_FAILED_LOG_FORMAT,
+    POWER_AUDIO_LOCK_CREATE_FAILED_LOG_FORMAT,
+    POWER_DISABLED_LOG_FORMAT,
+    POWER_RTC_INVALID_TIME_LOG_FORMAT,
+    POWER_RTC_MKTIME_FAILED_LOG_FORMAT,
+    POWER_RTC_LOCALTIME_FAILED_LOG_FORMAT,
+    POWER_RTC_NORMALIZED_MISMATCH_LOG_FORMAT,
+    POWER_RTC_SETTIME_FAILED_LOG_FORMAT,
+    POWER_RTC_RESTORED_LOG_FORMAT,
+    POWER_RTC_SYNC_LOCALTIME_FAILED_LOG_FORMAT,
+    POWER_RTC_SYNC_TIME_NOT_PLAUSIBLE_LOG_FORMAT,
+};
+
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *item : items) {
+        if (!cstr_nonempty(item)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static_assert(kMinValidYear <= kMaxValidYear, "valid year range must be ordered");
 static_assert(kRtcMinMonth == 1, "RTC month range must start at 1");
 static_assert(kRtcMaxMonth == 12, "RTC month range must end at 12");
@@ -49,6 +98,9 @@ static_assert(kRtcMaxMinute == 59, "RTC minute max must stay 59");
 static_assert(kRtcMaxSecond == 59, "RTC second max must stay 59");
 static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
 static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
+static_assert(array_count(kPowerTexts) == kPowerTextCount,
+              "power text guard must cover every name and log text");
+static_assert(cstr_array_nonempty(kPowerTexts), "power management names and log texts must be non-empty");
 
 bool rtc_time_fields_in_range(const rtcTimeStruct_t &rtc_time)
 {

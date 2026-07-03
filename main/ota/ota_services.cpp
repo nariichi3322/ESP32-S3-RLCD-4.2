@@ -105,53 +105,86 @@ static constexpr const char *kOtaStatusInstallingUpdate = "Installing update 0%"
 static constexpr const char *kOtaStatusInstallingBackup = "Installing backup 0%";
 static constexpr const char *kOtaStatusInstallingProgressFormat = "Installing %d%%  %dKB/s";
 static constexpr const char *kOtaStatusNewVersionFormat = "New version %s";
+static constexpr const char *kOtaStatusFallbackError = "OTA status error";
 static constexpr const char *kOtaManifestJsonVersionField = "version";
 static constexpr const char *kOtaManifestJsonUrlField = "url";
 static constexpr const char *kOtaManifestJsonSha256Field = "sha256";
 static constexpr const char *kOtaManifestJsonSizeField = "size";
 static constexpr const char *kOtaManifestJsonNotesField = "notes";
+static constexpr const char *kOtaManifestSourceR2 = "R2";
+static constexpr const char *kOtaManifestSourceGithub = "GitHub";
 static constexpr const char *kOtaUnknownManifestSource = "unknown";
+static constexpr const char *kOtaPlaceholderManifestHost = "example.invalid";
+static constexpr const char *kOtaRequestFallbackName = "request";
+static constexpr size_t kOtaStatusTextCount = 20;
+static constexpr const char *kOtaStatusTexts[] = {
+    kOtaStatusCheckFailed,
+    kOtaStatusCheckingUpdate,
+    kOtaStatusAlreadyLatest,
+    kOtaStatusDownloadFailed,
+    kOtaStatusVerifyFailed,
+    kOtaStatusUpdateFailed,
+    kOtaStatusUpdateDoneRebooting,
+    kOtaStatusNoWifi,
+    kOtaStatusLowBattery,
+    kOtaStatusWifiFailed,
+    kOtaStatusNoOtaSlot,
+    kOtaStatusNoMemory,
+    kOtaStatusOfflineMode,
+    kOtaStatusUnavailable,
+    kOtaStatusIdlePrompt,
+    kOtaStatusInstallingUpdate,
+    kOtaStatusInstallingBackup,
+    kOtaStatusInstallingProgressFormat,
+    kOtaStatusNewVersionFormat,
+    kOtaStatusFallbackError,
+};
+static constexpr size_t kOtaManifestTextCount = 9;
+static constexpr const char *kOtaManifestTexts[] = {
+    kOtaManifestJsonVersionField,
+    kOtaManifestJsonUrlField,
+    kOtaManifestJsonSha256Field,
+    kOtaManifestJsonSizeField,
+    kOtaManifestJsonNotesField,
+    kOtaManifestSourceR2,
+    kOtaManifestSourceGithub,
+    kOtaUnknownManifestSource,
+    kOtaPlaceholderManifestHost,
+};
 
 constexpr bool cstr_nonempty(const char *text)
 {
     return text && text[0] != '\0';
 }
 
-constexpr bool ota_status_texts_nonempty()
+static const char *ota_request_name_or_fallback(const char *name)
 {
-    return cstr_nonempty(kOtaStatusCheckFailed) &&
-           cstr_nonempty(kOtaStatusCheckingUpdate) &&
-           cstr_nonempty(kOtaStatusAlreadyLatest) &&
-           cstr_nonempty(kOtaStatusDownloadFailed) &&
-           cstr_nonempty(kOtaStatusVerifyFailed) &&
-           cstr_nonempty(kOtaStatusUpdateFailed) &&
-           cstr_nonempty(kOtaStatusUpdateDoneRebooting) &&
-           cstr_nonempty(kOtaStatusNoWifi) &&
-           cstr_nonempty(kOtaStatusLowBattery) &&
-           cstr_nonempty(kOtaStatusWifiFailed) &&
-           cstr_nonempty(kOtaStatusNoOtaSlot) &&
-           cstr_nonempty(kOtaStatusNoMemory) &&
-           cstr_nonempty(kOtaStatusOfflineMode) &&
-           cstr_nonempty(kOtaStatusUnavailable) &&
-           cstr_nonempty(kOtaStatusIdlePrompt) &&
-           cstr_nonempty(kOtaStatusInstallingUpdate) &&
-           cstr_nonempty(kOtaStatusInstallingBackup) &&
-           cstr_nonempty(kOtaStatusInstallingProgressFormat) &&
-           cstr_nonempty(kOtaStatusNewVersionFormat);
+    return cstr_nonempty(name) ? name : kOtaRequestFallbackName;
 }
 
-constexpr bool ota_manifest_field_texts_nonempty()
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
 {
-    return cstr_nonempty(kOtaManifestJsonVersionField) &&
-           cstr_nonempty(kOtaManifestJsonUrlField) &&
-           cstr_nonempty(kOtaManifestJsonSha256Field) &&
-           cstr_nonempty(kOtaManifestJsonSizeField) &&
-           cstr_nonempty(kOtaManifestJsonNotesField) &&
-           cstr_nonempty(kOtaUnknownManifestSource);
+    return N;
 }
 
-static_assert(ota_status_texts_nonempty(), "OTA status texts must be non-empty");
-static_assert(ota_manifest_field_texts_nonempty(), "OTA manifest field texts must be non-empty");
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&texts)[N])
+{
+    for (const char *text : texts) {
+        if (!cstr_nonempty(text)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static_assert(array_count(kOtaStatusTexts) == kOtaStatusTextCount,
+              "OTA status text guard must cover every status text");
+static_assert(array_count(kOtaManifestTexts) == kOtaManifestTextCount,
+              "OTA manifest text guard must cover every manifest text");
+static_assert(cstr_array_nonempty(kOtaStatusTexts), "OTA status texts must be non-empty");
+static_assert(cstr_array_nonempty(kOtaManifestTexts), "OTA manifest field texts must be non-empty");
 
 static void log_ota_heap(const char *stage, int downloaded, int progress)
 {
@@ -337,7 +370,7 @@ static void ota_set_status(int state, const char *text, int progress = -1, uint3
     g_ota_reboot_pending = false;
     g_ota_state = state;
     g_ota_progress = progress;
-    strlcpy(g_ota_status, text ? text : "OTA status error", sizeof(g_ota_status));
+    strlcpy(g_ota_status, text ? text : kOtaStatusFallbackError, sizeof(g_ota_status));
     g_ota_status_until_tick = hold_ms > 0 ? xTaskGetTickCount() + pdMS_TO_TICKS(hold_ms) : 0;
     notify_ui_task();
 }
@@ -391,7 +424,7 @@ static void close_ota_http_client(esp_http_client_handle_t *client)
 static bool set_ota_event_bit(EventBits_t bit, const char *name)
 {
     if (!g_app_events) {
-        ESP_LOGW(TAG, "OTA %s skipped: event group unavailable", name ? name : "request");
+        ESP_LOGW(TAG, "OTA %s skipped: event group unavailable", ota_request_name_or_fallback(name));
         ota_set_status(kOtaFailed, kOtaStatusUnavailable, -1, kOtaFailureHoldMs);
         return false;
     }
@@ -638,11 +671,26 @@ static bool parse_ota_manifest(const char *json, OtaManifest *manifest)
     return true;
 }
 
+static bool ota_manifest_source_name_valid(const OtaManifestSource &source)
+{
+    return source.name && source.name[0];
+}
+
+static bool ota_manifest_source_url_valid(const OtaManifestSource &source)
+{
+    return source.url && source.url[0] &&
+           strstr(source.url, kOtaPlaceholderManifestHost) == nullptr;
+}
+
+static const char *ota_manifest_source_name_or_unknown(const char *name)
+{
+    return cstr_nonempty(name) ? name : kOtaUnknownManifestSource;
+}
+
 static bool ota_manifest_source_valid(const OtaManifestSource &source)
 {
-    return source.name && source.name[0] &&
-           source.url && source.url[0] &&
-           strstr(source.url, "example.invalid") == nullptr;
+    return ota_manifest_source_name_valid(source) &&
+           ota_manifest_source_url_valid(source);
 }
 
 static bool fetch_ota_manifest_from_source(const OtaManifestSource &source, OtaManifest *manifest)
@@ -652,7 +700,7 @@ static bool fetch_ota_manifest_from_source(const OtaManifestSource &source, OtaM
         return false;
     }
     if (!ota_manifest_source_valid(source)) {
-        ESP_LOGW(TAG, "OTA manifest source skipped: %s", source.name ? source.name : kOtaUnknownManifestSource);
+        ESP_LOGW(TAG, "OTA manifest source skipped: %s", ota_manifest_source_name_or_unknown(source.name));
         return false;
     }
     OtaManifestResponseBuffer response(kOtaManifestResponseBufferSize);
@@ -663,18 +711,18 @@ static bool fetch_ota_manifest_from_source(const OtaManifestSource &source, OtaM
     }
     esp_err_t err = http_get_text(source.url, response.data(), response.size());
     if (err != ESP_OK || !parse_ota_manifest(response.data(), manifest)) {
-        ESP_LOGW(TAG, "OTA manifest failed source=%s err=%s", source.name, esp_err_to_name(err));
+        ESP_LOGW(TAG, "OTA manifest failed source=%s err=%s", ota_manifest_source_name_or_unknown(source.name), esp_err_to_name(err));
         return false;
     }
-    ESP_LOGI(TAG, "OTA manifest loaded source=%s version=%s", source.name, manifest->version);
+    ESP_LOGI(TAG, "OTA manifest loaded source=%s version=%s", ota_manifest_source_name_or_unknown(source.name), manifest->version);
     return true;
 }
 
 static bool fetch_ota_manifest(OtaManifest *manifest, char *source_name = nullptr, size_t source_name_len = 0)
 {
     static const OtaManifestSource kSources[] = {
-        {"R2", kOtaManifestUrl},
-        {"GitHub", kOtaBackupManifestUrl},
+        {kOtaManifestSourceR2, kOtaManifestUrl},
+        {kOtaManifestSourceGithub, kOtaBackupManifestUrl},
     };
     for (const auto &source : kSources) {
         if (fetch_ota_manifest_from_source(source, manifest)) {
@@ -694,7 +742,7 @@ static bool fetch_backup_manifest_for_install(const OtaManifest &current, OtaMan
         return false;
     }
     OtaManifest candidate;
-    const OtaManifestSource backup_source = {"GitHub", kOtaBackupManifestUrl};
+    const OtaManifestSource backup_source = {kOtaManifestSourceGithub, kOtaBackupManifestUrl};
     if (!fetch_ota_manifest_from_source(backup_source, &candidate)) {
         return false;
     }
@@ -1031,7 +1079,7 @@ void ota_task(void *)
             }
             ESP_LOGI(TAG,
                      "OTA update check source=%s remote=%s current=%s",
-                     manifest_source[0] ? manifest_source : kOtaUnknownManifestSource,
+                     ota_manifest_source_name_or_unknown(manifest_source),
                      manifest.version,
                      APP_VERSION);
             if (compare_versions(manifest.version, APP_VERSION) <= 0) {

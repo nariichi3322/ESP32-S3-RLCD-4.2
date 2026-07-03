@@ -33,10 +33,85 @@ constexpr const char *kUiSensorTempPlaceholder = "--.-℃";
 constexpr const char *kUiSensorHumidityPlaceholder = "--.-%%";
 constexpr const char *kUiWeatherTempFormat = "%s℃";
 constexpr const char *kUiWeatherHumidityFormat = "%s%%";
+constexpr uint32_t kDisplayFullReasonSingleWide = 1U << 0;
+constexpr uint32_t kDisplayFullReasonTooManyRanges = 1U << 1;
+constexpr uint16_t kRlcdBlackThreshold = 0xC618;
 #define UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT "weather clock visible with %s weather, requesting sync"
 #define UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT "settings manual sync timeout: op=%d"
 #define UI_SETTINGS_TIMEOUT_RETURN_LOG "settings timeout, returning to clock"
 #define UI_GALLERY_SAYING_SYNC_REQUEST_LOG "gallery visible with missing/stale daily saying, requesting sync"
+#define DISPLAY_FLUSH_DIAG_LOG_FORMAT "display flush diag: page=%d partial=%lu ranges=%lu full=%lu reason_single=%lu reason_covered=%lu reason_ranges=%lu"
+
+constexpr const char *kUiFormatTexts[] = {
+    kUiSensorTempFormat,
+    kUiSensorHumidityFormat,
+    kUiSensorTempPlaceholder,
+    kUiSensorHumidityPlaceholder,
+    kUiWeatherTempFormat,
+    kUiWeatherHumidityFormat,
+};
+constexpr size_t kUiFormatTextCount = 6;
+constexpr const char *kUiLogTexts[] = {
+    UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT,
+    UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT,
+    UI_SETTINGS_TIMEOUT_RETURN_LOG,
+    UI_GALLERY_SAYING_SYNC_REQUEST_LOG,
+    DISPLAY_FLUSH_DIAG_LOG_FORMAT,
+};
+constexpr size_t kUiLogTextCount = 5;
+
+constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+template <typename T, size_t N>
+constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *text : items) {
+        if (!cstr_nonempty(text)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static_assert(kUiStatusRefreshMs > 0, "UI status refresh interval must be positive");
+static_assert(kUiInfoPagePollMs > 0, "UI info page poll interval must be positive");
+static_assert(kUiNetworkDiagRunningPollMs > 0, "network diagnostics running poll interval must be positive");
+static_assert(kUiNetworkDiagIdlePollMs >= kUiNetworkDiagRunningPollMs,
+              "idle network diagnostics polling must not be faster than running diagnostics polling");
+static_assert(kUiSettingsPollMs > 0, "settings poll interval must be positive");
+static_assert(kUiPostPageSwitchPollMs > 0, "post page switch poll interval must be positive");
+static_assert(kUiLvglLockTimeoutMs > 0, "UI LVGL lock timeout must be positive");
+static_assert(kUiUsPerSecond == 1000LL * kUiMsPerSecond,
+              "UI microsecond and millisecond constants must stay consistent");
+static_assert(kUiSecondsPerHour == kUiSecondsPerMinute * kUiMinutesPerHour,
+              "UI seconds-per-hour constant must match minute/hour constants");
+static_assert(kUiSecondsPerDay == kUiSecondsPerHour * kUiHoursPerDay,
+              "UI seconds-per-day constant must match hour/day constants");
+static_assert(kUiNextSecondDelayMinMs > 0, "next-second delay minimum must be positive");
+static_assert(kUiNextSecondDelayMaxMs >= kUiMsPerSecond,
+              "next-second delay maximum must cover one second");
+static_assert(kUiSensorValueTextSize > 1, "sensor status text buffer must fit text and NUL");
+static_assert(kUiWeatherCityTextSize > 1, "weather city status text buffer must fit text and NUL");
+static_assert(kUiWeatherValueTextSize > 1, "weather value status text buffer must fit text and NUL");
+static_assert(array_count(kUiFormatTexts) == kUiFormatTextCount,
+              "UI format text registry count must match entries");
+static_assert(array_count(kUiLogTexts) == kUiLogTextCount, "UI log text registry count must match entries");
+static_assert(cstr_array_nonempty(kUiFormatTexts), "UI status format and placeholder texts must be non-empty");
+static_assert(cstr_array_nonempty(kUiLogTexts), "UI main-loop log texts must be non-empty");
+static_assert(kDisplayFullReasonSingleWide != 0, "display full-refresh single-wide reason bit must be nonzero");
+static_assert(kDisplayFullReasonTooManyRanges != 0, "display full-refresh range-count reason bit must be nonzero");
+static_assert((kDisplayFullReasonSingleWide & kDisplayFullReasonTooManyRanges) == 0,
+              "display full-refresh reason bits must not overlap");
+static_assert(kRlcdBlackThreshold > 0, "RLCD black threshold must be nonzero");
 
 void copy_ui_text(char *out, size_t out_len, const char *text)
 {
@@ -81,7 +156,7 @@ void ui_task(void *)
     bool setup_panel_visible = false;
     bool low_mode_visible = false;
     bool alert_visible = false;
-    int visible_work_page = 0;
+    int visible_work_page = kWorkPageWeatherClock;
     TickType_t history_page_shown_since = 0;
     int alert_index = -1;
     bool last_battery_charging = false;
@@ -234,9 +309,9 @@ void ui_task(void *)
                 info_page_visible = false;
                 network_diag_page_visible = false;
                 settings_page_visible = false;
-                g_active_work_page = 0;
+                g_active_work_page = kWorkPageWeatherClock;
                 show_active_work_page();
-                visible_work_page = 0;
+                visible_work_page = kWorkPageWeatherClock;
                 history_page_shown_since = 0;
                 setup_panel_visible = false;
                 low_mode_visible = g_low_battery_mode;
@@ -806,8 +881,6 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
     static uint32_t full_too_many_ranges = 0;
     static TickType_t last_diag_tick = 0;
     static int last_diag_page = -1;
-    constexpr uint32_t kFullReasonSingleWide = 1U << 0;
-    constexpr uint32_t kFullReasonTooManyRanges = 1U << 1;
 
     if (g_ota_reboot_pending) {
         range_count = 0;
@@ -832,7 +905,7 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
         }
         if (area_x2 - area_x1 + 1 >= kDisplayPartialMaxWidth) {
             force_full_refresh = true;
-            full_reason_mask |= kFullReasonSingleWide;
+            full_reason_mask |= kDisplayFullReasonSingleWide;
         } else {
             bool merged = false;
             for (int i = 0; i < range_count; ++i) {
@@ -849,13 +922,12 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
                     ranges[range_count++] = {area_x1, area_x2};
                 } else {
                     force_full_refresh = true;
-                    full_reason_mask |= kFullReasonTooManyRanges;
+                    full_reason_mask |= kDisplayFullReasonTooManyRanges;
                 }
             }
         }
     }
 
-    constexpr uint16_t kRlcdBlackThreshold = 0xC618;
     if (touches_visible_area) {
         int area_width = area->x2 - area->x1 + 1;
         uint16_t *buffer = (uint16_t *)color_map;
@@ -876,10 +948,10 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
         bool covered_wide = covered_width >= kDisplayPartialMaxWidth;
         if (force_full_refresh || covered_wide) {
             ++full_cycles;
-            if (full_reason_mask & kFullReasonSingleWide) {
+            if (full_reason_mask & kDisplayFullReasonSingleWide) {
                 ++full_single_wide;
             }
-            if (full_reason_mask & kFullReasonTooManyRanges) {
+            if (full_reason_mask & kDisplayFullReasonTooManyRanges) {
                 ++full_too_many_ranges;
             }
             if (covered_wide) {
@@ -900,7 +972,7 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
                         page_changed;
         if (diag_due && g_ota_state != kOtaUpdating && !g_ota_reboot_pending) {
             ESP_LOGI(TAG,
-                     "display flush diag: page=%d partial=%lu ranges=%lu full=%lu reason_single=%lu reason_covered=%lu reason_ranges=%lu",
+                     DISPLAY_FLUSH_DIAG_LOG_FORMAT,
                      g_active_work_page,
                      (unsigned long)partial_cycles,
                      (unsigned long)partial_ranges,

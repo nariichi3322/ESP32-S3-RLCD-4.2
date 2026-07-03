@@ -14,6 +14,19 @@
 #define BATTERY_ADC_CALIBRATION_READ_FAILED_LOG_FORMAT "battery adc calibration read failed: %s"
 #define BATTERY_ADC_SAMPLE_LOG_FORMAT "battery adc raw=%d adc_mv=%d battery=%.3fV soc=%d%%"
 
+static constexpr size_t kBatteryLogTextCount = 10;
+static constexpr const char *const kBatteryLogTexts[] = {
+    BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT,
+    BATTERY_ADC_UNIT_RELEASE_FAILED_LOG_FORMAT,
+    BATTERY_ADC_READY_WITHOUT_HANDLE_LOG_FORMAT,
+    BATTERY_ADC_INIT_FAILED_LOG_FORMAT,
+    BATTERY_ADC_CHANNEL_CONFIG_FAILED_LOG_FORMAT,
+    BATTERY_ADC_CALIBRATION_UNAVAILABLE_LOG_FORMAT,
+    BATTERY_PERCENT_OUTPUT_NULL_LOG_FORMAT,
+    BATTERY_ADC_READ_FAILED_LOG_FORMAT,
+    BATTERY_ADC_CALIBRATION_READ_FAILED_LOG_FORMAT,
+    BATTERY_ADC_SAMPLE_LOG_FORMAT,
+};
 static constexpr float kBatteryVoltageDivider = 3.0f;
 static constexpr float kBatteryMillivoltsToVolts = 0.001f;
 static constexpr float kBatteryEmptyVoltage = 3.00f;
@@ -31,6 +44,29 @@ static constexpr int kBatteryAdcRawMax = 4095;
 static constexpr int kBatteryPercentMin = 0;
 static constexpr int kBatteryPercentMax = 100;
 static constexpr int kBatteryPercentUnknown = -1;
+
+static constexpr bool cstr_nonempty(const char *text)
+{
+    return text && text[0] != '\0';
+}
+
+template <typename T, size_t N>
+static constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+template <typename T, size_t N>
+static constexpr bool cstr_array_nonempty(const T (&items)[N])
+{
+    for (const char *item : items) {
+        if (!cstr_nonempty(item)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static_assert(kBatteryVoltageDivider > 0.0f, "battery voltage divider must be positive");
 static_assert(kBatteryMillivoltsToVolts > 0.0f, "millivolts-to-volts scale must be positive");
 static_assert(kBatteryFullVoltage > kBatteryEmptyVoltage, "battery voltage range must be positive");
@@ -50,6 +86,9 @@ static_assert(kBatteryPercentUnknown < kBatteryPercentMin, "unknown battery perc
 static_assert(kBatteryChargingRiseSamples > 0, "charging detection must require at least one rising sample");
 static_assert(kBatteryChargingRiseVoltage > kBatteryChargingStopVoltage,
               "charging rise threshold must stay above stop threshold");
+static_assert(array_count(kBatteryLogTexts) == kBatteryLogTextCount,
+              "battery log guard must cover every battery log text");
+static_assert(cstr_array_nonempty(kBatteryLogTexts), "battery service log texts must be non-empty");
 
 static int clamp_battery_percent(int percent)
 {
