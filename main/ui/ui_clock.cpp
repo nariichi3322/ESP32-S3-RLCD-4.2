@@ -53,6 +53,7 @@ constexpr const char *kFactoryResetFailedFeedback = "恢复失败";
 constexpr size_t kSettingsFeedbackTextSize = 32;
 constexpr size_t kClockDateTextSize = 48;
 constexpr const char *kClockDateFormat = "%04d/%02d/%02d / %s";
+constexpr const char *kClockDatePlaceholder = "--";
 constexpr const char *kClockSettingsFeedbackTexts[] = {
     kSettingsSaveFailedFeedback,
     kSettingsOrderSavedFeedback,
@@ -83,6 +84,7 @@ constexpr const char *kClockSettingsFeedbackTexts[] = {
     kFactoryResetConfirmFeedback,
     kFactoryResetFailedFeedback,
     kClockDateFormat,
+    kClockDatePlaceholder,
 };
 #define HOURLY_CHIME_SETTING_LOG_FORMAT "hourly chime %s"
 #define ALL_DAY_CHIME_SETTING_LOG_FORMAT "hourly chime all-day %s"
@@ -252,6 +254,20 @@ constexpr int kClockLowBatteryIconY = 214;
 constexpr int kSetupStatusLabelX = 26;
 constexpr int kSetupStatusLabelWidth = 348;
 constexpr int kSetupStatusLabelHeight = 18;
+static constexpr int kSetupStatusLabelY[] = {194, 212, 230, 248, 266, 284};
+static constexpr const char *kSetupStatusText[] = {
+    "Setup Mode",
+    "AP SSID: --",
+    "AP Password: --",
+    "Portal IP: --",
+    "STA SSID: --",
+    "STA IP: --",
+};
+constexpr size_t kSetupStatusLabelCount = array_count(kSetupStatusLabelY);
+static_assert(kSetupStatusLabelCount == array_count(kSetupStatusText),
+              "setup status coordinates and text must stay in sync");
+static_assert(kSetupStatusLabelCount == array_count(g_setup_status_labels),
+              "setup status label storage must match the rendered row count");
 
 const char *clock_component_name(const char *name)
 {
@@ -268,6 +284,22 @@ void configure_clock_canvas(lv_obj_t *canvas, int x, int y, int width, int heigh
     lv_obj_set_size(canvas, width, height);
     lv_obj_set_style_border_width(canvas, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(canvas, 0, LV_PART_MAIN);
+}
+
+void configure_clock_alert_pill(lv_obj_t *pill)
+{
+    if (!pill) {
+        return;
+    }
+    lv_obj_clear_flag(pill, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(pill, kClockAlertPillX, kClockAlertPillY);
+    lv_obj_set_size(pill, kClockAlertPillWidth, kClockAlertPillHeight);
+    lv_obj_set_style_bg_color(pill, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(pill, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(pill, 0, LV_PART_MAIN);
+    lv_obj_set_style_radius(pill, kClockAlertPillRadius, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(pill, 0, LV_PART_MAIN);
+    lv_obj_add_flag(pill, LV_OBJ_FLAG_HIDDEN);
 }
 
 void build_clock_status_icon(lv_obj_t *screen,
@@ -306,6 +338,20 @@ void center_clock_label_if_created(lv_obj_t *label, const char *name)
         return;
     }
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+}
+
+lv_obj_t *make_clock_lower_center_label(lv_obj_t *screen,
+                                        int x,
+                                        int y,
+                                        int width,
+                                        int height,
+                                        const char *text,
+                                        const char *name)
+{
+    lv_obj_t *label = make_label(screen, x, y, width, height, text);
+    remember_lower_panel_object(label);
+    center_clock_label_if_created(label, name);
+    return label;
 }
 
 void build_clock_lower_icon(lv_obj_t *screen,
@@ -417,26 +463,18 @@ void build_clock_ui()
 
     g_alert_pill = lv_obj_create(screen);
     if (g_alert_pill) {
-        lv_obj_clear_flag(g_alert_pill, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_alert_pill, kClockAlertPillX, kClockAlertPillY);
-        lv_obj_set_size(g_alert_pill, kClockAlertPillWidth, kClockAlertPillHeight);
-        lv_obj_set_style_bg_color(g_alert_pill, lv_color_black(), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(g_alert_pill, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_width(g_alert_pill, 0, LV_PART_MAIN);
-        lv_obj_set_style_radius(g_alert_pill, kClockAlertPillRadius, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(g_alert_pill, 0, LV_PART_MAIN);
-        lv_obj_add_flag(g_alert_pill, LV_OBJ_FLAG_HIDDEN);
+        configure_clock_alert_pill(g_alert_pill);
 
         if (!g_alert_icon_canvas_buf) {
             g_alert_icon_canvas_buf = alloc_canvas_buffer(WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT);
         }
         g_alert_icon_canvas = lv_canvas_create(g_alert_pill);
         if (g_alert_icon_canvas) {
-            lv_obj_clear_flag(g_alert_icon_canvas, LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_set_pos(g_alert_icon_canvas, kClockAlertIconX, kClockAlertIconY);
-            lv_obj_set_size(g_alert_icon_canvas, WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT);
-            lv_obj_set_style_border_width(g_alert_icon_canvas, 0, LV_PART_MAIN);
-            lv_obj_set_style_pad_all(g_alert_icon_canvas, 0, LV_PART_MAIN);
+            configure_clock_canvas(g_alert_icon_canvas,
+                                   kClockAlertIconX,
+                                   kClockAlertIconY,
+                                   WARNING_ICON_WIDTH,
+                                   WARNING_ICON_HEIGHT);
             if (g_alert_icon_canvas_buf) {
                 lv_canvas_set_buffer(g_alert_icon_canvas,
                                      g_alert_icon_canvas_buf,
@@ -492,14 +530,13 @@ void build_clock_ui()
                             WIFI_STATUS_ICON_BYTES_PER_ROW,
                             wifi_status_icon_bits);
 
-    g_weather_city_label = make_label(screen,
-                                      kClockWeatherCityLabelX,
-                                      kClockWeatherCityLabelY,
-                                      kClockWeatherCityLabelWidth,
-                                      kClockWeatherCityLabelHeight,
-                                      kClockWeatherCityPlaceholder);
-    remember_lower_panel_object(g_weather_city_label);
-    center_clock_label_if_created(g_weather_city_label, "weather_city");
+    g_weather_city_label = make_clock_lower_center_label(screen,
+                                                         kClockWeatherCityLabelX,
+                                                         kClockWeatherCityLabelY,
+                                                         kClockWeatherCityLabelWidth,
+                                                         kClockWeatherCityLabelHeight,
+                                                         kClockWeatherCityPlaceholder,
+                                                         "weather_city");
     g_weather_icon_label = make_label(screen,
                                       kClockWeatherIconLabelX,
                                       kClockWeatherIconLabelY,
@@ -528,22 +565,20 @@ void build_clock_ui()
     } else {
         ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, "weather_info");
     }
-    g_weather_temp_label = make_label(screen,
-                                      kClockWeatherMetricLabelX,
-                                      kClockWeatherTempLabelY,
-                                      kClockWeatherMetricLabelWidth,
-                                      kClockWeatherMetricLabelHeight,
-                                      kClockWeatherTempPlaceholder);
-    g_weather_humi_label = make_label(screen,
-                                      kClockWeatherMetricLabelX,
-                                      kClockWeatherHumiLabelY,
-                                      kClockWeatherMetricLabelWidth,
-                                      kClockWeatherMetricLabelHeight,
-                                      kClockWeatherHumidityPlaceholder);
-    remember_lower_panel_object(g_weather_temp_label);
-    remember_lower_panel_object(g_weather_humi_label);
-    center_clock_label_if_created(g_weather_temp_label, "weather_temp");
-    center_clock_label_if_created(g_weather_humi_label, "weather_humi");
+    g_weather_temp_label = make_clock_lower_center_label(screen,
+                                                         kClockWeatherMetricLabelX,
+                                                         kClockWeatherTempLabelY,
+                                                         kClockWeatherMetricLabelWidth,
+                                                         kClockWeatherMetricLabelHeight,
+                                                         kClockWeatherTempPlaceholder,
+                                                         "weather_temp");
+    g_weather_humi_label = make_clock_lower_center_label(screen,
+                                                         kClockWeatherMetricLabelX,
+                                                         kClockWeatherHumiLabelY,
+                                                         kClockWeatherMetricLabelWidth,
+                                                         kClockWeatherMetricLabelHeight,
+                                                         kClockWeatherHumidityPlaceholder,
+                                                         "weather_humi");
 
     build_clock_lower_icon(screen,
                            &g_temp_icon_canvas,
@@ -565,24 +600,22 @@ void build_clock_ui()
                            HUMI_ICON_BYTES_PER_ROW,
                            humi_icon_bits,
                            "humi_icon");
-    g_temp_label = make_label(screen,
-                              kClockLocalMetricLabelX,
-                              kClockLocalTempLabelY,
-                              kClockLocalMetricLabelWidth,
-                              kClockLocalMetricLabelHeight,
-                              "--.-℃");
-    g_humi_label = make_label(screen,
-                              kClockLocalMetricLabelX,
-                              kClockLocalHumiLabelY,
-                              kClockLocalMetricLabelWidth,
-                              kClockLocalMetricLabelHeight,
-                              "--.-%");
+    g_temp_label = make_clock_lower_center_label(screen,
+                                                 kClockLocalMetricLabelX,
+                                                 kClockLocalTempLabelY,
+                                                 kClockLocalMetricLabelWidth,
+                                                 kClockLocalMetricLabelHeight,
+                                                 "--.-℃",
+                                                 "temp_value");
+    g_humi_label = make_clock_lower_center_label(screen,
+                                                 kClockLocalMetricLabelX,
+                                                 kClockLocalHumiLabelY,
+                                                 kClockLocalMetricLabelWidth,
+                                                 kClockLocalMetricLabelHeight,
+                                                 "--.-%",
+                                                 "humi_value");
     remember_lower_panel_object(g_temp_icon_canvas);
     remember_lower_panel_object(g_humi_icon_canvas);
-    remember_lower_panel_object(g_temp_label);
-    remember_lower_panel_object(g_humi_label);
-    center_clock_label_if_created(g_temp_label, "temp_value");
-    center_clock_label_if_created(g_humi_label, "humi_value");
     build_clock_trend_canvas(screen,
                              &g_temp_trend_canvas,
                              &g_temp_trend_canvas_buf,
@@ -666,20 +699,6 @@ void build_clock_ui()
         lv_obj_add_flag(g_low_battery_icon_canvas, LV_OBJ_FLAG_HIDDEN);
     }
 
-    static const int kSetupStatusLabelY[] = {194, 212, 230, 248, 266, 284};
-    static const char *kSetupStatusText[] = {
-        "Setup Mode",
-        "AP SSID: --",
-        "AP Password: --",
-        "Portal IP: --",
-        "STA SSID: --",
-        "STA IP: --",
-    };
-    constexpr size_t kSetupStatusLabelCount = array_count(kSetupStatusLabelY);
-    static_assert(kSetupStatusLabelCount == array_count(kSetupStatusText),
-                  "setup status coordinates and text must stay in sync");
-    static_assert(kSetupStatusLabelCount == array_count(g_setup_status_labels),
-                  "setup status label storage must match the rendered row count");
     for (size_t i = 0; i < kSetupStatusLabelCount; ++i) {
         g_setup_status_labels[i] = make_label_with_font(screen,
                                                         kSetupStatusLabelX,
@@ -696,7 +715,22 @@ void build_clock_ui()
     }
 }
 
-
+void format_clock_date_text(char *out, size_t out_len, const struct tm &local, const char *weekday)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    int written = snprintf(out,
+                           out_len,
+                           kClockDateFormat,
+                           local.tm_year + kTmYearOffset,
+                           local.tm_mon + kTmMonthOffset,
+                           local.tm_mday,
+                           weekday ? weekday : kClockDatePlaceholder);
+    if (written < 0 || static_cast<size_t>(written) >= out_len) {
+        strlcpy(out, kClockDatePlaceholder, out_len);
+    }
+}
 
 bool update_time_ui(const struct tm &local, bool clock_page_active, int active_work_page)
 {
@@ -729,11 +763,7 @@ bool update_time_ui(const struct tm &local, bool clock_page_active, int active_w
         static const char *kWeekdayNames[] = {"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"};
         static_assert(array_count(kWeekdayNames) == 7, "tm_wday maps to exactly seven weekday names");
         char date[kClockDateTextSize] = {};
-        snprintf(date, sizeof(date), kClockDateFormat,
-                 local.tm_year + kTmYearOffset,
-                 local.tm_mon + kTmMonthOffset,
-                 local.tm_mday,
-                 kWeekdayNames[local.tm_wday]);
+        format_clock_date_text(date, sizeof(date), local, kWeekdayNames[local.tm_wday]);
         if (date_page == kWorkPageWeatherClock) {
             changed |= set_label_text_if_changed(g_date_label, date);
         } else if (date_page == kWorkPageHistory) {

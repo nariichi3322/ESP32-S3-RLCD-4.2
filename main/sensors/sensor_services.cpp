@@ -34,6 +34,11 @@ TickType_t next_battery_wake_after_sample(TickType_t sampled_tick)
     }
     return next_battery_sample_tick(sampled_tick);
 }
+
+bool system_time_became_valid(bool current_valid, bool previous_valid)
+{
+    return current_valid && !previous_valid;
+}
 } // namespace
 
 void housekeeping_task(void *)
@@ -54,7 +59,7 @@ void housekeeping_task(void *)
             continue;
         }
         bool time_valid = is_system_time_plausible();
-        if (time_valid && !last_time_valid) {
+        if (system_time_became_valid(time_valid, last_time_valid)) {
             next_sensor = next_sensor_sample_tick(now);
             next_battery = next_battery_sample_tick(now);
         }

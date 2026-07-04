@@ -83,8 +83,10 @@ static constexpr float kOkHumiMinPercent = 30.0f;
 static constexpr float kOkHumiMaxPercent = 70.0f;
 static constexpr const char *kFlipTempPlaceholder = "--.-C";
 static constexpr const char *kFlipHumiPlaceholder = "--%";
+static constexpr const char *kFlipDayPlaceholder = "--";
 static constexpr const char *kFlipTempFormat = "%.1fC";
 static constexpr const char *kFlipHumiFormat = "%.0f%%";
+static constexpr const char *kFlipDayFormat = "%d";
 
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
@@ -326,6 +328,18 @@ bool set_flip_text_on_labels(const char *text, Labels... labels)
     return changed;
 }
 
+template <typename... Args>
+void format_flip_text_or_fallback(char *out, size_t out_len, const char *fallback, const char *format, Args... args)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    int written = snprintf(out, out_len, format, args...);
+    if (written < 0 || static_cast<size_t>(written) >= out_len) {
+        strlcpy(out, fallback, out_len);
+    }
+}
+
 bool update_flip_sensor_text()
 {
     if (!g_flip_clock_sensor_label &&
@@ -337,8 +351,8 @@ bool update_flip_sensor_text()
     char temp_text[kFlipSensorTextSize] = {};
     char humi_text[kFlipSensorTextSize] = {};
     if (g_sensor_ok) {
-        snprintf(temp_text, sizeof(temp_text), kFlipTempFormat, g_temperature);
-        snprintf(humi_text, sizeof(humi_text), kFlipHumiFormat, g_humidity);
+        format_flip_text_or_fallback(temp_text, sizeof(temp_text), kFlipTempPlaceholder, kFlipTempFormat, g_temperature);
+        format_flip_text_or_fallback(humi_text, sizeof(humi_text), kFlipHumiPlaceholder, kFlipHumiFormat, g_humidity);
     } else {
         strlcpy(temp_text, kFlipTempPlaceholder, sizeof(temp_text));
         strlcpy(humi_text, kFlipHumiPlaceholder, sizeof(humi_text));
@@ -385,8 +399,8 @@ bool update_flip_date_text(const struct tm &local)
     CalendarDayInfo info = {};
     bool lunar_ok = calendar_day_info(local, &info);
     char day_text[kFlipDayTextSize] = {};
-    snprintf(day_text, sizeof(day_text), "%d", local.tm_mday);
-    const char *lunar_text = lunar_ok && info.subtext[0] ? info.subtext : "--";
+    format_flip_text_or_fallback(day_text, sizeof(day_text), kFlipDayPlaceholder, kFlipDayFormat, local.tm_mday);
+    const char *lunar_text = lunar_ok && info.subtext[0] ? info.subtext : kFlipDayPlaceholder;
     bool changed = false;
     changed |= set_flip_text_on_labels(day_text,
                                        g_flip_clock_day_label,

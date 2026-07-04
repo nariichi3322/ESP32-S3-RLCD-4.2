@@ -178,6 +178,16 @@ bool plain_text_saying_candidate(const char *text)
     return text && text[0] != '\0' && text[0] != kJsonObjectStart && text[0] != kJsonArrayStart;
 }
 
+bool copy_plain_text_saying_candidate(const char *response, char *out, size_t out_len)
+{
+    if (!response || !out || out_len == 0) {
+        return false;
+    }
+    strlcpy(out, response, out_len);
+    trim_ascii(out);
+    return plain_text_saying_candidate(out);
+}
+
 bool daily_saying_json_depth_allowed(int depth)
 {
     return depth <= kMaxSayingJsonDepth;
@@ -225,9 +235,7 @@ bool extract_daily_saying(const char *response, char *out, size_t out_len)
             return true;
         }
     }
-    strlcpy(out, response, out_len);
-    trim_ascii(out);
-    return plain_text_saying_candidate(out);
+    return copy_plain_text_saying_candidate(response, out, out_len);
 }
 
 int utf8_char_count(const char *text)
@@ -285,6 +293,28 @@ void log_daily_saying_update_failed(const DailySayingAttemptStats &stats)
              stats.parse_failures,
              stats.long_responses);
 }
+
+bool parse_daily_saying_attempt(const char *response,
+                                char *out,
+                                size_t out_len,
+                                int attempt,
+                                DailySayingAttemptStats &stats)
+{
+    bool ok = extract_daily_saying(response, out, out_len);
+    if (!ok) {
+        stats.record_parse_failure();
+        ESP_LOGW(TAG, DAILY_SAYING_PARSE_FAILED_LOG_FORMAT);
+        return false;
+    }
+    int chars = 0;
+    if (saying_within_length(out, &chars)) {
+        return true;
+    }
+    stats.record_long_response();
+    ESP_LOGW(TAG, DAILY_SAYING_TOO_LONG_LOG_FORMAT, chars, attempt);
+    out[0] = '\0';
+    return false;
+}
 } // namespace
 
 void load_daily_saying_cache()
@@ -312,19 +342,9 @@ bool perform_daily_saying_update()
             ESP_LOGW(TAG, DAILY_SAYING_HTTP_FAILED_LOG_FORMAT, esp_err_to_name(err));
             continue;
         }
-        bool ok = extract_daily_saying(response.get(), next, sizeof(next));
-        if (!ok) {
-            stats.record_parse_failure();
-            ESP_LOGW(TAG, DAILY_SAYING_PARSE_FAILED_LOG_FORMAT);
-            continue;
-        }
-        int chars = 0;
-        if (saying_within_length(next, &chars)) {
+        if (parse_daily_saying_attempt(response.get(), next, sizeof(next), attempt, stats)) {
             break;
         }
-        stats.record_long_response();
-        ESP_LOGW(TAG, DAILY_SAYING_TOO_LONG_LOG_FORMAT, chars, attempt);
-        next[0] = '\0';
     }
     if (next[0] == '\0') {
         log_daily_saying_update_failed(stats);

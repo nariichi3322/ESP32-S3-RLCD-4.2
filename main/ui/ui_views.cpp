@@ -14,6 +14,7 @@ constexpr int kUiNetworkDiagIdlePollMs = 500;
 constexpr int kUiSettingsPollMs = 100;
 constexpr int kUiPostPageSwitchPollMs = 250;
 constexpr int kUiLvglLockTimeoutMs = 80;
+constexpr int kUiFlipClockPollMs = 200;
 constexpr int64_t kUiUsPerSecond = 1000000;
 constexpr int kUiMsPerSecond = 1000;
 constexpr int kUiSecondsPerMinute = 60;
@@ -102,6 +103,8 @@ static_assert(kUiNetworkDiagIdlePollMs >= kUiNetworkDiagRunningPollMs,
 static_assert(kUiSettingsPollMs > 0, "settings poll interval must be positive");
 static_assert(kUiPostPageSwitchPollMs > 0, "post page switch poll interval must be positive");
 static_assert(kUiLvglLockTimeoutMs > 0, "UI LVGL lock timeout must be positive");
+static_assert(kUiFlipClockPollMs > 0 && kUiFlipClockPollMs <= kUiMsPerSecond,
+              "flip clock poll interval must stay within one second");
 static_assert(kUiUsPerSecond == 1000LL * kUiMsPerSecond,
               "UI microsecond and millisecond constants must stay consistent");
 static_assert(kUiSecondsPerHour == kUiSecondsPerMinute * kUiMinutesPerHour,
@@ -144,11 +147,27 @@ void copy_ui_text(char *out, size_t out_len, const char *text)
     strlcpy(out, text ? text : "", out_len);
 }
 
+template <typename... Args>
+void format_ui_status_value(char *out, size_t out_len, const char *fallback, const char *format, Args... args)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    if (!format) {
+        copy_ui_text(out, out_len, fallback);
+        return;
+    }
+    int written = snprintf(out, out_len, format, args...);
+    if (written < 0 || written >= (int)out_len) {
+        copy_ui_text(out, out_len, fallback);
+    }
+}
+
 void format_sensor_status_text(char *temp, size_t temp_len, char *humi, size_t humi_len)
 {
     if (g_sensor_ok) {
-        snprintf(temp, temp_len, kUiSensorTempFormat, g_temperature);
-        snprintf(humi, humi_len, kUiSensorHumidityFormat, g_humidity);
+        format_ui_status_value(temp, temp_len, kUiSensorTempPlaceholder, kUiSensorTempFormat, g_temperature);
+        format_ui_status_value(humi, humi_len, kUiSensorHumidityPlaceholder, kUiSensorHumidityFormat, g_humidity);
     } else {
         copy_ui_text(temp, temp_len, kUiSensorTempPlaceholder);
         copy_ui_text(humi, humi_len, kUiSensorHumidityPlaceholder);
@@ -164,8 +183,8 @@ void format_weather_status_text(const WeatherData &weather,
                                 size_t humi_len)
 {
     copy_ui_text(city, city_len, weather.city);
-    snprintf(temp, temp_len, kUiWeatherTempFormat, weather.temp);
-    snprintf(humi, humi_len, kUiWeatherHumidityFormat, weather.humidity);
+    format_ui_status_value(temp, temp_len, kClockWeatherTempPlaceholder, kUiWeatherTempFormat, weather.temp);
+    format_ui_status_value(humi, humi_len, kClockWeatherHumidityPlaceholder, kUiWeatherHumidityFormat, weather.humidity);
 }
 
 TickType_t next_second_delay_ticks()
@@ -250,6 +269,17 @@ bool normal_work_page_active(int page)
     return g_active_work_page == page &&
            !g_low_battery_mode &&
            !g_setup_portal_active;
+}
+
+bool flip_clock_fast_poll_active(const struct tm &local)
+{
+    return g_active_work_page == kWorkPageFlipClock &&
+           !g_low_battery_mode &&
+           !g_setup_portal_active &&
+           !g_settings_requested &&
+           !g_boot_info_requested &&
+           !g_network_diag_page_requested &&
+           is_tm_plausible(local);
 }
 } // namespace
 
@@ -893,9 +923,16 @@ void ui_task(void *)
         bool history_idle = low_refresh_work_page_idle(kWorkPageHistory, local);
         bool calendar_idle = low_refresh_work_page_idle(kWorkPageCalendar, local);
         bool weather_board_idle = low_refresh_work_page_idle(kWorkPageWeatherBoard, local);
+        bool flip_clock_fast_poll = flip_clock_fast_poll_active(local);
         TickType_t delay_ticks = (low_idle || gallery_idle || history_idle || calendar_idle || weather_board_idle)
                                      ? next_minute_delay_ticks(local)
                                      : next_second_delay_ticks();
+        if (flip_clock_fast_poll) {
+            TickType_t flip_poll_ticks = pdMS_TO_TICKS(kUiFlipClockPollMs);
+            if (flip_poll_ticks < delay_ticks) {
+                delay_ticks = flip_poll_ticks;
+            }
+        }
         if (history_idle && history_page_shown_since != 0) {
             TickType_t elapsed = xTaskGetTickCount() - history_page_shown_since;
             TickType_t timeout = pdMS_TO_TICKS(kHistoryPageTimeoutMs);

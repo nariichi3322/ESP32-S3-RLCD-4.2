@@ -141,6 +141,20 @@ static constexpr const char *kOtaManifestResponseAllocFailedLog = "OTA manifest 
 #define OTA_MANIFEST_LOADED_FORMAT "OTA manifest loaded source=%s version=%s"
 #define OTA_BACKUP_MANIFEST_MISMATCH_FORMAT "OTA backup manifest mismatch current=%s backup=%s"
 static constexpr const char *kOtaManifestInvalidForInstallLog = "OTA manifest invalid for install";
+#define OTA_DOWNLOAD_START_FORMAT "OTA start: reset=%d battery=%d%% %.3fV rssi=%d size=%d url=%s"
+#define OTA_HTTP_OPEN_FAILED_FORMAT "OTA http open failed: %s"
+#define OTA_REDIRECT_STATUS_FORMAT "OTA redirect status=%d location=%s"
+#define OTA_HTTP_STATUS_FAILED_FORMAT "OTA http status=%d content_len=%d"
+static constexpr const char *kOtaRedirectLimitReachedLog = "OTA redirect limit reached";
+#define OTA_BEGIN_FAILED_FORMAT "OTA begin failed: %s"
+#define OTA_DOWNLOAD_TIMEOUT_FORMAT "OTA download timed out total=%d"
+#define OTA_READ_FAILED_NO_PROGRESS_FORMAT "OTA read failed with no progress total=%d"
+#define OTA_STALLED_FORMAT "OTA stalled total=%d"
+#define OTA_SHA_MISMATCH_FORMAT "OTA sha mismatch expected=%s actual=%s"
+#define OTA_END_FAILED_FORMAT "OTA end failed: %s"
+#define OTA_APP_DESCRIPTION_FAILED_FORMAT "OTA app description failed: %s"
+#define OTA_IMAGE_READY_FORMAT "OTA image ready: version=%s project=%s"
+#define OTA_BOOT_PARTITION_FAILED_FORMAT "OTA boot partition failed: %s"
 static constexpr const char *kOtaStatusTexts[] = {
     kOtaStatusCheckFailed,
     kOtaStatusCheckingUpdate,
@@ -194,6 +208,20 @@ static constexpr const char *kOtaLogTexts[] = {
     OTA_MANIFEST_LOADED_FORMAT,
     OTA_BACKUP_MANIFEST_MISMATCH_FORMAT,
     kOtaManifestInvalidForInstallLog,
+    OTA_DOWNLOAD_START_FORMAT,
+    OTA_HTTP_OPEN_FAILED_FORMAT,
+    OTA_REDIRECT_STATUS_FORMAT,
+    OTA_HTTP_STATUS_FAILED_FORMAT,
+    kOtaRedirectLimitReachedLog,
+    OTA_BEGIN_FAILED_FORMAT,
+    OTA_DOWNLOAD_TIMEOUT_FORMAT,
+    OTA_READ_FAILED_NO_PROGRESS_FORMAT,
+    OTA_STALLED_FORMAT,
+    OTA_SHA_MISMATCH_FORMAT,
+    OTA_END_FAILED_FORMAT,
+    OTA_APP_DESCRIPTION_FAILED_FORMAT,
+    OTA_IMAGE_READY_FORMAT,
+    OTA_BOOT_PARTITION_FAILED_FORMAT,
 };
 
 constexpr bool cstr_nonempty(const char *text)
@@ -226,6 +254,24 @@ static const char *ota_request_name_or_fallback(const char *name)
 static const char *ota_status_text_or_fallback(const char *text)
 {
     return cstr_nonempty(text) ? text : kOtaStatusFallbackError;
+}
+
+static void format_ota_status_text(char *out, size_t out_len, const char *fmt, ...)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    if (!fmt) {
+        strlcpy(out, kOtaStatusFallbackError, out_len);
+        return;
+    }
+    va_list args;
+    va_start(args, fmt);
+    int written = vsnprintf(out, out_len, fmt, args);
+    va_end(args);
+    if (written < 0 || written >= (int)out_len) {
+        strlcpy(out, kOtaStatusFallbackError, out_len);
+    }
 }
 
 template <typename T, size_t N>
@@ -281,6 +327,14 @@ static void log_ota_heap(const char *stage, int downloaded, int progress)
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
+}
+
+static int ota_speed_kbps_for_window(int bytes, int64_t elapsed_us)
+{
+    if (bytes <= 0 || elapsed_us <= 0) {
+        return 0;
+    }
+    return (int)((int64_t)bytes * kOtaUsPerSecond / elapsed_us / kOtaBytesPerKiB);
 }
 
 class OtaDisplayQuietGuard {
@@ -879,7 +933,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         rssi = ap_info.rssi;
     }
     ESP_LOGI(TAG,
-             "OTA start: reset=%d battery=%d%% %.3fV rssi=%d size=%d url=%s",
+             OTA_DOWNLOAD_START_FORMAT,
              (int)esp_reset_reason(),
              g_battery_percent,
              g_battery_voltage,
@@ -916,7 +970,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         esp_http_client_set_header(client, "Accept", "application/octet-stream,*/*");
         err = esp_http_client_open(client, 0);
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "OTA http open failed: %s", esp_err_to_name(err));
+            ESP_LOGW(TAG, OTA_HTTP_OPEN_FAILED_FORMAT, esp_err_to_name(err));
             cleanup_ota_http_client(&client);
             ota_set_status(kOtaFailed, kOtaStatusDownloadFailed, -1, kOtaFailureHoldMs);
             return false;
@@ -924,7 +978,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         content_len = esp_http_client_fetch_headers(client);
         int status = esp_http_client_get_status_code(client);
         if (is_http_redirect_status(status)) {
-            ESP_LOGI(TAG, "OTA redirect status=%d location=%s", status, redirect_url[0] ? redirect_url : "--");
+            ESP_LOGI(TAG, OTA_REDIRECT_STATUS_FORMAT, status, redirect_url[0] ? redirect_url : "--");
             close_ota_http_client(&client);
             if (redirect_url[0] == '\0' || strlen(redirect_url) >= sizeof(current_url)) {
                 ota_set_status(kOtaFailed, kOtaStatusDownloadFailed, -1, kOtaFailureHoldMs);
@@ -934,7 +988,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
             continue;
         }
         if (status < 200 || status >= 300) {
-            ESP_LOGW(TAG, "OTA http status=%d content_len=%d", status, content_len);
+            ESP_LOGW(TAG, OTA_HTTP_STATUS_FAILED_FORMAT, status, content_len);
             close_ota_http_client(&client);
             ota_set_status(kOtaFailed, kOtaStatusDownloadFailed, -1, kOtaFailureHoldMs);
             return false;
@@ -942,7 +996,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         break;
     }
     if (!client) {
-        ESP_LOGW(TAG, "OTA redirect limit reached");
+        ESP_LOGW(TAG, "%s", kOtaRedirectLimitReachedLog);
         ota_set_status(kOtaFailed, kOtaStatusDownloadFailed, -1, kOtaFailureHoldMs);
         return false;
     }
@@ -951,7 +1005,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
     ota_note_phase(2, 0, 0);
     err = esp_ota_begin(update_partition, manifest.size > 0 ? manifest.size : OTA_SIZE_UNKNOWN, &ota_handle);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "OTA begin failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, OTA_BEGIN_FAILED_FORMAT, esp_err_to_name(err));
         close_ota_http_client(&client);
         ota_set_status(kOtaFailed, kOtaStatusUpdateFailed, -1, kOtaFailureHoldMs);
         return false;
@@ -971,18 +1025,18 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
 
     int total = 0;
     int last_progress = -1;
-    int last_speed_kbps = -1;
     int last_heap_progress = -25;
     int64_t started_us = esp_timer_get_time();
     int64_t last_progress_us = started_us;
     int64_t last_status_us = 0;
+    int last_status_total = 0;
     bool ok = true;
     OtaTaskWatchdogGuard wdt;
     for (;;) {
         wdt.reset();
         int64_t now_us = esp_timer_get_time();
         if (now_us - started_us > (int64_t)kOtaMaxDownloadMs * kOtaUsPerMs) {
-            ESP_LOGW(TAG, "OTA download timed out total=%d", total);
+            ESP_LOGW(TAG, OTA_DOWNLOAD_TIMEOUT_FORMAT, total);
             ok = false;
             break;
         }
@@ -990,7 +1044,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         wdt.reset();
         if (read < 0) {
             if (esp_timer_get_time() - last_progress_us > (int64_t)kOtaNoProgressTimeoutMs * kOtaUsPerMs) {
-                ESP_LOGW(TAG, "OTA read failed with no progress total=%d", total);
+                ESP_LOGW(TAG, OTA_READ_FAILED_NO_PROGRESS_FORMAT, total);
                 ok = false;
                 break;
             }
@@ -1002,7 +1056,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
                 break;
             }
             if (esp_timer_get_time() - last_progress_us > (int64_t)kOtaNoProgressTimeoutMs * kOtaUsPerMs) {
-                ESP_LOGW(TAG, "OTA stalled total=%d", total);
+                ESP_LOGW(TAG, OTA_STALLED_FORMAT, total);
                 ok = false;
                 break;
             }
@@ -1030,29 +1084,28 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
                 log_ota_heap("download", total, progress);
                 last_heap_progress = progress;
             }
-            int64_t elapsed_us = esp_timer_get_time() - started_us;
             int64_t now_us = esp_timer_get_time();
-            int speed_kbps = 0;
-            if (elapsed_us > 0) {
-                speed_kbps = (int)((int64_t)total * kOtaUsPerSecond / elapsed_us / kOtaBytesPerKiB);
-            }
             bool progress_step = progress != last_progress;
-            bool speed_step = last_speed_kbps < 0 || abs(speed_kbps - last_speed_kbps) >= 8;
             bool status_due = last_status_us == 0 ||
                               now_us - last_status_us >= (int64_t)kOtaStatusMinIntervalMs * kOtaUsPerMs ||
                               progress >= 100;
-            if (progress_step && status_due) {
+            if (status_due) {
+                int speed_window_bytes = total - last_status_total;
+                int64_t speed_window_us = last_status_us == 0 ? now_us - started_us : now_us - last_status_us;
+                int speed_kbps = ota_speed_kbps_for_window(speed_window_bytes, speed_window_us);
                 char status_text[kOtaDownloadStatusTextLen] = {};
-                snprintf(status_text, sizeof(status_text), kOtaStatusInstallingProgressFormat, progress, speed_kbps);
+                format_ota_status_text(status_text,
+                                       sizeof(status_text),
+                                       kOtaStatusInstallingProgressFormat,
+                                       progress,
+                                       speed_kbps);
                 g_ota_speed_kbps = speed_kbps;
                 ota_set_status(kOtaUpdating, status_text, progress);
                 last_status_us = now_us;
-                last_progress = progress;
-                last_speed_kbps = speed_kbps;
-            } else if (speed_step && status_due) {
-                g_ota_speed_kbps = speed_kbps;
-                last_status_us = now_us;
-                last_speed_kbps = speed_kbps;
+                last_status_total = total;
+                if (progress_step) {
+                    last_progress = progress;
+                }
             }
         }
     }
@@ -1074,7 +1127,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
     sha256_to_hex(hash, actual_sha, sizeof(actual_sha));
     ota_note_phase(4, total, 100);
     if (strcasecmp(actual_sha, manifest.sha256) != 0) {
-        ESP_LOGW(TAG, "OTA sha mismatch expected=%s actual=%s", manifest.sha256, actual_sha);
+        ESP_LOGW(TAG, OTA_SHA_MISMATCH_FORMAT, manifest.sha256, actual_sha);
         esp_ota_abort(ota_handle);
         ota_set_status(kOtaFailed, kOtaStatusVerifyFailed, -1, kOtaFailureHoldMs);
         return false;
@@ -1084,23 +1137,23 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
     ota_note_phase(5, total, 100);
     err = esp_ota_end(ota_handle);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "OTA end failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, OTA_END_FAILED_FORMAT, esp_err_to_name(err));
         ota_set_status(kOtaFailed, kOtaStatusUpdateFailed, -1, kOtaFailureHoldMs);
         return false;
     }
     esp_app_desc_t app_desc = {};
     err = esp_ota_get_partition_description(update_partition, &app_desc);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "OTA app description failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, OTA_APP_DESCRIPTION_FAILED_FORMAT, esp_err_to_name(err));
         ota_set_status(kOtaFailed, kOtaStatusVerifyFailed, -1, kOtaFailureHoldMs);
         return false;
     }
-    ESP_LOGI(TAG, "OTA image ready: version=%s project=%s", app_desc.version, app_desc.project_name);
+    ESP_LOGI(TAG, OTA_IMAGE_READY_FORMAT, app_desc.version, app_desc.project_name);
     wdt.reset();
     ota_note_phase(6, total, 100);
     err = esp_ota_set_boot_partition(update_partition);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "OTA boot partition failed: %s", esp_err_to_name(err));
+        ESP_LOGW(TAG, OTA_BOOT_PARTITION_FAILED_FORMAT, esp_err_to_name(err));
         ota_set_status(kOtaFailed, kOtaStatusUpdateFailed, -1, kOtaFailureHoldMs);
         return false;
     }
@@ -1190,7 +1243,7 @@ void ota_task(void *)
             }
             store_cached_manifest(manifest);
             char status_text[kOtaStatusLen] = {};
-            snprintf(status_text, sizeof(status_text), kOtaStatusNewVersionFormat, manifest.version);
+            format_ota_status_text(status_text, sizeof(status_text), kOtaStatusNewVersionFormat, manifest.version);
             ota_set_status(kOtaAvailable, status_text, -1, kOtaAvailableConfirmTimeoutMs);
             finish_ota_wifi();
             continue;

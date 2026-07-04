@@ -56,6 +56,7 @@ constexpr bool cstr_array_nonempty(const T (&items)[N])
 }
 
 constexpr size_t kActiveNtpServerCount = min_size(kNtpServerCount, kConfiguredNtpServerSlots);
+constexpr TickType_t kNtpPollDelay = pdMS_TO_TICKS(kNtpPollDelayMs);
 constexpr const char *kNtpTimeSyncedEventUnavailableLog = "skip time synced event bit: app events unavailable";
 constexpr const char *const kNtpLogTexts[] = {
     NTP_SYNCED_LOG_FORMAT,
@@ -73,6 +74,7 @@ static_assert(kActiveNtpServerCount > 0, "active NTP server count must be positi
 static_assert(kActiveNtpServerCount <= kNtpServerCount, "active NTP server count must fit server list");
 static_assert(kActiveNtpServerCount <= kConfiguredNtpServerSlots, "active NTP server count must fit SNTP slots");
 static_assert(kNtpPollDelayMs > 0, "NTP poll delay must be positive");
+static_assert(kNtpPollDelay > 0, "NTP poll tick delay must be positive");
 static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
 static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
 
@@ -117,6 +119,22 @@ bool ntp_synced_time_available(struct tm *local)
            esp_sntp_get_sync_status() == SNTP_SYNC_STATUS_COMPLETED &&
            is_system_time_plausible(local);
 }
+
+bool wait_for_ntp_synced_time(int max_retries, struct tm *synced_time)
+{
+    if (!synced_time) {
+        return false;
+    }
+    for (int retry = 0; retry < max_retries; ++retry) {
+        struct tm local = {};
+        if (ntp_synced_time_available(&local)) {
+            *synced_time = local;
+            return true;
+        }
+        vTaskDelay(kNtpPollDelay);
+    }
+    return false;
+}
 } // namespace
 
 bool perform_ntp_sync(int max_retries)
@@ -128,16 +146,13 @@ bool perform_ntp_sync(int max_retries)
     esp_sntp_set_sync_status(SNTP_SYNC_STATUS_RESET);
     start_or_restart_ntp();
 
-    for (int retry = 0; retry < max_retries; ++retry) {
-        struct tm local = {};
-        if (ntp_synced_time_available(&local)) {
-            sync_rtc_from_system_time();
-            time(&g_last_ntp_sync_time);
-            set_time_synced_event_bit();
-            log_ntp_synced_time(local);
-            return true;
-        }
-        vTaskDelay(pdMS_TO_TICKS(kNtpPollDelayMs));
+    struct tm local = {};
+    if (wait_for_ntp_synced_time(max_retries, &local)) {
+        sync_rtc_from_system_time();
+        time(&g_last_ntp_sync_time);
+        set_time_synced_event_bit();
+        log_ntp_synced_time(local);
+        return true;
     }
     ESP_LOGW(TAG, NTP_TIMEOUT_LOG_FORMAT,
              max_retries,

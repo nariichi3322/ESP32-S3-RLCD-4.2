@@ -63,6 +63,7 @@ static constexpr const char *kNetworkSyncWeatherFailed = "天气同步失败";
 static constexpr const char *kNetworkSyncSayingFailed = "一言更新失败";
 static constexpr const char *kBootDetailStartingClock = "Starting clock";
 static constexpr const char *kBootDetailSynchronizingTime = "Synchronizing time";
+static constexpr const char *kBootSetupDetailFallback = "Setup AP: --";
 static constexpr const char *kBootSetupDetailFormat = "Setup AP: %s";
 static constexpr const char *kNetworkWifiWaitSkippedLog = "wifi wait skipped: app events unavailable";
 static constexpr const char *kNetworkCacheTimeConversionSkippedLog = "cache time conversion skipped: output is null";
@@ -109,6 +110,17 @@ bool wait_for_wifi_connected(uint32_t timeout_ms)
     return (bits & kWifiConnectedBit) != 0;
 }
 
+void format_boot_setup_detail(char *out, size_t out_len)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    int written = snprintf(out, out_len, kBootSetupDetailFormat, g_ap_ssid);
+    if (written < 0 || (size_t)written >= out_len) {
+        strlcpy(out, kBootSetupDetailFallback, out_len);
+    }
+}
+
 bool is_time_valid(struct tm *local_out)
 {
     return is_system_time_plausible(local_out);
@@ -145,7 +157,7 @@ void run_boot_connectivity_sync()
     }
     if (!g_have_wifi_creds) {
         char detail[kBootSetupDetailTextSize] = {};
-        snprintf(detail, sizeof(detail), kBootSetupDetailFormat, g_ap_ssid);
+        format_boot_setup_detail(detail, sizeof(detail));
         update_boot_screen(kBootScreenCompletePercent, "Setup mode", detail);
         vTaskDelay(pdMS_TO_TICKS(kBootScreenSetupDelayMs));
         return;

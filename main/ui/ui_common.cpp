@@ -357,6 +357,17 @@ static void format_two_digit_second_text(char out[kSecondTextSize], int second)
     out[2] = '\0';
 }
 
+static void format_hour_minute_text(char out[kHourMinuteTextSize], const struct tm &local)
+{
+    if (!out) {
+        return;
+    }
+    int written = snprintf(out, kHourMinuteTextSize, kHourMinuteFormat, local.tm_hour, local.tm_min);
+    if (written < 0 || written >= static_cast<int>(kHourMinuteTextSize)) {
+        out[0] = '\0';
+    }
+}
+
 void draw_time_canvas(const struct tm &local)
 {
     if (!g_time_canvas) {
@@ -365,7 +376,7 @@ void draw_time_canvas(const struct tm &local)
     lv_canvas_fill_bg(g_time_canvas, lv_color_white(), LV_OPA_COVER);
 
     char hm[kHourMinuteTextSize] = {};
-    snprintf(hm, sizeof(hm), kHourMinuteFormat, local.tm_hour, local.tm_min);
+    format_hour_minute_text(hm, local);
     draw_dseg_text(g_time_canvas, kDSEG84Font, hm, 0, 88);
     lv_obj_invalidate(g_time_canvas);
 }

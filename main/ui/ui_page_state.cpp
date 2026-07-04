@@ -535,5 +535,5 @@ void update_top_status_icons(bool alert_visible)
 {
     bool allow = !alert_visible && !g_low_battery_mode && !g_setup_portal_active;
     set_obj_visible(g_chime_status_icon_canvas, allow && (g_hourly_chime_enabled || g_hourly_chime_all_day));
-    set_obj_visible(g_wifi_status_icon_canvas, allow && g_wifi_radio_on);
+    set_obj_visible(g_wifi_status_icon_canvas, allow && wifi_connected_for_status_icon());
 }

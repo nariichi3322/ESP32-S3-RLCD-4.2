@@ -158,6 +158,12 @@ static void finish_audio_playback()
     clear_audio_playing();
 }
 
+static CodecPort *prepare_audio_codec_for_playback()
+{
+    acquire_audio_awake_lock();
+    return ensure_audio_codec();
+}
+
 static bool audio_blocked_by_system_state()
 {
     return g_low_battery_mode || g_ota_state == kOtaUpdating;
@@ -166,6 +172,11 @@ static bool audio_blocked_by_system_state()
 static bool outside_hourly_chime_window(int hour)
 {
     return hour < kHourlyChimeQuietStartHour || hour > kHourlyChimeQuietEndHour;
+}
+
+static bool hourly_chime_blocked_by_network_activity()
+{
+    return g_wifi_radio_on || g_setup_portal_active || g_ota_state == kOtaChecking;
 }
 
 static const char *audio_text_or_default(const char *text, const char *fallback)
@@ -231,8 +242,7 @@ static void create_settings_chime_retry_task()
 void hourly_chime_task(void *arg)
 {
     int sound_index = (int)(intptr_t)arg;
-    acquire_audio_awake_lock();
-    CodecPort *codec = ensure_audio_codec();
+    CodecPort *codec = prepare_audio_codec_for_playback();
     if (codec && codec->CodecPort_PlayChimeSound(sound_index, g_chime_volume_percent)) {
         ESP_LOGI(TAG, HOURLY_CHIME_PLAYED_LOG_FORMAT, sound_index, g_chime_volume_percent);
     } else {
@@ -248,8 +258,7 @@ void hourly_chime_task(void *arg)
 
 void setup_prompt_task(void *)
 {
-    acquire_audio_awake_lock();
-    CodecPort *codec = ensure_audio_codec();
+    CodecPort *codec = prepare_audio_codec_for_playback();
     if (codec && codec->CodecPort_PlayWifiPrompt()) {
         ESP_LOGI(TAG, "%s", kSetupPromptPlayedLog);
     } else {
@@ -332,7 +341,7 @@ void play_hourly_chime(int hour, bool enforce_quiet_hours)
     if (audio_blocked_by_system_state()) {
         return;
     }
-    if (g_wifi_radio_on || g_setup_portal_active || g_ota_state == kOtaChecking) {
+    if (hourly_chime_blocked_by_network_activity()) {
         ESP_LOGI(TAG, "%s", kHourlyChimeRadioSetupSkippedLog);
         return;
     }

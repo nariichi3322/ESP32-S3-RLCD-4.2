@@ -3,6 +3,10 @@
 #include "app_state.h"
 
 void notify_ui_task();
+inline bool wifi_connected_for_status_icon()
+{
+    return g_app_events && ((xEventGroupGetBits(g_app_events) & kWifiConnectedBit) != 0);
+}
 constexpr const char *kClockWeatherCityPlaceholder = "--";
 constexpr const char *kClockWeatherInfoWaitingText = "等待数据";
 constexpr const char *kClockWeatherInfoSyncingText = "天气同步中";

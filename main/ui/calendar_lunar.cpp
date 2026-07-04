@@ -293,9 +293,12 @@ static void set_calendar_subtext(CalendarDayInfo *info, const char *text)
 
 static void set_calendar_lunar_month_subtext(CalendarDayInfo *info)
 {
-    snprintf(info->subtext, sizeof(info->subtext), kLunarMonthDisplayFormat,
-             info->lunar_leap ? "闰" : "",
-             kLunarMonthNames[info->lunar_month]);
+    int written = snprintf(info->subtext, sizeof(info->subtext), kLunarMonthDisplayFormat,
+                           info->lunar_leap ? "闰" : "",
+                           kLunarMonthNames[info->lunar_month]);
+    if (written < 0 || written >= (int)sizeof(info->subtext)) {
+        set_calendar_subtext(info, nullptr);
+    }
 }
 
 static const char *solar_term(int year, int month, int day)

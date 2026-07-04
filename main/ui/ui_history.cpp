@@ -133,6 +133,16 @@ void style_history_value_badge(lv_obj_t *label)
     lv_obj_set_style_pad_bottom(label, 0, LV_PART_MAIN);
 }
 
+void copy_history_placeholder_on_format_error(int written, char *out, size_t out_len, const char *placeholder)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    if (written < 0 || (size_t)written >= out_len) {
+        strlcpy(out, placeholder ? placeholder : "", out_len);
+    }
+}
+
 void format_axis_hour(time_t value, char *out, size_t out_len)
 {
     if (!out || out_len == 0) {
@@ -140,7 +150,8 @@ void format_axis_hour(time_t value, char *out, size_t out_len)
     }
     struct tm local = {};
     localtime_r(&value, &local);
-    snprintf(out, out_len, kHistoryAxisHourFormat, local.tm_hour);
+    int written = snprintf(out, out_len, kHistoryAxisHourFormat, local.tm_hour);
+    copy_history_placeholder_on_format_error(written, out, out_len, kHistoryTimePlaceholder);
 }
 
 int value_to_plot_y(float value, float min_value, float max_value, int y, int h)
@@ -162,7 +173,8 @@ void format_history_axis_value(bool temperature, float value, char *out, size_t 
     if (!out || out_len == 0) {
         return;
     }
-    snprintf(out, out_len, temperature ? kHistoryTempAxisFormat : kHistoryHumiAxisFormat, value);
+    int written = snprintf(out, out_len, temperature ? kHistoryTempAxisFormat : kHistoryHumiAxisFormat, value);
+    copy_history_placeholder_on_format_error(written, out, out_len, kHistoryAxisPlaceholder);
 }
 
 void format_history_badge_value(bool temperature, float value, char *out, size_t out_len)
@@ -170,19 +182,20 @@ void format_history_badge_value(bool temperature, float value, char *out, size_t
     if (!out || out_len == 0) {
         return;
     }
-    snprintf(out, out_len, temperature ? kHistoryTempBadgeFormat : kHistoryHumiBadgeFormat, value);
+    int written = snprintf(out, out_len, temperature ? kHistoryTempBadgeFormat : kHistoryHumiBadgeFormat, value);
+    copy_history_placeholder_on_format_error(written, out, out_len, kHistoryAxisPlaceholder);
 }
 
 void set_history_badge(lv_obj_t *label,
-                              const char *text,
-                              int canvas_x,
-                              int canvas_y,
-                              int point_x,
-                              int point_y,
-                              int plot_x,
-                              int plot_y,
-                              int plot_w,
-                              int plot_h)
+                       const char *text,
+                       int canvas_x,
+                       int canvas_y,
+                       int point_x,
+                       int point_y,
+                       int plot_x,
+                       int plot_y,
+                       int plot_w,
+                       int plot_h)
 {
     if (!label) {
         return;
@@ -209,8 +222,8 @@ void set_history_badge(lv_obj_t *label,
 }
 
 bool collect_history_window(time_t end_hour,
-                                   HourlySensorSample *out,
-                                   int *out_count)
+                            HourlySensorSample *out,
+                            int *out_count)
 {
     if (out_count) {
         *out_count = 0;
@@ -274,7 +287,8 @@ bool update_work_page_sensor_summary(lv_obj_t *label)
     }
     char text[kHistorySensorSummaryTextSize] = {};
     if (g_sensor_ok) {
-        snprintf(text, sizeof(text), kHistorySensorSummaryFormat, g_temperature, g_humidity);
+        int written = snprintf(text, sizeof(text), kHistorySensorSummaryFormat, g_temperature, g_humidity);
+        copy_history_placeholder_on_format_error(written, text, sizeof(text), kHistorySensorSummaryPlaceholder);
     } else {
         strlcpy(text, kHistorySensorSummaryPlaceholder, sizeof(text));
     }

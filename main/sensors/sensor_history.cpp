@@ -33,6 +33,11 @@ struct LegacyHourlySensorHistoryBlob {
     HourlySensorSample samples[kLegacyHourlyHistoryCount] = {};
 };
 
+struct SensorHistoryAverage {
+    float temperature = 0.0f;
+    float humidity = 0.0f;
+};
+
 bool is_system_time_plausible(struct tm *local_out);
 int periodic_sample_minutes(const struct tm &local, int day_minutes, int night_minutes);
 
@@ -192,6 +197,56 @@ void store_loaded_hourly_sample(int index, const HourlySensorSample &sample, int
         *newest_slot = sample.timestamp;
     }
 }
+
+void store_legacy_hourly_history_samples(const LegacyHourlySensorHistoryBlob &legacy)
+{
+    for (int i = 0; i < kLegacyHourlyHistoryCount; ++i) {
+        store_loaded_hourly_sample(i, legacy.samples[i], &g_last_hourly_saved_at);
+    }
+}
+
+void append_sensor_history_sample(float temp, float humi)
+{
+    g_sensor_history[g_sensor_history_next].temperature = temp;
+    g_sensor_history[g_sensor_history_next].humidity = humi;
+    g_sensor_history_next = (g_sensor_history_next + 1) % kSensorHistoryMinutes;
+    if (g_sensor_history_count < kSensorHistoryMinutes) {
+        ++g_sensor_history_count;
+    }
+}
+
+SensorHistoryAverage calculate_sensor_history_average()
+{
+    SensorHistoryAverage average = {};
+    if (g_sensor_history_count <= 0) {
+        return average;
+    }
+    float temp_sum = 0.0f;
+    float humi_sum = 0.0f;
+    for (int i = 0; i < g_sensor_history_count; ++i) {
+        temp_sum += g_sensor_history[i].temperature;
+        humi_sum += g_sensor_history[i].humidity;
+    }
+    average.temperature = temp_sum / g_sensor_history_count;
+    average.humidity = humi_sum / g_sensor_history_count;
+    return average;
+}
+
+void update_sensor_trend_from_average(const SensorHistoryAverage &average)
+{
+    if (g_sensor_average_valid && g_sensor_history_count >= 2) {
+        float temp_delta = average.temperature - g_last_temp_average;
+        float humi_delta = average.humidity - g_last_humi_average;
+        g_temp_trend = temp_delta > kTrendEpsilon ? 1 : (temp_delta < -kTrendEpsilon ? -1 : 0);
+        g_humi_trend = humi_delta > kTrendEpsilon ? 1 : (humi_delta < -kTrendEpsilon ? -1 : 0);
+    } else {
+        g_temp_trend = 0;
+        g_humi_trend = 0;
+    }
+    g_last_temp_average = average.temperature;
+    g_last_humi_average = average.humidity;
+    g_sensor_average_valid = true;
+}
 } // namespace
 
 static bool hourly_slot_key(int index, char *out, size_t out_len)
@@ -338,10 +393,7 @@ void load_hourly_sensor_history()
         }
         return;
     }
-    for (int i = 0; i < kLegacyHourlyHistoryCount; ++i) {
-        const HourlySensorSample &sample = legacy.samples[i];
-        store_loaded_hourly_sample(i, sample, &g_last_hourly_saved_at);
-    }
+    store_legacy_hourly_history_samples(legacy);
     ++g_hourly_history_version;
 }
 
@@ -426,33 +478,8 @@ time_t next_weather_sync_time(time_t from)
 
 void update_sensor_history(float temp, float humi)
 {
-    g_sensor_history[g_sensor_history_next].temperature = temp;
-    g_sensor_history[g_sensor_history_next].humidity = humi;
-    g_sensor_history_next = (g_sensor_history_next + 1) % kSensorHistoryMinutes;
-    if (g_sensor_history_count < kSensorHistoryMinutes) {
-        ++g_sensor_history_count;
-    }
-
-    float temp_sum = 0.0f;
-    float humi_sum = 0.0f;
-    for (int i = 0; i < g_sensor_history_count; ++i) {
-        temp_sum += g_sensor_history[i].temperature;
-        humi_sum += g_sensor_history[i].humidity;
-    }
-    float temp_avg = temp_sum / g_sensor_history_count;
-    float humi_avg = humi_sum / g_sensor_history_count;
-    if (g_sensor_average_valid && g_sensor_history_count >= 2) {
-        float temp_delta = temp_avg - g_last_temp_average;
-        float humi_delta = humi_avg - g_last_humi_average;
-        g_temp_trend = temp_delta > kTrendEpsilon ? 1 : (temp_delta < -kTrendEpsilon ? -1 : 0);
-        g_humi_trend = humi_delta > kTrendEpsilon ? 1 : (humi_delta < -kTrendEpsilon ? -1 : 0);
-    } else {
-        g_temp_trend = 0;
-        g_humi_trend = 0;
-    }
-    g_last_temp_average = temp_avg;
-    g_last_humi_average = humi_avg;
-    g_sensor_average_valid = true;
+    append_sensor_history_sample(temp, humi);
+    update_sensor_trend_from_average(calculate_sensor_history_average());
 }
 
 void sample_sensor()

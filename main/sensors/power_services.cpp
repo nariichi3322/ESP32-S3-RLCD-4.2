@@ -120,6 +120,19 @@ bool rtc_date_matches_tm(const rtcTimeStruct_t &rtc_time, const struct tm &local
            local_time.tm_mon + kTmMonthOffset == rtc_time.month &&
            local_time.tm_mday == rtc_time.day;
 }
+
+void copy_rtc_time_to_tm(const rtcTimeStruct_t &rtc_time, struct tm *tm_time)
+{
+    if (!tm_time) {
+        return;
+    }
+    tm_time->tm_year = rtc_time.year - kTmYearOffset;
+    tm_time->tm_mon = rtc_time.month - kTmMonthOffset;
+    tm_time->tm_mday = rtc_time.day;
+    tm_time->tm_hour = rtc_time.hour;
+    tm_time->tm_min = rtc_time.minute;
+    tm_time->tm_sec = rtc_time.second;
+}
 } // namespace
 
 #if CONFIG_PM_ENABLE
@@ -263,12 +276,7 @@ void restore_system_time_from_rtc()
         return;
     }
     struct tm tm_time = {};
-    tm_time.tm_year = rtc_time.year - kTmYearOffset;
-    tm_time.tm_mon = rtc_time.month - kTmMonthOffset;
-    tm_time.tm_mday = rtc_time.day;
-    tm_time.tm_hour = rtc_time.hour;
-    tm_time.tm_min = rtc_time.minute;
-    tm_time.tm_sec = rtc_time.second;
+    copy_rtc_time_to_tm(rtc_time, &tm_time);
     time_t epoch = mktime(&tm_time);
     if (epoch == (time_t)-1) {
         ESP_LOGW(TAG, POWER_RTC_MKTIME_FAILED_LOG_FORMAT);

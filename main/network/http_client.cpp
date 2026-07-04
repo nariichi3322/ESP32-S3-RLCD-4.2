@@ -224,6 +224,15 @@ bool output_buffer_available(char *out, size_t out_len)
     return out && out_len > 0;
 }
 
+bool http_buffer_can_accept_data(const HttpBuffer *buffer)
+{
+    return buffer &&
+           buffer->data &&
+           buffer->cap > 0 &&
+           buffer->len < buffer->cap &&
+           buffer->len + kCStringTerminatorSize < buffer->cap;
+}
+
 void copy_log_preview(char *out, size_t out_len, const char *text)
 {
     if (!output_buffer_available(out, out_len)) {
@@ -290,13 +299,10 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt)
         return ESP_OK;
     }
     HttpBuffer *buffer = (HttpBuffer *)evt->user_data;
-    if (!buffer->data || buffer->cap == 0 || buffer->len >= buffer->cap) {
+    if (!http_buffer_can_accept_data(buffer)) {
         return ESP_OK;
     }
     if (!evt->data || evt->data_len <= 0) {
-        return ESP_OK;
-    }
-    if (buffer->len + kCStringTerminatorSize >= buffer->cap) {
         return ESP_OK;
     }
     size_t room = buffer->cap - buffer->len - kCStringTerminatorSize;

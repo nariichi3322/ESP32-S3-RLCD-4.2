@@ -110,6 +110,11 @@ static bool previous_battery_percent_valid(int percent)
     return percent >= kBatteryPercentMin;
 }
 
+static bool battery_percent_decreased(int previous_percent, int current_percent)
+{
+    return previous_battery_percent_valid(previous_percent) && current_percent < previous_percent;
+}
+
 void release_battery_gauge()
 {
     if (g_battery_adc_cali_ready && g_battery_adc_cali) {
@@ -248,7 +253,7 @@ void sample_battery()
 
     if (g_battery_charging) {
         if (delta <= kBatteryChargingStopVoltage ||
-            (previous_battery_percent_valid(previous_percent) && percent < previous_percent)) {
+            battery_percent_decreased(previous_percent, percent)) {
             g_battery_charging = false;
             charging_rise_samples = 0;
         }

@@ -167,7 +167,10 @@ bool update_work_page_status_time(lv_obj_t *label, const struct tm &local)
         return false;
     }
     char text[kStatusTimeTextSize] = {};
-    snprintf(text, sizeof(text), kStatusTimeFormat, local.tm_hour, local.tm_min);
+    int written = snprintf(text, sizeof(text), kStatusTimeFormat, local.tm_hour, local.tm_min);
+    if (written < 0 || (size_t)written >= sizeof(text)) {
+        strlcpy(text, kStatusTimePlaceholder, sizeof(text));
+    }
     return set_label_text_if_changed(label, text);
 }
 
@@ -178,7 +181,7 @@ bool update_work_page_status_icons(int page)
     }
     bool allow = !g_low_battery_mode && !g_setup_portal_active;
     bool chime_visible = allow && (g_hourly_chime_enabled || g_hourly_chime_all_day);
-    bool wifi_visible = allow && g_wifi_radio_on;
+    bool wifi_visible = allow && wifi_connected_for_status_icon();
     lv_obj_t *chime = g_work_status_chime_icon_canvas[page];
     lv_obj_t *wifi = g_work_status_wifi_icon_canvas[page];
     bool changed = false;

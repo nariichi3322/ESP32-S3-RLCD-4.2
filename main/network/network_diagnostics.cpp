@@ -299,6 +299,15 @@ bool http_probe_ok(const char *url, size_t buffer_len = kNetworkDiagDefaultProbe
     return http_get_text(url, response.get(), response.size(), nullptr) == ESP_OK;
 }
 
+bool copy_json_string_value(cJSON *item, char *out, size_t out_len)
+{
+    if (!cJSON_IsString(item) || !item->valuestring || !out || out_len == 0) {
+        return false;
+    }
+    strlcpy(out, item->valuestring, out_len);
+    return true;
+}
+
 bool find_json_string_recursive(cJSON *node, const char *name, char *out, size_t out_len, int depth = 0)
 {
     if (!node || !name || !out || out_len == 0) {
@@ -309,8 +318,7 @@ bool find_json_string_recursive(cJSON *node, const char *name, char *out, size_t
     }
     if (cJSON_IsObject(node)) {
         cJSON *item = cJSON_GetObjectItemCaseSensitive(node, name);
-        if (cJSON_IsString(item) && item->valuestring) {
-            strlcpy(out, item->valuestring, out_len);
+        if (copy_json_string_value(item, out, out_len)) {
             return true;
         }
         cJSON_ArrayForEach(item, node)

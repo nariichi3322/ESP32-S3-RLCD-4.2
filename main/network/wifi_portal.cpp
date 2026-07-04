@@ -92,7 +92,12 @@ constexpr const char *kPortalOfflineSavedTitle = "Offline mode enabled";
 constexpr const char *kPortalOfflineInvalidTitle = "Invalid date or time";
 constexpr const char *kPortalOfflineSavedBody = "The clock will use the RTC time and skip all network updates.";
 constexpr const char *kPortalOfflineInvalidBody = "Please enter a valid date and time, or configure Wi-Fi and API Key.";
+constexpr const char *kPortalWifiScanBusyMessage = "Scan busy, refresh this page.";
+constexpr const char *kPortalWifiScanFailedMessage = "Scan failed, refresh this page.";
+constexpr const char *kPortalWifiScanEmptyMessage = "No Wi-Fi found.";
+constexpr const char *kPortalWifiScanNoMemoryMessage = "Not enough memory to list Wi-Fi.";
 constexpr const char *kSetupApSsidFormat = "WeatherClock-%02X%02X";
+constexpr const char *kSetupApSsidFallback = "WeatherClock-0000";
 constexpr const char *kPortalFixedTexts[] = {
     kCaptiveDnsTaskName,
     kPortalSectionCloseHtml,
@@ -118,7 +123,12 @@ constexpr const char *kPortalFixedTexts[] = {
     kPortalOfflineInvalidTitle,
     kPortalOfflineSavedBody,
     kPortalOfflineInvalidBody,
+    kPortalWifiScanBusyMessage,
+    kPortalWifiScanFailedMessage,
+    kPortalWifiScanEmptyMessage,
+    kPortalWifiScanNoMemoryMessage,
     kSetupApSsidFormat,
+    kSetupApSsidFallback,
 };
 constexpr bool cstr_nonempty(const char *text)
 {
@@ -203,6 +213,7 @@ static_assert(kPortalRequestBufferSize > kPortalSubmitSsidFieldSize,
 static_assert(kPortalWeatherCityIdSize > 1, "portal weather city id buffer must fit text and NUL");
 static_assert(kPortalWeatherCityNameSize > 1, "portal weather city name buffer must fit text and NUL");
 static_assert(kPortalSaveWifiConnectWaitMs > 0, "portal save Wi-Fi wait must be positive");
+static_assert(cstr_len(kSetupApSsidFallback) < sizeof(g_ap_ssid), "setup AP SSID fallback must fit global buffer");
 static_assert(cstr_nonempty(kCaptiveDnsTaskName), "captive DNS task name must be non-empty");
 static_assert(cstr_nonempty(kPortalHtmlContentType), "portal HTML content type must be non-empty");
 static_assert(cstr_nonempty(kSetupApSsidFormat), "setup AP SSID format must be non-empty");
@@ -249,7 +260,9 @@ static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must b
 #define WIFI_RECONNECT_START_FAILED_FORMAT "wifi reconnect failed to start: %s"
 #define WIFI_GOT_IP_EVENT_MISSING_LOG "got ip event missing data"
 #define WIFI_GOT_IP_FORMAT "got ip: " IPSTR
+#define WIFI_STA_IP_FORMAT_FAILED_LOG "sta ip format failed"
 #define WIFI_MAC_READ_FAILED_FORMAT "wifi mac read failed: %s"
+#define WIFI_SETUP_AP_SSID_FORMAT_FAILED_LOG "setup AP ssid format failed"
 #define WIFI_STA_NETIF_CREATE_FAILED_LOG "wifi sta netif create failed"
 #define WIFI_AP_NETIF_CREATE_FAILED_LOG "wifi ap netif create failed"
 #define WIFI_INIT_FAILED_FORMAT "wifi init failed: %s"
@@ -299,7 +312,9 @@ constexpr const char *kPortalLogTexts[] = {
     WIFI_RECONNECT_START_FAILED_FORMAT,
     WIFI_GOT_IP_EVENT_MISSING_LOG,
     WIFI_GOT_IP_FORMAT,
+    WIFI_STA_IP_FORMAT_FAILED_LOG,
     WIFI_MAC_READ_FAILED_FORMAT,
+    WIFI_SETUP_AP_SSID_FORMAT_FAILED_LOG,
     WIFI_STA_NETIF_CREATE_FAILED_LOG,
     WIFI_AP_NETIF_CREATE_FAILED_LOG,
     WIFI_INIT_FAILED_FORMAT,
@@ -396,6 +411,28 @@ private:
     char *html_ = nullptr;
     size_t size_;
 };
+
+void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
+{
+    if (!ip) {
+        g_sta_ip[0] = '\0';
+        return;
+    }
+    int written = snprintf(g_sta_ip, sizeof(g_sta_ip), IPSTR, IP2STR(ip));
+    if (written < 0 || static_cast<size_t>(written) >= sizeof(g_sta_ip)) {
+        g_sta_ip[0] = '\0';
+        ESP_LOGW(TAG, WIFI_STA_IP_FORMAT_FAILED_LOG);
+    }
+}
+
+void format_setup_ap_ssid(uint8_t mac4, uint8_t mac5)
+{
+    int written = snprintf(g_ap_ssid, sizeof(g_ap_ssid), kSetupApSsidFormat, mac4, mac5);
+    if (written < 0 || static_cast<size_t>(written) >= sizeof(g_ap_ssid)) {
+        strlcpy(g_ap_ssid, kSetupApSsidFallback, sizeof(g_ap_ssid));
+        ESP_LOGW(TAG, WIFI_SETUP_AP_SSID_FORMAT_FAILED_LOG);
+    }
+}
 
 esp_err_t configure_softap()
 {
@@ -661,6 +698,17 @@ esp_err_t redirect_to_setup_portal(httpd_req_t *req)
     return send_portal_empty_response(req);
 }
 
+void append_wifi_scan_message(char *html, size_t html_len, const char *message)
+{
+    html_append(html, html_len, "<p class='muted'>%s</p>", message ? message : "");
+}
+
+void append_wifi_scan_message_and_close(char *html, size_t html_len, const char *message)
+{
+    append_wifi_scan_message(html, html_len, message);
+    html_append(html, html_len, kPortalSectionCloseHtml);
+}
+
 void append_wifi_scan_list(char *html, size_t html_len)
 {
     if (!html || html_len == 0) {
@@ -670,18 +718,16 @@ void append_wifi_scan_list(char *html, size_t html_len)
     wifi_scan_config_t scan_config = {};
     esp_err_t err = esp_wifi_scan_start(&scan_config, true);
     if (err != ESP_OK) {
-        html_append(html, html_len, "<p class='muted'>Scan busy, refresh this page.</p>");
+        append_wifi_scan_message(html, html_len, kPortalWifiScanBusyMessage);
     } else {
         uint16_t ap_count = 0;
         err = esp_wifi_scan_get_ap_num(&ap_count);
         if (err != ESP_OK) {
-            html_append(html, html_len, "<p class='muted'>Scan failed, refresh this page.</p>");
-            html_append(html, html_len, kPortalSectionCloseHtml);
+            append_wifi_scan_message_and_close(html, html_len, kPortalWifiScanFailedMessage);
             return;
         }
         if (ap_count == 0) {
-            html_append(html, html_len, "<p class='muted'>No Wi-Fi found.</p>");
-            html_append(html, html_len, kPortalSectionCloseHtml);
+            append_wifi_scan_message_and_close(html, html_len, kPortalWifiScanEmptyMessage);
             return;
         }
         uint16_t max_records = ap_count;
@@ -690,20 +736,18 @@ void append_wifi_scan_list(char *html, size_t html_len)
         }
         WifiScanRecords records(max_records);
         if (!records) {
-            html_append(html, html_len, "<p class='muted'>Not enough memory to list Wi-Fi.</p>");
-            html_append(html, html_len, kPortalSectionCloseHtml);
+            append_wifi_scan_message_and_close(html, html_len, kPortalWifiScanNoMemoryMessage);
             return;
         }
         uint16_t record_count = records.capacity();
         err = esp_wifi_scan_get_ap_records(&record_count, records.data());
         if (err != ESP_OK) {
-            html_append(html, html_len, "<p class='muted'>Scan failed, refresh this page.</p>");
-            html_append(html, html_len, kPortalSectionCloseHtml);
+            append_wifi_scan_message_and_close(html, html_len, kPortalWifiScanFailedMessage);
             return;
         }
         records.set_count(record_count);
         if (records.count() == 0) {
-            html_append(html, html_len, "<p class='muted'>No Wi-Fi found.</p>");
+            append_wifi_scan_message(html, html_len, kPortalWifiScanEmptyMessage);
         }
         for (uint16_t i = 0; i < records.count(); ++i) {
             if (records.data()[i].ssid[0] == '\0') {
@@ -1190,6 +1234,7 @@ void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, v
         g_sta_ip[0] = '\0';
         ESP_LOGW(TAG, WIFI_DISCONNECTED_FORMAT, event ? event->reason : -1);
         xEventGroupClearBits(g_app_events, kWifiConnectedBit);
+        notify_ui_task();
         if (g_have_wifi_creds && g_wifi_radio_on && !g_wifi_stop_requested) {
             esp_err_t err = esp_wifi_connect();
             if (err != ESP_OK && err != ESP_ERR_WIFI_CONN) {
@@ -1203,8 +1248,9 @@ void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, v
             return;
         }
         ESP_LOGI(TAG, WIFI_GOT_IP_FORMAT, IP2STR(&event->ip_info.ip));
-        snprintf(g_sta_ip, sizeof(g_sta_ip), IPSTR, IP2STR(&event->ip_info.ip));
+        format_sta_ip_or_clear(&event->ip_info.ip);
         xEventGroupSetBits(g_app_events, kWifiConnectedBit);
+        notify_ui_task();
     }
 }
 
@@ -1215,7 +1261,7 @@ void init_wifi()
     if (err != ESP_OK) {
         ESP_LOGW(TAG, WIFI_MAC_READ_FAILED_FORMAT, esp_err_to_name(err));
     }
-    snprintf(g_ap_ssid, sizeof(g_ap_ssid), kSetupApSsidFormat, mac[4], mac[5]);
+    format_setup_ap_ssid(mac[4], mac[5]);
 
     if (!esp_netif_create_default_wifi_sta()) {
         ESP_LOGW(TAG, WIFI_STA_NETIF_CREATE_FAILED_LOG);

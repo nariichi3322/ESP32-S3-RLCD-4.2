@@ -16,6 +16,7 @@ lv_obj_t *s_humidity_label;
 lv_obj_t *s_wind_label;
 lv_obj_t *s_sunrise_label;
 lv_obj_t *s_sunset_label;
+lv_obj_t *s_sun_countdown_label;
 lv_obj_t *s_alert_label;
 lv_obj_t *s_advice_label;
 
@@ -32,6 +33,7 @@ constexpr int kTmYearOffset = 1900;
 constexpr int kTmMonthOffset = 1;
 constexpr const char *kForecastDateFormat = "%d-%d-%d";
 constexpr int kForecastDateFieldCount = 3;
+constexpr const char *kWeatherBoardTimeParseFormat = "%d:%d";
 constexpr const char *kWeatherBoardDash = "--";
 constexpr const char *kWeatherBoardShortDatePlaceholder = "--/--";
 constexpr const char *kWeatherBoardUnknownIcon = "999";
@@ -44,6 +46,7 @@ constexpr const char *kWeatherBoardWindPlaceholder = "-- --级";
 constexpr const char *kWeatherBoardTimePlaceholder = "--:--";
 constexpr const char *kWeatherBoardSunrisePlaceholder = "日出 --:--";
 constexpr const char *kWeatherBoardSunsetPlaceholder = "日落 --:--";
+constexpr const char *kWeatherBoardSunCountdownPlaceholder = "距日落 --:--";
 constexpr const char *kWeatherBoardAlertPlaceholder = "预警 --";
 constexpr const char *kWeatherBoardAlertPrefix = "预警 ";
 constexpr const char *kWeatherBoardAlertSeparator = " / ";
@@ -63,6 +66,7 @@ constexpr const char *kWeatherBoardHumidityFormat = "湿度 %s%%";
 constexpr const char *kWeatherBoardWindFormat = "%s %s级";
 constexpr const char *kWeatherBoardSunriseFormat = "日出 %s";
 constexpr const char *kWeatherBoardSunsetFormat = "日落 %s";
+constexpr const char *kWeatherBoardSunCountdownFormat = "距%s %02d:%02d";
 constexpr int kForecastCardX[kWeatherForecastDays] = {138, 180, 222, 264, 306, 348};
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
@@ -89,7 +93,10 @@ constexpr size_t kWeatherBoardHumidityLineSize = 24;
 constexpr size_t kWeatherBoardAirLineSize = 40;
 constexpr size_t kWeatherBoardWindLineSize = 48;
 constexpr size_t kWeatherBoardSunTimeLineSize = 24;
+constexpr size_t kWeatherBoardSunCountdownLineSize = 24;
 constexpr size_t kWeatherBoardAlertLineSize = 160;
+constexpr int kMinutesPerHour = 60;
+constexpr int kSecondsPerMinute = 60;
 #define WEATHER_BOARD_FORECAST_CARD_CREATE_FAILED_FORMAT "weather forecast card %d create failed"
 static_assert(array_count(kWeatherBoardWeekdayNames) == kWeatherBoardWeekdayCount,
               "weather board weekday names must match weekday count");
@@ -133,6 +140,18 @@ void style_weather_card(lv_obj_t *obj)
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
 }
 
+template <typename... Args>
+void format_weather_board_text_or_fallback(char *out, size_t out_len, const char *fallback, const char *format, Args... args)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    int written = snprintf(out, out_len, format, args...);
+    if (written < 0 || static_cast<size_t>(written) >= out_len) {
+        strlcpy(out, fallback, out_len);
+    }
+}
+
 void set_card_visible(ForecastCardUi &card, bool visible)
 {
     set_obj_visible(card.box, visible);
@@ -150,6 +169,97 @@ const char *text_or_dash(const char *text)
 const char *weather_icon_or_default(const char *icon)
 {
     return weather_icon_text(icon && icon[0] ? icon : kWeatherBoardUnknownIcon);
+}
+
+const WeatherForecastDay *forecast_day_or_null(const WeatherForecastData &forecast, int index)
+{
+    if (!forecast.ready || index < 0 || index >= forecast.count || !forecast.days[index].valid) {
+        return nullptr;
+    }
+    return &forecast.days[index];
+}
+
+bool parse_weather_board_time(const char *text, int *hour, int *minute)
+{
+    if (!text || !hour || !minute) {
+        return false;
+    }
+    int parsed_hour = 0;
+    int parsed_minute = 0;
+    if (sscanf(text, kWeatherBoardTimeParseFormat, &parsed_hour, &parsed_minute) != 2) {
+        return false;
+    }
+    if (parsed_hour < 0 || parsed_hour > 23 || parsed_minute < 0 || parsed_minute > 59) {
+        return false;
+    }
+    *hour = parsed_hour;
+    *minute = parsed_minute;
+    return true;
+}
+
+time_t weather_board_time_on_day(const struct tm &local, const char *hhmm, int day_offset)
+{
+    int hour = 0;
+    int minute = 0;
+    if (!parse_weather_board_time(hhmm, &hour, &minute)) {
+        return (time_t)-1;
+    }
+    struct tm target = local;
+    target.tm_sec = 0;
+    target.tm_min = minute;
+    target.tm_hour = hour;
+    target.tm_mday += day_offset;
+    target.tm_isdst = -1;
+    return mktime(&target);
+}
+
+void format_weather_board_sun_countdown(const struct tm &local,
+                                        const WeatherForecastData &forecast,
+                                        char *out,
+                                        size_t out_len)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    const WeatherForecastDay *today = forecast_day_or_null(forecast, 0);
+    if (!today || !today->sunrise[0] || !today->sunset[0]) {
+        strlcpy(out, kWeatherBoardSunCountdownPlaceholder, out_len);
+        return;
+    }
+    struct tm now_tm = local;
+    time_t now = mktime(&now_tm);
+    time_t sunrise = weather_board_time_on_day(local, today->sunrise, 0);
+    time_t sunset = weather_board_time_on_day(local, today->sunset, 0);
+    if (now <= 0 || sunrise <= 0 || sunset <= 0) {
+        strlcpy(out, kWeatherBoardSunCountdownPlaceholder, out_len);
+        return;
+    }
+    const char *target_name = "日落";
+    time_t target = sunset;
+    if (now < sunrise) {
+        target_name = "日出";
+        target = sunrise;
+    } else if (now >= sunset) {
+        target_name = "日出";
+        const WeatherForecastDay *tomorrow = forecast_day_or_null(forecast, 1);
+        target = weather_board_time_on_day(local,
+                                           tomorrow && tomorrow->sunrise[0] ? tomorrow->sunrise : today->sunrise,
+                                           1);
+    }
+    if (target <= now) {
+        strlcpy(out, kWeatherBoardSunCountdownPlaceholder, out_len);
+        return;
+    }
+    int total_minutes = (int)((target - now + (kSecondsPerMinute - 1)) / kSecondsPerMinute);
+    int hours = total_minutes / kMinutesPerHour;
+    int minutes = total_minutes % kMinutesPerHour;
+    format_weather_board_text_or_fallback(out,
+                                          out_len,
+                                          kWeatherBoardSunCountdownPlaceholder,
+                                          kWeatherBoardSunCountdownFormat,
+                                          target_name,
+                                          hours,
+                                          minutes);
 }
 
 const char *weekday_name_from_date(const char *date)
@@ -188,10 +298,11 @@ void format_short_date(const char *date, char *out, size_t out_len)
         strlcpy(out, kWeatherBoardShortDatePlaceholder, out_len);
         return;
     }
-    int written = snprintf(out, out_len, kForecastShortDateFormat, day);
-    if (written < 0 || (size_t)written >= out_len) {
-        strlcpy(out, kWeatherBoardShortDatePlaceholder, out_len);
-    }
+    format_weather_board_text_or_fallback(out,
+                                          out_len,
+                                          kWeatherBoardShortDatePlaceholder,
+                                          kForecastShortDateFormat,
+                                          day);
 }
 
 void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len)
@@ -199,14 +310,12 @@ void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len
     if (!out || out_len == 0) {
         return;
     }
-    int written = snprintf(out,
-                           out_len,
-                           kWeatherBoardTodayRangeFormat,
-                           text_or_dash(day.temp_min),
-                           text_or_dash(day.temp_max));
-    if (written < 0 || (size_t)written >= out_len) {
-        strlcpy(out, kWeatherBoardTodayRangePlaceholder, out_len);
-    }
+    format_weather_board_text_or_fallback(out,
+                                          out_len,
+                                          kWeatherBoardTodayRangePlaceholder,
+                                          kWeatherBoardTodayRangeFormat,
+                                          text_or_dash(day.temp_min),
+                                          text_or_dash(day.temp_max));
 }
 
 void format_forecast_date_line(const WeatherForecastDay &day, char *out, size_t out_len)
@@ -216,10 +325,12 @@ void format_forecast_date_line(const WeatherForecastDay &day, char *out, size_t 
     }
     char date_short[kForecastShortDateSize] = {};
     format_short_date(day.date, date_short, sizeof(date_short));
-    int written = snprintf(out, out_len, kForecastDateLineFormat, weekday_name_from_date(day.date), date_short);
-    if (written < 0 || (size_t)written >= out_len) {
-        strlcpy(out, kWeatherBoardShortDatePlaceholder, out_len);
-    }
+    format_weather_board_text_or_fallback(out,
+                                          out_len,
+                                          kWeatherBoardShortDatePlaceholder,
+                                          kForecastDateLineFormat,
+                                          weekday_name_from_date(day.date),
+                                          date_short);
 }
 
 void format_forecast_temp_range(const WeatherForecastDay &day, char *out, size_t out_len)
@@ -227,10 +338,12 @@ void format_forecast_temp_range(const WeatherForecastDay &day, char *out, size_t
     if (!out || out_len == 0) {
         return;
     }
-    int written = snprintf(out, out_len, kForecastTempRangeFormat, text_or_dash(day.temp_min), text_or_dash(day.temp_max));
-    if (written < 0 || (size_t)written >= out_len) {
-        strlcpy(out, kWeatherBoardShortDatePlaceholder, out_len);
-    }
+    format_weather_board_text_or_fallback(out,
+                                          out_len,
+                                          kWeatherBoardShortDatePlaceholder,
+                                          kForecastTempRangeFormat,
+                                          text_or_dash(day.temp_min),
+                                          text_or_dash(day.temp_max));
 }
 
 void format_weather_board_alert_line(const WeatherAlertData &alert, char *out, size_t out_len)
@@ -356,9 +469,10 @@ void build_weather_board_page()
     set_obj_black(detail_line, true);
     s_air_label = make_label(screen, 20, 202, 110, 22, kWeatherBoardAirPlaceholder);
     s_humidity_label = make_label(screen, 132, 202, 86, 22, kWeatherBoardHumidityPlaceholder);
-    s_wind_label = make_label(screen, 228, 202, 152, 22, kWeatherBoardWindPlaceholder);
+    s_wind_label = make_label(screen, 238, 202, 142, 22, kWeatherBoardWindPlaceholder);
     s_sunrise_label = make_label(screen, 20, 224, 110, 20, kWeatherBoardSunrisePlaceholder);
-    s_sunset_label = make_label(screen, 132, 224, 120, 20, kWeatherBoardSunsetPlaceholder);
+    s_sunset_label = make_label(screen, 132, 224, 98, 20, kWeatherBoardSunsetPlaceholder);
+    s_sun_countdown_label = make_label(screen, 238, 224, 142, 20, kWeatherBoardSunCountdownPlaceholder);
     s_alert_label = make_label(screen, 20, 246, 360, 22, kWeatherBoardAlertPlaceholder);
     s_advice_label = make_label(screen, 20, 272, 360, 20, kWeatherBoardAdvicePlaceholder);
     set_weather_label_long_mode(s_advice_label, LV_LABEL_LONG_WRAP);
@@ -408,7 +522,7 @@ bool update_weather_board_page(const struct tm &local)
     }
 
     for (int i = 0; i < kWeatherForecastDays; ++i) {
-        const WeatherForecastDay *day = (forecast.ready && i < forecast.count) ? &forecast.days[i] : nullptr;
+        const WeatherForecastDay *day = forecast_day_or_null(forecast, i);
         set_card_visible(s_cards[i], true);
         changed |= update_forecast_card(s_cards[i], day);
     }
@@ -418,30 +532,48 @@ bool update_weather_board_page(const struct tm &local)
     char wind_line[kWeatherBoardWindLineSize] = {};
     char sunrise_line[kWeatherBoardSunTimeLineSize] = {};
     char sunset_line[kWeatherBoardSunTimeLineSize] = {};
+    char sun_countdown_line[kWeatherBoardSunCountdownLineSize] = {};
     char alert_line[kWeatherBoardAlertLineSize] = {};
-    const WeatherForecastDay *today = (forecast.ready && forecast.count > 0 && forecast.days[0].valid) ? &forecast.days[0] : nullptr;
+    const WeatherForecastDay *today = forecast_day_or_null(forecast, 0);
     if (air.ready) {
-        snprintf(air_line, sizeof(air_line), kWeatherBoardAirFormat,
-                 text_or_dash(air.aqi),
-                 text_or_dash(air.category));
+        format_weather_board_text_or_fallback(air_line,
+                                              sizeof(air_line),
+                                              kWeatherBoardAirPlaceholder,
+                                              kWeatherBoardAirFormat,
+                                              text_or_dash(air.aqi),
+                                              text_or_dash(air.category));
     } else {
         strlcpy(air_line, kWeatherBoardAirPlaceholder, sizeof(air_line));
     }
-    snprintf(humi_line, sizeof(humi_line), kWeatherBoardHumidityFormat,
-             today && today->humidity[0] ? today->humidity : text_or_dash(weather.humidity));
-    snprintf(wind_line, sizeof(wind_line), kWeatherBoardWindFormat,
-             today ? text_or_dash(today->wind_dir) : "--",
-             today ? text_or_dash(today->wind_scale) : "--");
-    snprintf(sunrise_line, sizeof(sunrise_line), kWeatherBoardSunriseFormat,
-             today && today->sunrise[0] ? today->sunrise : kWeatherBoardTimePlaceholder);
-    snprintf(sunset_line, sizeof(sunset_line), kWeatherBoardSunsetFormat,
-             today && today->sunset[0] ? today->sunset : kWeatherBoardTimePlaceholder);
+    format_weather_board_text_or_fallback(humi_line,
+                                          sizeof(humi_line),
+                                          kWeatherBoardHumidityPlaceholder,
+                                          kWeatherBoardHumidityFormat,
+                                          today && today->humidity[0] ? today->humidity : text_or_dash(weather.humidity));
+    format_weather_board_text_or_fallback(wind_line,
+                                          sizeof(wind_line),
+                                          kWeatherBoardWindPlaceholder,
+                                          kWeatherBoardWindFormat,
+                                          today ? text_or_dash(today->wind_dir) : kWeatherBoardDash,
+                                          today ? text_or_dash(today->wind_scale) : kWeatherBoardDash);
+    format_weather_board_text_or_fallback(sunrise_line,
+                                          sizeof(sunrise_line),
+                                          kWeatherBoardSunrisePlaceholder,
+                                          kWeatherBoardSunriseFormat,
+                                          today && today->sunrise[0] ? today->sunrise : kWeatherBoardTimePlaceholder);
+    format_weather_board_text_or_fallback(sunset_line,
+                                          sizeof(sunset_line),
+                                          kWeatherBoardSunsetPlaceholder,
+                                          kWeatherBoardSunsetFormat,
+                                          today && today->sunset[0] ? today->sunset : kWeatherBoardTimePlaceholder);
+    format_weather_board_sun_countdown(local, forecast, sun_countdown_line, sizeof(sun_countdown_line));
     format_weather_board_alert_line(alert, alert_line, sizeof(alert_line));
     changed |= set_label_text_if_changed(s_air_label, air_line);
     changed |= set_label_text_if_changed(s_humidity_label, humi_line);
     changed |= set_label_text_if_changed(s_wind_label, wind_line);
     changed |= set_label_text_if_changed(s_sunrise_label, sunrise_line);
     changed |= set_label_text_if_changed(s_sunset_label, sunset_line);
+    changed |= set_label_text_if_changed(s_sun_countdown_label, sun_countdown_line);
     changed |= set_label_text_if_changed(s_alert_label, alert_line);
     changed |= set_label_text_if_changed(s_advice_label,
                                          forecast.ready && forecast.advice[0] ? forecast.advice : kWeatherBoardAdvicePlaceholder);

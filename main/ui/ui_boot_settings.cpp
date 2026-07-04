@@ -25,6 +25,22 @@ void copy_text(char *out, size_t out_len, const char *text)
     strlcpy(out, text ? text : "", out_len);
 }
 
+template <typename... Args>
+void format_text_or_fallback(char *out, size_t out_len, const char *fallback, const char *format, Args... args)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    if (!format) {
+        copy_text(out, out_len, fallback);
+        return;
+    }
+    int written = snprintf(out, out_len, format, args...);
+    if (written < 0 || written >= (int)out_len) {
+        copy_text(out, out_len, fallback);
+    }
+}
+
 constexpr uint32_t kBootAnimLvglLockTimeoutMs = 100;
 constexpr uint32_t kBootAnimFinishLvglLockTimeoutMs = 200;
 constexpr uint32_t kBootAnimFinishHoldMs = 100;
@@ -85,6 +101,7 @@ constexpr size_t kSettingsOtaHintTextSize = 48;
 constexpr const char *kSettingsOtaUpdatingWithSpeedFormat = "OTA %d%%  %d KB/s";
 constexpr const char *kSettingsOtaUpdatingFormat = "OTA %d%%";
 constexpr const char *kSettingsOtaCurrentVersionFormat = "当前版本 %s";
+constexpr const char *kSettingsOtaLinePlaceholder = "OTA --";
 constexpr const char *kSettingsOtaHintDownloading = "下载中，请等待";
 constexpr const char *kSettingsOtaHintInstall = "BOOT安装更新";
 constexpr const char *kSettingsOtaHintChecking = "正在检查，请等待";
@@ -95,6 +112,7 @@ constexpr const char *kSettingsOtaHintTexts[] = {
     kSettingsOtaUpdatingWithSpeedFormat,
     kSettingsOtaUpdatingFormat,
     kSettingsOtaCurrentVersionFormat,
+    kSettingsOtaLinePlaceholder,
     kSettingsOtaHintDownloading,
     kSettingsOtaHintInstall,
     kSettingsOtaHintChecking,
@@ -778,14 +796,14 @@ void set_info_time_label(size_t index, const char *format, time_t value)
     char time_text[kInfoTimeTextSize] = {};
     char line[kInfoLineTextSize] = {};
     format_time_or_dash(value, time_text, sizeof(time_text));
-    snprintf(line, sizeof(line), format, time_text);
+    format_text_or_fallback(line, sizeof(line), kInfoLinePlaceholder, format, time_text);
     set_label_text_if_changed(g_info_labels[index], line);
 }
 
 void set_info_string_label(size_t index, const char *format, const char *value)
 {
     char line[kInfoLineTextSize] = {};
-    snprintf(line, sizeof(line), format, value ? value : "");
+    format_text_or_fallback(line, sizeof(line), kInfoLinePlaceholder, format, value ? value : "");
     set_label_text_if_changed(g_info_labels[index], line);
 }
 
@@ -793,9 +811,18 @@ void set_info_battery_label()
 {
     char line[kInfoLineTextSize] = {};
     if (g_battery_percent >= 0 && g_battery_voltage >= 0.0f) {
-        snprintf(line, sizeof(line), kInfoBatteryFullFormat, g_battery_percent, g_battery_voltage);
+        format_text_or_fallback(line,
+                                sizeof(line),
+                                kInfoBatteryPlaceholder,
+                                kInfoBatteryFullFormat,
+                                g_battery_percent,
+                                g_battery_voltage);
     } else if (g_battery_percent >= 0) {
-        snprintf(line, sizeof(line), kInfoBatteryPercentOnlyFormat, g_battery_percent);
+        format_text_or_fallback(line,
+                                sizeof(line),
+                                kInfoBatteryPlaceholder,
+                                kInfoBatteryPercentOnlyFormat,
+                                g_battery_percent);
     } else {
         copy_text(line, sizeof(line), kInfoBatteryPlaceholder);
     }
@@ -805,7 +832,7 @@ void set_info_battery_label()
 void set_info_version_label()
 {
     char line[kInfoLineTextSize] = {};
-    snprintf(line, sizeof(line), kInfoVersionFormat, APP_VERSION, APP_BUILD_DATE);
+    format_text_or_fallback(line, sizeof(line), kInfoLinePlaceholder, kInfoVersionFormat, APP_VERSION, APP_BUILD_DATE);
     set_label_text_if_changed(g_info_labels[kInfoVersionLabelIndex], line);
 }
 
@@ -1352,9 +1379,18 @@ bool update_settings_page()
             if (g_ota_state == kOtaUpdating && progress >= 0) {
                 progress_visible = true;
                 if (g_ota_speed_kbps > 0) {
-                    snprintf(ota_line, sizeof(ota_line), kSettingsOtaUpdatingWithSpeedFormat, progress, g_ota_speed_kbps);
+                    format_text_or_fallback(ota_line,
+                                            sizeof(ota_line),
+                                            kSettingsOtaLinePlaceholder,
+                                            kSettingsOtaUpdatingWithSpeedFormat,
+                                            progress,
+                                            g_ota_speed_kbps);
                 } else {
-                    snprintf(ota_line, sizeof(ota_line), kSettingsOtaUpdatingFormat, progress);
+                    format_text_or_fallback(ota_line,
+                                            sizeof(ota_line),
+                                            kSettingsOtaLinePlaceholder,
+                                            kSettingsOtaUpdatingFormat,
+                                            progress);
                 }
                 copy_text(ota_hint, sizeof(ota_hint), kSettingsOtaHintDownloading);
             } else if (g_ota_state == kOtaAvailable) {
@@ -1372,7 +1408,11 @@ bool update_settings_page()
                 copy_text(ota_line, sizeof(ota_line), g_ota_status);
                 copy_text(ota_hint, sizeof(ota_hint), kSettingsOtaHintRetry);
             } else {
-                snprintf(ota_line, sizeof(ota_line), kSettingsOtaCurrentVersionFormat, APP_VERSION);
+                format_text_or_fallback(ota_line,
+                                        sizeof(ota_line),
+                                        kSettingsOtaLinePlaceholder,
+                                        kSettingsOtaCurrentVersionFormat,
+                                        APP_VERSION);
                 copy_text(ota_hint, sizeof(ota_hint), kSettingsOtaHintCheck);
             }
         }
@@ -1445,18 +1485,30 @@ bool update_setup_status_panel()
         return false;
     }
     changed |= set_label_text_if_changed(g_setup_status_labels[0], kSetupStatusTitle);
-    snprintf(line, sizeof(line), kSetupApSsidFormat, g_ap_ssid[0] ? g_ap_ssid : kSetupStatusPlaceholder);
+    format_text_or_fallback(line,
+                            sizeof(line),
+                            kSetupStatusPlaceholder,
+                            kSetupApSsidFormat,
+                            g_ap_ssid[0] ? g_ap_ssid : kSetupStatusPlaceholder);
     changed |= set_label_text_if_changed(g_setup_status_labels[1], line);
-    snprintf(line, sizeof(line), kSetupApPasswordFormat, kSetupApPassword);
+    format_text_or_fallback(line, sizeof(line), kSetupStatusPlaceholder, kSetupApPasswordFormat, kSetupApPassword);
     changed |= set_label_text_if_changed(g_setup_status_labels[2], line);
-    snprintf(line, sizeof(line), kSetupPortalIpFormat, kSetupPortalIp);
+    format_text_or_fallback(line, sizeof(line), kSetupStatusPlaceholder, kSetupPortalIpFormat, kSetupPortalIp);
     changed |= set_label_text_if_changed(g_setup_status_labels[3], line);
-    snprintf(line, sizeof(line), kSetupStaSsidFormat, g_wifi_ssid[0] ? g_wifi_ssid : kSetupStatusPlaceholder);
+    format_text_or_fallback(line,
+                            sizeof(line),
+                            kSetupStatusPlaceholder,
+                            kSetupStaSsidFormat,
+                            g_wifi_ssid[0] ? g_wifi_ssid : kSetupStatusPlaceholder);
     changed |= set_label_text_if_changed(g_setup_status_labels[4], line);
     if (g_sta_ip[0]) {
-        snprintf(line, sizeof(line), kSetupStaIpFormat, g_sta_ip);
+        format_text_or_fallback(line, sizeof(line), kSetupStaIpPlaceholder, kSetupStaIpFormat, g_sta_ip);
     } else if (g_last_wifi_disconnect_reason) {
-        snprintf(line, sizeof(line), kSetupStaIpReasonFormat, g_last_wifi_disconnect_reason);
+        format_text_or_fallback(line,
+                                sizeof(line),
+                                kSetupStaIpPlaceholder,
+                                kSetupStaIpReasonFormat,
+                                g_last_wifi_disconnect_reason);
     } else {
         copy_text(line, sizeof(line), kSetupStaIpPlaceholder);
     }

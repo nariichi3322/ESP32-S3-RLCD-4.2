@@ -311,6 +311,7 @@ constexpr const char *kQweatherCityHttpFailedLog = "qweather city lookup http fa
 #define QWEATHER_CITY_LOOKUP_FAILED_FORMAT "qweather city lookup failed code=%s"
 constexpr const char *kQweatherAlertInvalidArgLog = "qweather alert invalid arg";
 constexpr const char *kQweatherAlertHttpFailedLog = "qweather alert http failed";
+constexpr const char *kQweatherAlertTitleFormatFailedLog = "qweather alert title format failed";
 #define QWEATHER_ALERT_LOOKUP_FORMAT "qweather alert lookup: %s,%s via %s"
 constexpr const char *kQweatherNowInvalidArgLog = "qweather now invalid arg";
 constexpr const char *kQweatherNowLocationTooLongLog = "qweather now location too long";
@@ -346,6 +347,7 @@ constexpr const char *kQweatherFixedWarningTexts[] = {
     kQweatherCityHttpFailedLog,
     kQweatherAlertInvalidArgLog,
     kQweatherAlertHttpFailedLog,
+    kQweatherAlertTitleFormatFailedLog,
     kQweatherNowInvalidArgLog,
     kQweatherNowLocationTooLongLog,
     kQweatherNowHttpFailedLog,
@@ -525,6 +527,21 @@ void log_qweather_fixed_warning(const char *message);
 const char *qweather_stage_text(const char *stage)
 {
     return cstr_nonempty(stage) ? stage : kQweatherDefaultStage;
+}
+
+void copy_first_nonempty_text(char *out,
+                              size_t out_len,
+                              const char *first,
+                              const char *second = nullptr,
+                              const char *third = nullptr)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    const char *selected = cstr_nonempty(first)
+                               ? first
+                               : (cstr_nonempty(second) ? second : (cstr_nonempty(third) ? third : ""));
+    strlcpy(out, selected, out_len);
 }
 
 bool cstr_has_suffix(const char *text, const char *suffix)
@@ -1161,10 +1178,15 @@ static void format_weather_alert_title_text(char *title,
     if (!title || title_len == 0 || !format) {
         return;
     }
+    int written = 0;
     if (color_name) {
-        (void)snprintf(title, title_len, format, event_name, color_name, kWeatherAlertSuffix);
+        written = snprintf(title, title_len, format, event_name, color_name, kWeatherAlertSuffix);
     } else {
-        (void)snprintf(title, title_len, format, event_name, kWeatherAlertSuffix);
+        written = snprintf(title, title_len, format, event_name, kWeatherAlertSuffix);
+    }
+    if (written < 0) {
+        title[0] = '\0';
+        log_qweather_fixed_warning(kQweatherAlertTitleFormatFailedLog);
     }
 }
 
@@ -1601,7 +1623,7 @@ bool perform_weather_update()
             ESP_LOGW(TAG, WEATHER_MANUAL_CITY_LOOKUP_FAILED_FORMAT, manual_city);
             return false;
         }
-        strlcpy(next.city, lookup_city[0] ? lookup_city : manual_city, sizeof(next.city));
+        copy_first_nonempty_text(next.city, sizeof(next.city), lookup_city, manual_city);
         if (fetch_and_commit_weather(city_id, &next)) {
             return true;
         }
@@ -1616,7 +1638,7 @@ bool perform_weather_update()
             ESP_LOGW(TAG, WEATHER_RETRY_IP_CITY_LOOKUP_FORMAT, ip_city);
             have_city_id = lookup_weather_city(ip_city, city_id, lookup_city, &next);
         }
-        strlcpy(next.city, ip_city[0] ? ip_city : (lookup_city[0] ? lookup_city : location), sizeof(next.city));
+        copy_first_nonempty_text(next.city, sizeof(next.city), ip_city, lookup_city, location);
         if (!have_city_id) {
             copy_ip_coordinate_location(location, city_id, sizeof(city_id), &next);
             ESP_LOGW(TAG, WEATHER_USING_IP_COORDINATES_FORMAT, city_id);
