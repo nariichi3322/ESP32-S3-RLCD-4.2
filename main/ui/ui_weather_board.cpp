@@ -188,7 +188,67 @@ void format_short_date(const char *date, char *out, size_t out_len)
         strlcpy(out, kWeatherBoardShortDatePlaceholder, out_len);
         return;
     }
-    snprintf(out, out_len, kForecastShortDateFormat, day);
+    int written = snprintf(out, out_len, kForecastShortDateFormat, day);
+    if (written < 0 || (size_t)written >= out_len) {
+        strlcpy(out, kWeatherBoardShortDatePlaceholder, out_len);
+    }
+}
+
+void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    int written = snprintf(out,
+                           out_len,
+                           kWeatherBoardTodayRangeFormat,
+                           text_or_dash(day.temp_min),
+                           text_or_dash(day.temp_max));
+    if (written < 0 || (size_t)written >= out_len) {
+        strlcpy(out, kWeatherBoardTodayRangePlaceholder, out_len);
+    }
+}
+
+void format_forecast_date_line(const WeatherForecastDay &day, char *out, size_t out_len)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    char date_short[kForecastShortDateSize] = {};
+    format_short_date(day.date, date_short, sizeof(date_short));
+    int written = snprintf(out, out_len, kForecastDateLineFormat, weekday_name_from_date(day.date), date_short);
+    if (written < 0 || (size_t)written >= out_len) {
+        strlcpy(out, kWeatherBoardShortDatePlaceholder, out_len);
+    }
+}
+
+void format_forecast_temp_range(const WeatherForecastDay &day, char *out, size_t out_len)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    int written = snprintf(out, out_len, kForecastTempRangeFormat, text_or_dash(day.temp_min), text_or_dash(day.temp_max));
+    if (written < 0 || (size_t)written >= out_len) {
+        strlcpy(out, kWeatherBoardShortDatePlaceholder, out_len);
+    }
+}
+
+void format_weather_board_alert_line(const WeatherAlertData &alert, char *out, size_t out_len)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    if (!alert.active || alert.count <= 0 || !alert.titles[0][0]) {
+        strlcpy(out, kWeatherBoardAlertPlaceholder, out_len);
+        return;
+    }
+    strlcpy(out, kWeatherBoardAlertPrefix, out_len);
+    for (int i = 0; i < alert.count && i < kWeatherBoardMaxAlertTitles; ++i) {
+        if (i > 0) {
+            strlcat(out, kWeatherBoardAlertSeparator, out_len);
+        }
+        strlcat(out, alert.titles[i], out_len);
+    }
 }
 
 bool update_forecast_card(ForecastCardUi &card, const WeatherForecastDay *day)
@@ -201,12 +261,10 @@ bool update_forecast_card(ForecastCardUi &card, const WeatherForecastDay *day)
         changed |= set_label_text_if_changed(card.range, kWeatherBoardShortDatePlaceholder);
         return changed;
     }
-    char date_line[kForecastDateLineSize];
-    char date_short[kForecastShortDateSize];
-    char temp_range[kForecastTempRangeSize];
-    format_short_date(day->date, date_short, sizeof(date_short));
-    snprintf(date_line, sizeof(date_line), kForecastDateLineFormat, weekday_name_from_date(day->date), date_short);
-    snprintf(temp_range, sizeof(temp_range), kForecastTempRangeFormat, text_or_dash(day->temp_min), text_or_dash(day->temp_max));
+    char date_line[kForecastDateLineSize] = {};
+    char temp_range[kForecastTempRangeSize] = {};
+    format_forecast_date_line(*day, date_line, sizeof(date_line));
+    format_forecast_temp_range(*day, temp_range, sizeof(temp_range));
     changed |= set_label_text_if_changed(card.date, date_line);
     changed |= set_label_text_if_changed(card.icon, weather_icon_or_default(day->icon));
     changed |= set_label_text_if_changed(card.text, text_or_dash(day->text));
@@ -327,17 +385,15 @@ bool update_weather_board_page(const struct tm &local)
     changed |= update_work_page_sensor_summary(g_weather_board_summary_label);
 
     if (weather_ready) {
-        char temp_line[kCurrentTempLineSize];
-        char today_range[kTodayRangeLineSize];
+        char temp_line[kCurrentTempLineSize] = {};
+        char today_range[kTodayRangeLineSize] = {};
         strlcpy(temp_line, text_or_dash(weather.temp), sizeof(temp_line));
         changed |= set_label_text_if_changed(s_city_label, text_or_dash(weather.city));
         changed |= set_label_text_if_changed(s_current_temp_label, temp_line);
         changed |= set_label_text_if_changed(s_current_icon_label, weather_icon_or_default(weather.icon));
         changed |= set_label_text_if_changed(s_current_text_label, text_or_dash(weather.text));
         if (forecast.ready && forecast.count > 0 && forecast.days[0].valid) {
-            snprintf(today_range, sizeof(today_range), kWeatherBoardTodayRangeFormat,
-                     text_or_dash(forecast.days[0].temp_min),
-                     text_or_dash(forecast.days[0].temp_max));
+            format_today_range(forecast.days[0], today_range, sizeof(today_range));
         } else {
             strlcpy(today_range, kWeatherBoardTodayRangePlaceholder, sizeof(today_range));
         }
@@ -357,12 +413,12 @@ bool update_weather_board_page(const struct tm &local)
         changed |= update_forecast_card(s_cards[i], day);
     }
 
-    char humi_line[kWeatherBoardHumidityLineSize];
-    char air_line[kWeatherBoardAirLineSize];
-    char wind_line[kWeatherBoardWindLineSize];
-    char sunrise_line[kWeatherBoardSunTimeLineSize];
-    char sunset_line[kWeatherBoardSunTimeLineSize];
-    char alert_line[kWeatherBoardAlertLineSize];
+    char humi_line[kWeatherBoardHumidityLineSize] = {};
+    char air_line[kWeatherBoardAirLineSize] = {};
+    char wind_line[kWeatherBoardWindLineSize] = {};
+    char sunrise_line[kWeatherBoardSunTimeLineSize] = {};
+    char sunset_line[kWeatherBoardSunTimeLineSize] = {};
+    char alert_line[kWeatherBoardAlertLineSize] = {};
     const WeatherForecastDay *today = (forecast.ready && forecast.count > 0 && forecast.days[0].valid) ? &forecast.days[0] : nullptr;
     if (air.ready) {
         snprintf(air_line, sizeof(air_line), kWeatherBoardAirFormat,
@@ -380,17 +436,7 @@ bool update_weather_board_page(const struct tm &local)
              today && today->sunrise[0] ? today->sunrise : kWeatherBoardTimePlaceholder);
     snprintf(sunset_line, sizeof(sunset_line), kWeatherBoardSunsetFormat,
              today && today->sunset[0] ? today->sunset : kWeatherBoardTimePlaceholder);
-    if (alert.active && alert.count > 0 && alert.titles[0][0]) {
-        strlcpy(alert_line, kWeatherBoardAlertPrefix, sizeof(alert_line));
-        for (int i = 0; i < alert.count && i < kWeatherBoardMaxAlertTitles; ++i) {
-            if (i > 0) {
-                strlcat(alert_line, kWeatherBoardAlertSeparator, sizeof(alert_line));
-            }
-            strlcat(alert_line, alert.titles[i], sizeof(alert_line));
-        }
-    } else {
-        strlcpy(alert_line, kWeatherBoardAlertPlaceholder, sizeof(alert_line));
-    }
+    format_weather_board_alert_line(alert, alert_line, sizeof(alert_line));
     changed |= set_label_text_if_changed(s_air_label, air_line);
     changed |= set_label_text_if_changed(s_humidity_label, humi_line);
     changed |= set_label_text_if_changed(s_wind_label, wind_line);

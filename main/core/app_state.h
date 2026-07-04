@@ -93,11 +93,11 @@ inline constexpr int kSoundSettingsHourlyItem = 2;
 inline constexpr int kSoundSettingsAllDayItem = 3;
 inline constexpr int kSoundSettingsSecondaryCount = kSoundSettingsAllDayItem + 1;
 inline constexpr int kWorkPageWeatherClock = 0;
-inline constexpr int kWorkPageHistory = 1;
-inline constexpr int kWorkPageGallery = 2;
-inline constexpr int kWorkPageCalendar = 3;
-inline constexpr int kWorkPageWeatherBoard = 4;
-inline constexpr int kWorkPageFlipClock = 5;
+inline constexpr int kWorkPageGallery = 1;
+inline constexpr int kWorkPageWeatherBoard = 2;
+inline constexpr int kWorkPageFlipClock = 3;
+inline constexpr int kWorkPageCalendar = 4;
+inline constexpr int kWorkPageHistory = 5;
 inline constexpr int kWorkPageCount = 6;
 inline constexpr int kDisplaySettingsPageItemCount = kWorkPageCount;
 inline constexpr int kDisplaySettingsOrderItem = kDisplaySettingsPageItemCount;
@@ -179,7 +179,7 @@ inline constexpr int kBatterySampleUnknownTimeMinutes = 10;
 inline constexpr int kBatterySampleDayMinutes = 10;
 inline constexpr int kBatterySampleNightMinutes = 20;
 
-static_assert(kWorkPageCount == kWorkPageFlipClock + 1, "work page count must match the last work page id");
+static_assert(kWorkPageCount == kWorkPageHistory + 1, "work page count must match the last work page id");
 static_assert(kDisplaySettingsPageItemCount == kWorkPageCount, "display page setting count must match work page count");
 static_assert(kDisplaySettingsSecondaryCount == kDisplaySettingsOrderItem + 1,
               "display settings count must include the page order item");

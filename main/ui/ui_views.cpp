@@ -167,6 +167,90 @@ void format_weather_status_text(const WeatherData &weather,
     snprintf(temp, temp_len, kUiWeatherTempFormat, weather.temp);
     snprintf(humi, humi_len, kUiWeatherHumidityFormat, weather.humidity);
 }
+
+TickType_t next_second_delay_ticks()
+{
+    int64_t us = esp_timer_get_time();
+    int64_t until_next = kUiUsPerSecond - (us % kUiUsPerSecond);
+    int delay_ms = (int)(until_next / kUiMsPerSecond) + kUiBoundaryWakeSlackMs;
+    if (delay_ms < kUiNextSecondDelayMinMs) {
+        delay_ms = kUiNextSecondDelayMinMs;
+    } else if (delay_ms > kUiNextSecondDelayMaxMs) {
+        delay_ms = kUiNextSecondDelayMaxMs;
+    }
+    return pdMS_TO_TICKS(delay_ms);
+}
+
+TickType_t next_minute_delay_ticks(const struct tm &local)
+{
+    int seconds_to_next = kUiSecondsPerMinute - local.tm_sec;
+    if (seconds_to_next <= 0 || seconds_to_next > kUiSecondsPerMinute) {
+        seconds_to_next = kUiSecondsPerMinute;
+    }
+    return pdMS_TO_TICKS(seconds_to_next * kUiMsPerSecond + kUiBoundaryWakeSlackMs);
+}
+
+bool weather_cache_stale(time_t now_value)
+{
+    if (g_last_weather_sync_time <= 0) {
+        return true;
+    }
+    struct tm now_local = {};
+    struct tm last_local = {};
+    localtime_r(&now_value, &now_local);
+    localtime_r(&g_last_weather_sync_time, &last_local);
+    if (!is_tm_plausible(now_local) || !is_tm_plausible(last_local)) {
+        return now_value - g_last_weather_sync_time >= kUiSecondsPerHour;
+    }
+    return now_local.tm_year != last_local.tm_year ||
+           now_local.tm_yday != last_local.tm_yday ||
+           now_local.tm_hour != last_local.tm_hour;
+}
+
+bool saying_cache_stale(const struct tm &local_value, time_t now_value)
+{
+    if (g_daily_saying[0] == '\0' || g_last_saying_sync_time <= 0) {
+        return true;
+    }
+    struct tm saying_local = {};
+    localtime_r(&g_last_saying_sync_time, &saying_local);
+    if (!is_tm_plausible(saying_local) || !is_tm_plausible(local_value)) {
+        return now_value - g_last_saying_sync_time >= kUiSecondsPerDay;
+    }
+    return saying_local.tm_year != local_value.tm_year ||
+           saying_local.tm_yday != local_value.tm_yday;
+}
+
+bool weather_board_details_missing()
+{
+    WeatherForecastData forecast = {};
+    WeatherAirData air = {};
+    get_weather_forecast_snapshot(&forecast);
+    get_weather_air_snapshot(&air);
+    return !forecast.ready ||
+           forecast.count <= 0 ||
+           !forecast.days[0].valid ||
+           !air.ready;
+}
+
+bool low_refresh_work_page_idle(int page, const struct tm &local)
+{
+    return g_active_work_page == page &&
+           !g_low_battery_mode &&
+           !g_battery_charging &&
+           !g_setup_portal_active &&
+           !g_settings_requested &&
+           !g_boot_info_requested &&
+           !g_network_diag_page_requested &&
+           is_tm_plausible(local);
+}
+
+bool normal_work_page_active(int page)
+{
+    return g_active_work_page == page &&
+           !g_low_battery_mode &&
+           !g_setup_portal_active;
+}
 } // namespace
 
 void ui_task(void *)
@@ -194,74 +278,42 @@ void ui_task(void *)
     int gallery_saying_sync_attempts = 0;
     TickType_t gallery_saying_sync_backoff_until_tick = 0;
 
-    auto delay_to_next_second = []() {
-        int64_t us = esp_timer_get_time();
-        int64_t until_next = kUiUsPerSecond - (us % kUiUsPerSecond);
-        int delay_ms = (int)(until_next / kUiMsPerSecond) + kUiBoundaryWakeSlackMs;
-        if (delay_ms < kUiNextSecondDelayMinMs) {
-            delay_ms = kUiNextSecondDelayMinMs;
-        } else if (delay_ms > kUiNextSecondDelayMaxMs) {
-            delay_ms = kUiNextSecondDelayMaxMs;
-        }
-        return pdMS_TO_TICKS(delay_ms);
+    auto reset_weather_sync_request = [&]() {
+        clock_weather_sync_requested = false;
+        clock_weather_sync_request_tick = 0;
     };
-    auto delay_to_next_minute = [](const struct tm &local) {
-        int seconds_to_next = kUiSecondsPerMinute - local.tm_sec;
-        if (seconds_to_next <= 0 || seconds_to_next > kUiSecondsPerMinute) {
-            seconds_to_next = kUiSecondsPerMinute;
-        }
-        return pdMS_TO_TICKS(seconds_to_next * kUiMsPerSecond + kUiBoundaryWakeSlackMs);
+    auto reset_weather_sync_attempts = [&]() {
+        clock_weather_sync_attempts = 0;
+        clock_weather_sync_backoff_until_tick = 0;
     };
-    auto weather_cache_stale = [](time_t now_value) {
-        if (g_last_weather_sync_time <= 0) {
-            return true;
-        }
-        struct tm now_local = {};
-        struct tm last_local = {};
-        localtime_r(&now_value, &now_local);
-        localtime_r(&g_last_weather_sync_time, &last_local);
-        if (!is_tm_plausible(now_local) || !is_tm_plausible(last_local)) {
-            return now_value - g_last_weather_sync_time >= kUiSecondsPerHour;
-        }
-        return now_local.tm_year != last_local.tm_year ||
-               now_local.tm_yday != last_local.tm_yday ||
-               now_local.tm_hour != last_local.tm_hour;
+    auto reset_weather_sync_state = [&]() {
+        reset_weather_sync_request();
+        reset_weather_sync_attempts();
     };
-    auto weather_board_details_missing = []() {
-        WeatherForecastData forecast = {};
-        WeatherAirData air = {};
-        get_weather_forecast_snapshot(&forecast);
-        get_weather_air_snapshot(&air);
-        return !forecast.ready ||
-               forecast.count <= 0 ||
-               !forecast.days[0].valid ||
-               !air.ready;
+    auto reset_saying_sync_request = [&]() {
+        gallery_saying_sync_requested = false;
+        gallery_saying_sync_request_tick = 0;
     };
-    auto saying_cache_stale = [](const struct tm &local_value, time_t now_value) {
-        if (g_daily_saying[0] == '\0' || g_last_saying_sync_time <= 0) {
-            return true;
-        }
-        struct tm saying_local = {};
-        localtime_r(&g_last_saying_sync_time, &saying_local);
-        if (!is_tm_plausible(saying_local) || !is_tm_plausible(local_value)) {
-            return now_value - g_last_saying_sync_time >= kUiSecondsPerDay;
-        }
-        return saying_local.tm_year != local_value.tm_year ||
-               saying_local.tm_yday != local_value.tm_yday;
+    auto reset_saying_sync_attempts = [&]() {
+        gallery_saying_sync_attempts = 0;
+        gallery_saying_sync_backoff_until_tick = 0;
     };
+    auto reset_saying_sync_state = [&]() {
+        reset_saying_sync_request();
+        reset_saying_sync_attempts();
+    };
+
     auto request_weather_sync_if_needed = [&](TickType_t tick_value, bool sync_in_flight, const char *reason) {
         if (clock_weather_sync_backoff_until_tick != 0 &&
             tick_value >= clock_weather_sync_backoff_until_tick) {
-            clock_weather_sync_attempts = 0;
-            clock_weather_sync_backoff_until_tick = 0;
+            reset_weather_sync_attempts();
         }
         bool backoff_active = clock_weather_sync_backoff_until_tick != 0 &&
                               tick_value < clock_weather_sync_backoff_until_tick;
         if (clock_weather_sync_requested && !sync_in_flight &&
             clock_weather_sync_request_tick != 0 &&
             tick_value - clock_weather_sync_request_tick >= pdMS_TO_TICKS(kWeatherClockAutoRetryMs)) {
-            clock_weather_sync_requested = false;
-            clock_weather_sync_request_tick = 0;
+            reset_weather_sync_request();
             if (clock_weather_sync_attempts >= kWeatherClockAutoSyncMaxAttempts) {
                 clock_weather_sync_backoff_until_tick = tick_value + pdMS_TO_TICKS(kWeatherClockAutoBackoffMs);
                 backoff_active = true;
@@ -582,29 +634,24 @@ void ui_task(void *)
             } else {
                 history_page_shown_since = 0;
             }
-            bool history_page_active = g_active_work_page == kWorkPageHistory && !g_low_battery_mode && !g_setup_portal_active;
-            bool gallery_page_active = g_active_work_page == kWorkPageGallery && !g_low_battery_mode && !g_setup_portal_active;
-            bool calendar_page_active = g_active_work_page == kWorkPageCalendar && !g_low_battery_mode && !g_setup_portal_active;
-            bool weather_board_page_active = g_active_work_page == kWorkPageWeatherBoard && !g_low_battery_mode && !g_setup_portal_active;
-            bool flip_clock_page_active = g_active_work_page == kWorkPageFlipClock && !g_low_battery_mode && !g_setup_portal_active;
+            bool history_page_active = normal_work_page_active(kWorkPageHistory);
+            bool gallery_page_active = normal_work_page_active(kWorkPageGallery);
+            bool calendar_page_active = normal_work_page_active(kWorkPageCalendar);
+            bool weather_board_page_active = normal_work_page_active(kWorkPageWeatherBoard);
+            bool flip_clock_page_active = normal_work_page_active(kWorkPageFlipClock);
             bool clock_page_active = g_active_work_page == kWorkPageWeatherClock;
             bool weather_data_page_active = clock_page_active || weather_board_page_active;
             if (!weather_data_page_active) {
-                clock_weather_sync_requested = false;
-                clock_weather_sync_request_tick = 0;
+                reset_weather_sync_request();
             } else if (!g_have_weather_key || g_offline_mode_ui_enabled || ota_flow_active()) {
-                clock_weather_sync_requested = false;
-                clock_weather_sync_request_tick = 0;
+                reset_weather_sync_request();
             } else {
                 EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
                 bool weather_ready = (sync_bits & kWeatherReadyBit) != 0;
                 bool sync_in_flight = (sync_bits & (kManualWeatherSyncBit | kProvisioningSyncBit)) != 0;
                 bool details_missing = weather_board_page_active && weather_board_details_missing();
                 if (weather_ready && !weather_cache_stale(now) && !details_missing) {
-                    clock_weather_sync_requested = false;
-                    clock_weather_sync_request_tick = 0;
-                    clock_weather_sync_attempts = 0;
-                    clock_weather_sync_backoff_until_tick = 0;
+                    reset_weather_sync_state();
                 } else {
                     request_weather_sync_if_needed(tick_now,
                                                    sync_in_flight,
@@ -615,28 +662,22 @@ void ui_task(void *)
                                              !g_offline_mode_ui_enabled &&
                                              saying_cache_stale(local, now);
             if (!gallery_page_active) {
-                gallery_saying_sync_requested = false;
-                gallery_saying_sync_request_tick = 0;
+                reset_saying_sync_request();
             } else if (!gallery_saying_needs_sync) {
-                gallery_saying_sync_requested = false;
-                gallery_saying_sync_request_tick = 0;
-                gallery_saying_sync_attempts = 0;
-                gallery_saying_sync_backoff_until_tick = 0;
+                reset_saying_sync_state();
             } else {
                 EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
                 bool sync_in_flight = (sync_bits & (kManualSayingSyncBit | kProvisioningSyncBit)) != 0;
                 if (gallery_saying_sync_backoff_until_tick != 0 &&
                     tick_now >= gallery_saying_sync_backoff_until_tick) {
-                    gallery_saying_sync_attempts = 0;
-                    gallery_saying_sync_backoff_until_tick = 0;
+                    reset_saying_sync_attempts();
                 }
                 bool backoff_active = gallery_saying_sync_backoff_until_tick != 0 &&
                                       tick_now < gallery_saying_sync_backoff_until_tick;
                 if (gallery_saying_sync_requested && !sync_in_flight &&
                     gallery_saying_sync_request_tick != 0 &&
                     tick_now - gallery_saying_sync_request_tick >= pdMS_TO_TICKS(kWeatherClockAutoRetryMs)) {
-                    gallery_saying_sync_requested = false;
-                    gallery_saying_sync_request_tick = 0;
+                    reset_saying_sync_request();
                     if (gallery_saying_sync_attempts >= kWeatherClockAutoSyncMaxAttempts) {
                         gallery_saying_sync_backoff_until_tick = tick_now + pdMS_TO_TICKS(kWeatherClockAutoBackoffMs);
                         backoff_active = true;
@@ -744,8 +785,8 @@ void ui_task(void *)
                 if (setup_active) {
                     content_changed |= update_setup_status_panel();
                 }
-                char temp[kUiSensorValueTextSize];
-                char humi[kUiSensorValueTextSize];
+                char temp[kUiSensorValueTextSize] = {};
+                char humi[kUiSensorValueTextSize] = {};
                 format_sensor_status_text(temp, sizeof(temp), humi, sizeof(humi));
 
                 if (!setup_active && !g_low_battery_mode && clock_page_active) {
@@ -756,9 +797,9 @@ void ui_task(void *)
                     if (bits & kWeatherReadyBit) {
                         WeatherData weather = {};
                         get_weather_snapshot(&weather, nullptr);
-                        char city[kUiWeatherCityTextSize];
-                        char weather_temp[kUiWeatherValueTextSize];
-                        char weather_humi[kUiWeatherValueTextSize];
+                        char city[kUiWeatherCityTextSize] = {};
+                        char weather_temp[kUiWeatherValueTextSize] = {};
+                        char weather_humi[kUiWeatherValueTextSize] = {};
                         format_weather_status_text(weather,
                                                    city,
                                                    sizeof(city),
@@ -772,10 +813,7 @@ void ui_task(void *)
                         content_changed |= set_label_text_if_changed(g_weather_humi_label, weather_humi);
                         content_changed |= set_label_text_if_changed(g_weather_icon_label, weather_icon_text(weather.icon));
                         if (!weather_cache_stale(now)) {
-                            clock_weather_sync_requested = false;
-                            clock_weather_sync_request_tick = 0;
-                            clock_weather_sync_attempts = 0;
-                            clock_weather_sync_backoff_until_tick = 0;
+                            reset_weather_sync_state();
                         } else if (g_have_weather_key && !g_offline_mode_ui_enabled) {
                             EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
                             bool sync_in_flight = (sync_bits & (kManualWeatherSyncBit | kProvisioningSyncBit)) != 0;
@@ -792,20 +830,14 @@ void ui_task(void *)
                         content_changed |= set_label_text_if_changed(g_weather_humi_label, kClockWeatherHumidityPlaceholder);
                         content_changed |= set_label_text_if_changed(g_weather_icon_label, weather_icon_text(kClockWeatherUnknownIconCode));
                     } else if (g_offline_mode_ui_enabled) {
-                        clock_weather_sync_requested = false;
-                        clock_weather_sync_request_tick = 0;
-                        clock_weather_sync_attempts = 0;
-                        clock_weather_sync_backoff_until_tick = 0;
+                        reset_weather_sync_state();
                         content_changed |= set_label_text_if_changed(g_weather_city_label, kClockWeatherCityPlaceholder);
                         content_changed |= set_label_text_if_changed(g_weather_info_label, kClockWeatherInfoWaitingText);
                         content_changed |= set_label_text_if_changed(g_weather_temp_label, kClockWeatherTempPlaceholder);
                         content_changed |= set_label_text_if_changed(g_weather_humi_label, kClockWeatherHumidityPlaceholder);
                         content_changed |= set_label_text_if_changed(g_weather_icon_label, weather_icon_text(kClockWeatherUnknownIconCode));
                     } else {
-                        clock_weather_sync_requested = false;
-                        clock_weather_sync_request_tick = 0;
-                        clock_weather_sync_attempts = 0;
-                        clock_weather_sync_backoff_until_tick = 0;
+                        reset_weather_sync_state();
                         content_changed |= set_label_text_if_changed(g_weather_city_label, kClockWeatherCityPlaceholder);
                         content_changed |= set_label_text_if_changed(g_weather_info_label, kClockWeatherInfoMissingApiKeyText);
                         content_changed |= set_label_text_if_changed(g_weather_temp_label, kClockWeatherTempPlaceholder);
@@ -857,23 +889,13 @@ void ui_task(void *)
                         !g_boot_info_requested &&
                         !g_network_diag_page_requested &&
                         is_tm_plausible(local);
-        auto low_refresh_work_page_idle = [&](int page) {
-            return g_active_work_page == page &&
-                   !g_low_battery_mode &&
-                   !g_battery_charging &&
-                   !g_setup_portal_active &&
-                   !g_settings_requested &&
-                   !g_boot_info_requested &&
-                   !g_network_diag_page_requested &&
-                   is_tm_plausible(local);
-        };
-        bool gallery_idle = low_refresh_work_page_idle(kWorkPageGallery);
-        bool history_idle = low_refresh_work_page_idle(kWorkPageHistory);
-        bool calendar_idle = low_refresh_work_page_idle(kWorkPageCalendar);
-        bool weather_board_idle = low_refresh_work_page_idle(kWorkPageWeatherBoard);
+        bool gallery_idle = low_refresh_work_page_idle(kWorkPageGallery, local);
+        bool history_idle = low_refresh_work_page_idle(kWorkPageHistory, local);
+        bool calendar_idle = low_refresh_work_page_idle(kWorkPageCalendar, local);
+        bool weather_board_idle = low_refresh_work_page_idle(kWorkPageWeatherBoard, local);
         TickType_t delay_ticks = (low_idle || gallery_idle || history_idle || calendar_idle || weather_board_idle)
-                                     ? delay_to_next_minute(local)
-                                     : delay_to_next_second();
+                                     ? next_minute_delay_ticks(local)
+                                     : next_second_delay_ticks();
         if (history_idle && history_page_shown_since != 0) {
             TickType_t elapsed = xTaskGetTickCount() - history_page_shown_since;
             TickType_t timeout = pdMS_TO_TICKS(kHistoryPageTimeoutMs);

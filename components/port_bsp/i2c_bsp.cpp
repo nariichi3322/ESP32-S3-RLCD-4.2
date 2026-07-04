@@ -9,11 +9,15 @@
 namespace {
 constexpr const char *kI2cBspTag = "I2cBsp";
 constexpr int kI2cGlitchIgnoreCount = 7;
+constexpr size_t kI2cRegisterPrefixLen = 1;
+constexpr size_t kI2cRegisterIndex = 0;
 constexpr uint32_t kI2cTransferTimeoutMs = 5000;
 constexpr uint32_t kI2cBusDoneTimeoutMs = 1000;
 constexpr TickType_t kI2cTransferTimeoutTicks = pdMS_TO_TICKS(kI2cTransferTimeoutMs);
 constexpr TickType_t kI2cBusDoneTimeoutTicks = pdMS_TO_TICKS(kI2cBusDoneTimeoutMs);
 static_assert(kI2cGlitchIgnoreCount >= 0, "I2C glitch ignore count must not be negative");
+static_assert(kI2cRegisterPrefixLen == 1, "I2C register writes prepend one register byte");
+static_assert(kI2cRegisterIndex == 0, "I2C register prefix must start at byte 0");
 static_assert(kI2cTransferTimeoutMs > 0, "I2C transfer timeout must be positive");
 static_assert(kI2cBusDoneTimeoutMs > 0, "I2C bus done timeout must be positive");
 static_assert(kI2cTransferTimeoutTicks > 0, "I2C transfer tick timeout must be positive");
@@ -45,18 +49,19 @@ int I2cMasterBus::i2c_write_buff(i2c_master_dev_handle_t dev_handle, int reg, ui
     if (reg == -1) {
         ret = i2c_master_transmit(dev_handle, buf, len, kI2cTransferTimeoutTicks);
     } else {
-        pbuf    = (uint8_t *) malloc(len + 1);
+        size_t write_len = static_cast<size_t>(len) + kI2cRegisterPrefixLen;
+        pbuf    = (uint8_t *) malloc(write_len);
         if (pbuf == NULL) {
             ESP_LOGW(kI2cBspTag,
                      "I2C write buffer allocation failed reg=0x%x len=%u internal_free=%u",
                      reg,
-                     len + 1,
+                     (unsigned)write_len,
                      (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
             return ESP_ERR_NO_MEM;
         }
-        pbuf[0] = reg;
-        memcpy(pbuf + 1, buf, len);
-        ret = i2c_master_transmit(dev_handle, pbuf, len + 1, kI2cTransferTimeoutTicks);
+        pbuf[kI2cRegisterIndex] = reg;
+        memcpy(pbuf + kI2cRegisterPrefixLen, buf, len);
+        ret = i2c_master_transmit(dev_handle, pbuf, write_len, kI2cTransferTimeoutTicks);
         free(pbuf);
         pbuf = NULL;
     }

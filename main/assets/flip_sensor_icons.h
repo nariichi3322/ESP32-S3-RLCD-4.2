@@ -1,4 +1,4 @@
-// 翻页时钟温湿度舒适度表情图标，来自 assets/gif_video 的 PNG 素材。
+// 温湿时钟温湿度舒适度表情图标，来自 assets/gif_video 的 PNG 素材。
 #pragma once
 
 #include <stdint.h>

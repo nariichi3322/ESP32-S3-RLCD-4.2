@@ -364,7 +364,7 @@ void draw_time_canvas(const struct tm &local)
     }
     lv_canvas_fill_bg(g_time_canvas, lv_color_white(), LV_OPA_COVER);
 
-    char hm[kHourMinuteTextSize];
+    char hm[kHourMinuteTextSize] = {};
     snprintf(hm, sizeof(hm), kHourMinuteFormat, local.tm_hour, local.tm_min);
     draw_dseg_text(g_time_canvas, kDSEG84Font, hm, 0, 88);
     lv_obj_invalidate(g_time_canvas);
@@ -376,7 +376,7 @@ void draw_second_canvas(const struct tm &local)
         return;
     }
     lv_canvas_fill_bg(g_second_canvas, lv_color_white(), LV_OPA_COVER);
-    char ss[kSecondTextSize];
+    char ss[kSecondTextSize] = {};
     format_two_digit_second_text(ss, local.tm_sec);
     draw_dseg_text(g_second_canvas, kDSEG36Font, ss, 0, 40);
     lv_obj_invalidate(g_second_canvas);
@@ -457,7 +457,7 @@ static bool time_year_valid(int year)
 
 static void format_full_datetime_text(char *out, size_t out_len, const struct tm &local, int year)
 {
-    char formatted[kDateTimeTextSize];
+    char formatted[kDateTimeTextSize] = {};
     int written = snprintf(formatted, sizeof(formatted), kFullDateTimeFormat,
                            year,
                            local.tm_mon + kTmMonthOffset,

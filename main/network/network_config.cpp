@@ -30,9 +30,11 @@ constexpr const char *kChimeSoundKey = "chime_snd_v1";
 constexpr const char *kPageMaskV1Key = "page_mask_v1";
 constexpr const char *kPageMaskV2Key = "page_mask_v2";
 constexpr const char *kPageMaskV3Key = "page_mask_v3";
+constexpr const char *kPageMaskV4Key = "page_mask_v4";
 constexpr const char *kPageOrderV1Key = "page_order_v1";
 constexpr const char *kPageOrderV2Key = "page_order_v2";
 constexpr const char *kPageOrderV3Key = "page_order_v3";
+constexpr const char *kPageOrderV4Key = "page_order_v4";
 constexpr size_t kFormEncodedBufferSize = 160;
 constexpr size_t kManualTimeFieldSize = 32;
 constexpr size_t kSetupSsidFieldSize = 33;
@@ -43,15 +45,32 @@ constexpr size_t kMaxSetupFormFieldSize =
     max_size(max_size(max_size(kManualTimeFieldSize, kSetupSsidFieldSize),
                       max_size(kSetupPasswordFieldSize, kSetupApiKeyFieldSize)),
              kSetupWeatherCityFieldSize);
+constexpr char kFormKeyValueSeparator = '=';
+constexpr char kFormFieldSeparator = '&';
+constexpr char kUrlPercentMarker = '%';
+constexpr char kFormEncodedSpace = '+';
+constexpr char kFormDecodedSpace = ' ';
+constexpr size_t kFormSeparatorLen = 1;
+constexpr size_t kUrlPercentMarkerIndex = 0;
+constexpr size_t kUrlPercentHighNibbleIndex = 1;
+constexpr size_t kUrlPercentLowNibbleIndex = 2;
+constexpr size_t kUrlPercentDecodedSkip = kUrlPercentLowNibbleIndex;
+constexpr int kHexAlphaDigitBaseValue = 10;
+constexpr int kHexHighNibbleShift = 4;
+static_assert(kFormSeparatorLen == 1, "HTML form separators must be one byte");
+static_assert(kUrlPercentMarkerIndex == 0, "Percent-encoded byte must start with marker");
+static_assert(kUrlPercentHighNibbleIndex == kUrlPercentMarkerIndex + 1,
+              "Percent-encoded high nibble must follow marker");
+static_assert(kUrlPercentLowNibbleIndex == kUrlPercentHighNibbleIndex + 1,
+              "Percent-encoded low nibble must follow high nibble");
+static_assert(kUrlPercentDecodedSkip == 2, "Percent decode must skip two hex characters");
+static_assert(kHexAlphaDigitBaseValue == 10, "Hex alpha digits start at decimal 10");
+static_assert(kHexHighNibbleShift == 4, "Hex high nibble shift must remain 4 bits");
 constexpr uint8_t kNvsUnsetU8 = 0xFF;
 constexpr uint8_t kDefaultChimeVolumePercent = 80;
 constexpr uint8_t kValidChimeVolumePercent[] = {20, 40, 60, 80, 100};
-constexpr size_t kLegacyPageOrderV1Count = 4;
-constexpr size_t kPageOrderV2Count = 5;
 constexpr uint8_t kWeatherClockPageMask = (uint8_t)(1U << kWorkPageWeatherClock);
-constexpr uint8_t kLegacyPageMaskV1KnownBits = (uint8_t)((1U << kLegacyPageOrderV1Count) - 1);
-constexpr uint8_t kPageMaskV2KnownBits = (uint8_t)((1U << kPageOrderV2Count) - 1);
-constexpr uint8_t kPageMaskV3KnownBits = (uint8_t)((1U << kWorkPageCount) - 1);
+constexpr uint8_t kPageMaskV4KnownBits = (uint8_t)((1U << kWorkPageCount) - 1);
 constexpr uint8_t kWeatherBoardPageMask = (uint8_t)(1U << kWorkPageWeatherBoard);
 constexpr uint8_t kFlipClockPageMask = (uint8_t)(1U << kWorkPageFlipClock);
 constexpr int kTmYearOffset = 1900;
@@ -150,9 +169,11 @@ constexpr const char *kNvsConfigTexts[] = {
     kPageMaskV1Key,
     kPageMaskV2Key,
     kPageMaskV3Key,
+    kPageMaskV4Key,
     kPageOrderV1Key,
     kPageOrderV2Key,
     kPageOrderV3Key,
+    kPageOrderV4Key,
 };
 constexpr const char *kClearConfigKeys[] = {
     kWifiSsidKey,
@@ -162,6 +183,14 @@ constexpr const char *kClearConfigKeys[] = {
     kIgnoredAssetWeatherCityKey,
     kLegacyApiHostKey,
     kOfflineModeKey,
+    kPageMaskV1Key,
+    kPageMaskV2Key,
+    kPageMaskV3Key,
+    kPageMaskV4Key,
+    kPageOrderV1Key,
+    kPageOrderV2Key,
+    kPageOrderV3Key,
+    kPageOrderV4Key,
 };
 constexpr const char *kConfigEventTexts[] = {
     kConfigEventReasonFallback,
@@ -366,36 +395,34 @@ static_assert(kManualTimeMinSecond == 0 && kManualTimeMaxSecond == 59,
 static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
 static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
 static_assert(kWorkPageCount <= 8, "work page enabled mask is stored as uint8_t");
-static_assert(kLegacyPageOrderV1Count <= kWorkPageCount,
-              "legacy page order v1 count must fit current work page count");
-static_assert(kPageOrderV2Count <= kWorkPageCount,
-              "page order v2 count must fit current work page count");
-static_assert(kLegacyPageOrderV1Count == kWorkPageCalendar + 1,
-              "legacy page order v1 must cover pages through calendar");
-static_assert(kPageOrderV2Count == kWorkPageWeatherBoard + 1,
-              "page order v2 must cover pages through weather board");
-static_assert(kLegacyPageMaskV1KnownBits == ((1U << kLegacyPageOrderV1Count) - 1),
-              "legacy page mask v1 must cover the legacy order pages");
-static_assert(kPageMaskV2KnownBits == ((1U << kPageOrderV2Count) - 1),
-              "page mask v2 must cover the v2 order pages");
-static_assert(kPageMaskV3KnownBits == ((1U << kWorkPageCount) - 1),
-              "page mask v3 must cover every current work page");
-static_assert((kPageMaskV3KnownBits & kWeatherClockPageMask) == kWeatherClockPageMask,
+static_assert(kPageMaskV4KnownBits == ((1U << kWorkPageCount) - 1),
+              "page mask v4 must cover every current work page");
+static_assert((kPageMaskV4KnownBits & kWeatherClockPageMask) == kWeatherClockPageMask,
               "weather clock page must be covered by the current page mask");
-static_assert((kPageMaskV3KnownBits & kWeatherBoardPageMask) == kWeatherBoardPageMask,
+static_assert((kPageMaskV4KnownBits & kWeatherBoardPageMask) == kWeatherBoardPageMask,
               "weather board page must be covered by the current page mask");
-static_assert((kPageMaskV3KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
+static_assert((kPageMaskV4KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
               "flip clock page must be covered by the current page mask");
 
 const char *config_event_reason_text(const char *reason)
 {
-    return reason ? reason : kConfigEventReasonFallback;
+    return cstr_nonempty(reason) ? reason : kConfigEventReasonFallback;
+}
+
+const char *config_event_action_text(const char *action)
+{
+    return cstr_nonempty(action) ? action : kConfigEventActionFallback;
+}
+
+const char *nvs_action_text(const char *action)
+{
+    return cstr_nonempty(action) ? action : kNvsActionAccessingConfig;
 }
 
 void log_config_event_group_unavailable(const char *action, const char *reason)
 {
     ESP_LOGW(TAG, CONFIG_EVENT_GROUP_UNAVAILABLE_FORMAT,
-             action ? action : kConfigEventActionFallback,
+             config_event_action_text(action),
              config_event_reason_text(reason));
 }
 
@@ -421,7 +448,7 @@ bool form_field_matches_key(const char *field, size_t field_len, const char *key
 {
     return field && key &&
            field_len > key_len &&
-           field[key_len] == '=' &&
+           field[key_len] == kFormKeyValueSeparator &&
            strncmp(field, key, key_len) == 0;
 }
 
@@ -434,17 +461,17 @@ bool find_form_value_range(const char *body, const char *key, const char **value
     const size_t key_len = strlen(key);
     const char *field = body;
     while (*field) {
-        const char *field_end = strchr(field, '&');
+        const char *field_end = strchr(field, kFormFieldSeparator);
         const size_t field_len = field_end ? (size_t)(field_end - field) : strlen(field);
         if (form_field_matches_key(field, field_len, key, key_len)) {
-            *value_start = field + key_len + 1;
-            *value_len = field_len - key_len - 1;
+            *value_start = field + key_len + kFormSeparatorLen;
+            *value_len = field_len - key_len - kFormSeparatorLen;
             return true;
         }
         if (!field_end) {
             break;
         }
-        field = field_end + 1;
+        field = field_end + kFormSeparatorLen;
     }
     return false;
 }
@@ -455,25 +482,28 @@ int hex_digit_value(char ch)
         return ch - '0';
     }
     if (ch >= 'a' && ch <= 'f') {
-        return ch - 'a' + 10;
+        return ch - 'a' + kHexAlphaDigitBaseValue;
     }
     if (ch >= 'A' && ch <= 'F') {
-        return ch - 'A' + 10;
+        return ch - 'A' + kHexAlphaDigitBaseValue;
     }
     return -1;
 }
 
 bool decode_url_percent_byte(const char *src, char *out)
 {
-    if (!src || !out || src[0] != '%' || src[1] == '\0' || src[2] == '\0') {
+    if (!src || !out ||
+        src[kUrlPercentMarkerIndex] != kUrlPercentMarker ||
+        src[kUrlPercentHighNibbleIndex] == '\0' ||
+        src[kUrlPercentLowNibbleIndex] == '\0') {
         return false;
     }
-    const int hi = hex_digit_value(src[1]);
-    const int lo = hex_digit_value(src[2]);
+    const int hi = hex_digit_value(src[kUrlPercentHighNibbleIndex]);
+    const int lo = hex_digit_value(src[kUrlPercentLowNibbleIndex]);
     if (hi < 0 || lo < 0) {
         return false;
     }
-    *out = (char)((hi << 4) | lo);
+    *out = (char)((hi << kHexHighNibbleShift) | lo);
     return true;
 }
 
@@ -526,7 +556,7 @@ esp_err_t open_wifi_nvs(nvs_open_mode_t mode, nvs_handle_t *nvs, const char *act
     }
     esp_err_t err = nvs_open(kWifiNvsNamespace, mode, nvs);
     if (err != ESP_OK && (log_not_found || err != ESP_ERR_NVS_NOT_FOUND)) {
-        ESP_LOGW(TAG, NVS_OPEN_FAILED_FORMAT, action ? action : kNvsActionAccessingConfig, esp_err_to_name(err));
+        ESP_LOGW(TAG, NVS_OPEN_FAILED_FORMAT, nvs_action_text(action), esp_err_to_name(err));
     }
     return err;
 }
@@ -649,44 +679,22 @@ bool nvs_u8_matches(nvs_handle_t nvs, const char *key, uint8_t expected)
     return nvs_get_u8(nvs, key, &value) == ESP_OK && value == expected;
 }
 
-void append_work_page_for_migration(uint8_t *order, int *count, uint8_t page)
+bool manual_weather_city_matches_nvs(nvs_handle_t nvs, const char *city)
 {
-    if (!order || !count || *count >= kWorkPageCount) {
-        return;
+    if (!city) {
+        return false;
     }
-    order[(*count)++] = page;
-}
-
-int migrate_order_with_flip_clock(const uint8_t *source, size_t source_count, uint8_t *dest)
-{
-    if (!source || !dest) {
-        return 0;
-    }
-    int out = 0;
-    for (size_t i = 0; i < source_count && out < kWorkPageCount; ++i) {
-        append_work_page_for_migration(dest, &out, source[i]);
-        if (source[i] == kWorkPageWeatherClock) {
-            append_work_page_for_migration(dest, &out, kWorkPageFlipClock);
-        }
-    }
-    return out;
+    char saved_city[kManualWeatherCityLen] = {};
+    size_t saved_city_len = sizeof(saved_city);
+    return nvs_get_str(nvs, kManualWeatherCityKey, saved_city, &saved_city_len) == ESP_OK &&
+           strcmp(saved_city, city) == 0;
 }
 
 uint8_t read_saved_page_mask(nvs_handle_t nvs)
 {
-    uint8_t page_mask = kPageMaskV3KnownBits;
-    if (nvs_get_u8(nvs, kPageMaskV3Key, &page_mask) == ESP_OK) {
+    uint8_t page_mask = kPageMaskV4KnownBits;
+    if (nvs_get_u8(nvs, kPageMaskV4Key, &page_mask) == ESP_OK) {
         return page_mask;
-    }
-    uint8_t v2_page_mask = kPageMaskV2KnownBits;
-    if (nvs_get_u8(nvs, kPageMaskV2Key, &v2_page_mask) == ESP_OK) {
-        return (v2_page_mask & kPageMaskV2KnownBits) | kFlipClockPageMask;
-    }
-    uint8_t legacy_page_mask = kLegacyPageMaskV1KnownBits;
-    if (nvs_get_u8(nvs, kPageMaskV1Key, &legacy_page_mask) == ESP_OK) {
-        return (legacy_page_mask & kLegacyPageMaskV1KnownBits) |
-               kWeatherBoardPageMask |
-               kFlipClockPageMask;
     }
     return page_mask;
 }
@@ -697,32 +705,30 @@ bool read_saved_page_order(nvs_handle_t nvs, uint8_t *page_order, size_t page_or
         return false;
     }
     size_t stored_len = page_order_size;
-    if (nvs_get_blob(nvs, kPageOrderV3Key, page_order, &stored_len) == ESP_OK &&
+    if (nvs_get_blob(nvs, kPageOrderV4Key, page_order, &stored_len) == ESP_OK &&
         stored_len == page_order_size) {
         return true;
     }
-
-    uint8_t v2_order[kPageOrderV2Count] = {};
-    size_t v2_len = sizeof(v2_order);
-    if (nvs_get_blob(nvs, kPageOrderV2Key, v2_order, &v2_len) == ESP_OK &&
-        v2_len == sizeof(v2_order)) {
-        int out = migrate_order_with_flip_clock(v2_order, kPageOrderV2Count, page_order);
-        while (out < kWorkPageCount) {
-            append_work_page_for_migration(page_order, &out, kWorkPageFlipClock);
-        }
-        return true;
-    }
-
-    uint8_t legacy_order[kLegacyPageOrderV1Count] = {};
-    size_t legacy_len = sizeof(legacy_order);
-    if (nvs_get_blob(nvs, kPageOrderV1Key, legacy_order, &legacy_len) == ESP_OK &&
-        legacy_len == sizeof(legacy_order)) {
-        int out = migrate_order_with_flip_clock(legacy_order, kLegacyPageOrderV1Count, page_order);
-        append_work_page_for_migration(page_order, &out, kWorkPageWeatherBoard);
-        append_work_page_for_migration(page_order, &out, kWorkPageFlipClock);
-        return true;
-    }
     return false;
+}
+
+void load_saved_manual_weather_city(nvs_handle_t nvs)
+{
+    esp_err_t city_err = read_nvs_string(nvs,
+                                         kManualWeatherCityKey,
+                                         g_manual_weather_city,
+                                         sizeof(g_manual_weather_city));
+    if (city_err == ESP_OK) {
+        trim_ascii(g_manual_weather_city);
+    } else {
+        g_manual_weather_city[0] = '\0';
+    }
+    if (g_manual_weather_city[0] == '\0') {
+        char asset_weather_city[kManualWeatherCityLen] = {};
+        if (read_unignored_asset_weather_city(nvs, asset_weather_city, sizeof(asset_weather_city))) {
+            strlcpy(g_manual_weather_city, asset_weather_city, sizeof(g_manual_weather_city));
+        }
+    }
 }
 } // namespace
 
@@ -736,7 +742,6 @@ bool load_saved_config()
     esp_err_t ssid_err = read_nvs_string(nvs, kWifiSsidKey, g_wifi_ssid, sizeof(g_wifi_ssid));
     esp_err_t pass_err = read_nvs_string(nvs, kWifiPassKey, g_wifi_pass, sizeof(g_wifi_pass));
     esp_err_t key_err = read_nvs_string(nvs, kWeatherApiKeyKey, g_weather_api_key, sizeof(g_weather_api_key));
-    esp_err_t city_err = read_nvs_string(nvs, kManualWeatherCityKey, g_manual_weather_city, sizeof(g_manual_weather_city));
     uint8_t page_order[kWorkPageCount] = {};
     uint8_t chime = read_nvs_u8_or_default(nvs, kHourlyChimeKey, 0);
     uint8_t all_day = read_nvs_u8_or_default(nvs, kHourlyAllDayKey, 0);
@@ -744,17 +749,7 @@ bool load_saved_config()
     uint8_t sound = read_nvs_u8_or_default(nvs, kChimeSoundKey, 0);
     uint8_t page_mask = read_saved_page_mask(nvs);
     uint8_t offline = read_nvs_u8_or_default(nvs, kOfflineModeKey, 0);
-    if (city_err == ESP_OK) {
-        trim_ascii(g_manual_weather_city);
-    } else {
-        g_manual_weather_city[0] = '\0';
-    }
-    if (g_manual_weather_city[0] == '\0') {
-        char asset_weather_city[kManualWeatherCityLen] = {};
-        if (read_unignored_asset_weather_city(nvs, asset_weather_city, sizeof(asset_weather_city))) {
-            strlcpy(g_manual_weather_city, asset_weather_city, sizeof(g_manual_weather_city));
-        }
-    }
+    load_saved_manual_weather_city(nvs);
     bool have_page_order = read_saved_page_order(nvs, page_order, sizeof(page_order));
     nvs_close(nvs);
     g_have_weather_key = key_err == ESP_OK && g_weather_api_key[0] != '\0';
@@ -764,7 +759,7 @@ bool load_saved_config()
     g_offline_mode_ui_enabled = offline != 0;
     g_chime_volume_percent = normalize_chime_volume(volume);
     g_chime_sound_index = normalize_chime_sound_index(sound);
-    g_work_page_enabled_mask = (page_mask | kWeatherClockPageMask) & kPageMaskV3KnownBits;
+    g_work_page_enabled_mask = (page_mask | kWeatherClockPageMask) & kPageMaskV4KnownBits;
     if (have_page_order) {
         memcpy(g_work_page_order, page_order, sizeof(g_work_page_order));
     }
@@ -932,10 +927,7 @@ bool save_manual_weather_city(const char *city)
     if (err != ESP_OK) {
         return false;
     }
-    char old_city[kManualWeatherCityLen] = {};
-    size_t old_city_len = sizeof(old_city);
-    if (nvs_get_str(nvs, kManualWeatherCityKey, old_city, &old_city_len) == ESP_OK &&
-        strcmp(old_city, next) == 0) {
+    if (manual_weather_city_matches_nvs(nvs, next)) {
         esp_err_t ignore_err = write_ignored_asset_weather_city(nvs, nullptr);
         if (ignore_err == ESP_OK) {
             ignore_err = commit_nvs_if_ok(nvs, ignore_err);
@@ -1035,13 +1027,13 @@ bool save_work_page_settings()
     if (err != ESP_OK) {
         return false;
     }
-    uint8_t mask = (g_work_page_enabled_mask | kWeatherClockPageMask) & kPageMaskV3KnownBits;
-    if (nvs_u8_matches(nvs, kPageMaskV3Key, mask)) {
+    uint8_t mask = (g_work_page_enabled_mask | kWeatherClockPageMask) & kPageMaskV4KnownBits;
+    if (nvs_u8_matches(nvs, kPageMaskV4Key, mask)) {
         nvs_close(nvs);
         g_work_page_enabled_mask = mask;
         return true;
     }
-    err = set_nvs_u8_if_ok(nvs, err, kPageMaskV3Key, mask);
+    err = set_nvs_u8_if_ok(nvs, err, kPageMaskV4Key, mask);
     err = commit_nvs_if_ok(nvs, err);
     nvs_close(nvs);
     if (err != ESP_OK) {
@@ -1062,13 +1054,13 @@ bool save_work_page_order()
     }
     uint8_t old_order[kWorkPageCount] = {};
     size_t old_len = sizeof(old_order);
-    if (nvs_get_blob(nvs, kPageOrderV3Key, old_order, &old_len) == ESP_OK &&
+    if (nvs_get_blob(nvs, kPageOrderV4Key, old_order, &old_len) == ESP_OK &&
         old_len == sizeof(old_order) &&
         memcmp(old_order, g_work_page_order, sizeof(g_work_page_order)) == 0) {
         nvs_close(nvs);
         return true;
     }
-    err = nvs_set_blob(nvs, kPageOrderV3Key, g_work_page_order, sizeof(g_work_page_order));
+    err = nvs_set_blob(nvs, kPageOrderV4Key, g_work_page_order, sizeof(g_work_page_order));
     err = commit_nvs_if_ok(nvs, err);
     nvs_close(nvs);
     if (err != ESP_OK) {
@@ -1132,9 +1124,9 @@ void url_decode(char *dst, size_t dst_len, const char *src)
         char decoded = '\0';
         if (decode_url_percent_byte(&src[si], &decoded)) {
             dst[di++] = decoded;
-            si += 2;
-        } else if (src[si] == '+') {
-            dst[di++] = ' ';
+            si += kUrlPercentDecodedSkip;
+        } else if (src[si] == kFormEncodedSpace) {
+            dst[di++] = kFormDecodedSpace;
         } else {
             dst[di++] = src[si];
         }
@@ -1187,6 +1179,40 @@ void form_value_fallback_trimmed(const char *body, const char *primary_key, cons
     trim_ascii(out);
 }
 
+int try_parse_manual_datetime_format(const char *text,
+                                     const char *format,
+                                     bool has_seconds,
+                                     int *year,
+                                     int *month,
+                                     int *day,
+                                     int *hour,
+                                     int *minute,
+                                     int *second)
+{
+    if (!text || !format || !year || !month || !day || !hour || !minute || !second) {
+        return 0;
+    }
+    *second = 0;
+    return has_seconds
+               ? sscanf(text, format, year, month, day, hour, minute, second)
+               : sscanf(text, format, year, month, day, hour, minute);
+}
+
+void fill_manual_datetime_tm(struct tm *local, int year, int month, int day, int hour, int minute, int second)
+{
+    if (!local) {
+        return;
+    }
+    *local = {};
+    local->tm_year = year - kTmYearOffset;
+    local->tm_mon = month - kTmMonthOffset;
+    local->tm_mday = day;
+    local->tm_hour = hour;
+    local->tm_min = minute;
+    local->tm_sec = second;
+    local->tm_isdst = -1;
+}
+
 static bool parse_manual_datetime(const char *text, struct tm *out)
 {
     if (!text || !out || text[0] == '\0') {
@@ -1198,13 +1224,35 @@ static bool parse_manual_datetime(const char *text, struct tm *out)
     int hour = 0;
     int minute = 0;
     int second = 0;
-    int parsed = sscanf(text, kManualTimeIsoSecondsFormat, &year, &month, &day, &hour, &minute, &second);
+    int parsed = try_parse_manual_datetime_format(text,
+                                                  kManualTimeIsoSecondsFormat,
+                                                  true,
+                                                  &year,
+                                                  &month,
+                                                  &day,
+                                                  &hour,
+                                                  &minute,
+                                                  &second);
     if (parsed < kManualTimeRequiredFieldCount) {
-        second = 0;
-        parsed = sscanf(text, kManualTimeSpaceSecondsFormat, &year, &month, &day, &hour, &minute, &second);
+        parsed = try_parse_manual_datetime_format(text,
+                                                  kManualTimeSpaceSecondsFormat,
+                                                  true,
+                                                  &year,
+                                                  &month,
+                                                  &day,
+                                                  &hour,
+                                                  &minute,
+                                                  &second);
         if (parsed < kManualTimeRequiredFieldCount) {
-            second = 0;
-            parsed = sscanf(text, kManualTimeSpaceMinutesFormat, &year, &month, &day, &hour, &minute);
+            parsed = try_parse_manual_datetime_format(text,
+                                                      kManualTimeSpaceMinutesFormat,
+                                                      false,
+                                                      &year,
+                                                      &month,
+                                                      &day,
+                                                      &hour,
+                                                      &minute,
+                                                      &second);
         }
     }
     if (parsed < kManualTimeRequiredFieldCount ||
@@ -1212,13 +1260,7 @@ static bool parse_manual_datetime(const char *text, struct tm *out)
         return false;
     }
     struct tm local = {};
-    local.tm_year = year - kTmYearOffset;
-    local.tm_mon = month - kTmMonthOffset;
-    local.tm_mday = day;
-    local.tm_hour = hour;
-    local.tm_min = minute;
-    local.tm_sec = second;
-    local.tm_isdst = -1;
+    fill_manual_datetime_tm(&local, year, month, day, hour, minute, second);
     time_t epoch = mktime(&local);
     if (epoch <= 0) {
         return false;

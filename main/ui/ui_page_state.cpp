@@ -10,27 +10,27 @@ constexpr int kFallbackWorkPage = kWorkPageWeatherClock;
 constexpr size_t kAuxPageRootCount = 3; // System info, network diagnostics and settings.
 constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
     kWorkPageWeatherClock,
-    kWorkPageFlipClock,
     kWorkPageGallery,
-    kWorkPageHistory,
-    kWorkPageCalendar,
     kWorkPageWeatherBoard,
+    kWorkPageFlipClock,
+    kWorkPageCalendar,
+    kWorkPageHistory,
 };
 constexpr int kDisplaySettingPages[kDisplaySettingsPageItemCount] = {
     kWorkPageWeatherClock,
     kWorkPageGallery,
-    kWorkPageHistory,
-    kWorkPageCalendar,
     kWorkPageWeatherBoard,
     kWorkPageFlipClock,
+    kWorkPageCalendar,
+    kWorkPageHistory,
 };
 constexpr const char *kWorkPageNames[kWorkPageCount] = {
     "天气时钟",
-    "温度历史",
     "图片时钟",
-    "日历",
     "天气看板",
-    "翻页时钟",
+    "温湿时钟",
+    "日历",
+    "温湿历史",
 };
 constexpr const char *kUnknownWorkPageName = "未知页面";
 

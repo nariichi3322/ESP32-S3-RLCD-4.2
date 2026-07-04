@@ -642,10 +642,15 @@ esp_err_t send_portal_text_status(httpd_req_t *req, const char *status, const ch
     return httpd_resp_sendstr(req, text);
 }
 
+esp_err_t send_portal_empty_response(httpd_req_t *req)
+{
+    return httpd_resp_send(req, "", 0);
+}
+
 esp_err_t send_portal_empty_status(httpd_req_t *req, const char *status)
 {
     httpd_resp_set_status(req, status);
-    return httpd_resp_send(req, "", 0);
+    return send_portal_empty_response(req);
 }
 
 esp_err_t redirect_to_setup_portal(httpd_req_t *req)
@@ -653,7 +658,7 @@ esp_err_t redirect_to_setup_portal(httpd_req_t *req)
     httpd_resp_set_status(req, kPortalHttpStatusFound);
     httpd_resp_set_hdr(req, kPortalHeaderLocation, kSetupPortalUrl);
     httpd_resp_set_hdr(req, kPortalHeaderCacheControl, kPortalCacheNoStore);
-    return httpd_resp_send(req, "", 0);
+    return send_portal_empty_response(req);
 }
 
 void append_wifi_scan_list(char *html, size_t html_len)

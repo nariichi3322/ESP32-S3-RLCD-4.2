@@ -30,14 +30,28 @@ static constexpr time_t kNetworkNtpRetryDelaySec = 5 * kSecondsPerMinute;
 static constexpr time_t kBootWeatherRefreshDelaySec = 8;
 static constexpr time_t kBootSayingRefreshDelaySec = 16;
 static constexpr size_t kBootSetupDetailTextSize = 64;
+static constexpr int kNetworkServiceDiagLocalIpLine = 0;
+static constexpr int kNetworkServiceDiagPublicIpLine = 1;
+static constexpr int kNetworkServiceDiagIpLocationLine = 2;
+static constexpr int kNetworkServiceDiagDnsLine = 3;
+static constexpr int kNetworkServiceDiagWeatherLine = 4;
+static constexpr int kNetworkServiceDiagNtpLine = 5;
+static constexpr int kNetworkServiceDiagSayingLine = 6;
+static constexpr int kNetworkServiceDiagInternetLine = 7;
+static constexpr int kNetworkServiceDiagOtaLine = 8;
 static_assert(kBootWeatherRefreshDelaySec > 0,
               "boot weather refresh delay must be positive");
 static_assert(kBootSayingRefreshDelaySec > kBootWeatherRefreshDelaySec,
               "boot saying refresh delay must stay after boot weather refresh");
+static_assert(kNetworkServiceDiagOtaLine == kNetworkDiagLineCount - 1,
+              "network service diagnostics line mapping must match diagnostics line count");
 static constexpr const char *kNetworkStatusOfflineModeEnabled = "离线模式已开启";
 static constexpr const char *kNetworkStatusWifiNotConfigured = "未配置 WiFi";
 static constexpr const char *kNetworkDiagLocalIpPlaceholder = "本地IP: --";
 static constexpr const char *kNetworkDiagPublicIpPlaceholder = "公网IP: --";
+static constexpr const char *kNetworkDiagIpLocationWifiNotConfigured = "IP定位: WiFi未配置";
+static constexpr const char *kNetworkDiagIpLocationWifiStartFailed = "IP定位: WiFi启动失败";
+static constexpr const char *kNetworkDiagIpLocationWifiConnectTimeout = "IP定位: WiFi连接超时";
 static constexpr const char *kNetworkDiagDnsUnchecked = "DNS: 未检测";
 static constexpr const char *kNetworkDiagWeatherUnchecked = "天气: 未检测";
 static constexpr const char *kNetworkDiagNtpUnchecked = "NTP: 未检测";
@@ -100,6 +114,28 @@ bool is_time_valid(struct tm *local_out)
     return is_system_time_plausible(local_out);
 }
 
+bool active_work_page_uses_weather_data()
+{
+    return g_active_work_page == kWorkPageWeatherClock ||
+           g_active_work_page == kWorkPageWeatherBoard;
+}
+
+bool active_work_page_uses_daily_saying()
+{
+    return g_active_work_page == kWorkPageGallery;
+}
+
+bool enabled_weather_data_page_exists()
+{
+    return is_work_page_enabled(kWorkPageWeatherClock) ||
+           is_work_page_enabled(kWorkPageWeatherBoard);
+}
+
+bool enabled_daily_saying_page_exists()
+{
+    return is_work_page_enabled(kWorkPageGallery);
+}
+
 void run_boot_connectivity_sync()
 {
     if (g_offline_mode_ui_enabled) {
@@ -108,7 +144,7 @@ void run_boot_connectivity_sync()
         return;
     }
     if (!g_have_wifi_creds) {
-        char detail[kBootSetupDetailTextSize];
+        char detail[kBootSetupDetailTextSize] = {};
         snprintf(detail, sizeof(detail), kBootSetupDetailFormat, g_ap_ssid);
         update_boot_screen(kBootScreenCompletePercent, "Setup mode", detail);
         vTaskDelay(pdMS_TO_TICKS(kBootScreenSetupDelayMs));
@@ -138,9 +174,8 @@ void run_boot_connectivity_sync()
         return;
     }
 
-    bool boot_weather_page_visible = g_active_work_page == kWorkPageWeatherClock ||
-                                     g_active_work_page == kWorkPageWeatherBoard;
-    bool boot_gallery_page_visible = g_active_work_page == kWorkPageGallery;
+    bool boot_weather_page_visible = active_work_page_uses_weather_data();
+    bool boot_gallery_page_visible = active_work_page_uses_daily_saying();
     update_boot_screen(42, "Wi-Fi connected", boot_weather_page_visible ? "Loading weather" : "Checking time");
     remaining_ms = boot_sync_remaining_ms();
     if (boot_weather_page_visible && g_have_weather_key && !g_low_battery_mode && remaining_ms > kBootWeatherMinRemainingMs) {
@@ -249,6 +284,19 @@ void schedule_ntp_retry(time_t *next_ntp_retry_at)
     *next_ntp_retry_at += kNetworkNtpRetryDelaySec;
 }
 
+void set_network_diag_unavailable(const char *ip_location_text)
+{
+    network_diag_set_line(kNetworkServiceDiagLocalIpLine, kNetworkDiagLocalIpPlaceholder);
+    network_diag_set_line(kNetworkServiceDiagPublicIpLine, kNetworkDiagPublicIpPlaceholder);
+    network_diag_set_line(kNetworkServiceDiagIpLocationLine, ip_location_text);
+    network_diag_set_line(kNetworkServiceDiagDnsLine, kNetworkDiagDnsUnchecked);
+    network_diag_set_line(kNetworkServiceDiagWeatherLine, kNetworkDiagWeatherUnchecked);
+    network_diag_set_line(kNetworkServiceDiagNtpLine, kNetworkDiagNtpUnchecked);
+    network_diag_set_line(kNetworkServiceDiagSayingLine, kNetworkDiagSayingUnchecked);
+    network_diag_set_line(kNetworkServiceDiagInternetLine, kNetworkDiagInternetUnchecked);
+    network_diag_set_line(kNetworkServiceDiagOtaLine, kNetworkDiagOtaSourceUnchecked);
+}
+
 static bool localtime_for_cache_check(time_t value, struct tm *out, const char *label)
 {
     if (!out) {
@@ -322,12 +370,11 @@ void network_sync_task(void *)
                             g_have_weather_key &&
                             !g_offline_mode_ui_enabled &&
                             !g_low_battery_mode &&
-                            (is_work_page_enabled(kWorkPageWeatherClock) ||
-                             is_work_page_enabled(kWorkPageWeatherBoard));
+                            enabled_weather_data_page_exists();
     bool boot_saying_due = g_have_wifi_creds &&
                            !g_offline_mode_ui_enabled &&
                            !g_low_battery_mode &&
-                           is_work_page_enabled(kWorkPageGallery);
+                           enabled_daily_saying_page_exists();
     time_t boot_weather_due_at = boot_schedule_now + kBootWeatherRefreshDelaySec;
     time_t boot_saying_due_at = boot_schedule_now + kBootSayingRefreshDelaySec;
     if (boot_weather_due || boot_saying_due) {
@@ -389,15 +436,7 @@ void network_sync_task(void *)
             }
             if (network_diag_due) {
                 network_diag_begin();
-                network_diag_set_line(0, kNetworkDiagLocalIpPlaceholder);
-                network_diag_set_line(1, kNetworkDiagPublicIpPlaceholder);
-                network_diag_set_line(2, "IP定位: WiFi未配置");
-                network_diag_set_line(3, kNetworkDiagDnsUnchecked);
-                network_diag_set_line(4, kNetworkDiagWeatherUnchecked);
-                network_diag_set_line(5, kNetworkDiagNtpUnchecked);
-                network_diag_set_line(6, kNetworkDiagSayingUnchecked);
-                network_diag_set_line(7, kNetworkDiagInternetUnchecked);
-                network_diag_set_line(8, kNetworkDiagOtaSourceUnchecked);
+                set_network_diag_unavailable(kNetworkDiagIpLocationWifiNotConfigured);
                 network_diag_finish();
                 finish_settings_sync(kSettingsSyncNetworkDiag, "网络检测完成");
                 xEventGroupClearBits(g_app_events, kNetworkDiagBit);
@@ -421,25 +460,9 @@ void network_sync_task(void *)
             acquire_network_awake_lock();
             network_diag_begin();
             if (!start_wifi_radio(false)) {
-                network_diag_set_line(0, kNetworkDiagLocalIpPlaceholder);
-                network_diag_set_line(1, kNetworkDiagPublicIpPlaceholder);
-                network_diag_set_line(2, "IP定位: WiFi启动失败");
-                network_diag_set_line(3, kNetworkDiagDnsUnchecked);
-                network_diag_set_line(4, kNetworkDiagWeatherUnchecked);
-                network_diag_set_line(5, kNetworkDiagNtpUnchecked);
-                network_diag_set_line(6, kNetworkDiagSayingUnchecked);
-                network_diag_set_line(7, kNetworkDiagInternetUnchecked);
-                network_diag_set_line(8, kNetworkDiagOtaSourceUnchecked);
+                set_network_diag_unavailable(kNetworkDiagIpLocationWifiStartFailed);
             } else if (!wait_for_wifi_connected(kNetworkWifiConnectTimeoutMs)) {
-                network_diag_set_line(0, kNetworkDiagLocalIpPlaceholder);
-                network_diag_set_line(1, kNetworkDiagPublicIpPlaceholder);
-                network_diag_set_line(2, "IP定位: WiFi连接超时");
-                network_diag_set_line(3, kNetworkDiagDnsUnchecked);
-                network_diag_set_line(4, kNetworkDiagWeatherUnchecked);
-                network_diag_set_line(5, kNetworkDiagNtpUnchecked);
-                network_diag_set_line(6, kNetworkDiagSayingUnchecked);
-                network_diag_set_line(7, kNetworkDiagInternetUnchecked);
-                network_diag_set_line(8, kNetworkDiagOtaSourceUnchecked);
+                set_network_diag_unavailable(kNetworkDiagIpLocationWifiConnectTimeout);
             } else {
                 run_network_diagnostics();
             }

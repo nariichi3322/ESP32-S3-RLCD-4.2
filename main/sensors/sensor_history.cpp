@@ -184,6 +184,14 @@ int hourly_slot_index_for_time(time_t hour_start)
     }
     return index;
 }
+
+void store_loaded_hourly_sample(int index, const HourlySensorSample &sample, int64_t *newest_slot)
+{
+    g_hourly_history.samples[index] = sample;
+    if (newest_slot && sample.valid && sample.timestamp > *newest_slot) {
+        *newest_slot = sample.timestamp;
+    }
+}
 } // namespace
 
 static bool hourly_slot_key(int index, char *out, size_t out_len)
@@ -209,16 +217,13 @@ static bool load_hourly_sensor_slot(nvs_handle_t nvs, int index, int64_t *newest
 {
     HourlySensorSample sample = {};
     size_t sample_len = sizeof(sample);
-    char key[kHourlySlotKeyBufferSize];
+    char key[kHourlySlotKeyBufferSize] = {};
     if (!hourly_slot_key(index, key, sizeof(key))) {
         return false;
     }
     esp_err_t err = nvs_get_blob(nvs, key, &sample, &sample_len);
     if (err == ESP_OK && sample_len == sizeof(sample)) {
-        g_hourly_history.samples[index] = sample;
-        if (newest_slot && sample.valid && sample.timestamp > *newest_slot) {
-            *newest_slot = sample.timestamp;
-        }
+        store_loaded_hourly_sample(index, sample, newest_slot);
         return true;
     }
     if (should_log_nvs_read_error(err)) {
@@ -335,10 +340,7 @@ void load_hourly_sensor_history()
     }
     for (int i = 0; i < kLegacyHourlyHistoryCount; ++i) {
         const HourlySensorSample &sample = legacy.samples[i];
-        g_hourly_history.samples[i] = sample;
-        if (sample.valid && sample.timestamp > g_last_hourly_saved_at) {
-            g_last_hourly_saved_at = sample.timestamp;
-        }
+        store_loaded_hourly_sample(i, sample, &g_last_hourly_saved_at);
     }
     ++g_hourly_history_version;
 }
@@ -359,7 +361,7 @@ static bool save_hourly_sensor_slot(int index)
     meta.last_saved_at = g_last_hourly_saved_at;
     err = nvs_set_blob(nvs, kHourlyHistoryMetaKey, &meta, sizeof(meta));
     if (err == ESP_OK) {
-        char key[kHourlySlotKeyBufferSize];
+        char key[kHourlySlotKeyBufferSize] = {};
         if (hourly_slot_key(index, key, sizeof(key))) {
             err = nvs_set_blob(nvs, key, &g_hourly_history.samples[index], sizeof(g_hourly_history.samples[index]));
         } else {

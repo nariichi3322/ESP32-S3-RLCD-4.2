@@ -166,7 +166,7 @@ bool update_work_page_status_time(lv_obj_t *label, const struct tm &local)
     if (!label) {
         return false;
     }
-    char text[kStatusTimeTextSize];
+    char text[kStatusTimeTextSize] = {};
     snprintf(text, sizeof(text), kStatusTimeFormat, local.tm_hour, local.tm_min);
     return set_label_text_if_changed(label, text);
 }

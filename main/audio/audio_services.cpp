@@ -173,6 +173,8 @@ static const char *audio_text_or_default(const char *text, const char *fallback)
     return text ? text : fallback;
 }
 
+void settings_confirmation_chime_task(void *);
+
 static bool create_audio_playback_task(TaskFunction_t task_fn,
                                        const char *task_name,
                                        void *task_arg,
@@ -203,6 +205,27 @@ static bool create_audio_playback_task(TaskFunction_t task_fn,
         return false;
     }
     return true;
+}
+
+static void create_settings_chime_retry_task()
+{
+    BaseType_t ok = xTaskCreatePinnedToCore(settings_confirmation_chime_task,
+                                            kSettingsChimeRetryTaskName,
+                                            kSettingsChimeRetryTaskStack,
+                                            nullptr,
+                                            kSettingsChimeRetryTaskPriority,
+                                            nullptr,
+                                            kAudioTaskCore);
+    if (ok != pdPASS) {
+        ESP_LOGW(TAG,
+                 AUDIO_TASK_CREATE_FAILED_LOG_FORMAT,
+                 kSettingsChimeRetryTaskCreateFailedLog,
+                 kSettingsChimeRetryTaskName,
+                 (unsigned)kSettingsChimeRetryTaskStack,
+                 (unsigned)kSettingsChimeRetryTaskPriority,
+                 (int)kAudioTaskCore,
+                 (int)ok);
+    }
 }
 
 void hourly_chime_task(void *arg)
@@ -301,23 +324,7 @@ void request_settings_confirmation_chime()
     if (start_chime_playback(g_chime_sound_index)) {
         return;
     }
-    BaseType_t ok = xTaskCreatePinnedToCore(settings_confirmation_chime_task,
-                                            kSettingsChimeRetryTaskName,
-                                            kSettingsChimeRetryTaskStack,
-                                            nullptr,
-                                            kSettingsChimeRetryTaskPriority,
-                                            nullptr,
-                                            kAudioTaskCore);
-    if (ok != pdPASS) {
-        ESP_LOGW(TAG,
-                 AUDIO_TASK_CREATE_FAILED_LOG_FORMAT,
-                 kSettingsChimeRetryTaskCreateFailedLog,
-                 kSettingsChimeRetryTaskName,
-                 (unsigned)kSettingsChimeRetryTaskStack,
-                 (unsigned)kSettingsChimeRetryTaskPriority,
-                 (int)kAudioTaskCore,
-                 (int)ok);
-    }
+    create_settings_chime_retry_task();
 }
 
 void play_hourly_chime(int hour, bool enforce_quiet_hours)

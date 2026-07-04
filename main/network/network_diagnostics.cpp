@@ -82,6 +82,17 @@ constexpr int kNetworkDiagNtpLine = 5;
 constexpr int kNetworkDiagSayingLine = 6;
 constexpr int kNetworkDiagInternetLine = 7;
 constexpr int kNetworkDiagOtaLine = 8;
+constexpr int kNetworkDiagLineIndices[] = {
+    kNetworkDiagLocalIpLine,
+    kNetworkDiagPublicIpLine,
+    kNetworkDiagIpLocationLine,
+    kNetworkDiagDnsLine,
+    kNetworkDiagWeatherLine,
+    kNetworkDiagNtpLine,
+    kNetworkDiagSayingLine,
+    kNetworkDiagInternetLine,
+    kNetworkDiagOtaLine,
+};
 
 constexpr bool cstr_nonempty(const char *text)
 {
@@ -110,6 +121,16 @@ bool network_diag_line_index_valid(int index)
     return index >= 0 && index < kNetworkDiagLineCount;
 }
 
+constexpr bool network_diag_lines_in_range()
+{
+    for (int index : kNetworkDiagLineIndices) {
+        if (index < 0 || index >= kNetworkDiagLineCount) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static_assert(kNetworkDiagDefaultProbeBufferSize > 0, "network diag default probe buffer must be nonzero");
 static_assert(kNetworkDiagWideProbeBufferSize >= kNetworkDiagDefaultProbeBufferSize,
               "network diag wide probe buffer must cover default probe buffer");
@@ -125,24 +146,9 @@ static_assert(kNetworkDiagNtpMaxRetries > 0, "network diag NTP retry count must 
 static_assert(array_count(kNetworkDiagTexts) > 0,
               "network diagnostic text guard must cover fixed texts and logs");
 static_assert(cstr_array_nonempty(kNetworkDiagTexts), "network diagnostic fixed texts and logs must be non-empty");
-static_assert(kNetworkDiagLocalIpLine >= 0 && kNetworkDiagLocalIpLine < kNetworkDiagLineCount,
-              "network diag local IP line must fit line table");
-static_assert(kNetworkDiagPublicIpLine >= 0 && kNetworkDiagPublicIpLine < kNetworkDiagLineCount,
-              "network diag public IP line must fit line table");
-static_assert(kNetworkDiagIpLocationLine >= 0 && kNetworkDiagIpLocationLine < kNetworkDiagLineCount,
-              "network diag IP location line must fit line table");
-static_assert(kNetworkDiagDnsLine >= 0 && kNetworkDiagDnsLine < kNetworkDiagLineCount,
-              "network diag DNS line must fit line table");
-static_assert(kNetworkDiagWeatherLine >= 0 && kNetworkDiagWeatherLine < kNetworkDiagLineCount,
-              "network diag weather line must fit line table");
-static_assert(kNetworkDiagNtpLine >= 0 && kNetworkDiagNtpLine < kNetworkDiagLineCount,
-              "network diag NTP line must fit line table");
-static_assert(kNetworkDiagSayingLine >= 0 && kNetworkDiagSayingLine < kNetworkDiagLineCount,
-              "network diag daily saying line must fit line table");
-static_assert(kNetworkDiagInternetLine >= 0 && kNetworkDiagInternetLine < kNetworkDiagLineCount,
-              "network diag internet line must fit line table");
-static_assert(kNetworkDiagOtaLine >= 0 && kNetworkDiagOtaLine < kNetworkDiagLineCount,
-              "network diag OTA line must fit line table");
+static_assert(array_count(kNetworkDiagLineIndices) == kNetworkDiagLineCount,
+              "network diag line index table must cover every UI row");
+static_assert(network_diag_lines_in_range(), "network diag line indices must fit line table");
 static_assert(kNetworkDiagOtaLine == kNetworkDiagLineCount - 1,
               "network diag OTA line must remain the final diagnostic row");
 static_assert(kNetworkDiagLocalIpLine < kNetworkDiagPublicIpLine &&
@@ -445,6 +451,23 @@ void network_diag_set_result_line(int index, const char *fmt, bool ok)
 {
     network_diag_set_line(index, fmt, diag_result_text(ok));
 }
+
+void network_diag_set_checking_line(int index, const char *fmt)
+{
+    network_diag_set_line(index, fmt, kNetworkDiagStatusChecking);
+}
+
+void network_diag_record_result_line(int index, const char *fmt, bool ok)
+{
+    diag_count(ok);
+    network_diag_set_result_line(index, fmt, ok);
+}
+
+void network_diag_record_text_line(int index, const char *fmt, bool ok, const char *success_text, const char *failed_text)
+{
+    diag_count(ok);
+    network_diag_set_line(index, fmt, ok ? success_text : failed_text);
+}
 } // namespace
 
 void run_network_diagnostics()
@@ -455,55 +478,51 @@ void run_network_diagnostics()
     char city[kNetworkDiagCityTextSize] = {};
     char public_ip[kNetworkDiagPublicIpTextSize] = {};
     bool local_ip_ok = g_sta_ip[0] != '\0';
-    diag_count(local_ip_ok);
-    network_diag_set_line(kNetworkDiagLocalIpLine,
-                          kNetworkDiagLocalIpFormat,
-                          local_ip_ok ? g_sta_ip : kNetworkDiagPlaceholder);
+    network_diag_record_text_line(kNetworkDiagLocalIpLine,
+                                  kNetworkDiagLocalIpFormat,
+                                  local_ip_ok,
+                                  g_sta_ip,
+                                  kNetworkDiagPlaceholder);
 
-    network_diag_set_line(kNetworkDiagPublicIpLine, kNetworkDiagPublicIpFormat, kNetworkDiagStatusChecking);
+    network_diag_set_checking_line(kNetworkDiagPublicIpLine, kNetworkDiagPublicIpFormat);
     bool public_ip_ok = lookup_public_ip(public_ip, sizeof(public_ip));
-    diag_count(public_ip_ok);
-    network_diag_set_line(kNetworkDiagPublicIpLine,
-                          kNetworkDiagPublicIpFormat,
-                          public_ip_ok ? public_ip : kNetworkDiagStatusFailed);
+    network_diag_record_text_line(kNetworkDiagPublicIpLine,
+                                  kNetworkDiagPublicIpFormat,
+                                  public_ip_ok,
+                                  public_ip,
+                                  kNetworkDiagStatusFailed);
 
-    network_diag_set_line(kNetworkDiagDnsLine, kNetworkDiagDnsFormat, kNetworkDiagStatusChecking);
+    network_diag_set_checking_line(kNetworkDiagDnsLine, kNetworkDiagDnsFormat);
     bool dns_ok = dns_lookup_ok(kNetworkDiagQweatherDnsHost) && dns_lookup_ok(kNetworkDiagGithubDnsHost);
-    network_diag_set_line(kNetworkDiagIpLocationLine, kNetworkDiagIpLocationFormat, kNetworkDiagStatusChecking);
+    network_diag_set_checking_line(kNetworkDiagIpLocationLine, kNetworkDiagIpLocationFormat);
     bool ip_ok = ip_geolocation_lookup(location, sizeof(location), city, sizeof(city));
     diag_count(ip_ok);
     network_diag_set_line(kNetworkDiagIpLocationLine, kNetworkDiagIpLocationCityFormat,
                           diag_result_text(ip_ok),
                           city[0] ? city : kNetworkDiagPlaceholder);
 
-    diag_count(dns_ok);
-    network_diag_set_result_line(kNetworkDiagDnsLine, kNetworkDiagDnsFormat, dns_ok);
+    network_diag_record_result_line(kNetworkDiagDnsLine, kNetworkDiagDnsFormat, dns_ok);
 
     bool weather_ok = false;
     if (g_have_weather_key && !g_low_battery_mode) {
-        network_diag_set_line(kNetworkDiagWeatherLine, kNetworkDiagWeatherFormat, kNetworkDiagStatusChecking);
+        network_diag_set_checking_line(kNetworkDiagWeatherLine, kNetworkDiagWeatherFormat);
         weather_ok = perform_weather_update();
     }
-    network_diag_set_line(kNetworkDiagNtpLine, kNetworkDiagNtpFormat, kNetworkDiagStatusChecking);
+    network_diag_set_checking_line(kNetworkDiagNtpLine, kNetworkDiagNtpFormat);
     bool ntp_ok = perform_ntp_sync(kNetworkDiagNtpMaxRetries);
-    diag_count(weather_ok);
-    diag_count(ntp_ok);
-    network_diag_set_result_line(kNetworkDiagWeatherLine, kNetworkDiagWeatherFormat, weather_ok);
-    network_diag_set_result_line(kNetworkDiagNtpLine, kNetworkDiagNtpFormat, ntp_ok);
+    network_diag_record_result_line(kNetworkDiagWeatherLine, kNetworkDiagWeatherFormat, weather_ok);
+    network_diag_record_result_line(kNetworkDiagNtpLine, kNetworkDiagNtpFormat, ntp_ok);
 
-    network_diag_set_line(kNetworkDiagSayingLine, kNetworkDiagSayingFormat, kNetworkDiagStatusChecking);
+    network_diag_set_checking_line(kNetworkDiagSayingLine, kNetworkDiagSayingFormat);
     bool saying_ok = !g_low_battery_mode && perform_daily_saying_update();
-    network_diag_set_line(kNetworkDiagInternetLine, kNetworkDiagInternetFormat, kNetworkDiagStatusChecking);
+    network_diag_set_checking_line(kNetworkDiagInternetLine, kNetworkDiagInternetFormat);
     bool internet_ok = public_ip_ok || http_probe_ok(kNetworkDiagPublicIpUrl, kNetworkDiagWideProbeBufferSize);
-    diag_count(saying_ok);
-    diag_count(internet_ok);
-    network_diag_set_result_line(kNetworkDiagSayingLine, kNetworkDiagSayingFormat, saying_ok);
-    network_diag_set_result_line(kNetworkDiagInternetLine, kNetworkDiagInternetFormat, internet_ok);
+    network_diag_record_result_line(kNetworkDiagSayingLine, kNetworkDiagSayingFormat, saying_ok);
+    network_diag_record_result_line(kNetworkDiagInternetLine, kNetworkDiagInternetFormat, internet_ok);
 
-    network_diag_set_line(kNetworkDiagOtaLine, kNetworkDiagOtaFormat, kNetworkDiagStatusChecking);
+    network_diag_set_checking_line(kNetworkDiagOtaLine, kNetworkDiagOtaFormat);
     bool ota_ok = http_probe_ok(kOtaManifestUrl, kNetworkDiagWideProbeBufferSize);
-    diag_count(ota_ok);
-    network_diag_set_result_line(kNetworkDiagOtaLine, kNetworkDiagOtaFormat, ota_ok);
+    network_diag_record_result_line(kNetworkDiagOtaLine, kNetworkDiagOtaFormat, ota_ok);
 
     network_diag_finish();
 }

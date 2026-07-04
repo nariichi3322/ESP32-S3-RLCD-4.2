@@ -6,6 +6,8 @@
 #include "ota_services.h"
 #include "sensor_services.h"
 
+#include <stdarg.h>
+
 namespace {
 TickType_t s_settings_primary_exit_block_until = 0;
 
@@ -75,6 +77,7 @@ constexpr size_t kSettingsOtaHintTextSize = 48;
 #define NETWORK_DIAG_LINE_LABEL_CREATE_FAILED_FORMAT "network diag line %d label create failed"
 #define SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT "settings primary label create failed index=%d"
 #define SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT "settings secondary label create failed index=%d"
+#define SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT "settings secondary text format failed index=%d"
 #define SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT "settings switch dot create failed index=%d"
 #define SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT "settings switch text create failed index=%d"
 #define SETTINGS_OTA_BAR_FRAME_CREATE_FAILED_LOG "settings ota bar frame create failed"
@@ -185,6 +188,7 @@ constexpr const char *kSettingsSoundChoiceFormat = "声音选择 %d";
 constexpr const char *kSettingsHourlyText = "整点提醒 7:00 - 22:00";
 constexpr const char *kSettingsAllDayText = "全天提醒 0:00 - 24:00";
 constexpr const char *kSettingsPageOrderText = "页面顺序";
+constexpr const char *kSettingsPageOrderEntryFormat = "%d %s";
 constexpr const char *kSettingsOfflineFormat = "离线模式 %s";
 constexpr const char *kSettingsOfflineOnText = "开";
 constexpr const char *kSettingsOfflineOffText = "关";
@@ -207,6 +211,7 @@ constexpr const char *kSettingsSecondaryTexts[] = {
     kSettingsHourlyText,
     kSettingsAllDayText,
     kSettingsPageOrderText,
+    kSettingsPageOrderEntryFormat,
     kSettingsOfflineFormat,
     kSettingsOfflineOnText,
     kSettingsOfflineOffText,
@@ -305,6 +310,7 @@ constexpr const char *kBootSettingsLogTexts[] = {
     NETWORK_DIAG_LINE_LABEL_CREATE_FAILED_FORMAT,
     SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT,
     SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT,
+    SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT,
     SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT,
     SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT,
     SETTINGS_OTA_BAR_FRAME_CREATE_FAILED_LOG,
@@ -428,6 +434,23 @@ void set_secondary_text(char items[][kSettingsSecondaryTextSize], int index, con
         return;
     }
     copy_text(items[index], kSettingsSecondaryTextSize, text);
+}
+
+void format_secondary_text(char items[][kSettingsSecondaryTextSize], int index, const char *format, ...)
+{
+    if (!settings_secondary_index_valid(index)) {
+        ESP_LOGW(TAG, SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT, index);
+        return;
+    }
+    items[index][0] = '\0';
+    va_list args;
+    va_start(args, format);
+    int written = vsnprintf(items[index], kSettingsSecondaryTextSize, format ? format : "", args);
+    va_end(args);
+    if (written < 0) {
+        items[index][0] = '\0';
+        ESP_LOGW(TAG, SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT, index);
+    }
 }
 
 void hide_settings_switch_slot(int index)
@@ -718,23 +741,57 @@ void build_boot_info_page()
     g_info_ota_bar_fill = nullptr;
 }
 
-void update_boot_info_page()
+struct NetworkDiagLineLayout {
+    int x;
+    int y;
+    int w;
+};
+
+NetworkDiagLineLayout network_diag_line_layout(int index)
 {
-    char ntp[kInfoTimeTextSize];
-    char weather[kInfoTimeTextSize];
-    char line[kInfoLineTextSize];
+    NetworkDiagLineLayout layout = {
+        kNetworkDiagWideX,
+        kNetworkDiagLocalIpY,
+        kNetworkDiagWideW,
+    };
+    if (index == kNetworkDiagLocalIpLine) {
+        layout.y = kNetworkDiagLocalIpY;
+    } else if (index == kNetworkDiagPublicIpLine) {
+        layout.y = kNetworkDiagPublicIpY;
+    } else {
+        int grid = index - kNetworkDiagGridFirstLine;
+        int row = grid / kNetworkDiagGridColumns;
+        int col = grid % kNetworkDiagGridColumns;
+        layout.x = kNetworkDiagWideX + col * kNetworkDiagGridColGap;
+        layout.y = kNetworkDiagGridStartY + row * kNetworkDiagGridRowGap;
+        layout.w = kNetworkDiagGridW;
+        if (index == kNetworkDiagWideLine) {
+            layout.x = kNetworkDiagWideX;
+            layout.w = kNetworkDiagWideW;
+        }
+    }
+    return layout;
+}
 
-    format_time_or_dash(g_last_ntp_sync_time, ntp, sizeof(ntp));
-    snprintf(line, sizeof(line), kInfoLastNtpFormat, ntp);
-    set_label_text_if_changed(g_info_labels[kInfoNtpLabelIndex], line);
+void set_info_time_label(size_t index, const char *format, time_t value)
+{
+    char time_text[kInfoTimeTextSize] = {};
+    char line[kInfoLineTextSize] = {};
+    format_time_or_dash(value, time_text, sizeof(time_text));
+    snprintf(line, sizeof(line), format, time_text);
+    set_label_text_if_changed(g_info_labels[index], line);
+}
 
-    snprintf(line, sizeof(line), kInfoWifiFormat, g_wifi_ssid[0] ? g_wifi_ssid : "--");
-    set_label_text_if_changed(g_info_labels[kInfoWifiLabelIndex], line);
+void set_info_string_label(size_t index, const char *format, const char *value)
+{
+    char line[kInfoLineTextSize] = {};
+    snprintf(line, sizeof(line), format, value ? value : "");
+    set_label_text_if_changed(g_info_labels[index], line);
+}
 
-    format_time_or_dash(g_last_weather_sync_time, weather, sizeof(weather));
-    snprintf(line, sizeof(line), kInfoLastWeatherFormat, weather);
-    set_label_text_if_changed(g_info_labels[kInfoWeatherLabelIndex], line);
-
+void set_info_battery_label()
+{
+    char line[kInfoLineTextSize] = {};
     if (g_battery_percent >= 0 && g_battery_voltage >= 0.0f) {
         snprintf(line, sizeof(line), kInfoBatteryFullFormat, g_battery_percent, g_battery_voltage);
     } else if (g_battery_percent >= 0) {
@@ -743,12 +800,23 @@ void update_boot_info_page()
         copy_text(line, sizeof(line), kInfoBatteryPlaceholder);
     }
     set_label_text_if_changed(g_info_labels[kInfoBatteryLabelIndex], line);
+}
 
+void set_info_version_label()
+{
+    char line[kInfoLineTextSize] = {};
     snprintf(line, sizeof(line), kInfoVersionFormat, APP_VERSION, APP_BUILD_DATE);
     set_label_text_if_changed(g_info_labels[kInfoVersionLabelIndex], line);
+}
 
-    snprintf(line, sizeof(line), kInfoSourceFormat, kProjectSourceUrl);
-    set_label_text_if_changed(g_info_labels[kInfoSourceLabelIndex], line);
+void update_boot_info_page()
+{
+    set_info_time_label(kInfoNtpLabelIndex, kInfoLastNtpFormat, g_last_ntp_sync_time);
+    set_info_string_label(kInfoWifiLabelIndex, kInfoWifiFormat, g_wifi_ssid[0] ? g_wifi_ssid : "--");
+    set_info_time_label(kInfoWeatherLabelIndex, kInfoLastWeatherFormat, g_last_weather_sync_time);
+    set_info_battery_label();
+    set_info_version_label();
+    set_info_string_label(kInfoSourceLabelIndex, kInfoSourceFormat, kProjectSourceUrl);
 
     ota_reset_status_if_idle();
 }
@@ -775,26 +843,13 @@ void build_network_diag_page()
     warn_if_center_align_failed(g_network_diag_summary_label, "network diag summary label create failed");
 
     for (int i = 0; i < kNetworkDiagLineCount; ++i) {
-        int x = kNetworkDiagWideX;
-        int y = kNetworkDiagLocalIpY;
-        int w = kNetworkDiagWideW;
-        if (i == kNetworkDiagLocalIpLine) {
-            y = kNetworkDiagLocalIpY;
-        } else if (i == kNetworkDiagPublicIpLine) {
-            y = kNetworkDiagPublicIpY;
-        } else {
-            int grid = i - kNetworkDiagGridFirstLine;
-            int row = grid / kNetworkDiagGridColumns;
-            int col = grid % kNetworkDiagGridColumns;
-            x = kNetworkDiagWideX + col * kNetworkDiagGridColGap;
-            y = kNetworkDiagGridStartY + row * kNetworkDiagGridRowGap;
-            w = kNetworkDiagGridW;
-            if (i == kNetworkDiagWideLine) {
-                x = kNetworkDiagWideX;
-                w = kNetworkDiagWideW;
-            }
-        }
-        g_network_diag_labels[i] = make_label(screen, x, y, w, 22, kNetworkDiagLinePlaceholder);
+        NetworkDiagLineLayout layout = network_diag_line_layout(i);
+        g_network_diag_labels[i] = make_label(screen,
+                                              layout.x,
+                                              layout.y,
+                                              layout.w,
+                                              22,
+                                              kNetworkDiagLinePlaceholder);
         if (g_network_diag_labels[i]) {
             lv_label_set_long_mode(g_network_diag_labels[i], LV_LABEL_LONG_CLIP);
             lv_obj_set_style_text_align(g_network_diag_labels[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
@@ -812,7 +867,7 @@ void build_network_diag_page()
 bool update_network_diag_page()
 {
     bool changed = false;
-    char summary[kNetworkDiagSummaryTextSize];
+    char summary[kNetworkDiagSummaryTextSize] = {};
     if (g_network_diag_state == kNetworkDiagRunning) {
         copy_text(summary, sizeof(summary), kNetworkDiagSummaryRunning);
     } else if (g_network_diag_state == kNetworkDiagDone) {
@@ -1097,22 +1152,22 @@ bool update_settings_page()
         set_secondary_text(secondary_items, kNetworkSettingsWeatherItem, kSettingsNetworkSyncWeatherText);
         set_secondary_text(secondary_items, kNetworkSettingsSayingItem, kSettingsNetworkSayingText);
         if (g_has_manual_weather_city) {
-            snprintf(secondary_items[kNetworkSettingsWeatherCityItem],
-                     sizeof(secondary_items[kNetworkSettingsWeatherCityItem]),
-                     kSettingsWeatherCityManualFormat,
-                     g_manual_weather_city);
+            format_secondary_text(secondary_items,
+                                  kNetworkSettingsWeatherCityItem,
+                                  kSettingsWeatherCityManualFormat,
+                                  g_manual_weather_city);
         } else {
             set_secondary_text(secondary_items, kNetworkSettingsWeatherCityItem, kSettingsWeatherCityAutoText);
         }
     } else if (primary == kSettingsPrimarySound) {
-        snprintf(secondary_items[kSoundSettingsVolumeItem],
-                 sizeof(secondary_items[kSoundSettingsVolumeItem]),
-                 kSettingsSoundVolumeFormat,
-                 g_chime_volume_percent);
-        snprintf(secondary_items[kSoundSettingsSoundItem],
-                 sizeof(secondary_items[kSoundSettingsSoundItem]),
-                 kSettingsSoundChoiceFormat,
-                 g_chime_sound_index + 1);
+        format_secondary_text(secondary_items,
+                              kSoundSettingsVolumeItem,
+                              kSettingsSoundVolumeFormat,
+                              g_chime_volume_percent);
+        format_secondary_text(secondary_items,
+                              kSoundSettingsSoundItem,
+                              kSettingsSoundChoiceFormat,
+                              g_chime_sound_index + 1);
         set_secondary_text(secondary_items, kSoundSettingsHourlyItem, kSettingsHourlyText);
         set_secondary_text(secondary_items, kSoundSettingsAllDayItem, kSettingsAllDayText);
     } else if (primary == kSettingsPrimaryDisplay) {
@@ -1121,10 +1176,10 @@ bool update_settings_page()
         }
         set_secondary_text(secondary_items, kDisplaySettingsOrderItem, kSettingsPageOrderText);
     } else {
-        snprintf(secondary_items[kSystemSettingsOfflineItem],
-                 sizeof(secondary_items[kSystemSettingsOfflineItem]),
-                 kSettingsOfflineFormat,
-                 g_offline_mode_ui_enabled ? kSettingsOfflineOnText : kSettingsOfflineOffText);
+        format_secondary_text(secondary_items,
+                              kSystemSettingsOfflineItem,
+                              kSettingsOfflineFormat,
+                              g_offline_mode_ui_enabled ? kSettingsOfflineOnText : kSettingsOfflineOffText);
         set_secondary_text(secondary_items, kSystemSettingsNetworkDiagItem, kSettingsNetworkDiagText);
         set_secondary_text(secondary_items,
                            kSystemSettingsFactoryResetItem,
@@ -1181,8 +1236,7 @@ bool update_settings_page()
                            kSettingsGridRowY[row]);
             lv_obj_set_size(g_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
             if (i < kWorkPageCount) {
-                snprintf(secondary_items[i], sizeof(secondary_items[i]), "%d %s", i + 1,
-                         work_page_name(g_work_page_order[i]));
+                format_secondary_text(secondary_items, i, kSettingsPageOrderEntryFormat, i + 1, work_page_name(g_work_page_order[i]));
             }
             hide_settings_switch_slot(i);
         } else if (primary == kSettingsPrimaryDisplay || primary == kSettingsPrimarySystem) {
@@ -1386,7 +1440,7 @@ void finish_settings_sync(SettingsSyncOp op, const char *text)
 bool update_setup_status_panel()
 {
     bool changed = false;
-    char line[kSetupStatusLineSize];
+    char line[kSetupStatusLineSize] = {};
     if (!g_setup_status_labels[0]) {
         return false;
     }

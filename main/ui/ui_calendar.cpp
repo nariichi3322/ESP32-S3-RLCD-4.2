@@ -238,7 +238,7 @@ static void draw_calendar_grid(const struct tm &local)
                                         lv_color_black());
         }
 
-        char day_text[kCalendarDayTextSize];
+        char day_text[kCalendarDayTextSize] = {};
         format_calendar_day_text(day_text, sizeof(day_text), day);
         draw_calendar_text(g_calendar_canvas,
                            day_text,

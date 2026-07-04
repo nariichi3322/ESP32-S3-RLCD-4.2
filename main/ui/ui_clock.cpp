@@ -6,6 +6,8 @@
 #include "ota_services.h"
 #include "sensor_services.h"
 
+#include <cstdarg>
+
 namespace {
 constexpr int kChimeVolumeLevels[] = {20, 40, 60, 80, 100};
 template <typename T, size_t N>
@@ -726,7 +728,7 @@ bool update_time_ui(const struct tm &local, bool clock_page_active, int active_w
     if (date_key != g_last_ui_date_key || date_page != g_last_ui_date_page) {
         static const char *kWeekdayNames[] = {"星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"};
         static_assert(array_count(kWeekdayNames) == 7, "tm_wday maps to exactly seven weekday names");
-        char date[kClockDateTextSize];
+        char date[kClockDateTextSize] = {};
         snprintf(date, sizeof(date), kClockDateFormat,
                  local.tm_year + kTmYearOffset,
                  local.tm_mon + kTmMonthOffset,
@@ -757,6 +759,24 @@ bool update_time_ui(const struct tm &local, bool clock_page_active, int active_w
         play_hourly_chime(local.tm_hour);
     }
     return changed;
+}
+
+void set_formatted_settings_feedback(const char *format, ...)
+{
+    if (!format) {
+        set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+        return;
+    }
+    char feedback[kSettingsFeedbackTextSize] = {};
+    va_list args;
+    va_start(args, format);
+    int written = vsnprintf(feedback, sizeof(feedback), format, args);
+    va_end(args);
+    if (written < 0) {
+        set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+        return;
+    }
+    set_settings_feedback(feedback, kSettingsFeedbackDefaultMs);
 }
 
 void handle_settings_action()
@@ -872,9 +892,7 @@ void handle_settings_action()
                 set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
                 return;
             }
-            char feedback[kSettingsFeedbackTextSize];
-            snprintf(feedback, sizeof(feedback), kSoundVolumeFeedbackFormat, g_chime_volume_percent);
-            set_settings_feedback(feedback, kSettingsFeedbackDefaultMs);
+            set_formatted_settings_feedback(kSoundVolumeFeedbackFormat, g_chime_volume_percent);
             request_settings_confirmation_chime();
         } else if (selected == kSoundSettingsSoundItem) {
             int previous = g_chime_sound_index;
@@ -884,9 +902,7 @@ void handle_settings_action()
                 set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
                 return;
             }
-            char feedback[kSettingsFeedbackTextSize];
-            snprintf(feedback, sizeof(feedback), kSoundIndexFeedbackFormat, g_chime_sound_index + 1);
-            set_settings_feedback(feedback, kSettingsFeedbackDefaultMs);
+            set_formatted_settings_feedback(kSoundIndexFeedbackFormat, g_chime_sound_index + 1);
             request_settings_confirmation_chime();
         } else if (selected == kSoundSettingsHourlyItem) {
             bool previous = g_hourly_chime_enabled;
@@ -944,11 +960,9 @@ void handle_settings_action()
             return;
         }
         ensure_active_work_page_enabled();
-        char feedback[kSettingsFeedbackTextSize];
-        snprintf(feedback, sizeof(feedback), kWorkPageFeedbackFormat,
-                 work_page_name(page),
-                 is_work_page_enabled(page) ? kWorkPageEnabledSuffix : kWorkPageDisabledSuffix);
-        set_settings_feedback(feedback, kSettingsFeedbackDefaultMs);
+        set_formatted_settings_feedback(kWorkPageFeedbackFormat,
+                                        work_page_name(page),
+                                        is_work_page_enabled(page) ? kWorkPageEnabledSuffix : kWorkPageDisabledSuffix);
         return;
     }
     if (primary == kSettingsPrimarySystem) {

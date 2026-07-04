@@ -2,7 +2,7 @@
 #include "app_state.h"
 
 const char *const TAG = "WeatherClock";
-const char *const APP_VERSION = "v1.4.46";
+const char *const APP_VERSION = "v1.4.47";
 #ifndef WEATHER_CLOCK_BUILD_DATE
 #define WEATHER_CLOCK_BUILD_DATE "unknown"
 #endif
@@ -114,11 +114,11 @@ volatile int g_active_work_page = 0;
 uint8_t g_work_page_enabled_mask = (uint8_t)((1U << kWorkPageCount) - 1);
 uint8_t g_work_page_order[kWorkPageCount] = {
     kWorkPageWeatherClock,
-    kWorkPageFlipClock,
     kWorkPageGallery,
-    kWorkPageHistory,
-    kWorkPageCalendar,
     kWorkPageWeatherBoard,
+    kWorkPageFlipClock,
+    kWorkPageCalendar,
+    kWorkPageHistory,
 };
 lv_obj_t *g_clock_root;
 lv_obj_t *g_history_root;

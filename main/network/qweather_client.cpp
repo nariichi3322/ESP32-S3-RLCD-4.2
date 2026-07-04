@@ -575,6 +575,49 @@ bool encode_qweather_location_or_warn(const char *location, char *out, size_t ou
     return false;
 }
 
+bool format_qweather_api_url_for_city(char *url,
+                                      size_t url_len,
+                                      const char *stage,
+                                      const char *url_format,
+                                      const char *city_id,
+                                      const char *location_warning)
+{
+    char encoded_location[kQweatherEncodedLocationSize] = {};
+    if (!encode_qweather_location_or_warn(city_id,
+                                          encoded_location,
+                                          sizeof(encoded_location),
+                                          location_warning)) {
+        return false;
+    }
+    return format_qweather_url(url,
+                               url_len,
+                               stage,
+                               url_format,
+                               qweather_api_host(),
+                               encoded_location);
+}
+
+bool format_qweather_daily_url_for_city(char *url,
+                                        size_t url_len,
+                                        const char *city_id,
+                                        int days)
+{
+    char encoded_location[kQweatherEncodedLocationSize] = {};
+    if (!encode_qweather_location_or_warn(city_id,
+                                          encoded_location,
+                                          sizeof(encoded_location),
+                                          kQweatherDailyLocationTooLongLog)) {
+        return false;
+    }
+    return format_qweather_url(url,
+                               url_len,
+                               kQweatherStageDaily,
+                               kQweatherDailyUrlFormat,
+                               qweather_api_host(),
+                               days,
+                               encoded_location);
+}
+
 bool format_ip_coordinates(char *out, size_t out_len, double longitude, double latitude)
 {
     if (!out || out_len == 0) {
@@ -607,6 +650,30 @@ void copy_ip_coordinate_location(const char *location, char *city_id, size_t cit
     memcpy(weather->lon, city_id, lon_len);
     weather->lon[lon_len] = '\0';
     strlcpy(weather->lat, comma + 1, sizeof(weather->lat));
+}
+
+void copy_ip_region_city(char *out, size_t out_len, const char *region)
+{
+    if (!out || out_len == 0 || !region || region[0] == '\0') {
+        return;
+    }
+
+    char region_copy[kIpRegionCopySize] = {};
+    strlcpy(region_copy, region, sizeof(region_copy));
+    char *parts[kIpRegionMaxParts] = {};
+    size_t count = 0;
+    char *token = strtok(region_copy, kIpRegionDelimiter);
+    while (token && count < kIpRegionMaxParts) {
+        if (token[0] != '\0') {
+            parts[count++] = token;
+        }
+        token = strtok(nullptr, kIpRegionDelimiter);
+    }
+
+    const char *city_part = count >= kIpRegionCityPartMinCount
+                                ? parts[kIpRegionCityPartIndex]
+                                : (count > 0 ? parts[count - 1] : "");
+    copy_ip_city_without_suffix(out, out_len, city_part);
 }
 
 char *alloc_qweather_response(const char *stage, size_t buffer_size)
@@ -800,21 +867,7 @@ bool ip_geolocation_lookup(char *location, size_t location_len, char *city, size
             return false;
         }
         if (cJSON_IsString(region) && region->valuestring) {
-            char region_copy[kIpRegionCopySize] = {};
-            strlcpy(region_copy, region->valuestring, sizeof(region_copy));
-            char *parts[kIpRegionMaxParts] = {};
-            size_t count = 0;
-            char *token = strtok(region_copy, kIpRegionDelimiter);
-            while (token && count < kIpRegionMaxParts) {
-                if (token[0] != '\0') {
-                    parts[count++] = token;
-                }
-                token = strtok(nullptr, kIpRegionDelimiter);
-            }
-            const char *city_part = count >= kIpRegionCityPartMinCount
-                                        ? parts[kIpRegionCityPartIndex]
-                                        : (count > 0 ? parts[count - 1] : "");
-            copy_ip_city_without_suffix(city, city_len, city_part);
+            copy_ip_region_city(city, city_len, region->valuestring);
         }
         if (city[0] == '\0') {
             strlcpy(city, location, city_len);
@@ -849,7 +902,7 @@ QweatherCityLookupStatus qweather_lookup_city_status(const char *location,
         return kQweatherCityLookupNotFound;
     }
 
-    char url[kQweatherApiUrlSize];
+    char url[kQweatherApiUrlSize] = {};
     if (!format_qweather_url(url,
                              sizeof(url),
                              kQweatherStageCity,
@@ -1057,6 +1110,19 @@ static void compact_weather_alert_title(char *title, size_t title_len)
     }
 }
 
+static void copy_compact_weather_alert_title(char *out, size_t out_len, const char *title)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    out[0] = '\0';
+    if (!title || title[0] == '\0') {
+        return;
+    }
+    strlcpy(out, title, out_len);
+    compact_weather_alert_title(out, out_len);
+}
+
 void add_weather_alert_title(WeatherAlertData *alert, const char *title, int rank)
 {
     if (!alert || !title || title[0] == '\0') {
@@ -1081,12 +1147,25 @@ void add_weather_alert_title(WeatherAlertData *alert, const char *title, int ran
         strlcpy(alert->titles[i], alert->titles[i - 1], sizeof(alert->titles[i]));
         alert->ranks[i] = alert->ranks[i - 1];
     }
-    char compact_title[kWeatherAlertTitleLen] = {};
-    strlcpy(compact_title, title, sizeof(compact_title));
-    compact_weather_alert_title(compact_title, sizeof(compact_title));
-    strlcpy(alert->titles[insert_at], compact_title, sizeof(alert->titles[insert_at]));
+    copy_compact_weather_alert_title(alert->titles[insert_at], sizeof(alert->titles[insert_at]), title);
     alert->ranks[insert_at] = rank;
     alert->active = alert->count > 0;
+}
+
+static void format_weather_alert_title_text(char *title,
+                                            size_t title_len,
+                                            const char *format,
+                                            const char *event_name,
+                                            const char *color_name = nullptr)
+{
+    if (!title || title_len == 0 || !format) {
+        return;
+    }
+    if (color_name) {
+        (void)snprintf(title, title_len, format, event_name, color_name, kWeatherAlertSuffix);
+    } else {
+        (void)snprintf(title, title_len, format, event_name, kWeatherAlertSuffix);
+    }
 }
 
 static void build_weather_alert_title(char *title,
@@ -1101,11 +1180,11 @@ static void build_weather_alert_title(char *title,
     title[0] = '\0';
     const char *color_name = warning_color_name(color_code);
     if (event_name && event_name[0] != '\0' && color_name[0] != '\0') {
-        snprintf(title, title_len, kWeatherAlertEventColorFormat, event_name, color_name, kWeatherAlertSuffix);
+        format_weather_alert_title_text(title, title_len, kWeatherAlertEventColorFormat, event_name, color_name);
     } else if (headline && headline[0] != '\0') {
         strlcpy(title, headline, title_len);
     } else if (event_name && event_name[0] != '\0') {
-        snprintf(title, title_len, kWeatherAlertEventOnlyFormat, event_name, kWeatherAlertSuffix);
+        format_weather_alert_title_text(title, title_len, kWeatherAlertEventOnlyFormat, event_name);
     }
 }
 
@@ -1121,7 +1200,7 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
     }
 
     const char *host = qweather_api_host();
-    char url[kQweatherAlertUrlSize];
+    char url[kQweatherAlertUrlSize] = {};
     if (!format_qweather_url(url,
                              sizeof(url),
                              kQweatherStageAlert,
@@ -1198,22 +1277,14 @@ bool qweather_fetch_now(const char *city_id, WeatherData *weather)
         log_qweather_fixed_warning(kQweatherNowInvalidArgLog);
         return false;
     }
-    char encoded_location[kQweatherEncodedLocationSize] = {};
-    if (!encode_qweather_location_or_warn(city_id,
-                                          encoded_location,
-                                          sizeof(encoded_location),
-                                          kQweatherNowLocationTooLongLog)) {
-        return false;
-    }
-
     const char *host = qweather_api_host();
-    char url[kQweatherApiUrlSize];
-    if (!format_qweather_url(url,
-                             sizeof(url),
-                             kQweatherStageNow,
-                             kQweatherNowUrlFormat,
-                             host,
-                             encoded_location)) {
+    char url[kQweatherApiUrlSize] = {};
+    if (!format_qweather_api_url_for_city(url,
+                                          sizeof(url),
+                                          kQweatherStageNow,
+                                          kQweatherNowUrlFormat,
+                                          city_id,
+                                          kQweatherNowLocationTooLongLog)) {
         return false;
     }
     ESP_LOGI(TAG, QWEATHER_NOW_LOOKUP_FORMAT, city_id, host);
@@ -1274,10 +1345,10 @@ static void build_weather_advice(WeatherForecastData *forecast)
     strlcpy(forecast->advice, weather_advice_for_day(forecast->days[0]), sizeof(forecast->advice));
 }
 
-static bool parse_weather_forecast_day(cJSON *item, WeatherForecastDay *day)
+static void copy_weather_forecast_day_fields(cJSON *item, WeatherForecastDay *day)
 {
-    if (!cJSON_IsObject(item) || !day) {
-        return false;
+    if (!item || !day) {
+        return;
     }
     json_copy_string(item, kQweatherDailyJsonDateField, day->date, sizeof(day->date));
     json_copy_string(item, kQweatherDailyJsonTextDayField, day->text, sizeof(day->text));
@@ -1289,6 +1360,14 @@ static bool parse_weather_forecast_day(cJSON *item, WeatherForecastDay *day)
     json_copy_string(item, kQweatherDailyJsonWindScaleDayField, day->wind_scale, sizeof(day->wind_scale));
     json_copy_string(item, kQweatherDailyJsonSunriseField, day->sunrise, sizeof(day->sunrise));
     json_copy_string(item, kQweatherDailyJsonSunsetField, day->sunset, sizeof(day->sunset));
+}
+
+static bool parse_weather_forecast_day(cJSON *item, WeatherForecastDay *day)
+{
+    if (!cJSON_IsObject(item) || !day) {
+        return false;
+    }
+    copy_weather_forecast_day_fields(item, day);
     day->valid = day->date[0] != '\0' &&
                  (day->text[0] != '\0' || day->temp_max[0] != '\0' || day->temp_min[0] != '\0');
     return day->valid;
@@ -1307,23 +1386,9 @@ static bool qweather_fetch_daily_days(const char *city_id, int days, WeatherFore
         log_qweather_fixed_warning(kQweatherDailyInvalidArgLog);
         return false;
     }
-    char encoded_location[kQweatherEncodedLocationSize] = {};
-    if (!encode_qweather_location_or_warn(city_id,
-                                          encoded_location,
-                                          sizeof(encoded_location),
-                                          kQweatherDailyLocationTooLongLog)) {
-        return false;
-    }
-
     const char *host = qweather_api_host();
-    char url[kQweatherApiUrlSize];
-    if (!format_qweather_url(url,
-                             sizeof(url),
-                             kQweatherStageDaily,
-                             kQweatherDailyUrlFormat,
-                             host,
-                             days,
-                             encoded_location)) {
+    char url[kQweatherApiUrlSize] = {};
+    if (!format_qweather_daily_url_for_city(url, sizeof(url), city_id, days)) {
         return false;
     }
     ESP_LOGI(TAG, QWEATHER_DAILY_LOOKUP_FORMAT, city_id, days, host);
@@ -1397,22 +1462,14 @@ bool qweather_fetch_air(const char *city_id, WeatherAirData *air)
         log_qweather_fixed_warning(kQweatherAirInvalidArgLog);
         return false;
     }
-    char encoded_location[kQweatherEncodedLocationSize] = {};
-    if (!encode_qweather_location_or_warn(city_id,
-                                          encoded_location,
-                                          sizeof(encoded_location),
-                                          kQweatherAirLocationTooLongLog)) {
-        return false;
-    }
-
     const char *host = qweather_api_host();
-    char url[kQweatherApiUrlSize];
-    if (!format_qweather_url(url,
-                             sizeof(url),
-                             kQweatherStageAir,
-                             kQweatherAirUrlFormat,
-                             host,
-                             encoded_location)) {
+    char url[kQweatherApiUrlSize] = {};
+    if (!format_qweather_api_url_for_city(url,
+                                          sizeof(url),
+                                          kQweatherStageAir,
+                                          kQweatherAirUrlFormat,
+                                          city_id,
+                                          kQweatherAirLocationTooLongLog)) {
         return false;
     }
     ESP_LOGI(TAG, QWEATHER_AIR_LOOKUP_FORMAT, city_id, host);

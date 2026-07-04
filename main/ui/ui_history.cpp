@@ -1,4 +1,4 @@
-// 构建和刷新温度历史页面及工作页顶部温湿度摘要。
+// 构建和刷新温湿历史页面及工作页顶部温湿度摘要。
 #include "ui_views.h"
 
 #include "sensor_services.h"
@@ -157,6 +157,22 @@ int value_to_plot_y(float value, float min_value, float max_value, int y, int h)
     return y + h - 1 - offset;
 }
 
+void format_history_axis_value(bool temperature, float value, char *out, size_t out_len)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    snprintf(out, out_len, temperature ? kHistoryTempAxisFormat : kHistoryHumiAxisFormat, value);
+}
+
+void format_history_badge_value(bool temperature, float value, char *out, size_t out_len)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    snprintf(out, out_len, temperature ? kHistoryTempBadgeFormat : kHistoryHumiBadgeFormat, value);
+}
+
 void set_history_badge(lv_obj_t *label,
                               const char *text,
                               int canvas_x,
@@ -230,7 +246,7 @@ void update_history_axis_labels(time_t start, time_t end)
 {
     (void)end;
     for (int i = 0; i < kHistoryAxisTickCount; ++i) {
-        char text[kHistoryAxisHourTextSize];
+        char text[kHistoryAxisHourTextSize] = {};
         format_axis_hour(start + kHistoryAxisTickHours[i] * kSecondsPerHour, text, sizeof(text));
         set_label_text_if_changed(g_history_time_labels[i], text);
     }
@@ -256,7 +272,7 @@ bool update_work_page_sensor_summary(lv_obj_t *label)
     if (!label) {
         return false;
     }
-    char text[kHistorySensorSummaryTextSize];
+    char text[kHistorySensorSummaryTextSize] = {};
     if (g_sensor_ok) {
         snprintf(text, sizeof(text), kHistorySensorSummaryFormat, g_temperature, g_humidity);
     } else {
@@ -364,12 +380,12 @@ void draw_history_chart_panel(lv_obj_t *canvas,
     float axis_min = min_value - pad;
     float axis_max = max_value + pad;
     float axis_mid = (axis_min + axis_max) * kHistoryAxisMidRatio;
-    char axis_text[kHistoryAxisValueTextSize];
-    snprintf(axis_text, sizeof(axis_text), temperature ? kHistoryTempAxisFormat : kHistoryHumiAxisFormat, axis_max);
+    char axis_text[kHistoryAxisValueTextSize] = {};
+    format_history_axis_value(temperature, axis_max, axis_text, sizeof(axis_text));
     set_label_text_if_changed(axis_labels[kHistoryAxisMaxIndex], axis_text);
-    snprintf(axis_text, sizeof(axis_text), temperature ? kHistoryTempAxisFormat : kHistoryHumiAxisFormat, axis_mid);
+    format_history_axis_value(temperature, axis_mid, axis_text, sizeof(axis_text));
     set_label_text_if_changed(axis_labels[kHistoryAxisMidIndex], axis_text);
-    snprintf(axis_text, sizeof(axis_text), temperature ? kHistoryTempAxisFormat : kHistoryHumiAxisFormat, axis_min);
+    format_history_axis_value(temperature, axis_min, axis_text, sizeof(axis_text));
     set_label_text_if_changed(axis_labels[kHistoryAxisMinIndex], axis_text);
 
     int prev_x = 0;
@@ -397,9 +413,11 @@ void draw_history_chart_panel(lv_obj_t *canvas,
     }
 
     if (max_index >= 0) {
-        char text[kHistoryAxisValueTextSize];
-        snprintf(text, sizeof(text), temperature ? kHistoryTempBadgeFormat : kHistoryHumiBadgeFormat,
-                 temperature ? samples[max_index].temperature : samples[max_index].humidity);
+        char text[kHistoryAxisValueTextSize] = {};
+        format_history_badge_value(temperature,
+                                   temperature ? samples[max_index].temperature : samples[max_index].humidity,
+                                   text,
+                                   sizeof(text));
         int x = plot_x + (int)(((samples[max_index].timestamp - start) * plot_w) / (kHistoryWindowHours * kSecondsPerHour));
         int y = value_to_plot_y(temperature ? samples[max_index].temperature : samples[max_index].humidity,
                                 axis_min,
@@ -410,9 +428,11 @@ void draw_history_chart_panel(lv_obj_t *canvas,
         set_history_badge(max_label, text, kHistoryChartCanvasX, kHistoryChartCanvasY, x, y, plot_x, plot_y, plot_w, plot_h);
     }
     if (min_index >= 0 && min_index != max_index) {
-        char text[kHistoryAxisValueTextSize];
-        snprintf(text, sizeof(text), temperature ? kHistoryTempBadgeFormat : kHistoryHumiBadgeFormat,
-                 temperature ? samples[min_index].temperature : samples[min_index].humidity);
+        char text[kHistoryAxisValueTextSize] = {};
+        format_history_badge_value(temperature,
+                                   temperature ? samples[min_index].temperature : samples[min_index].humidity,
+                                   text,
+                                   sizeof(text));
         int x = plot_x + (int)(((samples[min_index].timestamp - start) * plot_w) / (kHistoryWindowHours * kSecondsPerHour));
         int y = value_to_plot_y(temperature ? samples[min_index].temperature : samples[min_index].humidity,
                                 axis_min,
