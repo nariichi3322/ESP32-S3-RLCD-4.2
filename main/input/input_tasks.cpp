@@ -164,6 +164,15 @@ void enter_settings_primary_menu(TickType_t now)
     g_settings_page_order_selection = 0;
     g_settings_last_activity_tick = now;
 }
+
+void handle_settings_key_long_or_busy()
+{
+    if (!is_settings_sync_busy() && !ota_flow_active()) {
+        handle_settings_key_long();
+        return;
+    }
+    set_settings_feedback(kSettingsBusyFeedbackText, kButtonBusyFeedbackMs);
+}
 } // namespace
 
 void button_task(void *)
@@ -239,11 +248,7 @@ void button_task(void *)
                        g_settings_requested &&
                        button_press_is_long(now - key_pressed_since)) {
                 g_settings_last_activity_tick = now;
-                if (!is_settings_sync_busy() && !ota_flow_active()) {
-                    handle_settings_key_long();
-                } else {
-                    set_settings_feedback(kSettingsBusyFeedbackText, kButtonBusyFeedbackMs);
-                }
+                handle_settings_key_long_or_busy();
                 key_long_handled = true;
                 notify_ui_task();
             } else if (!key_long_handled &&
@@ -269,11 +274,7 @@ void button_task(void *)
                 TickType_t held = now - key_pressed_since;
                 if (button_press_is_long(held)) {
                     g_settings_last_activity_tick = now;
-                    if (!is_settings_sync_busy() && !ota_flow_active()) {
-                        handle_settings_key_long();
-                    } else {
-                        set_settings_feedback(kSettingsBusyFeedbackText, kButtonBusyFeedbackMs);
-                    }
+                    handle_settings_key_long_or_busy();
                     notify_ui_task();
                 } else if (button_press_is_short(held)) {
                     g_settings_last_activity_tick = now;

@@ -31,6 +31,12 @@ static constexpr const char *kStatusTimeFormat = "%02d:%02d";
 #define WORK_STATUS_SUMMARY_LABEL_CREATE_FAILED_FORMAT "work status summary label create failed page=%d"
 #define WORK_STATUS_TIME_LABEL_CREATE_FAILED_FORMAT "work status time label create failed page=%d"
 
+enum class StatusLabelKind {
+    kDate,
+    kSummary,
+    kTime,
+};
+
 bool is_status_icon_page(int page)
 {
     return page >= kStatusFirstWorkPage && page < kWorkPageCount && page != kWorkPageWeatherClock;
@@ -87,6 +93,38 @@ bool set_status_icon_visible_if_changed(lv_obj_t *icon, bool visible)
     return true;
 }
 
+void log_status_label_create_failed(StatusLabelKind kind, int page)
+{
+    switch (kind) {
+    case StatusLabelKind::kDate:
+        ESP_LOGW(TAG, WORK_STATUS_DATE_LABEL_CREATE_FAILED_FORMAT, page);
+        break;
+    case StatusLabelKind::kSummary:
+        ESP_LOGW(TAG, WORK_STATUS_SUMMARY_LABEL_CREATE_FAILED_FORMAT, page);
+        break;
+    case StatusLabelKind::kTime:
+        ESP_LOGW(TAG, WORK_STATUS_TIME_LABEL_CREATE_FAILED_FORMAT, page);
+        break;
+    }
+}
+
+lv_obj_t *make_status_label(lv_obj_t *screen,
+                            int page,
+                            StatusLabelKind kind,
+                            int x,
+                            int y,
+                            int w,
+                            int h,
+                            const char *placeholder,
+                            const lv_font_t *font)
+{
+    lv_obj_t *label = make_label_with_font(screen, x, y, w, h, placeholder, font);
+    if (!label) {
+        log_status_label_create_failed(kind, page);
+    }
+    return label;
+}
+
 } // namespace
 
 void build_work_page_status_bar(lv_obj_t *screen,
@@ -100,43 +138,49 @@ void build_work_page_status_bar(lv_obj_t *screen,
         return;
     }
     if (date_label) {
-        *date_label = make_label(screen, kStatusDateX, kStatusDateY, kStatusDateW, kStatusDateH, kStatusDatePlaceholder);
+        *date_label = make_status_label(screen,
+                                        page,
+                                        StatusLabelKind::kDate,
+                                        kStatusDateX,
+                                        kStatusDateY,
+                                        kStatusDateW,
+                                        kStatusDateH,
+                                        kStatusDatePlaceholder,
+                                        &zh_font_16);
         if (*date_label) {
             lv_obj_set_style_text_align(*date_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
-        } else {
-            ESP_LOGW(TAG, WORK_STATUS_DATE_LABEL_CREATE_FAILED_FORMAT, page);
         }
     }
     if (summary_label) {
-        *summary_label = make_label_with_font(screen,
-                                              kStatusSummaryX,
-                                              kStatusSummaryY,
-                                              kStatusSummaryW,
-                                              kStatusSummaryH,
-                                              kStatusSummaryPlaceholder,
-                                              &lv_font_montserrat_16);
+        *summary_label = make_status_label(screen,
+                                           page,
+                                           StatusLabelKind::kSummary,
+                                           kStatusSummaryX,
+                                           kStatusSummaryY,
+                                           kStatusSummaryW,
+                                           kStatusSummaryH,
+                                           kStatusSummaryPlaceholder,
+                                           &lv_font_montserrat_16);
         if (*summary_label) {
             style_work_page_sensor_summary(*summary_label);
-        } else {
-            ESP_LOGW(TAG, WORK_STATUS_SUMMARY_LABEL_CREATE_FAILED_FORMAT, page);
         }
     }
     if (time_label) {
         *time_label = nullptr;
     }
     if (show_time && time_label) {
-        *time_label = make_label_with_font(screen,
-                                           kStatusTimeX,
-                                           kStatusTimeY,
-                                           kStatusTimeW,
-                                           kStatusTimeH,
-                                           kStatusTimePlaceholder,
-                                           &lv_font_montserrat_16);
+        *time_label = make_status_label(screen,
+                                        page,
+                                        StatusLabelKind::kTime,
+                                        kStatusTimeX,
+                                        kStatusTimeY,
+                                        kStatusTimeW,
+                                        kStatusTimeH,
+                                        kStatusTimePlaceholder,
+                                        &lv_font_montserrat_16);
         if (*time_label) {
             lv_obj_set_style_text_align(*time_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
             lv_obj_set_style_pad_all(*time_label, 0, LV_PART_MAIN);
-        } else {
-            ESP_LOGW(TAG, WORK_STATUS_TIME_LABEL_CREATE_FAILED_FORMAT, page);
         }
     }
     if (is_status_icon_page(page)) {

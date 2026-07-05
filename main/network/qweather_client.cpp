@@ -554,6 +554,11 @@ bool cstr_has_suffix(const char *text, const char *suffix)
     return text_len >= suffix_len && strcmp(text + text_len - suffix_len, suffix) == 0;
 }
 
+bool qweather_format_failed(int written, size_t out_len)
+{
+    return written < 0 || (size_t)written >= out_len;
+}
+
 void copy_ip_city_without_suffix(char *out, size_t out_len, const char *city_part)
 {
     if (!out || out_len == 0) {
@@ -575,7 +580,7 @@ bool format_qweather_url(char *out, size_t out_len, const char *stage, const cha
     va_start(args, fmt);
     int written = vsnprintf(out, out_len, fmt, args);
     va_end(args);
-    if (written < 0 || written >= (int)out_len) {
+    if (qweather_format_failed(written, out_len)) {
         out[0] = '\0';
         ESP_LOGW(TAG, QWEATHER_URL_TOO_LONG_FORMAT, qweather_stage_text(stage));
         return false;
@@ -642,7 +647,7 @@ bool format_ip_coordinates(char *out, size_t out_len, double longitude, double l
         return false;
     }
     int written = snprintf(out, out_len, kIpGeoCoordinateFormat, longitude, latitude);
-    if (written < 0 || written >= (int)out_len) {
+    if (qweather_format_failed(written, out_len)) {
         out[0] = '\0';
         log_qweather_fixed_warning(kIpLocationCoordinateTooLongLog);
         return false;
@@ -773,14 +778,48 @@ private:
     cJSON *root_;
 };
 
+const char *qweather_json_string_value(const cJSON *item)
+{
+    return cJSON_IsString(item) ? item->valuestring : nullptr;
+}
+
 bool qweather_code_ok(const cJSON *code)
 {
-    return cJSON_IsString(code) && strcmp(code->valuestring, kQweatherSuccessCode) == 0;
+    const char *text = qweather_json_string_value(code);
+    return text && strcmp(text, kQweatherSuccessCode) == 0;
 }
 
 const char *qweather_code_text(const cJSON *code)
 {
-    return cJSON_IsString(code) ? code->valuestring : kQweatherMissingCodeText;
+    const char *text = qweather_json_string_value(code);
+    return text ? text : kQweatherMissingCodeText;
+}
+
+bool ip_geo_coordinates_available(const cJSON *lat, const cJSON *lon)
+{
+    return cJSON_IsNumber(lat) && cJSON_IsNumber(lon);
+}
+
+cJSON *qweather_success_item(cJSON *root, const char *field, cJSON **code_out)
+{
+    cJSON *code = root ? cJSON_GetObjectItem(root, kQweatherJsonCodeField) : nullptr;
+    if (code_out) {
+        *code_out = code;
+    }
+    cJSON *item = root && field ? cJSON_GetObjectItem(root, field) : nullptr;
+    return qweather_code_ok(code) ? item : nullptr;
+}
+
+cJSON *qweather_success_object(cJSON *root, const char *field, cJSON **code_out)
+{
+    cJSON *item = qweather_success_item(root, field, code_out);
+    return cJSON_IsObject(item) ? item : nullptr;
+}
+
+cJSON *qweather_success_array(cJSON *root, const char *field, cJSON **code_out)
+{
+    cJSON *item = qweather_success_item(root, field, code_out);
+    return cJSON_IsArray(item) ? item : nullptr;
 }
 
 void log_qweather_fixed_warning(const char *message)
@@ -879,12 +918,13 @@ bool ip_geolocation_lookup(char *location, size_t location_len, char *city, size
     cJSON *lat = cJSON_GetObjectItem(root.get(), kIpGeoJsonLatitudeField);
     cJSON *lon = cJSON_GetObjectItem(root.get(), kIpGeoJsonLongitudeField);
     cJSON *region = cJSON_GetObjectItem(root.get(), kIpGeoJsonRegionField);
-    if (cJSON_IsNumber(lat) && cJSON_IsNumber(lon)) {
+    if (ip_geo_coordinates_available(lat, lon)) {
         if (!format_ip_coordinates(location, location_len, lon->valuedouble, lat->valuedouble)) {
             return false;
         }
-        if (cJSON_IsString(region) && region->valuestring) {
-            copy_ip_region_city(city, city_len, region->valuestring);
+        const char *region_text = qweather_json_string_value(region);
+        if (region_text) {
+            copy_ip_region_city(city, city_len, region_text);
         }
         if (city[0] == '\0') {
             strlcpy(city, location, city_len);
@@ -943,10 +983,10 @@ QweatherCityLookupStatus qweather_lookup_city_status(const char *location,
     }
     bool ok = false;
     QweatherCityLookupStatus status = kQweatherCityLookupNotFound;
-    cJSON *code = cJSON_GetObjectItem(root.get(), kQweatherJsonCodeField);
-    cJSON *locations = cJSON_GetObjectItem(root.get(), kQweatherJsonLocationField);
+    cJSON *code = nullptr;
+    cJSON *locations = qweather_success_array(root.get(), kQweatherJsonLocationField, &code);
     cJSON *first = cJSON_IsArray(locations) ? cJSON_GetArrayItem(locations, 0) : nullptr;
-    if (qweather_code_ok(code) && cJSON_IsObject(first)) {
+    if (cJSON_IsObject(first)) {
         ok = json_copy_string(first, kQweatherJsonIdField, city_id, city_id_len) &&
              json_copy_string(first, kQweatherJsonNameField, city_name, city_name_len);
         if (ok) {
@@ -1201,11 +1241,11 @@ static void build_weather_alert_title(char *title,
     }
     title[0] = '\0';
     const char *color_name = warning_color_name(color_code);
-    if (event_name && event_name[0] != '\0' && color_name[0] != '\0') {
+    if (cstr_nonempty(event_name) && cstr_nonempty(color_name)) {
         format_weather_alert_title_text(title, title_len, kWeatherAlertEventColorFormat, event_name, color_name);
-    } else if (headline && headline[0] != '\0') {
+    } else if (cstr_nonempty(headline)) {
         strlcpy(title, headline, title_len);
-    } else if (event_name && event_name[0] != '\0') {
+    } else if (cstr_nonempty(event_name)) {
         format_weather_alert_title_text(title, title_len, kWeatherAlertEventOnlyFormat, event_name);
     }
 }
@@ -1248,7 +1288,6 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
     }
 
     WeatherAlertData next = {};
-    bool ok = true;
     cJSON *alerts = cJSON_GetObjectItem(root.get(), kQweatherAlertJsonAlertsField);
     int alert_count = cJSON_IsArray(alerts) ? cJSON_GetArraySize(alerts) : 0;
     for (int i = 0; i < alert_count; ++i) {
@@ -1279,7 +1318,7 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
     time(&next.updated_at);
     *alert = next;
 
-    return ok;
+    return true;
 }
 
 static bool parse_weather_now(cJSON *now, WeatherData *weather)
@@ -1324,9 +1363,9 @@ bool qweather_fetch_now(const char *city_id, WeatherData *weather)
         return false;
     }
     bool ok = false;
-    cJSON *code = cJSON_GetObjectItem(root.get(), kQweatherJsonCodeField);
-    cJSON *now = cJSON_GetObjectItem(root.get(), kQweatherJsonNowField);
-    if (qweather_code_ok(code) && cJSON_IsObject(now)) {
+    cJSON *code = nullptr;
+    cJSON *now = qweather_success_object(root.get(), kQweatherJsonNowField, &code);
+    if (now) {
         ok = parse_weather_now(now, weather);
     } else {
         ESP_LOGW(TAG, QWEATHER_NOW_FAILED_FORMAT, qweather_code_text(code));
@@ -1431,9 +1470,9 @@ static bool qweather_fetch_daily_days(const char *city_id, int days, WeatherFore
 
     WeatherForecastData next = {};
     bool ok = false;
-    cJSON *code = cJSON_GetObjectItem(root.get(), kQweatherJsonCodeField);
-    cJSON *daily = cJSON_GetObjectItem(root.get(), kQweatherDailyJsonDailyField);
-    if (qweather_code_ok(code) && cJSON_IsArray(daily)) {
+    cJSON *code = nullptr;
+    cJSON *daily = qweather_success_array(root.get(), kQweatherDailyJsonDailyField, &code);
+    if (daily) {
         int count = weather_forecast_parse_count(daily);
         for (int i = 0; i < count; ++i) {
             cJSON *item = cJSON_GetArrayItem(daily, i);
@@ -1512,9 +1551,9 @@ bool qweather_fetch_air(const char *city_id, WeatherAirData *air)
     }
     WeatherAirData next = {};
     bool ok = false;
-    cJSON *code = cJSON_GetObjectItem(root.get(), kQweatherJsonCodeField);
-    cJSON *now = cJSON_GetObjectItem(root.get(), kQweatherJsonNowField);
-    if (qweather_code_ok(code) && cJSON_IsObject(now)) {
+    cJSON *code = nullptr;
+    cJSON *now = qweather_success_object(root.get(), kQweatherJsonNowField, &code);
+    if (now) {
         ok = parse_weather_air(now, &next);
         next.ready = ok;
         if (ok) {

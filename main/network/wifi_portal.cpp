@@ -412,6 +412,11 @@ private:
     size_t size_;
 };
 
+bool portal_format_failed(int written, size_t out_len)
+{
+    return written < 0 || static_cast<size_t>(written) >= out_len;
+}
+
 void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
 {
     if (!ip) {
@@ -419,7 +424,7 @@ void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
         return;
     }
     int written = snprintf(g_sta_ip, sizeof(g_sta_ip), IPSTR, IP2STR(ip));
-    if (written < 0 || static_cast<size_t>(written) >= sizeof(g_sta_ip)) {
+    if (portal_format_failed(written, sizeof(g_sta_ip))) {
         g_sta_ip[0] = '\0';
         ESP_LOGW(TAG, WIFI_STA_IP_FORMAT_FAILED_LOG);
     }
@@ -428,7 +433,7 @@ void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
 void format_setup_ap_ssid(uint8_t mac4, uint8_t mac5)
 {
     int written = snprintf(g_ap_ssid, sizeof(g_ap_ssid), kSetupApSsidFormat, mac4, mac5);
-    if (written < 0 || static_cast<size_t>(written) >= sizeof(g_ap_ssid)) {
+    if (portal_format_failed(written, sizeof(g_ap_ssid))) {
         strlcpy(g_ap_ssid, kSetupApSsidFallback, sizeof(g_ap_ssid));
         ESP_LOGW(TAG, WIFI_SETUP_AP_SSID_FORMAT_FAILED_LOG);
     }
@@ -619,14 +624,15 @@ void html_append(char *html, size_t html_len, const char *fmt, ...)
         html[html_len - 1] = '\0';
         return;
     }
+    size_t remaining = html_len - used;
     va_list args;
     va_start(args, fmt);
-    int written = vsnprintf(html + used, html_len - used, fmt, args);
+    int written = vsnprintf(html + used, remaining, fmt, args);
     va_end(args);
     if (written < 0) {
         html[used] = '\0';
         ESP_LOGW(TAG, PORTAL_HTML_APPEND_FAILED_LOG);
-    } else if (written >= (int)(html_len - used)) {
+    } else if (written >= (int)remaining) {
         html[html_len - 1] = '\0';
         ESP_LOGW(TAG, PORTAL_HTML_TRUNCATED_FORMAT, (unsigned)html_len);
     }
@@ -669,29 +675,60 @@ void html_escape(const char *src, char *dst, size_t dst_len)
 
 esp_err_t send_portal_html(httpd_req_t *req, const char *html)
 {
+    if (!req || !html) {
+        return ESP_ERR_INVALID_ARG;
+    }
     httpd_resp_set_type(req, kPortalHtmlContentType);
     return httpd_resp_send(req, html, HTTPD_RESP_USE_STRLEN);
 }
 
 esp_err_t send_portal_text_status(httpd_req_t *req, const char *status, const char *text)
 {
+    if (!req || !status || !text) {
+        return ESP_ERR_INVALID_ARG;
+    }
     httpd_resp_set_status(req, status);
     return httpd_resp_sendstr(req, text);
 }
 
 esp_err_t send_portal_empty_response(httpd_req_t *req)
 {
+    if (!req) {
+        return ESP_ERR_INVALID_ARG;
+    }
     return httpd_resp_send(req, "", 0);
 }
 
 esp_err_t send_portal_empty_status(httpd_req_t *req, const char *status)
 {
+    if (!req || !status) {
+        return ESP_ERR_INVALID_ARG;
+    }
     httpd_resp_set_status(req, status);
     return send_portal_empty_response(req);
 }
 
+const char *portal_save_result_title(bool saved, bool connected)
+{
+    if (!saved) {
+        return kPortalSaveMissingTitle;
+    }
+    return connected ? kPortalSaveConnectedTitle : kPortalSaveConnectingTitle;
+}
+
+const char *portal_save_result_body(bool saved, bool connected)
+{
+    if (!saved) {
+        return kPortalSaveMissingBody;
+    }
+    return connected ? kPortalSaveConnectedBody : kPortalSaveConnectingBody;
+}
+
 esp_err_t redirect_to_setup_portal(httpd_req_t *req)
 {
+    if (!req) {
+        return ESP_ERR_INVALID_ARG;
+    }
     httpd_resp_set_status(req, kPortalHttpStatusFound);
     httpd_resp_set_hdr(req, kPortalHeaderLocation, kSetupPortalUrl);
     httpd_resp_set_hdr(req, kPortalHeaderCacheControl, kPortalCacheNoStore);
@@ -875,10 +912,8 @@ esp_err_t send_save_result_page(httpd_req_t *req, bool saved, bool connected, co
     html_escape(g_has_manual_weather_city ? g_manual_weather_city : "Auto", safe_city, sizeof(safe_city));
     html_escape(extra_message ? extra_message : "", safe_extra, sizeof(safe_extra));
     char html[kPortalSaveResultHtmlSize] = {};
-    const char *title = saved ? (connected ? kPortalSaveConnectedTitle : kPortalSaveConnectingTitle)
-                              : kPortalSaveMissingTitle;
-    const char *body = saved ? (connected ? kPortalSaveConnectedBody : kPortalSaveConnectingBody)
-                             : kPortalSaveMissingBody;
+    const char *title = portal_save_result_title(saved, connected);
+    const char *body = portal_save_result_body(saved, connected);
     html_append(html, sizeof(html),
                 "%s"
                 "<title>WeatherClock Setup</title><style>"
@@ -958,6 +993,9 @@ static esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
 
 esp_err_t save_post_handler(httpd_req_t *req)
 {
+    if (!req) {
+        return ESP_ERR_INVALID_ARG;
+    }
     char body[kPortalRequestBufferSize] = {};
     int total = 0;
     while (total < req->content_len && total < (int)sizeof(body) - 1) {
@@ -977,6 +1015,9 @@ esp_err_t save_post_handler(httpd_req_t *req)
 
 esp_err_t save_get_handler(httpd_req_t *req)
 {
+    if (!req) {
+        return ESP_ERR_INVALID_ARG;
+    }
     char query[kPortalRequestBufferSize] = {};
     if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
         return send_portal_text_status(req, kPortalHttpStatusBadRequest, kPortalErrorMissingQuery);

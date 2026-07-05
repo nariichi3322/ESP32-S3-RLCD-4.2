@@ -6,6 +6,8 @@
 #include "ota_services.h"
 #include "sensor_services.h"
 
+#include <stdint.h>
+
 namespace {
 constexpr int kUiStatusRefreshMs = 10000;
 constexpr int kUiInfoPagePollMs = 250;
@@ -76,6 +78,16 @@ constexpr size_t cstr_len(const char *text)
         ++len;
     }
     return len;
+}
+
+bool settings_timeout_elapsed(TickType_t last_activity)
+{
+    if (last_activity == 0) {
+        return false;
+    }
+    TickType_t now = xTaskGetTickCount();
+    TickType_t timeout_ticks = pdMS_TO_TICKS(kSettingsTimeoutMs);
+    return static_cast<int32_t>(now - last_activity) >= static_cast<int32_t>(timeout_ticks);
 }
 
 template <typename T, size_t N>
@@ -467,8 +479,7 @@ void ui_task(void *)
 
             if (network_diag_requested &&
                 g_network_diag_state == kNetworkDiagDone &&
-                g_settings_last_activity_tick != 0 &&
-                tick_now - g_settings_last_activity_tick >= pdMS_TO_TICKS(kSettingsTimeoutMs)) {
+                settings_timeout_elapsed(g_settings_last_activity_tick)) {
                 g_network_diag_page_requested = false;
                 network_diag_requested = false;
             }
@@ -578,7 +589,7 @@ void ui_task(void *)
                     if (!settings_action_handled &&
                         !button_pressed &&
                         !is_settings_sync_busy() && !ota_flow_active() &&
-                        last_activity != 0 && tick_now - last_activity >= pdMS_TO_TICKS(kSettingsTimeoutMs)) {
+                        settings_timeout_elapsed(last_activity)) {
                         ESP_LOGI(TAG, "%s", UI_SETTINGS_TIMEOUT_RETURN_LOG);
                         if (g_settings_page_order_mode) {
                             if (save_work_page_order()) {

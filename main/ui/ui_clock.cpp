@@ -109,6 +109,21 @@ constexpr const char *kClockSettingsFeedbackTexts[] = {
 #define CLOCK_FILL_CANVAS_CREATE_FAILED_FORMAT "clock fill canvas create failed name=%s"
 #define SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT "setup status label create failed index=%d"
 constexpr const char *kClockComponentFallbackName = "component";
+constexpr const char *kClockComponentWeatherCity = "weather_city";
+constexpr const char *kClockComponentWeatherIcon = "weather_icon";
+constexpr const char *kClockComponentWeatherInfo = "weather_info";
+constexpr const char *kClockComponentWeatherTemp = "weather_temp";
+constexpr const char *kClockComponentWeatherHumidity = "weather_humi";
+constexpr const char *kClockComponentTempIcon = "temp_icon";
+constexpr const char *kClockComponentHumidityIcon = "humi_icon";
+constexpr const char *kClockComponentTempValue = "temp_value";
+constexpr const char *kClockComponentHumidityValue = "humi_value";
+constexpr const char *kClockComponentTempTrend = "temp_trend";
+constexpr const char *kClockComponentHumidityTrend = "humi_trend";
+constexpr const char *kClockComponentTime = "time";
+constexpr const char *kClockComponentSecond = "second";
+constexpr const char *kClockComponentStatusGif = "status_gif";
+constexpr const char *kClockComponentLowBatteryIcon = "low_battery_icon";
 constexpr const char *kClockLogTexts[] = {
     HOURLY_CHIME_SETTING_LOG_FORMAT,
     ALL_DAY_CHIME_SETTING_LOG_FORMAT,
@@ -133,6 +148,21 @@ constexpr const char *kClockLogTexts[] = {
     CLOCK_FILL_CANVAS_CREATE_FAILED_FORMAT,
     SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT,
     kClockComponentFallbackName,
+    kClockComponentWeatherCity,
+    kClockComponentWeatherIcon,
+    kClockComponentWeatherInfo,
+    kClockComponentWeatherTemp,
+    kClockComponentWeatherHumidity,
+    kClockComponentTempIcon,
+    kClockComponentHumidityIcon,
+    kClockComponentTempValue,
+    kClockComponentHumidityValue,
+    kClockComponentTempTrend,
+    kClockComponentHumidityTrend,
+    kClockComponentTime,
+    kClockComponentSecond,
+    kClockComponentStatusGif,
+    kClockComponentLowBatteryIcon,
 };
 constexpr bool cstr_nonempty(const char *text)
 {
@@ -536,7 +566,7 @@ void build_clock_ui()
                                                          kClockWeatherCityLabelWidth,
                                                          kClockWeatherCityLabelHeight,
                                                          kClockWeatherCityPlaceholder,
-                                                         "weather_city");
+                                                         kClockComponentWeatherCity);
     g_weather_icon_label = make_label(screen,
                                       kClockWeatherIconLabelX,
                                       kClockWeatherIconLabelY,
@@ -550,7 +580,7 @@ void build_clock_ui()
         lv_obj_set_style_pad_all(g_weather_icon_label, 0, LV_PART_MAIN);
         lv_obj_set_style_text_align(g_weather_icon_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     } else {
-        ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, "weather_icon");
+        ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, kClockComponentWeatherIcon);
     }
     g_weather_info_label = make_label(screen,
                                       kClockWeatherInfoLabelX,
@@ -563,7 +593,7 @@ void build_clock_ui()
         lv_label_set_long_mode(g_weather_info_label, LV_LABEL_LONG_CLIP);
         lv_obj_set_style_text_align(g_weather_info_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     } else {
-        ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, "weather_info");
+        ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, kClockComponentWeatherInfo);
     }
     g_weather_temp_label = make_clock_lower_center_label(screen,
                                                          kClockWeatherMetricLabelX,
@@ -571,14 +601,14 @@ void build_clock_ui()
                                                          kClockWeatherMetricLabelWidth,
                                                          kClockWeatherMetricLabelHeight,
                                                          kClockWeatherTempPlaceholder,
-                                                         "weather_temp");
+                                                         kClockComponentWeatherTemp);
     g_weather_humi_label = make_clock_lower_center_label(screen,
                                                          kClockWeatherMetricLabelX,
                                                          kClockWeatherHumiLabelY,
                                                          kClockWeatherMetricLabelWidth,
                                                          kClockWeatherMetricLabelHeight,
                                                          kClockWeatherHumidityPlaceholder,
-                                                         "weather_humi");
+                                                         kClockComponentWeatherHumidity);
 
     build_clock_lower_icon(screen,
                            &g_temp_icon_canvas,
@@ -589,7 +619,7 @@ void build_clock_ui()
                            TEMP_ICON_HEIGHT,
                            TEMP_ICON_BYTES_PER_ROW,
                            temp_icon_bits,
-                           "temp_icon");
+                           kClockComponentTempIcon);
     build_clock_lower_icon(screen,
                            &g_humi_icon_canvas,
                            &g_humi_icon_canvas_buf,
@@ -599,21 +629,21 @@ void build_clock_ui()
                            HUMI_ICON_HEIGHT,
                            HUMI_ICON_BYTES_PER_ROW,
                            humi_icon_bits,
-                           "humi_icon");
+                           kClockComponentHumidityIcon);
     g_temp_label = make_clock_lower_center_label(screen,
                                                  kClockLocalMetricLabelX,
                                                  kClockLocalTempLabelY,
                                                  kClockLocalMetricLabelWidth,
                                                  kClockLocalMetricLabelHeight,
                                                  "--.-℃",
-                                                 "temp_value");
+                                                 kClockComponentTempValue);
     g_humi_label = make_clock_lower_center_label(screen,
                                                  kClockLocalMetricLabelX,
                                                  kClockLocalHumiLabelY,
                                                  kClockLocalMetricLabelWidth,
                                                  kClockLocalMetricLabelHeight,
                                                  "--.-%",
-                                                 "humi_value");
+                                                 kClockComponentHumidityValue);
     remember_lower_panel_object(g_temp_icon_canvas);
     remember_lower_panel_object(g_humi_icon_canvas);
     build_clock_trend_canvas(screen,
@@ -622,14 +652,14 @@ void build_clock_ui()
                              kClockTrendCanvasX,
                              kClockTempTrendCanvasY,
                              g_temp_trend,
-                             "temp_trend");
+                             kClockComponentTempTrend);
     build_clock_trend_canvas(screen,
                              &g_humi_trend_canvas,
                              &g_humi_trend_canvas_buf,
                              kClockTrendCanvasX,
                              kClockHumiTrendCanvasY,
                              g_humi_trend,
-                             "humi_trend");
+                             kClockComponentHumidityTrend);
     remember_lower_panel_object(g_temp_trend_canvas);
     remember_lower_panel_object(g_humi_trend_canvas);
     build_clock_fill_canvas(screen,
@@ -639,7 +669,7 @@ void build_clock_ui()
                             kClockTimeCanvasY,
                             kClockTimeCanvasWidth,
                             kClockTimeCanvasHeight,
-                            "time");
+                            kClockComponentTime);
 
     build_clock_fill_canvas(screen,
                             &g_second_canvas,
@@ -648,7 +678,7 @@ void build_clock_ui()
                             kClockSecondCanvasY,
                             kClockSecondCanvasWidth,
                             kClockSecondCanvasHeight,
-                            "second");
+                            kClockComponentSecond);
 
     build_clock_fill_canvas(screen,
                             &g_status_gif_canvas,
@@ -657,7 +687,7 @@ void build_clock_ui()
                             kClockStatusGifCanvasY,
                             STATUS_GIF_WIDTH,
                             STATUS_GIF_HEIGHT,
-                            "status_gif");
+                            kClockComponentStatusGif);
     remember_lower_panel_object(g_status_gif_canvas);
     if (g_status_gif_canvas_buf) {
         draw_status_gif_frame(0);
@@ -694,7 +724,7 @@ void build_clock_ui()
                            LOW_BATTERY_ICON_HEIGHT,
                            LOW_BATTERY_ICON_BYTES_PER_ROW,
                            low_battery_icon_bits,
-                           "low_battery_icon");
+                           kClockComponentLowBatteryIcon);
     if (g_low_battery_icon_canvas) {
         lv_obj_add_flag(g_low_battery_icon_canvas, LV_OBJ_FLAG_HIDDEN);
     }

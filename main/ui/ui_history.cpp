@@ -186,6 +186,11 @@ void format_history_badge_value(bool temperature, float value, char *out, size_t
     copy_history_placeholder_on_format_error(written, out, out_len, kHistoryAxisPlaceholder);
 }
 
+float history_sample_value(const HourlySensorSample &sample, bool temperature)
+{
+    return temperature ? sample.temperature : sample.humidity;
+}
+
 void set_history_badge(lv_obj_t *label,
                        const char *text,
                        int canvas_x,
@@ -331,18 +336,18 @@ void align_history_label_or_log(lv_obj_t *label,
 }
 
 void draw_history_chart_panel(lv_obj_t *canvas,
-                                     int canvas_w,
-                                     int canvas_h,
-                                     const HourlySensorSample *samples,
-                                     int sample_count,
-                                     bool temperature,
-                                     int plot_x,
-                                     int plot_y,
-                                     int plot_w,
-                                     int plot_h,
-                                     lv_obj_t *max_label,
-                                     lv_obj_t *min_label,
-                                     lv_obj_t **axis_labels)
+                              int canvas_w,
+                              int canvas_h,
+                              const HourlySensorSample *samples,
+                              int sample_count,
+                              bool temperature,
+                              int plot_x,
+                              int plot_y,
+                              int plot_w,
+                              int plot_h,
+                              lv_obj_t *max_label,
+                              lv_obj_t *min_label,
+                              lv_obj_t **axis_labels)
 {
     if (!canvas || !samples || sample_count <= 0 || !axis_labels ||
         canvas_w <= 0 || canvas_h <= 0 || plot_w <= 0 || plot_h <= 0) {
@@ -361,7 +366,7 @@ void draw_history_chart_panel(lv_obj_t *canvas,
         if (!samples[i].valid) {
             continue;
         }
-        float value = temperature ? samples[i].temperature : samples[i].humidity;
+        float value = history_sample_value(samples[i], temperature);
         if (valid_count == 0 || value < min_value) {
             min_value = value;
             min_index = i;
@@ -413,7 +418,7 @@ void draw_history_chart_panel(lv_obj_t *canvas,
             continue;
         }
         int x = plot_x + (int)(((samples[i].timestamp - start) * plot_w) / (kHistoryWindowHours * kSecondsPerHour));
-        float value = temperature ? samples[i].temperature : samples[i].humidity;
+        float value = history_sample_value(samples[i], temperature);
         int y = value_to_plot_y(value, axis_min, axis_max, plot_y, plot_h);
         x = clamp_int(x, plot_x, plot_x + plot_w);
         y = clamp_int(y, plot_y, plot_y + plot_h);
@@ -428,31 +433,19 @@ void draw_history_chart_panel(lv_obj_t *canvas,
 
     if (max_index >= 0) {
         char text[kHistoryAxisValueTextSize] = {};
-        format_history_badge_value(temperature,
-                                   temperature ? samples[max_index].temperature : samples[max_index].humidity,
-                                   text,
-                                   sizeof(text));
+        float value = history_sample_value(samples[max_index], temperature);
+        format_history_badge_value(temperature, value, text, sizeof(text));
         int x = plot_x + (int)(((samples[max_index].timestamp - start) * plot_w) / (kHistoryWindowHours * kSecondsPerHour));
-        int y = value_to_plot_y(temperature ? samples[max_index].temperature : samples[max_index].humidity,
-                                axis_min,
-                                axis_max,
-                                plot_y,
-                                plot_h);
+        int y = value_to_plot_y(value, axis_min, axis_max, plot_y, plot_h);
         canvas_draw_filled_circle(canvas, canvas_w, canvas_h, x, y, kHistoryPointRadius, lv_color_black());
         set_history_badge(max_label, text, kHistoryChartCanvasX, kHistoryChartCanvasY, x, y, plot_x, plot_y, plot_w, plot_h);
     }
     if (min_index >= 0 && min_index != max_index) {
         char text[kHistoryAxisValueTextSize] = {};
-        format_history_badge_value(temperature,
-                                   temperature ? samples[min_index].temperature : samples[min_index].humidity,
-                                   text,
-                                   sizeof(text));
+        float value = history_sample_value(samples[min_index], temperature);
+        format_history_badge_value(temperature, value, text, sizeof(text));
         int x = plot_x + (int)(((samples[min_index].timestamp - start) * plot_w) / (kHistoryWindowHours * kSecondsPerHour));
-        int y = value_to_plot_y(temperature ? samples[min_index].temperature : samples[min_index].humidity,
-                                axis_min,
-                                axis_max,
-                                plot_y,
-                                plot_h);
+        int y = value_to_plot_y(value, axis_min, axis_max, plot_y, plot_h);
         canvas_draw_filled_circle(canvas, canvas_w, canvas_h, x, y, kHistoryPointRadius, lv_color_black());
         set_history_badge(min_label, text, kHistoryChartCanvasX, kHistoryChartCanvasY, x, y, plot_x, plot_y, plot_w, plot_h);
     } else {

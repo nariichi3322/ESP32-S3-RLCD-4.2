@@ -106,6 +106,13 @@ static_assert(kFlipSensorPanelX == kCardX[kHourCardIndex] &&
               "flip clock sensor panel must span hour and minute cards");
 static_assert(kFlipTrendIconX >= 0 && kFlipTrendIconY >= 0, "flip clock trend icon must fit canvas");
 
+struct SensorComfortBand {
+    float comfort_min;
+    float comfort_max;
+    float ok_min;
+    float ok_max;
+};
+
 void apply_card_rounding(lv_obj_t *canvas)
 {
     if (!canvas) {
@@ -217,54 +224,70 @@ void draw_flip_card(int card_index, int value)
     lv_obj_invalidate(canvas);
 }
 
-int temperature_mood(float temperature)
+int classify_sensor_mood(float value, const SensorComfortBand &band)
 {
-    if (temperature >= kComfortTempMinC && temperature <= kComfortTempMaxC) {
+    if (value >= band.comfort_min && value <= band.comfort_max) {
         return kSensorMoodComfort;
     }
-    if (temperature >= kOkTempMinC && temperature <= kOkTempMaxC) {
+    if (value >= band.ok_min && value <= band.ok_max) {
         return kSensorMoodOk;
     }
     return kSensorMoodBad;
+}
+
+int temperature_mood(float temperature)
+{
+    static constexpr SensorComfortBand kTemperatureBand = {
+        kComfortTempMinC,
+        kComfortTempMaxC,
+        kOkTempMinC,
+        kOkTempMaxC,
+    };
+    return classify_sensor_mood(temperature, kTemperatureBand);
 }
 
 int humidity_mood(float humidity)
 {
-    if (humidity >= kComfortHumiMinPercent && humidity <= kComfortHumiMaxPercent) {
-        return kSensorMoodComfort;
+    static constexpr SensorComfortBand kHumidityBand = {
+        kComfortHumiMinPercent,
+        kComfortHumiMaxPercent,
+        kOkHumiMinPercent,
+        kOkHumiMaxPercent,
+    };
+    return classify_sensor_mood(humidity, kHumidityBand);
+}
+
+const uint8_t *sensor_mood_icon_bits(int mood,
+                                     const uint8_t *comfort_bits,
+                                     const uint8_t *ok_bits,
+                                     const uint8_t *bad_bits)
+{
+    if (mood == kSensorMoodComfort) {
+        return comfort_bits;
     }
-    if (humidity >= kOkHumiMinPercent && humidity <= kOkHumiMaxPercent) {
-        return kSensorMoodOk;
+    if (mood == kSensorMoodOk) {
+        return ok_bits;
     }
-    return kSensorMoodBad;
+    if (mood == kSensorMoodBad) {
+        return bad_bits;
+    }
+    return nullptr;
 }
 
 const uint8_t *temp_mood_icon_bits(int mood)
 {
-    if (mood == kSensorMoodComfort) {
-        return flip_temp_comfort_icon_bits;
-    }
-    if (mood == kSensorMoodOk) {
-        return flip_temp_ok_icon_bits;
-    }
-    if (mood == kSensorMoodBad) {
-        return flip_temp_bad_icon_bits;
-    }
-    return nullptr;
+    return sensor_mood_icon_bits(mood,
+                                 flip_temp_comfort_icon_bits,
+                                 flip_temp_ok_icon_bits,
+                                 flip_temp_bad_icon_bits);
 }
 
 const uint8_t *humi_mood_icon_bits(int mood)
 {
-    if (mood == kSensorMoodComfort) {
-        return flip_humi_comfort_icon_bits;
-    }
-    if (mood == kSensorMoodOk) {
-        return flip_humi_ok_icon_bits;
-    }
-    if (mood == kSensorMoodBad) {
-        return flip_humi_bad_icon_bits;
-    }
-    return nullptr;
+    return sensor_mood_icon_bits(mood,
+                                 flip_humi_comfort_icon_bits,
+                                 flip_humi_ok_icon_bits,
+                                 flip_humi_bad_icon_bits);
 }
 
 bool update_mood_icon(lv_obj_t *canvas, int mood, int *last_mood, const uint8_t *bits)

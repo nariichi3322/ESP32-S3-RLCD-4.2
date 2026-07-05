@@ -240,6 +240,11 @@ constexpr bool cstr_equal(const char *a, const char *b)
     return *a == '\0' && *b == '\0';
 }
 
+constexpr const char *cstr_or_empty(const char *text)
+{
+    return text ? text : "";
+}
+
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
@@ -600,15 +605,32 @@ esp_err_t write_manual_weather_city_key(nvs_handle_t nvs, const char *city)
     return write_optional_nvs_string_key(nvs, kManualWeatherCityKey, city);
 }
 
+esp_err_t read_nvs_string(nvs_handle_t nvs, const char *key, char *out, size_t out_len)
+{
+    if (!key || !out || out_len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    size_t len = out_len;
+    return nvs_get_str(nvs, key, out, &len);
+}
+
+bool nvs_string_matches(nvs_handle_t nvs, const char *key, const char *expected, char *scratch, size_t scratch_len)
+{
+    if (!cstr_nonempty(expected) || !scratch || scratch_len == 0) {
+        return false;
+    }
+    scratch[0] = '\0';
+    return read_nvs_string(nvs, key, scratch, scratch_len) == ESP_OK &&
+           strcmp(scratch, expected) == 0;
+}
+
 bool asset_weather_city_ignored(nvs_handle_t nvs, const char *city)
 {
     if (!city || city[0] == '\0') {
         return false;
     }
     char ignored[kManualWeatherCityLen] = {};
-    size_t ignored_len = sizeof(ignored);
-    return nvs_get_str(nvs, kIgnoredAssetWeatherCityKey, ignored, &ignored_len) == ESP_OK &&
-           strcmp(ignored, city) == 0;
+    return nvs_string_matches(nvs, kIgnoredAssetWeatherCityKey, city, ignored, sizeof(ignored));
 }
 
 esp_err_t write_ignored_asset_weather_city(nvs_handle_t nvs, const char *city)
@@ -664,15 +686,6 @@ uint8_t read_nvs_u8_or_default(nvs_handle_t nvs, const char *key, uint8_t defaul
     return value;
 }
 
-esp_err_t read_nvs_string(nvs_handle_t nvs, const char *key, char *out, size_t out_len)
-{
-    if (!key || !out || out_len == 0) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    size_t len = out_len;
-    return nvs_get_str(nvs, key, out, &len);
-}
-
 bool nvs_u8_matches(nvs_handle_t nvs, const char *key, uint8_t expected)
 {
     if (!key) {
@@ -680,6 +693,29 @@ bool nvs_u8_matches(nvs_handle_t nvs, const char *key, uint8_t expected)
     }
     uint8_t value = kNvsUnsetU8;
     return nvs_get_u8(nvs, key, &value) == ESP_OK && value == expected;
+}
+
+esp_err_t write_changed_nvs_u8(nvs_handle_t nvs, esp_err_t err, const char *key, uint8_t value, bool *changed)
+{
+    if (changed) {
+        *changed = false;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+    if (nvs_u8_matches(nvs, key, value)) {
+        return ESP_OK;
+    }
+    if (changed) {
+        *changed = true;
+    }
+    return set_nvs_u8_if_ok(nvs, err, key, value);
+}
+
+bool close_nvs_save_ok(nvs_handle_t nvs, esp_err_t err)
+{
+    nvs_close(nvs);
+    return err == ESP_OK;
 }
 
 bool hourly_chime_settings_match_nvs(nvs_handle_t nvs,
@@ -704,13 +740,8 @@ bool hourly_chime_settings_match_nvs(nvs_handle_t nvs,
 
 bool manual_weather_city_matches_nvs(nvs_handle_t nvs, const char *city)
 {
-    if (!city) {
-        return false;
-    }
     char saved_city[kManualWeatherCityLen] = {};
-    size_t saved_city_len = sizeof(saved_city);
-    return nvs_get_str(nvs, kManualWeatherCityKey, saved_city, &saved_city_len) == ESP_OK &&
-           strcmp(saved_city, city) == 0;
+    return nvs_string_matches(nvs, kManualWeatherCityKey, city, saved_city, sizeof(saved_city));
 }
 
 uint8_t read_saved_page_mask(nvs_handle_t nvs)
@@ -836,13 +867,12 @@ bool set_offline_mode_enabled(bool enabled)
         return false;
     }
     uint8_t next_value = enabled ? 1 : 0;
-    bool unchanged = nvs_u8_matches(nvs, kOfflineModeKey, next_value);
-    if (!unchanged) {
-        err = set_nvs_u8_if_ok(nvs, err, kOfflineModeKey, next_value);
+    bool changed = false;
+    err = write_changed_nvs_u8(nvs, err, kOfflineModeKey, next_value, &changed);
+    if (changed) {
         err = commit_nvs_if_ok(nvs, err);
     }
-    nvs_close(nvs);
-    if (err != ESP_OK) {
+    if (!close_nvs_save_ok(nvs, err)) {
         ESP_LOGW(TAG, NVS_SAVE_OFFLINE_MODE_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
@@ -898,7 +928,7 @@ void copy_trimmed_weather_city(char *out, size_t out_len, const char *city)
 
 void set_manual_weather_city_state(const char *city)
 {
-    strlcpy(g_manual_weather_city, city ? city : "", sizeof(g_manual_weather_city));
+    strlcpy(g_manual_weather_city, cstr_or_empty(city), sizeof(g_manual_weather_city));
     g_has_manual_weather_city = g_manual_weather_city[0] != '\0';
 }
 
@@ -933,9 +963,9 @@ void apply_saved_config_runtime_state(const char *ssid,
                                       const char *api_key,
                                       const char *weather_city)
 {
-    strlcpy(g_wifi_ssid, ssid ? ssid : "", sizeof(g_wifi_ssid));
-    strlcpy(g_wifi_pass, pass ? pass : "", sizeof(g_wifi_pass));
-    strlcpy(g_weather_api_key, api_key ? api_key : "", sizeof(g_weather_api_key));
+    strlcpy(g_wifi_ssid, cstr_or_empty(ssid), sizeof(g_wifi_ssid));
+    strlcpy(g_wifi_pass, cstr_or_empty(pass), sizeof(g_wifi_pass));
+    strlcpy(g_weather_api_key, cstr_or_empty(api_key), sizeof(g_weather_api_key));
     set_manual_weather_city_state(weather_city);
     g_have_wifi_creds = g_wifi_ssid[0] != '\0';
     g_have_weather_key = g_weather_api_key[0] != '\0';
@@ -1013,7 +1043,7 @@ bool save_manual_weather_city(const char *city)
         err = write_ignored_asset_weather_city(nvs, nullptr);
         return finish_manual_weather_city_save(nvs, err, next);
     }
-    err = nvs_set_str(nvs, kManualWeatherCityKey, next);
+    err = write_manual_weather_city_key(nvs, next);
     if (err == ESP_OK) {
         err = write_ignored_asset_weather_city(nvs, nullptr);
     }
@@ -1066,8 +1096,7 @@ bool save_hourly_chime_setting()
     err = set_nvs_u8_if_ok(nvs, err, kChimeVolumeKey, next_volume);
     err = set_nvs_u8_if_ok(nvs, err, kChimeSoundKey, next_sound);
     err = commit_nvs_if_ok(nvs, err);
-    nvs_close(nvs);
-    if (err != ESP_OK) {
+    if (!close_nvs_save_ok(nvs, err)) {
         ESP_LOGW(TAG, NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
@@ -1082,15 +1111,12 @@ bool save_work_page_settings()
         return false;
     }
     uint8_t mask = (g_work_page_enabled_mask | kWeatherClockPageMask) & kPageMaskV4KnownBits;
-    if (nvs_u8_matches(nvs, kPageMaskV4Key, mask)) {
-        nvs_close(nvs);
-        g_work_page_enabled_mask = mask;
-        return true;
+    bool changed = false;
+    err = write_changed_nvs_u8(nvs, err, kPageMaskV4Key, mask, &changed);
+    if (changed) {
+        err = commit_nvs_if_ok(nvs, err);
     }
-    err = set_nvs_u8_if_ok(nvs, err, kPageMaskV4Key, mask);
-    err = commit_nvs_if_ok(nvs, err);
-    nvs_close(nvs);
-    if (err != ESP_OK) {
+    if (!close_nvs_save_ok(nvs, err)) {
         ESP_LOGW(TAG, NVS_SAVE_PAGE_SETTINGS_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
@@ -1112,8 +1138,7 @@ bool save_work_page_order()
     }
     err = nvs_set_blob(nvs, kPageOrderV4Key, g_work_page_order, sizeof(g_work_page_order));
     err = commit_nvs_if_ok(nvs, err);
-    nvs_close(nvs);
-    if (err != ESP_OK) {
+    if (!close_nvs_save_ok(nvs, err)) {
         ESP_LOGW(TAG, NVS_SAVE_PAGE_ORDER_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }

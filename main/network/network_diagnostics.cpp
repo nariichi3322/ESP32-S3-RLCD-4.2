@@ -116,15 +116,27 @@ constexpr bool cstr_array_nonempty(const T (&items)[N])
     return true;
 }
 
-bool network_diag_line_index_valid(int index)
+constexpr bool network_diag_line_index_valid(int index)
 {
     return index >= 0 && index < kNetworkDiagLineCount;
+}
+
+void network_diag_clear_line(int index)
+{
+    g_network_diag_lines[index][0] = '\0';
+}
+
+void network_diag_reset_counters()
+{
+    g_network_diag_step = 0;
+    g_network_diag_passed = 0;
+    g_network_diag_total = 0;
 }
 
 constexpr bool network_diag_lines_in_range()
 {
     for (int index : kNetworkDiagLineIndices) {
-        if (index < 0 || index >= kNetworkDiagLineCount) {
+        if (!network_diag_line_index_valid(index)) {
             return false;
         }
     }
@@ -403,20 +415,16 @@ bool lookup_public_ip(char *out, size_t out_len)
 void network_diag_reset()
 {
     g_network_diag_state = kNetworkDiagIdle;
-    g_network_diag_step = 0;
-    g_network_diag_passed = 0;
-    g_network_diag_total = 0;
+    network_diag_reset_counters();
     for (int i = 0; i < kNetworkDiagLineCount; ++i) {
-        g_network_diag_lines[i][0] = '\0';
+        network_diag_clear_line(i);
     }
 }
 
 void network_diag_begin()
 {
     g_network_diag_state = kNetworkDiagRunning;
-    g_network_diag_step = 0;
-    g_network_diag_passed = 0;
-    g_network_diag_total = 0;
+    network_diag_reset_counters();
     for (const auto &line : kNetworkDiagInitialLines) {
         network_diag_set_line(line.index, line.format, kNetworkDiagStatusWaiting);
     }
@@ -436,7 +444,7 @@ void network_diag_set_line(int index, const char *fmt, ...)
         return;
     }
     if (!fmt) {
-        g_network_diag_lines[index][0] = '\0';
+        network_diag_clear_line(index);
         notify_ui_task();
         return;
     }
@@ -445,7 +453,7 @@ void network_diag_set_line(int index, const char *fmt, ...)
     int written = vsnprintf(g_network_diag_lines[index], kNetworkDiagLineLen, fmt, args);
     va_end(args);
     if (written < 0) {
-        g_network_diag_lines[index][0] = '\0';
+        network_diag_clear_line(index);
         ESP_LOGW(TAG, NETWORK_DIAG_LINE_FORMAT_FAILED_FORMAT, index);
     } else if (written >= kNetworkDiagLineLen) {
         g_network_diag_lines[index][kNetworkDiagLineLen - 1] = '\0';

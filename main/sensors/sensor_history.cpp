@@ -287,6 +287,22 @@ static bool load_hourly_sensor_slot(nvs_handle_t nvs, int index, int64_t *newest
     return false;
 }
 
+static esp_err_t save_hourly_sensor_meta_and_slot(nvs_handle_t nvs, int index)
+{
+    HourlySensorHistoryMeta meta = {};
+    meta.last_saved_at = g_last_hourly_saved_at;
+    esp_err_t err = nvs_set_blob(nvs, kHourlyHistoryMetaKey, &meta, sizeof(meta));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    char key[kHourlySlotKeyBufferSize] = {};
+    if (!hourly_slot_key(index, key, sizeof(key))) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    return nvs_set_blob(nvs, key, &g_hourly_history.samples[index], sizeof(g_hourly_history.samples[index]));
+}
+
 int boot_sync_remaining_ms()
 {
     if (g_boot_sync_deadline_us <= 0) {
@@ -409,17 +425,7 @@ static bool save_hourly_sensor_slot(int index)
         ESP_LOGW(TAG, SENSOR_NVS_OPEN_FAILED_LOG_FORMAT, esp_err_to_name(err));
         return false;
     }
-    HourlySensorHistoryMeta meta = {};
-    meta.last_saved_at = g_last_hourly_saved_at;
-    err = nvs_set_blob(nvs, kHourlyHistoryMetaKey, &meta, sizeof(meta));
-    if (err == ESP_OK) {
-        char key[kHourlySlotKeyBufferSize] = {};
-        if (hourly_slot_key(index, key, sizeof(key))) {
-            err = nvs_set_blob(nvs, key, &g_hourly_history.samples[index], sizeof(g_hourly_history.samples[index]));
-        } else {
-            err = ESP_ERR_INVALID_ARG;
-        }
-    }
+    err = save_hourly_sensor_meta_and_slot(nvs, index);
     if (err == ESP_OK) {
         err = nvs_commit(nvs);
     }

@@ -988,6 +988,7 @@ static int clamp_settings_secondary(int primary, int selected)
 
 void handle_settings_key_short()
 {
+    g_settings_last_activity_tick = xTaskGetTickCount();
     int primary = clamp_settings_primary(g_settings_primary_selection);
     if (g_settings_page_order_mode) {
         g_settings_page_order_selection = (g_settings_page_order_selection + 1) % kWorkPageCount;

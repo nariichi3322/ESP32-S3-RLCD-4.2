@@ -67,6 +67,8 @@ constexpr const char *kWeatherBoardWindFormat = "%s %s级";
 constexpr const char *kWeatherBoardSunriseFormat = "日出 %s";
 constexpr const char *kWeatherBoardSunsetFormat = "日落 %s";
 constexpr const char *kWeatherBoardSunCountdownFormat = "距%s %02d:%02d";
+constexpr const char *kWeatherBoardSunTargetSunrise = "日出";
+constexpr const char *kWeatherBoardSunTargetSunset = "日落";
 constexpr int kForecastCardX[kWeatherForecastDays] = {138, 180, 222, 264, 306, 348};
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
@@ -213,6 +215,14 @@ time_t weather_board_time_on_day(const struct tm &local, const char *hhmm, int d
     return mktime(&target);
 }
 
+void set_sun_countdown_placeholder(char *out, size_t out_len)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    strlcpy(out, kWeatherBoardSunCountdownPlaceholder, out_len);
+}
+
 void format_weather_board_sun_countdown(const struct tm &local,
                                         const WeatherForecastData &forecast,
                                         char *out,
@@ -223,7 +233,7 @@ void format_weather_board_sun_countdown(const struct tm &local,
     }
     const WeatherForecastDay *today = forecast_day_or_null(forecast, 0);
     if (!today || !today->sunrise[0] || !today->sunset[0]) {
-        strlcpy(out, kWeatherBoardSunCountdownPlaceholder, out_len);
+        set_sun_countdown_placeholder(out, out_len);
         return;
     }
     struct tm now_tm = local;
@@ -231,23 +241,23 @@ void format_weather_board_sun_countdown(const struct tm &local,
     time_t sunrise = weather_board_time_on_day(local, today->sunrise, 0);
     time_t sunset = weather_board_time_on_day(local, today->sunset, 0);
     if (now <= 0 || sunrise <= 0 || sunset <= 0) {
-        strlcpy(out, kWeatherBoardSunCountdownPlaceholder, out_len);
+        set_sun_countdown_placeholder(out, out_len);
         return;
     }
-    const char *target_name = "日落";
+    const char *target_name = kWeatherBoardSunTargetSunset;
     time_t target = sunset;
     if (now < sunrise) {
-        target_name = "日出";
+        target_name = kWeatherBoardSunTargetSunrise;
         target = sunrise;
     } else if (now >= sunset) {
-        target_name = "日出";
+        target_name = kWeatherBoardSunTargetSunrise;
         const WeatherForecastDay *tomorrow = forecast_day_or_null(forecast, 1);
         target = weather_board_time_on_day(local,
                                            tomorrow && tomorrow->sunrise[0] ? tomorrow->sunrise : today->sunrise,
                                            1);
     }
     if (target <= now) {
-        strlcpy(out, kWeatherBoardSunCountdownPlaceholder, out_len);
+        set_sun_countdown_placeholder(out, out_len);
         return;
     }
     int total_minutes = (int)((target - now + (kSecondsPerMinute - 1)) / kSecondsPerMinute);
