@@ -86,6 +86,18 @@ constexpr int kManualTimeMaxMinute = 59;
 constexpr int kManualTimeMinSecond = 0;
 constexpr int kManualTimeMaxSecond = 59;
 constexpr int kManualTimeRequiredFieldCount = 5; // year, month, day, hour and minute.
+constexpr EventBits_t kNetworkRequestClearBits = kProvisioningSyncBit |
+                                                 kManualNtpSyncBit |
+                                                 kManualWeatherSyncBit |
+                                                 kManualSayingSyncBit |
+                                                 kNetworkDiagBit |
+                                                 kOtaCheckBit |
+                                                 kOtaInstallBit;
+static_assert((kNetworkRequestClearBits & kManualWeatherSyncBit) != 0,
+              "network request clear bits must include manual weather sync");
+static_assert((kNetworkRequestClearBits & kOtaCheckBit) != 0 &&
+                  (kNetworkRequestClearBits & kOtaInstallBit) != 0,
+              "network request clear bits must include OTA request bits");
 constexpr const char *kManualTimeIsoSecondsFormat = "%d-%d-%dT%d:%d:%d";
 constexpr const char *kManualTimeSpaceSecondsFormat = "%d-%d-%d %d:%d:%d";
 constexpr const char *kManualTimeSpaceMinutesFormat = "%d-%d-%d %d:%d";
@@ -809,6 +821,16 @@ void load_saved_manual_weather_city(nvs_handle_t nvs)
         }
     }
 }
+
+void apply_loaded_page_config(uint8_t page_mask, const uint8_t *page_order, bool have_page_order)
+{
+    g_work_page_enabled_mask = (page_mask | kWeatherClockPageMask) & kPageMaskV4KnownBits;
+    if (have_page_order && page_order) {
+        memcpy(g_work_page_order, page_order, sizeof(g_work_page_order));
+    }
+    normalize_work_page_order();
+    g_active_work_page = first_enabled_work_page();
+}
 } // namespace
 
 bool load_saved_config()
@@ -838,25 +860,13 @@ bool load_saved_config()
     g_offline_mode_ui_enabled = offline != 0;
     g_chime_volume_percent = normalize_chime_volume(volume);
     g_chime_sound_index = normalize_chime_sound_index(sound);
-    g_work_page_enabled_mask = (page_mask | kWeatherClockPageMask) & kPageMaskV4KnownBits;
-    if (have_page_order) {
-        memcpy(g_work_page_order, page_order, sizeof(g_work_page_order));
-    }
-    normalize_work_page_order();
-    g_active_work_page = first_enabled_work_page();
+    apply_loaded_page_config(page_mask, page_order, have_page_order);
     return ssid_err == ESP_OK && pass_err == ESP_OK && g_wifi_ssid[0] != '\0';
 }
 
 void clear_network_request_bits()
 {
-    clear_app_event_bits(kProvisioningSyncBit |
-                             kManualNtpSyncBit |
-                             kManualWeatherSyncBit |
-                             kManualSayingSyncBit |
-                             kNetworkDiagBit |
-                             kOtaCheckBit |
-                             kOtaInstallBit,
-                         kConfigEventReasonNetworkRequestReset);
+    clear_app_event_bits(kNetworkRequestClearBits, kConfigEventReasonNetworkRequestReset);
 }
 
 bool set_offline_mode_enabled(bool enabled)

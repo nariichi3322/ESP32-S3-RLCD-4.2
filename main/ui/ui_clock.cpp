@@ -839,6 +839,19 @@ void set_formatted_settings_feedback(const char *format, ...)
     set_settings_feedback(feedback, kSettingsFeedbackDefaultMs);
 }
 
+void clear_inactive_settings_confirmation(int primary, int selected)
+{
+    if (!(primary == kSettingsPrimarySystem && selected == kSystemSettingsFactoryResetItem)) {
+        g_factory_reset_confirm_pending = false;
+    }
+    if (!(primary == kSettingsPrimarySystem && selected == kSystemSettingsOfflineItem)) {
+        g_offline_disable_confirm_pending = false;
+    }
+    if (!(primary == kSettingsPrimaryNetwork && selected == kNetworkSettingsWeatherCityItem)) {
+        g_weather_city_clear_confirm_pending = false;
+    }
+}
+
 void handle_settings_action()
 {
     int primary = g_settings_primary_selection;
@@ -883,15 +896,7 @@ void handle_settings_action()
         set_settings_feedback(kSettingsSyncBusyFeedback, kSettingsFeedbackBusyMs);
         return;
     }
-    if (!(primary == kSettingsPrimarySystem && selected == kSystemSettingsFactoryResetItem)) {
-        g_factory_reset_confirm_pending = false;
-    }
-    if (!(primary == kSettingsPrimarySystem && selected == kSystemSettingsOfflineItem)) {
-        g_offline_disable_confirm_pending = false;
-    }
-    if (!(primary == kSettingsPrimaryNetwork && selected == kNetworkSettingsWeatherCityItem)) {
-        g_weather_city_clear_confirm_pending = false;
-    }
+    clear_inactive_settings_confirmation(primary, selected);
     if (primary == kSettingsPrimaryNetwork) {
         if (selected == kNetworkSettingsWeatherCityItem) {
             if (!g_has_manual_weather_city) {
