@@ -23,7 +23,7 @@ LV_FONT_DECLARE(zh_flip_lunar_22);
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.4.50";
+static const char *APP_VERSION = "v1.4.51";
 static const char *const kPreviewWeekDaysFull[] = {
     "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六",
 };
@@ -1893,7 +1893,7 @@ static void build_settings_page()
         make_settings_grid_item(screen, 150, 105, "恢复出厂设置", false);
         make_settings_grid_item(screen, 267, 105, "关于本机", true);
         make_settings_item(screen, 150, 144, 228, 30, "检查更新", false);
-        lv_obj_t *ota = make_label(screen, 150, 176, 228, 22, "当前版本 v1.4.50");
+        lv_obj_t *ota = make_label(screen, 150, 176, 228, 22, "当前版本 v1.4.51");
         lv_obj_set_style_text_align(ota, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_t *hint_line = make_label(screen, 150, 218, 228, 20, "BOOT开始检查");
         lv_obj_set_style_text_align(hint_line, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
