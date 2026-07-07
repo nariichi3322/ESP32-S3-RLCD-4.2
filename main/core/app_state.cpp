@@ -2,7 +2,7 @@
 #include "app_state.h"
 
 const char *const TAG = "WeatherClock";
-const char *const APP_VERSION = "v1.4.54";
+const char *const APP_VERSION = "v1.4.55";
 #ifndef WEATHER_CLOCK_BUILD_DATE
 #define WEATHER_CLOCK_BUILD_DATE "unknown"
 #endif
@@ -57,6 +57,7 @@ int g_humi_trend = 0;
 int g_battery_percent = -1;
 float g_battery_voltage = -1.0f;
 bool g_battery_charging = false;
+time_t g_last_charge_time = 0;
 uint32_t g_battery_version = 0;
 time_t g_last_ntp_sync_time = 0;
 time_t g_last_weather_sync_time = 0;

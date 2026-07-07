@@ -49,6 +49,7 @@ i2cbus_(i2cbus) {
     Shtc3_SoftReset();
     vTaskDelay(kShtc3PostResetDelay);
     Shtc3_GetId();
+    Shtc3_Sleep();
     ESP_LOGI(TAG, "ID:%04x", shtc3_id);
 }
 

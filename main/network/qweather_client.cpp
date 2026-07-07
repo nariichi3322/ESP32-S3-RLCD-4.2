@@ -800,7 +800,7 @@ bool ip_geo_coordinates_available(const cJSON *lat, const cJSON *lon)
     return cJSON_IsNumber(lat) && cJSON_IsNumber(lon);
 }
 
-cJSON *qweather_success_item(cJSON *root, const char *field, cJSON **code_out)
+cJSON *qweather_success_item(const cJSON *root, const char *field, cJSON **code_out)
 {
     cJSON *code = root ? cJSON_GetObjectItem(root, kQweatherJsonCodeField) : nullptr;
     if (code_out) {
@@ -810,13 +810,13 @@ cJSON *qweather_success_item(cJSON *root, const char *field, cJSON **code_out)
     return qweather_code_ok(code) ? item : nullptr;
 }
 
-cJSON *qweather_success_object(cJSON *root, const char *field, cJSON **code_out)
+cJSON *qweather_success_object(const cJSON *root, const char *field, cJSON **code_out)
 {
     cJSON *item = qweather_success_item(root, field, code_out);
     return cJSON_IsObject(item) ? item : nullptr;
 }
 
-cJSON *qweather_success_array(cJSON *root, const char *field, cJSON **code_out)
+cJSON *qweather_success_array(const cJSON *root, const char *field, cJSON **code_out)
 {
     cJSON *item = qweather_success_item(root, field, code_out);
     return cJSON_IsArray(item) ? item : nullptr;

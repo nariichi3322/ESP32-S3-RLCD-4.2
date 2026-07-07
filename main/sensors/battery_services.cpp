@@ -115,6 +115,24 @@ static bool battery_percent_decreased(int previous_percent, int current_percent)
     return previous_battery_percent_valid(previous_percent) && current_percent < previous_percent;
 }
 
+static bool battery_time_valid(time_t value)
+{
+    if (value <= 0) {
+        return false;
+    }
+    struct tm local = {};
+    return localtime_r(&value, &local) && local.tm_year >= 123;
+}
+
+static void update_last_charge_time_if_needed()
+{
+    time_t now = 0;
+    time(&now);
+    if (battery_time_valid(now)) {
+        g_last_charge_time = now;
+    }
+}
+
 void release_battery_gauge()
 {
     if (g_battery_adc_cali_ready && g_battery_adc_cali) {
@@ -237,6 +255,7 @@ void sample_battery()
 {
     static int charging_rise_samples = 0;
     int percent = kBatteryPercentUnknown;
+    bool previous_charging = g_battery_charging;
     int previous_percent = g_battery_percent;
     float previous_voltage = g_battery_voltage;
     if (read_battery_percent(&percent)) {
@@ -251,22 +270,22 @@ void sample_battery()
                 charging_rise_samples = 0;
             }
 
-    if (g_battery_charging) {
-        if (delta <= kBatteryChargingStopVoltage ||
-            battery_percent_decreased(previous_percent, percent)) {
-            g_battery_charging = false;
-            charging_rise_samples = 0;
-        }
+            if (g_battery_charging) {
+                if (delta <= -kBatteryChargingStopVoltage ||
+                    battery_percent_decreased(previous_percent, percent)) {
+                    g_battery_charging = false;
+                    charging_rise_samples = 0;
+                }
             } else if (charging_rise_samples >= kBatteryChargingRiseSamples) {
                 g_battery_charging = true;
             }
         } else {
             charging_rise_samples = 0;
         }
-        if (percent >= kBatteryPercentMax) {
-            g_battery_charging = false;
-            charging_rise_samples = 0;
+        if (previous_charging && !g_battery_charging) {
+            update_last_charge_time_if_needed();
         }
+        release_battery_gauge();
     } else {
         g_battery_percent = kBatteryPercentUnknown;
         g_battery_charging = false;

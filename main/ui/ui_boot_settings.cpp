@@ -286,9 +286,9 @@ constexpr size_t kInfoLineTextSize = 96;
 constexpr const char *kInfoLastNtpFormat = "Last NTP: %s";
 constexpr const char *kInfoWifiFormat = "WiFi: %s";
 constexpr const char *kInfoLastWeatherFormat = "Last Weather: %s";
-constexpr const char *kInfoBatteryFullFormat = "Battery: %d%%  %.2fV";
-constexpr const char *kInfoBatteryPercentOnlyFormat = "Battery: %d%%  --";
-constexpr const char *kInfoBatteryPlaceholder = "Battery: --  --";
+constexpr const char *kInfoBatteryFullFormat = "Battery: %d%%  %.2fV \\ %s";
+constexpr const char *kInfoBatteryPercentOnlyFormat = "Battery: %d%%  -- \\ %s";
+constexpr const char *kInfoBatteryPlaceholder = "Battery: --  -- \\ --";
 constexpr const char *kInfoVersionFormat = "Version: %s / %s";
 constexpr const char *kInfoSourceFormat = "Source: %s";
 constexpr const char *kProjectSourceUrl = "github.com/wickenzh/ESP32-S3-RLCD-4.2";
@@ -810,19 +810,23 @@ void set_info_string_label(size_t index, const char *format, const char *value)
 void set_info_battery_label()
 {
     char line[kInfoLineTextSize] = {};
+    char charge_time[kInfoTimeTextSize] = {};
+    format_time_or_dash(g_last_charge_time, charge_time, sizeof(charge_time));
     if (g_battery_percent >= 0 && g_battery_voltage >= 0.0f) {
         format_text_or_fallback(line,
                                 sizeof(line),
                                 kInfoBatteryPlaceholder,
                                 kInfoBatteryFullFormat,
                                 g_battery_percent,
-                                g_battery_voltage);
+                                g_battery_voltage,
+                                charge_time);
     } else if (g_battery_percent >= 0) {
         format_text_or_fallback(line,
                                 sizeof(line),
                                 kInfoBatteryPlaceholder,
                                 kInfoBatteryPercentOnlyFormat,
-                                g_battery_percent);
+                                g_battery_percent,
+                                charge_time);
     } else {
         copy_text(line, sizeof(line), kInfoBatteryPlaceholder);
     }

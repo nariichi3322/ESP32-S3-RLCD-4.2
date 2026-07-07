@@ -272,12 +272,20 @@ void format_weather_board_sun_countdown(const struct tm &local,
                                           minutes);
 }
 
+bool parse_forecast_date(const char *date, int &year, int &month, int &day)
+{
+    if (!date) {
+        return false;
+    }
+    return sscanf(date, kForecastDateFormat, &year, &month, &day) == kForecastDateFieldCount;
+}
+
 const char *weekday_name_from_date(const char *date)
 {
     int year = 0;
     int month = 0;
     int day = 0;
-    if (!date || sscanf(date, kForecastDateFormat, &year, &month, &day) != kForecastDateFieldCount) {
+    if (!parse_forecast_date(date, year, month, day)) {
         return kWeatherBoardDash;
     }
     struct tm tm_value = {};
@@ -304,7 +312,7 @@ void format_short_date(const char *date, char *out, size_t out_len)
     if (!out || out_len == 0) {
         return;
     }
-    if (!date || sscanf(date, kForecastDateFormat, &year, &month, &day) != kForecastDateFieldCount) {
+    if (!parse_forecast_date(date, year, month, day)) {
         strlcpy(out, kWeatherBoardShortDatePlaceholder, out_len);
         return;
     }

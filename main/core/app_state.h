@@ -131,7 +131,7 @@ inline constexpr int kDisplayPartialMaxWidth = (kDisplayWidth * 7) / 10;
 inline constexpr int kMaxFlushRanges = 8;
 inline constexpr int kFlushRangeMergeGap = 8;
 inline constexpr int kDisplayFlushDiagIntervalMs = kAppMsPerMinute;
-inline constexpr int kSensorHistoryMinutes = 120;
+inline constexpr int kSensorHistoryMinutes = 240;
 inline constexpr int kHourlyHistoryCount = 48;
 inline constexpr int kLegacyHourlyHistoryCount = 24;
 inline constexpr uint32_t kHourlyHistoryMagic = 0x48543234;
@@ -173,8 +173,8 @@ inline constexpr const char *kGiteaCheckUrl = "https://example.invalid/";
 inline constexpr const char *kTypelessCheckUrl = "https://typeless.com/";
 inline constexpr float kBatteryChargingRiseVoltage = 0.035f;
 inline constexpr float kBatteryChargingStopVoltage = 0.008f;
-inline constexpr int kBatteryChargingRiseSamples = 2;
-inline constexpr int kBatteryChargingSampleMs = kAppMsPerMinute;
+inline constexpr int kBatteryChargingRiseSamples = 1;
+inline constexpr int kBatteryChargingSampleMs = 5 * kAppMsPerSecond;
 inline constexpr int kBatterySampleUnknownTimeMinutes = 10;
 inline constexpr int kBatterySampleDayMinutes = 10;
 inline constexpr int kBatterySampleNightMinutes = 20;
@@ -266,6 +266,7 @@ extern int g_humi_trend;
 extern int g_battery_percent;
 extern float g_battery_voltage;
 extern bool g_battery_charging;
+extern time_t g_last_charge_time;
 extern uint32_t g_battery_version;
 extern time_t g_last_ntp_sync_time;
 extern time_t g_last_weather_sync_time;
@@ -356,6 +357,7 @@ struct WeatherAirData {
 };
 
 struct SensorSample {
+    int64_t sampled_at_ms = 0;
     float temperature = 0.0f;
     float humidity = 0.0f;
 };

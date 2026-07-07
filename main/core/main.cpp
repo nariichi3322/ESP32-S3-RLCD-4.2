@@ -219,6 +219,7 @@ extern "C" void app_main(void)
     }
     sample_battery();
     init_wifi();
+    park_unused_audio_peripherals();
 
     g_display.RLCD_Init();
     g_display.RLCD_ColorClear(ColorWhite);
