@@ -10,6 +10,10 @@ static constexpr int kCalendarCanvasW = 364;
 static constexpr int kCalendarCanvasH = 228;
 static constexpr int kCalendarCanvasX = 18;
 static constexpr int kCalendarCanvasY = 62;
+static constexpr int kCalendarTopLineX = 18;
+static constexpr int kCalendarTopLineY = 54;
+static constexpr int kCalendarTopLineW = 364;
+static constexpr int kCalendarTopLineH = 4;
 static constexpr int kCalendarWeekdayCount = 7;
 static constexpr int kCalendarVisibleRowCount = 5;
 static constexpr int kCalendarVisibleCellLimit = kCalendarWeekdayCount * kCalendarVisibleRowCount;
@@ -48,6 +52,10 @@ constexpr size_t array_count(const T (&)[N])
 
 static_assert(array_count(kCalendarWeekdays) == kCalendarWeekdayCount,
               "calendar weekday label table must match weekday count");
+static_assert(kCalendarCanvasW > 0 && kCalendarCanvasH > 0,
+              "calendar canvas size must be positive");
+static_assert(kCalendarTopLineW > 0 && kCalendarTopLineH > 0,
+              "calendar top separator size must be positive");
 
 static void canvas_fill_rect_safe(lv_obj_t *canvas, int w, int h, int x, int y, int rw, int rh, lv_color_t color)
 {
@@ -299,9 +307,18 @@ void build_calendar_page()
     g_calendar_root = screen;
 
     build_battery_icon(screen, g_calendar_battery_segments);
-    build_work_page_status_bar(screen, 3, &g_calendar_date_label, &g_calendar_summary_label, &g_calendar_status_time_label, true);
+    build_work_page_status_bar(screen,
+                               kWorkPageCalendar,
+                               &g_calendar_date_label,
+                               &g_calendar_summary_label,
+                               &g_calendar_status_time_label,
+                               true);
 
-    lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
+    lv_obj_t *top_line = make_bar(screen,
+                                  kCalendarTopLineX,
+                                  kCalendarTopLineY,
+                                  kCalendarTopLineW,
+                                  kCalendarTopLineH);
     set_obj_black(top_line, true);
 
     if (!g_calendar_canvas_buf) {

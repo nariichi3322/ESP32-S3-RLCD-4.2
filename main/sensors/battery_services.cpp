@@ -43,6 +43,9 @@ static constexpr int kBatteryAdcRawMax = 4095;
 static constexpr int kBatteryPercentMin = 0;
 static constexpr int kBatteryPercentMax = 100;
 static constexpr int kBatteryPercentUnknown = -1;
+static constexpr int kTmYearOffset = 1900;
+static constexpr int kBatteryMinValidYear = 2023;
+static constexpr int kBatteryMinValidTmYear = kBatteryMinValidYear - kTmYearOffset;
 
 static constexpr bool cstr_nonempty(const char *text)
 {
@@ -82,6 +85,9 @@ static_assert(kBatteryPercentMin == 0, "battery percent min is expected to be ze
 static_assert(kBatteryPercentMax == 100, "battery percent max is expected to be one hundred");
 static_assert(kBatteryPercentMin < kBatteryPercentMax, "battery percent range must be ordered");
 static_assert(kBatteryPercentUnknown < kBatteryPercentMin, "unknown battery percent must be below valid range");
+static_assert(kTmYearOffset > 0, "tm year offset must be positive");
+static_assert(kBatteryMinValidYear > kTmYearOffset, "battery valid year must exceed tm year offset");
+static_assert(kBatteryMinValidTmYear >= 0, "battery valid time year floor must be non-negative");
 static_assert(kBatteryChargingRiseSamples > 0, "charging detection must require at least one rising sample");
 static_assert(kBatteryChargingRiseVoltage > kBatteryChargingStopVoltage,
               "charging rise threshold must stay above stop threshold");
@@ -121,7 +127,7 @@ static bool battery_time_valid(time_t value)
         return false;
     }
     struct tm local = {};
-    return localtime_r(&value, &local) && local.tm_year >= 123;
+    return localtime_r(&value, &local) && local.tm_year >= kBatteryMinValidTmYear;
 }
 
 static void update_last_charge_time_if_needed()
@@ -251,6 +257,55 @@ bool read_battery_percent(int *percent)
     return true;
 }
 
+static void update_battery_charging_state(int previous_percent,
+                                          float previous_voltage,
+                                          int current_percent,
+                                          int *charging_rise_samples)
+{
+    if (!charging_rise_samples) {
+        return;
+    }
+    if (!previous_battery_voltage_valid(previous_voltage)) {
+        *charging_rise_samples = 0;
+        return;
+    }
+
+    float delta = g_battery_voltage - previous_voltage;
+    if (delta >= kBatteryChargingRiseVoltage) {
+        if (*charging_rise_samples < kBatteryChargingRiseSamples) {
+            ++(*charging_rise_samples);
+        }
+    } else {
+        *charging_rise_samples = 0;
+    }
+
+    if (g_battery_charging) {
+        if (delta <= -kBatteryChargingStopVoltage ||
+            battery_percent_decreased(previous_percent, current_percent)) {
+            g_battery_charging = false;
+            *charging_rise_samples = 0;
+        }
+    } else if (*charging_rise_samples >= kBatteryChargingRiseSamples) {
+        g_battery_charging = true;
+    }
+}
+
+static void reset_battery_state_after_sample_failure(int *charging_rise_samples)
+{
+    g_battery_percent = kBatteryPercentUnknown;
+    g_battery_charging = false;
+    if (charging_rise_samples) {
+        *charging_rise_samples = 0;
+    }
+}
+
+static void publish_battery_sample_update()
+{
+    update_low_battery_state();
+    ++g_battery_version;
+    notify_ui_task();
+}
+
 void sample_battery()
 {
     static int charging_rise_samples = 0;
@@ -260,38 +315,16 @@ void sample_battery()
     float previous_voltage = g_battery_voltage;
     if (read_battery_percent(&percent)) {
         g_battery_percent = percent;
-        if (previous_battery_voltage_valid(previous_voltage)) {
-            float delta = g_battery_voltage - previous_voltage;
-            if (delta >= kBatteryChargingRiseVoltage) {
-                if (charging_rise_samples < kBatteryChargingRiseSamples) {
-                    ++charging_rise_samples;
-                }
-            } else {
-                charging_rise_samples = 0;
-            }
-
-            if (g_battery_charging) {
-                if (delta <= -kBatteryChargingStopVoltage ||
-                    battery_percent_decreased(previous_percent, percent)) {
-                    g_battery_charging = false;
-                    charging_rise_samples = 0;
-                }
-            } else if (charging_rise_samples >= kBatteryChargingRiseSamples) {
-                g_battery_charging = true;
-            }
-        } else {
-            charging_rise_samples = 0;
-        }
+        update_battery_charging_state(previous_percent,
+                                      previous_voltage,
+                                      percent,
+                                      &charging_rise_samples);
         if (previous_charging && !g_battery_charging) {
             update_last_charge_time_if_needed();
         }
         release_battery_gauge();
     } else {
-        g_battery_percent = kBatteryPercentUnknown;
-        g_battery_charging = false;
-        charging_rise_samples = 0;
+        reset_battery_state_after_sample_failure(&charging_rise_samples);
     }
-    update_low_battery_state();
-    ++g_battery_version;
-    notify_ui_task();
+    publish_battery_sample_update();
 }

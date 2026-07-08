@@ -1250,6 +1250,30 @@ static void build_weather_alert_title(char *title,
     }
 }
 
+static void parse_weather_alert_item(cJSON *item, WeatherAlertData *alert)
+{
+    if (!cJSON_IsObject(item) || !alert) {
+        return;
+    }
+    char event_name[kWeatherAlertEventNameSize] = {};
+    char color_code[kWeatherAlertColorCodeSize] = {};
+    char headline[kWeatherAlertHeadlineSize] = {};
+    cJSON *event = cJSON_GetObjectItem(item, kQweatherAlertJsonEventTypeField);
+    cJSON *color = cJSON_GetObjectItem(item, kQweatherAlertJsonColorField);
+    if (event) {
+        json_copy_string(event, kQweatherAlertJsonEventNameField, event_name, sizeof(event_name));
+    }
+    if (color) {
+        json_copy_string(color, kQweatherAlertJsonColorCodeField, color_code, sizeof(color_code));
+    }
+    json_copy_string(item, kQweatherAlertJsonHeadlineField, headline, sizeof(headline));
+
+    int rank = warning_color_rank(color_code);
+    char title[kWeatherAlertTitleLen] = {};
+    build_weather_alert_title(title, sizeof(title), event_name, color_code, headline);
+    add_weather_alert_title(alert, title, rank);
+}
+
 bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *alert)
 {
     if (!alert) {
@@ -1295,24 +1319,7 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
         if (!cJSON_IsObject(item)) {
             continue;
         }
-        char event_name[kWeatherAlertEventNameSize] = {};
-        char color_code[kWeatherAlertColorCodeSize] = {};
-        char headline[kWeatherAlertHeadlineSize] = {};
-        cJSON *event = cJSON_GetObjectItem(item, kQweatherAlertJsonEventTypeField);
-        cJSON *color = cJSON_GetObjectItem(item, kQweatherAlertJsonColorField);
-        if (event) {
-            json_copy_string(event, kQweatherAlertJsonEventNameField, event_name, sizeof(event_name));
-        }
-        if (color) {
-            json_copy_string(color, kQweatherAlertJsonColorCodeField, color_code, sizeof(color_code));
-        }
-        json_copy_string(item, kQweatherAlertJsonHeadlineField, headline, sizeof(headline));
-
-        int rank = warning_color_rank(color_code);
-
-        char title[kWeatherAlertTitleLen] = {};
-        build_weather_alert_title(title, sizeof(title), event_name, color_code, headline);
-        add_weather_alert_title(&next, title, rank);
+        parse_weather_alert_item(item, &next);
     }
     next.active = next.count > 0;
     time(&next.updated_at);
@@ -1440,6 +1447,30 @@ static int weather_forecast_parse_count(cJSON *daily)
     return count > kWeatherForecastDays ? kWeatherForecastDays : count;
 }
 
+static bool parse_weather_forecast_days(cJSON *daily, WeatherForecastData *forecast)
+{
+    if (!daily || !forecast) {
+        return false;
+    }
+    int count = weather_forecast_parse_count(daily);
+    for (int i = 0; i < count; ++i) {
+        cJSON *item = cJSON_GetArrayItem(daily, i);
+        if (!cJSON_IsObject(item)) {
+            continue;
+        }
+        WeatherForecastDay &day = forecast->days[forecast->count];
+        if (parse_weather_forecast_day(item, &day)) {
+            ++forecast->count;
+        }
+    }
+    forecast->ready = forecast->count > 0;
+    if (forecast->ready) {
+        time(&forecast->updated_at);
+        build_weather_advice(forecast);
+    }
+    return forecast->ready;
+}
+
 static bool qweather_fetch_daily_days(const char *city_id, int days, WeatherForecastData *forecast)
 {
     if (!city_id || !forecast ||
@@ -1473,21 +1504,7 @@ static bool qweather_fetch_daily_days(const char *city_id, int days, WeatherFore
     cJSON *code = nullptr;
     cJSON *daily = qweather_success_array(root.get(), kQweatherDailyJsonDailyField, &code);
     if (daily) {
-        int count = weather_forecast_parse_count(daily);
-        for (int i = 0; i < count; ++i) {
-            cJSON *item = cJSON_GetArrayItem(daily, i);
-            if (!cJSON_IsObject(item)) {
-                continue;
-            }
-            WeatherForecastDay &day = next.days[next.count];
-            if (parse_weather_forecast_day(item, &day)) {
-                ++next.count;
-            }
-        }
-        next.ready = next.count > 0;
-        if (next.ready) {
-            time(&next.updated_at);
-            build_weather_advice(&next);
+        if (parse_weather_forecast_days(daily, &next)) {
             *forecast = next;
             ok = true;
         }
@@ -1505,15 +1522,25 @@ bool qweather_fetch_daily(const char *city_id, WeatherForecastData *forecast)
     return qweather_fetch_daily_days(city_id, kQweatherDaily3DayEndpointDays, forecast);
 }
 
+static bool copy_weather_air_required_fields(cJSON *now, WeatherAirData *air)
+{
+    return json_copy_string(now, kQweatherAirJsonAqiField, air->aqi, sizeof(air->aqi)) &&
+           json_copy_string(now, kQweatherAirJsonCategoryField, air->category, sizeof(air->category));
+}
+
+static void copy_weather_air_optional_fields(cJSON *now, WeatherAirData *air)
+{
+    json_copy_string(now, kQweatherAirJsonPrimaryField, air->primary, sizeof(air->primary));
+    json_copy_string(now, kQweatherAirJsonPm25Field, air->pm2p5, sizeof(air->pm2p5));
+}
+
 static bool parse_weather_air(cJSON *now, WeatherAirData *air)
 {
     if (!cJSON_IsObject(now) || !air) {
         return false;
     }
-    bool ok = json_copy_string(now, kQweatherAirJsonAqiField, air->aqi, sizeof(air->aqi)) &&
-              json_copy_string(now, kQweatherAirJsonCategoryField, air->category, sizeof(air->category));
-    json_copy_string(now, kQweatherAirJsonPrimaryField, air->primary, sizeof(air->primary));
-    json_copy_string(now, kQweatherAirJsonPm25Field, air->pm2p5, sizeof(air->pm2p5));
+    bool ok = copy_weather_air_required_fields(now, air);
+    copy_weather_air_optional_fields(now, air);
     return ok;
 }
 
@@ -1598,6 +1625,37 @@ void get_weather_air_snapshot(WeatherAirData *air)
     portEXIT_CRITICAL(&g_weather_state_mux);
 }
 
+static void commit_weather_update_snapshot(const WeatherData &next,
+                                           const WeatherAlertData &next_alert,
+                                           const WeatherForecastData &next_forecast,
+                                           const WeatherAirData &next_air,
+                                           bool forecast_ok,
+                                           bool air_ok)
+{
+    time_t now = 0;
+    time(&now);
+    portENTER_CRITICAL(&g_weather_state_mux);
+    g_weather = next;
+    g_weather_alert = next_alert;
+    if (forecast_ok) {
+        g_weather_forecast = next_forecast;
+    }
+    if (air_ok) {
+        g_weather_air = next_air;
+    }
+    g_last_weather_sync_time = now;
+    portEXIT_CRITICAL(&g_weather_state_mux);
+    xEventGroupSetBits(g_app_events, kWeatherReadyBit);
+    ESP_LOGI(TAG, WEATHER_UPDATED_LOG_FORMAT,
+             next.city,
+             next.text,
+             next.temp,
+             next.humidity,
+             next.icon,
+             forecast_ok ? kWeatherFetchStatusOk : kWeatherFetchStatusCached,
+             air_ok ? kWeatherFetchStatusOk : kWeatherFetchStatusCached);
+}
+
 static bool fetch_and_commit_weather(const char *city_id, WeatherData *next)
 {
     if (!city_id || !next) {
@@ -1613,29 +1671,58 @@ static bool fetch_and_commit_weather(const char *city_id, WeatherData *next)
     (void)qweather_fetch_alert(next->lat, next->lon, &next_alert);
     bool forecast_ok = qweather_fetch_daily(city_id, &next_forecast);
     bool air_ok = qweather_fetch_air(city_id, &next_air);
-    time_t now = 0;
-    time(&now);
-    portENTER_CRITICAL(&g_weather_state_mux);
-    g_weather = *next;
-    g_weather_alert = next_alert;
-    if (forecast_ok) {
-        g_weather_forecast = next_forecast;
-    }
-    if (air_ok) {
-        g_weather_air = next_air;
-    }
-    g_last_weather_sync_time = now;
-    portEXIT_CRITICAL(&g_weather_state_mux);
-    xEventGroupSetBits(g_app_events, kWeatherReadyBit);
-    ESP_LOGI(TAG, WEATHER_UPDATED_LOG_FORMAT,
-             next->city,
-             next->text,
-             next->temp,
-             next->humidity,
-             next->icon,
-             forecast_ok ? kWeatherFetchStatusOk : kWeatherFetchStatusCached,
-             air_ok ? kWeatherFetchStatusOk : kWeatherFetchStatusCached);
+    commit_weather_update_snapshot(*next, next_alert, next_forecast, next_air, forecast_ok, air_ok);
     return true;
+}
+
+static bool update_weather_by_manual_city(const char *manual_city)
+{
+    char city_id[kQweatherCityIdSize] = {};
+    char lookup_city[kWeatherCityNameSize] = {};
+    WeatherData next = {};
+
+    ESP_LOGI(TAG, WEATHER_UPDATE_MANUAL_CITY_FORMAT, manual_city);
+    bool have_city_id = lookup_weather_city(manual_city, city_id, lookup_city, &next);
+    if (!have_city_id) {
+        ESP_LOGW(TAG, WEATHER_MANUAL_CITY_LOOKUP_FAILED_FORMAT, manual_city);
+        return false;
+    }
+    copy_first_nonempty_text(next.city, sizeof(next.city), lookup_city, manual_city);
+    if (fetch_and_commit_weather(city_id, &next)) {
+        return true;
+    }
+    ESP_LOGW(TAG, WEATHER_MANUAL_CITY_UPDATE_FAILED_FORMAT, manual_city);
+    return false;
+}
+
+static bool update_weather_by_ip_location()
+{
+    char location[kWeatherLocationTextSize] = {};
+    char city_id[kQweatherCityIdSize] = {};
+    char ip_city[kWeatherCityNameSize] = {};
+    char lookup_city[kWeatherCityNameSize] = {};
+    WeatherData next = {};
+
+    if (!ip_geolocation_lookup(location, sizeof(location), ip_city, sizeof(ip_city))) {
+        log_qweather_fixed_warning(kWeatherIpGeolocationLookupFailedLog);
+        return false;
+    }
+    trim_ascii(location);
+    bool have_city_id = lookup_weather_city(location, city_id, lookup_city, &next);
+    if (!have_city_id && ip_city[0] != '\0') {
+        ESP_LOGW(TAG, WEATHER_RETRY_IP_CITY_LOOKUP_FORMAT, ip_city);
+        have_city_id = lookup_weather_city(ip_city, city_id, lookup_city, &next);
+    }
+    copy_first_nonempty_text(next.city, sizeof(next.city), ip_city, lookup_city, location);
+    if (!have_city_id) {
+        copy_ip_coordinate_location(location, city_id, sizeof(city_id), &next);
+        ESP_LOGW(TAG, WEATHER_USING_IP_COORDINATES_FORMAT, city_id);
+    }
+    if (fetch_and_commit_weather(city_id, &next)) {
+        return true;
+    }
+    log_qweather_fixed_warning(kWeatherIpLookupUpdateFailedLog);
+    return false;
 }
 
 bool perform_weather_update()
@@ -1645,52 +1732,15 @@ bool perform_weather_update()
         return false;
     }
 
-    char location[kWeatherLocationTextSize] = {};
-    char city_id[kQweatherCityIdSize] = {};
-    char ip_city[kWeatherCityNameSize] = {};
-    char lookup_city[kWeatherCityNameSize] = {};
-    WeatherData next = {};
     char manual_city[kManualWeatherCityLen] = {};
     if (g_has_manual_weather_city) {
         strlcpy(manual_city, g_manual_weather_city, sizeof(manual_city));
         trim_ascii(manual_city);
     }
     if (manual_city[0] != '\0') {
-        ESP_LOGI(TAG, WEATHER_UPDATE_MANUAL_CITY_FORMAT, manual_city);
-        bool have_city_id = lookup_weather_city(manual_city, city_id, lookup_city, &next);
-        if (!have_city_id) {
-            ESP_LOGW(TAG, WEATHER_MANUAL_CITY_LOOKUP_FAILED_FORMAT, manual_city);
-            return false;
-        }
-        copy_first_nonempty_text(next.city, sizeof(next.city), lookup_city, manual_city);
-        if (fetch_and_commit_weather(city_id, &next)) {
-            return true;
-        }
-        ESP_LOGW(TAG, WEATHER_MANUAL_CITY_UPDATE_FAILED_FORMAT, manual_city);
-        return false;
+        return update_weather_by_manual_city(manual_city);
     }
-
-    if (ip_geolocation_lookup(location, sizeof(location), ip_city, sizeof(ip_city))) {
-        trim_ascii(location);
-        bool have_city_id = lookup_weather_city(location, city_id, lookup_city, &next);
-        if (!have_city_id && ip_city[0] != '\0') {
-            ESP_LOGW(TAG, WEATHER_RETRY_IP_CITY_LOOKUP_FORMAT, ip_city);
-            have_city_id = lookup_weather_city(ip_city, city_id, lookup_city, &next);
-        }
-        copy_first_nonempty_text(next.city, sizeof(next.city), ip_city, lookup_city, location);
-        if (!have_city_id) {
-            copy_ip_coordinate_location(location, city_id, sizeof(city_id), &next);
-            ESP_LOGW(TAG, WEATHER_USING_IP_COORDINATES_FORMAT, city_id);
-        }
-        if (fetch_and_commit_weather(city_id, &next)) {
-            return true;
-        } else {
-            log_qweather_fixed_warning(kWeatherIpLookupUpdateFailedLog);
-        }
-    } else {
-        log_qweather_fixed_warning(kWeatherIpGeolocationLookupFailedLog);
-    }
-    return false;
+    return update_weather_by_ip_location();
 }
 
 uint32_t weather_icon_codepoint(const char *code)

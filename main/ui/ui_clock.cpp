@@ -40,7 +40,7 @@ constexpr const char *kHourlyChimeDisabledFeedback = "整点提醒已关闭";
 constexpr const char *kAllDayChimeEnabledFeedback = "全天提醒已开启";
 constexpr const char *kAllDayChimeDisabledFeedback = "全天提醒已关闭";
 constexpr const char *kPageOrderInstructionFeedback = "BOOT交换并保存";
-constexpr const char *kWeatherClockRequiredFeedback = "天气时钟不可关闭";
+constexpr const char *kRequiredWorkPageFeedback = "温湿历史不可关闭";
 constexpr const char *kWorkPageFeedbackFormat = "%s%s";
 constexpr const char *kWorkPageEnabledSuffix = "已开启";
 constexpr const char *kWorkPageDisabledSuffix = "已关闭";
@@ -73,7 +73,7 @@ constexpr const char *kClockSettingsFeedbackTexts[] = {
     kAllDayChimeEnabledFeedback,
     kAllDayChimeDisabledFeedback,
     kPageOrderInstructionFeedback,
-    kWeatherClockRequiredFeedback,
+    kRequiredWorkPageFeedback,
     kWorkPageFeedbackFormat,
     kWorkPageEnabledSuffix,
     kWorkPageDisabledSuffix,
@@ -762,6 +762,26 @@ void format_clock_date_text(char *out, size_t out_len, const struct tm &local, c
     }
 }
 
+lv_obj_t *work_page_date_label(int page)
+{
+    switch (page) {
+    case kWorkPageWeatherClock:
+        return g_date_label;
+    case kWorkPageHistory:
+        return g_history_date_label;
+    case kWorkPageGallery:
+        return g_gallery_date_label;
+    case kWorkPageCalendar:
+        return g_calendar_date_label;
+    case kWorkPageWeatherBoard:
+        return g_weather_board_date_label;
+    case kWorkPageFlipClock:
+        return g_flip_clock_date_label;
+    default:
+        return nullptr;
+    }
+}
+
 bool update_time_ui(const struct tm &local, bool clock_page_active, int active_work_page)
 {
     bool changed = false;
@@ -794,19 +814,7 @@ bool update_time_ui(const struct tm &local, bool clock_page_active, int active_w
         static_assert(array_count(kWeekdayNames) == 7, "tm_wday maps to exactly seven weekday names");
         char date[kClockDateTextSize] = {};
         format_clock_date_text(date, sizeof(date), local, kWeekdayNames[local.tm_wday]);
-        if (date_page == kWorkPageWeatherClock) {
-            changed |= set_label_text_if_changed(g_date_label, date);
-        } else if (date_page == kWorkPageHistory) {
-            changed |= set_label_text_if_changed(g_history_date_label, date);
-        } else if (date_page == kWorkPageGallery) {
-            changed |= set_label_text_if_changed(g_gallery_date_label, date);
-        } else if (date_page == kWorkPageCalendar) {
-            changed |= set_label_text_if_changed(g_calendar_date_label, date);
-        } else if (date_page == kWorkPageWeatherBoard) {
-            changed |= set_label_text_if_changed(g_weather_board_date_label, date);
-        } else if (date_page == kWorkPageFlipClock) {
-            changed |= set_label_text_if_changed(g_flip_clock_date_label, date);
-        }
+        changed |= set_label_text_if_changed(work_page_date_label(date_page), date);
         g_last_ui_date_key = date_key;
         g_last_ui_date_page = date_page;
     }
@@ -868,11 +876,8 @@ void handle_settings_action()
     g_settings_last_activity_tick = xTaskGetTickCount();
     if (g_settings_page_order_mode) {
         normalize_work_page_order();
-        int current = g_settings_page_order_selection;
-        if (current < 0 || current >= kWorkPageCount) {
-            current = 0;
-        }
-        int next = (current + 1) % kWorkPageCount;
+        int current = valid_enabled_work_page_order_index(g_settings_page_order_selection);
+        int next = next_enabled_work_page_order_index(current);
         uint8_t tmp = g_work_page_order[current];
         g_work_page_order[current] = g_work_page_order[next];
         g_work_page_order[next] = tmp;
@@ -1005,20 +1010,20 @@ void handle_settings_action()
     if (primary == kSettingsPrimaryDisplay) {
         if (selected == kDisplaySettingsOrderItem) {
             g_settings_page_order_mode = true;
-            g_settings_page_order_selection = 0;
             normalize_work_page_order();
+            g_settings_page_order_selection = first_enabled_work_page_order_index();
             set_settings_feedback(kPageOrderInstructionFeedback, kSettingsFeedbackInstructionMs);
             return;
         }
         int page = display_settings_item_work_page(selected);
-        if (page == kWorkPageWeatherClock) {
-            g_work_page_enabled_mask |= (1U << kWorkPageWeatherClock);
-            set_settings_feedback(kWeatherClockRequiredFeedback, kSettingsFeedbackDefaultMs);
+        if (page == kWorkPageHistory) {
+            g_work_page_enabled_mask |= (1U << kWorkPageHistory);
+            set_settings_feedback(kRequiredWorkPageFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
         uint8_t previous = g_work_page_enabled_mask;
         g_work_page_enabled_mask ^= (1U << page);
-        g_work_page_enabled_mask |= (1U << kWorkPageWeatherClock);
+        g_work_page_enabled_mask |= (1U << kWorkPageHistory);
         if (!save_work_page_settings()) {
             g_work_page_enabled_mask = previous;
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);

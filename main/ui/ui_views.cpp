@@ -36,6 +36,8 @@ constexpr const char *kUiSensorTempPlaceholder = "--.-℃";
 constexpr const char *kUiSensorHumidityPlaceholder = "--.-%%";
 constexpr const char *kUiWeatherTempFormat = "%s℃";
 constexpr const char *kUiWeatherHumidityFormat = "%s%%";
+constexpr const char *kUiDatePlaceholder = "----/--/-- / 星期-";
+constexpr const char *kUiTimePlaceholder = "--:--";
 constexpr uint32_t kDisplayFullReasonSingleWide = 1U << 0;
 constexpr uint32_t kDisplayFullReasonTooManyRanges = 1U << 1;
 constexpr uint32_t kDisplayFullReasonCoveredWide = 1U << 2;
@@ -54,6 +56,8 @@ constexpr const char *kUiFormatTexts[] = {
     kUiSensorHumidityPlaceholder,
     kUiWeatherTempFormat,
     kUiWeatherHumidityFormat,
+    kUiDatePlaceholder,
+    kUiTimePlaceholder,
 };
 constexpr const char *kUiLogTexts[] = {
     UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT,
@@ -264,6 +268,67 @@ bool weather_board_details_missing()
            !air.ready;
 }
 
+bool update_invalid_time_labels_for_active_page(bool clock_page_active,
+                                                bool history_page_active,
+                                                bool gallery_page_active,
+                                                bool calendar_page_active,
+                                                bool weather_board_page_active,
+                                                bool flip_clock_page_active)
+{
+    if (clock_page_active || g_low_battery_mode || g_setup_portal_active) {
+        return set_label_text_if_changed(g_date_label, kUiDatePlaceholder);
+    }
+    if (history_page_active) {
+        bool changed = set_label_text_if_changed(g_history_date_label, kUiDatePlaceholder);
+        changed |= set_label_text_if_changed(g_history_status_time_label, kUiTimePlaceholder);
+        return changed;
+    }
+    if (gallery_page_active) {
+        bool changed = set_label_text_if_changed(g_gallery_date_label, kUiDatePlaceholder);
+        changed |= set_label_text_if_changed(g_gallery_status_time_label, kUiTimePlaceholder);
+        return changed;
+    }
+    if (calendar_page_active) {
+        bool changed = set_label_text_if_changed(g_calendar_date_label, kUiDatePlaceholder);
+        changed |= set_label_text_if_changed(g_calendar_status_time_label, kUiTimePlaceholder);
+        return changed;
+    }
+    if (weather_board_page_active) {
+        bool changed = set_label_text_if_changed(g_weather_board_date_label, kUiDatePlaceholder);
+        changed |= set_label_text_if_changed(g_weather_board_status_time_label, kUiTimePlaceholder);
+        return changed;
+    }
+    if (flip_clock_page_active) {
+        return set_label_text_if_changed(g_flip_clock_date_label, kUiDatePlaceholder);
+    }
+    return false;
+}
+
+void update_visible_work_page_battery_segments(bool history_page_active,
+                                               bool gallery_page_active,
+                                               bool calendar_page_active,
+                                               bool weather_board_page_active,
+                                               bool flip_clock_page_active,
+                                               bool battery_blink_visible,
+                                               bool battery_blink_on)
+{
+    if (history_page_active) {
+        update_battery_segments(g_history_battery_segments, g_battery_percent);
+    }
+    if (gallery_page_active) {
+        update_battery_segments(g_gallery_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
+    }
+    if (calendar_page_active) {
+        update_battery_segments(g_calendar_battery_segments, g_battery_percent);
+    }
+    if (weather_board_page_active) {
+        update_battery_segments(g_weather_board_battery_segments, g_battery_percent);
+    }
+    if (flip_clock_page_active) {
+        update_battery_segments(g_flip_clock_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
+    }
+}
+
 bool low_refresh_work_page_idle(int page, const struct tm &local)
 {
     return g_active_work_page == page &&
@@ -379,7 +444,9 @@ void ui_task(void *)
         time(&now);
         struct tm local = {};
         localtime_r(&now, &local);
-        ensure_active_work_page_enabled();
+        if (!g_low_battery_mode && !g_setup_portal_active) {
+            ensure_active_work_page_enabled();
+        }
 
         TickType_t tick_now = xTaskGetTickCount();
         bool status_due = tick_now - last_status_update >= pdMS_TO_TICKS(kUiStatusRefreshMs);
@@ -632,10 +699,13 @@ void ui_task(void *)
                 refresh_now = true;
             }
 
-            if ((g_low_battery_mode || g_setup_portal_active) && g_active_work_page != kWorkPageWeatherClock) {
-                g_active_work_page = kWorkPageWeatherClock;
+            if (g_low_battery_mode || g_setup_portal_active) {
+                if (g_active_work_page != kWorkPageWeatherClock) {
+                    g_active_work_page = kWorkPageWeatherClock;
+                }
+            } else {
+                ensure_active_work_page_enabled();
             }
-            ensure_active_work_page_enabled();
             if (visible_work_page != g_active_work_page) {
                 show_active_work_page();
                 visible_work_page = g_active_work_page;
@@ -776,23 +846,12 @@ void ui_task(void *)
                     refresh_now = true;
                 }
             } else {
-                if (clock_page_active || g_low_battery_mode || g_setup_portal_active) {
-                    refresh_now |= set_label_text_if_changed(g_date_label, "----/--/-- / 星期-");
-                } else if (history_page_active) {
-                    refresh_now |= set_label_text_if_changed(g_history_date_label, "----/--/-- / 星期-");
-                    refresh_now |= set_label_text_if_changed(g_history_status_time_label, "--:--");
-                } else if (gallery_page_active) {
-                    refresh_now |= set_label_text_if_changed(g_gallery_date_label, "----/--/-- / 星期-");
-                    refresh_now |= set_label_text_if_changed(g_gallery_status_time_label, "--:--");
-                } else if (calendar_page_active) {
-                    refresh_now |= set_label_text_if_changed(g_calendar_date_label, "----/--/-- / 星期-");
-                    refresh_now |= set_label_text_if_changed(g_calendar_status_time_label, "--:--");
-                } else if (weather_board_page_active) {
-                    refresh_now |= set_label_text_if_changed(g_weather_board_date_label, "----/--/-- / 星期-");
-                    refresh_now |= set_label_text_if_changed(g_weather_board_status_time_label, "--:--");
-                } else if (flip_clock_page_active) {
-                    refresh_now |= set_label_text_if_changed(g_flip_clock_date_label, "----/--/-- / 星期-");
-                }
+                refresh_now |= update_invalid_time_labels_for_active_page(clock_page_active,
+                                                                          history_page_active,
+                                                                          gallery_page_active,
+                                                                          calendar_page_active,
+                                                                          weather_board_page_active,
+                                                                          flip_clock_page_active);
                 g_last_ui_date_key = -1;
                 g_last_ui_date_page = -1;
                 update_alert_pill(false);
@@ -892,21 +951,13 @@ void ui_task(void *)
                     last_battery_charging = battery_blink_visible;
                     last_battery_blink_phase = battery_blink_phase;
                     content_changed = true;
-                    if (history_page_active) {
-                        update_battery_segments(g_history_battery_segments, g_battery_percent);
-                    }
-                    if (gallery_page_active) {
-                        update_battery_segments(g_gallery_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
-                    }
-                    if (calendar_page_active) {
-                        update_battery_segments(g_calendar_battery_segments, g_battery_percent);
-                    }
-                    if (weather_board_page_active) {
-                        update_battery_segments(g_weather_board_battery_segments, g_battery_percent);
-                    }
-                    if (flip_clock_page_active) {
-                        update_battery_segments(g_flip_clock_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
-                    }
+                    update_visible_work_page_battery_segments(history_page_active,
+                                                              gallery_page_active,
+                                                              calendar_page_active,
+                                                              weather_board_page_active,
+                                                              flip_clock_page_active,
+                                                              battery_blink_visible,
+                                                              battery_blink_on);
                 }
                 if (status_due) {
                     if (clock_page_active) {

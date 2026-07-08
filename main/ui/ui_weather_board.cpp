@@ -86,6 +86,59 @@ constexpr int kForecastCardTextY = 72;
 constexpr int kForecastCardTextH = 34;
 constexpr int kForecastCardRangeY = 108;
 constexpr int kForecastCardRangeH = 16;
+constexpr int kWeatherBoardTopLineX = 18;
+constexpr int kWeatherBoardTopLineY = 54;
+constexpr int kWeatherBoardTopLineW = 364;
+constexpr int kWeatherBoardTopLineH = 4;
+constexpr int kWeatherBoardCurrentCityX = 20;
+constexpr int kWeatherBoardCurrentCityY = 66;
+constexpr int kWeatherBoardCurrentCityW = 135;
+constexpr int kWeatherBoardCurrentCityH = 28;
+constexpr int kWeatherBoardCurrentTempX = 20;
+constexpr int kWeatherBoardCurrentTempY = 86;
+constexpr int kWeatherBoardCurrentTempW = 88;
+constexpr int kWeatherBoardCurrentTempH = 54;
+constexpr int kWeatherBoardCurrentUnitX = 88;
+constexpr int kWeatherBoardCurrentUnitY = 96;
+constexpr int kWeatherBoardCurrentUnitW = 24;
+constexpr int kWeatherBoardCurrentUnitH = 32;
+constexpr int kWeatherBoardCurrentIconX = 20;
+constexpr int kWeatherBoardCurrentIconY = 143;
+constexpr int kWeatherBoardCurrentIconW = 42;
+constexpr int kWeatherBoardCurrentIconH = 40;
+constexpr int kWeatherBoardCurrentTextX = 62;
+constexpr int kWeatherBoardCurrentTextY = 151;
+constexpr int kWeatherBoardCurrentTextW = 92;
+constexpr int kWeatherBoardCurrentTextH = 24;
+constexpr int kWeatherBoardTodayRangeX = 20;
+constexpr int kWeatherBoardTodayRangeY = 179;
+constexpr int kWeatherBoardTodayRangeW = 134;
+constexpr int kWeatherBoardTodayRangeH = 22;
+constexpr int kWeatherBoardDetailLineX = 20;
+constexpr int kWeatherBoardDetailLineY = 196;
+constexpr int kWeatherBoardDetailLineW = 360;
+constexpr int kWeatherBoardDetailLineH = 2;
+constexpr int kWeatherBoardDetailTopY = 202;
+constexpr int kWeatherBoardDetailBottomY = 224;
+constexpr int kWeatherBoardDetailLabelH = 22;
+constexpr int kWeatherBoardSunLabelH = 20;
+constexpr int kWeatherBoardLeftColumnX = 20;
+constexpr int kWeatherBoardMiddleColumnX = 132;
+constexpr int kWeatherBoardRightColumnX = 238;
+constexpr int kWeatherBoardAirLabelW = 110;
+constexpr int kWeatherBoardHumidityLabelW = 86;
+constexpr int kWeatherBoardWindLabelW = 142;
+constexpr int kWeatherBoardSunriseLabelW = 110;
+constexpr int kWeatherBoardSunsetLabelW = 98;
+constexpr int kWeatherBoardSunCountdownLabelW = 142;
+constexpr int kWeatherBoardAlertX = 20;
+constexpr int kWeatherBoardAlertY = 246;
+constexpr int kWeatherBoardAlertW = 360;
+constexpr int kWeatherBoardAlertH = 22;
+constexpr int kWeatherBoardAdviceX = 20;
+constexpr int kWeatherBoardAdviceY = 272;
+constexpr int kWeatherBoardAdviceW = 360;
+constexpr int kWeatherBoardAdviceH = 20;
 constexpr size_t kForecastDateLineSize = 24;
 constexpr size_t kForecastShortDateSize = 8;
 constexpr size_t kForecastTempRangeSize = 20;
@@ -104,6 +157,22 @@ static_assert(array_count(kWeatherBoardWeekdayNames) == kWeatherBoardWeekdayCoun
               "weather board weekday names must match weekday count");
 static_assert(array_count(kForecastCardX) == kWeatherForecastDays,
               "weather forecast card positions must match forecast day count");
+static_assert(kWeatherBoardTopLineW > 0 && kWeatherBoardTopLineH > 0,
+              "weather board top line size must be positive");
+static_assert(kWeatherBoardCurrentCityW > 0 && kWeatherBoardCurrentCityH > 0,
+              "weather board current city label size must be positive");
+static_assert(kWeatherBoardCurrentTempW > 0 && kWeatherBoardCurrentTempH > 0,
+              "weather board current temperature label size must be positive");
+static_assert(kWeatherBoardCurrentUnitW > 0 && kWeatherBoardCurrentUnitH > 0,
+              "weather board current unit label size must be positive");
+static_assert(kWeatherBoardCurrentIconW > 0 && kWeatherBoardCurrentIconH > 0,
+              "weather board current icon label size must be positive");
+static_assert(kWeatherBoardCurrentTextW > 0 && kWeatherBoardCurrentTextH > 0,
+              "weather board current text label size must be positive");
+static_assert(kWeatherBoardTodayRangeW > 0 && kWeatherBoardTodayRangeH > 0,
+              "weather board today range label size must be positive");
+static_assert(kWeatherBoardDetailLineW > 0 && kWeatherBoardDetailLineH > 0,
+              "weather board detail separator size must be positive");
 
 void set_weather_label_align(lv_obj_t *label, lv_text_align_t align)
 {
@@ -419,28 +488,64 @@ void build_weather_board_page()
 
     build_battery_icon(screen, g_weather_board_battery_segments);
     build_work_page_status_bar(screen,
-                               4,
+                               kWorkPageWeatherBoard,
                                &g_weather_board_date_label,
                                &g_weather_board_summary_label,
                                &g_weather_board_status_time_label,
                                true);
 
-    lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
+    lv_obj_t *top_line = make_bar(screen,
+                                  kWeatherBoardTopLineX,
+                                  kWeatherBoardTopLineY,
+                                  kWeatherBoardTopLineW,
+                                  kWeatherBoardTopLineH);
     set_obj_black(top_line, true);
 
-    s_city_label = make_label(screen, 20, 66, 135, 28, kWeatherBoardWaitingData);
+    s_city_label = make_label(screen,
+                              kWeatherBoardCurrentCityX,
+                              kWeatherBoardCurrentCityY,
+                              kWeatherBoardCurrentCityW,
+                              kWeatherBoardCurrentCityH,
+                              kWeatherBoardWaitingData);
     set_weather_label_align(s_city_label, LV_TEXT_ALIGN_LEFT);
 
-    s_current_temp_label = make_label_with_font(screen, 20, 86, 88, 54, kWeatherBoardDash, &lv_font_montserrat_48);
+    s_current_temp_label = make_label_with_font(screen,
+                                                kWeatherBoardCurrentTempX,
+                                                kWeatherBoardCurrentTempY,
+                                                kWeatherBoardCurrentTempW,
+                                                kWeatherBoardCurrentTempH,
+                                                kWeatherBoardDash,
+                                                &lv_font_montserrat_48);
     set_weather_label_align(s_current_temp_label, LV_TEXT_ALIGN_LEFT);
-    s_current_unit_label = make_label_with_font(screen, 88, 96, 24, 32, kWeatherBoardCurrentUnitText, &lv_font_montserrat_24);
+    s_current_unit_label = make_label_with_font(screen,
+                                                kWeatherBoardCurrentUnitX,
+                                                kWeatherBoardCurrentUnitY,
+                                                kWeatherBoardCurrentUnitW,
+                                                kWeatherBoardCurrentUnitH,
+                                                kWeatherBoardCurrentUnitText,
+                                                &lv_font_montserrat_24);
     set_weather_label_align(s_current_unit_label, LV_TEXT_ALIGN_LEFT);
 
-    s_current_icon_label = make_label(screen, 20, 143, 42, 40, weather_icon_text(kWeatherBoardUnknownIcon));
+    s_current_icon_label = make_label(screen,
+                                      kWeatherBoardCurrentIconX,
+                                      kWeatherBoardCurrentIconY,
+                                      kWeatherBoardCurrentIconW,
+                                      kWeatherBoardCurrentIconH,
+                                      weather_icon_text(kWeatherBoardUnknownIcon));
     set_weather_label_font(s_current_icon_label, &qweather_icons_36);
     set_weather_label_align(s_current_icon_label, LV_TEXT_ALIGN_CENTER);
-    s_current_text_label = make_label(screen, 62, 151, 92, 24, kWeatherBoardDash);
-    s_today_range_label = make_label(screen, 20, 179, 134, 22, kWeatherBoardTodayRangePlaceholder);
+    s_current_text_label = make_label(screen,
+                                      kWeatherBoardCurrentTextX,
+                                      kWeatherBoardCurrentTextY,
+                                      kWeatherBoardCurrentTextW,
+                                      kWeatherBoardCurrentTextH,
+                                      kWeatherBoardDash);
+    s_today_range_label = make_label(screen,
+                                     kWeatherBoardTodayRangeX,
+                                     kWeatherBoardTodayRangeY,
+                                     kWeatherBoardTodayRangeW,
+                                     kWeatherBoardTodayRangeH,
+                                     kWeatherBoardTodayRangePlaceholder);
 
     for (int i = 0; i < kWeatherForecastDays; ++i) {
         int x = kForecastCardX[i];
@@ -483,16 +588,60 @@ void build_weather_board_page()
         set_weather_label_font(s_cards[i].range, &lv_font_montserrat_12);
     }
 
-    lv_obj_t *detail_line = make_bar(screen, 20, 196, 360, 2);
+    lv_obj_t *detail_line = make_bar(screen,
+                                     kWeatherBoardDetailLineX,
+                                     kWeatherBoardDetailLineY,
+                                     kWeatherBoardDetailLineW,
+                                     kWeatherBoardDetailLineH);
     set_obj_black(detail_line, true);
-    s_air_label = make_label(screen, 20, 202, 110, 22, kWeatherBoardAirPlaceholder);
-    s_humidity_label = make_label(screen, 132, 202, 86, 22, kWeatherBoardHumidityPlaceholder);
-    s_wind_label = make_label(screen, 238, 202, 142, 22, kWeatherBoardWindPlaceholder);
-    s_sunrise_label = make_label(screen, 20, 224, 110, 20, kWeatherBoardSunrisePlaceholder);
-    s_sunset_label = make_label(screen, 132, 224, 98, 20, kWeatherBoardSunsetPlaceholder);
-    s_sun_countdown_label = make_label(screen, 238, 224, 142, 20, kWeatherBoardSunCountdownPlaceholder);
-    s_alert_label = make_label(screen, 20, 246, 360, 22, kWeatherBoardAlertPlaceholder);
-    s_advice_label = make_label(screen, 20, 272, 360, 20, kWeatherBoardAdvicePlaceholder);
+    s_air_label = make_label(screen,
+                             kWeatherBoardLeftColumnX,
+                             kWeatherBoardDetailTopY,
+                             kWeatherBoardAirLabelW,
+                             kWeatherBoardDetailLabelH,
+                             kWeatherBoardAirPlaceholder);
+    s_humidity_label = make_label(screen,
+                                  kWeatherBoardMiddleColumnX,
+                                  kWeatherBoardDetailTopY,
+                                  kWeatherBoardHumidityLabelW,
+                                  kWeatherBoardDetailLabelH,
+                                  kWeatherBoardHumidityPlaceholder);
+    s_wind_label = make_label(screen,
+                              kWeatherBoardRightColumnX,
+                              kWeatherBoardDetailTopY,
+                              kWeatherBoardWindLabelW,
+                              kWeatherBoardDetailLabelH,
+                              kWeatherBoardWindPlaceholder);
+    s_sunrise_label = make_label(screen,
+                                 kWeatherBoardLeftColumnX,
+                                 kWeatherBoardDetailBottomY,
+                                 kWeatherBoardSunriseLabelW,
+                                 kWeatherBoardSunLabelH,
+                                 kWeatherBoardSunrisePlaceholder);
+    s_sunset_label = make_label(screen,
+                                kWeatherBoardMiddleColumnX,
+                                kWeatherBoardDetailBottomY,
+                                kWeatherBoardSunsetLabelW,
+                                kWeatherBoardSunLabelH,
+                                kWeatherBoardSunsetPlaceholder);
+    s_sun_countdown_label = make_label(screen,
+                                       kWeatherBoardRightColumnX,
+                                       kWeatherBoardDetailBottomY,
+                                       kWeatherBoardSunCountdownLabelW,
+                                       kWeatherBoardSunLabelH,
+                                       kWeatherBoardSunCountdownPlaceholder);
+    s_alert_label = make_label(screen,
+                               kWeatherBoardAlertX,
+                               kWeatherBoardAlertY,
+                               kWeatherBoardAlertW,
+                               kWeatherBoardAlertH,
+                               kWeatherBoardAlertPlaceholder);
+    s_advice_label = make_label(screen,
+                                kWeatherBoardAdviceX,
+                                kWeatherBoardAdviceY,
+                                kWeatherBoardAdviceW,
+                                kWeatherBoardAdviceH,
+                                kWeatherBoardAdvicePlaceholder);
     set_weather_label_long_mode(s_advice_label, LV_LABEL_LONG_WRAP);
     set_weather_label_align(s_advice_label, LV_TEXT_ALIGN_LEFT);
 }

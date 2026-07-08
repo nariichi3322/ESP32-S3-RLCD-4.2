@@ -7,6 +7,7 @@ namespace {
 #define PAGE_ROOT_CREATE_FAILED_LOG "page root create failed"
 constexpr int kFirstWorkPage = kWorkPageWeatherClock;
 constexpr int kFallbackWorkPage = kWorkPageWeatherClock;
+constexpr int kRequiredWorkPage = kWorkPageHistory;
 constexpr size_t kAuxPageRootCount = 3; // System info, network diagnostics and settings.
 constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
     kWorkPageWeatherClock,
@@ -89,9 +90,28 @@ void clear_pointer_array(T *(&items)[N])
     }
 }
 
+struct PageRootList {
+    lv_obj_t *items[kWorkPageCount + kAuxPageRootCount];
+};
+
 lv_obj_t *work_page_root_or_fallback(lv_obj_t *root)
 {
     return root ? root : g_clock_root;
+}
+
+PageRootList current_page_roots()
+{
+    return {{
+        g_clock_root,
+        g_history_root,
+        g_gallery_root,
+        g_calendar_root,
+        g_weather_board_root,
+        g_flip_clock_root,
+        g_info_root,
+        g_network_diag_root,
+        g_settings_root,
+    }};
 }
 
 lv_obj_t *build_work_page_root(int page)
@@ -121,7 +141,8 @@ lv_obj_t *build_work_page_root(int page)
 }
 
 static_assert(kFirstWorkPage == 0, "work page ids must start at zero");
-static_assert(kFallbackWorkPage == kWorkPageWeatherClock, "fallback page must remain weather clock");
+static_assert(kFallbackWorkPage == kWorkPageWeatherClock, "special-mode fallback page must remain weather clock");
+static_assert(kRequiredWorkPage == kWorkPageHistory, "history page must remain the required enabled work page");
 static_assert(kAuxPageRootCount == 3, "auxiliary roots are info, network diagnostics and settings");
 static_assert(kWorkPageCount > 0, "there must be at least one work page");
 static_assert(kWorkPageCount < static_cast<int>(sizeof(uint32_t) * 8),
@@ -172,21 +193,11 @@ void set_page_visible(lv_obj_t *page, bool visible)
 
 void show_page(lv_obj_t *page)
 {
-    lv_obj_t *roots[] = {
-        g_clock_root,
-        g_history_root,
-        g_gallery_root,
-        g_calendar_root,
-        g_weather_board_root,
-        g_flip_clock_root,
-        g_info_root,
-        g_network_diag_root,
-        g_settings_root,
-    };
-    constexpr size_t kPageRootCount = array_count(roots);
+    PageRootList roots = current_page_roots();
+    constexpr size_t kPageRootCount = array_count(roots.items);
     static_assert(kPageRootCount == kWorkPageCount + kAuxPageRootCount,
                   "page root visibility list must cover all work pages and auxiliary pages");
-    for (lv_obj_t *root : roots) {
+    for (lv_obj_t *root : roots.items) {
         set_page_visible(root, page == root);
     }
 }
@@ -195,6 +206,7 @@ lv_obj_t *active_work_page_root()
 {
     if (g_low_battery_mode || g_setup_portal_active) {
         g_active_work_page = kFallbackWorkPage;
+        return build_work_page_root(g_active_work_page);
     }
     ensure_active_work_page_enabled();
     return build_work_page_root(g_active_work_page);
@@ -207,11 +219,11 @@ void show_active_work_page()
 
 bool is_work_page_enabled(int page)
 {
-    if (page <= kFallbackWorkPage) {
-        return true;
-    }
-    if (page >= kWorkPageCount) {
+    if (!is_work_page_index(page)) {
         return false;
+    }
+    if (page == kRequiredWorkPage) {
+        return true;
     }
     return (g_work_page_enabled_mask & (1U << page)) != 0;
 }
@@ -233,16 +245,13 @@ int display_settings_item_work_page(int item)
     return kDisplaySettingPages[item];
 }
 
+static int first_enabled_work_page_order_index_or_invalid_normalized();
+
 int first_enabled_work_page()
 {
     normalize_work_page_order();
-    for (int i = 0; i < kWorkPageCount; ++i) {
-        int candidate = g_work_page_order[i];
-        if (is_work_page_enabled(candidate)) {
-            return candidate;
-        }
-    }
-    return kFallbackWorkPage;
+    int index = first_enabled_work_page_order_index_or_invalid_normalized();
+    return index >= 0 ? g_work_page_order[index] : kRequiredWorkPage;
 }
 
 void reset_work_page_order()
@@ -271,26 +280,82 @@ void normalize_work_page_order()
     }
 }
 
+static int work_page_order_index_normalized(int page)
+{
+    for (int i = 0; i < kWorkPageCount; ++i) {
+        if (g_work_page_order[i] == page) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int first_enabled_work_page_order_index_or_invalid_normalized()
+{
+    for (int i = 0; i < kWorkPageCount; ++i) {
+        if (is_work_page_enabled(g_work_page_order[i])) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+static int next_enabled_work_page_order_index_or_invalid_normalized(int current_order_index)
+{
+    for (int step = 1; step <= kWorkPageCount; ++step) {
+        int index = (current_order_index + step + kWorkPageCount) % kWorkPageCount;
+        if (is_work_page_enabled(g_work_page_order[index])) {
+            return index;
+        }
+    }
+    return -1;
+}
+
 int next_enabled_work_page(int current_page)
 {
     if (!is_work_page_index(current_page)) {
-        current_page = kFallbackWorkPage;
+        current_page = first_enabled_work_page();
     }
     normalize_work_page_order();
-    int current_index = -1;
-    for (int i = 0; i < kWorkPageCount; ++i) {
-        if (g_work_page_order[i] == current_page) {
-            current_index = i;
-            break;
-        }
+    int current_index = work_page_order_index_normalized(current_page);
+    int next_index = next_enabled_work_page_order_index_or_invalid_normalized(current_index);
+    return next_index >= 0 ? g_work_page_order[next_index] : kRequiredWorkPage;
+}
+
+static int first_enabled_work_page_order_index_normalized()
+{
+    int index = first_enabled_work_page_order_index_or_invalid_normalized();
+    return index >= 0 ? index : 0;
+}
+
+static int valid_enabled_work_page_order_index_normalized(int current_order_index)
+{
+    if (current_order_index < 0 ||
+        current_order_index >= kWorkPageCount ||
+        !is_work_page_enabled(g_work_page_order[current_order_index])) {
+        return first_enabled_work_page_order_index_normalized();
     }
-    for (int step = 1; step <= kWorkPageCount; ++step) {
-        int candidate = g_work_page_order[(current_index + step + kWorkPageCount) % kWorkPageCount];
-        if (is_work_page_enabled(candidate)) {
-            return candidate;
-        }
-    }
-    return kFallbackWorkPage;
+    return current_order_index;
+}
+
+int first_enabled_work_page_order_index()
+{
+    normalize_work_page_order();
+    return first_enabled_work_page_order_index_normalized();
+}
+
+int next_enabled_work_page_order_index(int current_order_index)
+{
+    normalize_work_page_order();
+    current_order_index = valid_enabled_work_page_order_index_normalized(current_order_index);
+    int next_index = next_enabled_work_page_order_index_or_invalid_normalized(current_order_index);
+    return next_index >= 0 ? next_index : first_enabled_work_page_order_index_normalized();
+}
+
+int valid_enabled_work_page_order_index(int current_order_index)
+{
+    normalize_work_page_order();
+    return valid_enabled_work_page_order_index_normalized(current_order_index);
 }
 
 void ensure_active_work_page_enabled()
@@ -300,7 +365,7 @@ void ensure_active_work_page_enabled()
     }
 }
 
-void clear_clock_object_refs()
+static void clear_work_page_root_refs()
 {
     g_clock_root = nullptr;
     g_history_root = nullptr;
@@ -308,6 +373,10 @@ void clear_clock_object_refs()
     g_calendar_root = nullptr;
     g_weather_board_root = nullptr;
     g_flip_clock_root = nullptr;
+}
+
+static void clear_work_status_refs()
+{
     g_date_label = nullptr;
     g_clock_summary_label = nullptr;
     g_history_date_label = nullptr;
@@ -327,6 +396,10 @@ void clear_clock_object_refs()
     g_flip_clock_status_time_label = nullptr;
     clear_pointer_array(g_work_status_chime_icon_canvas);
     clear_pointer_array(g_work_status_wifi_icon_canvas);
+}
+
+static void clear_gallery_calendar_refs()
+{
     g_gallery_time_label = nullptr;
     g_gallery_hour_label = nullptr;
     g_gallery_minute_label = nullptr;
@@ -335,6 +408,10 @@ void clear_clock_object_refs()
     g_gallery_saying_label = nullptr;
     g_calendar_month_label = nullptr;
     g_calendar_canvas = nullptr;
+}
+
+static void clear_weather_clock_refs()
+{
     g_temp_icon_canvas = nullptr;
     g_humi_icon_canvas = nullptr;
     g_temp_label = nullptr;
@@ -359,6 +436,10 @@ void clear_clock_object_refs()
     g_status_gif_canvas = nullptr;
     g_day_progress_canvas = nullptr;
     g_second_progress_canvas = nullptr;
+}
+
+static void clear_flip_clock_refs()
+{
     clear_pointer_array(g_flip_clock_card_canvas);
     g_flip_clock_sensor_label = nullptr;
     g_flip_clock_sensor_bold_label = nullptr;
@@ -379,12 +460,20 @@ void clear_clock_object_refs()
     g_flip_clock_lunar_bold_xy_label = nullptr;
     g_flip_clock_day_progress_canvas = nullptr;
     g_flip_clock_second_progress_canvas = nullptr;
+}
+
+static void clear_battery_segment_refs()
+{
     clear_pointer_array(g_battery_segments);
     clear_pointer_array(g_history_battery_segments);
     clear_pointer_array(g_gallery_battery_segments);
     clear_pointer_array(g_calendar_battery_segments);
     clear_pointer_array(g_weather_board_battery_segments);
     clear_pointer_array(g_flip_clock_battery_segments);
+}
+
+static void clear_history_page_refs()
+{
     g_history_chart_canvas = nullptr;
     g_history_temp_max_label = nullptr;
     g_history_temp_min_label = nullptr;
@@ -395,6 +484,10 @@ void clear_clock_object_refs()
     clear_pointer_array(g_history_humi_axis_labels);
     clear_pointer_array(g_lower_panel_objects);
     clear_pointer_array(g_setup_status_labels);
+}
+
+static void clear_ui_draw_cache_state()
+{
     g_last_ui_second = -1;
     g_last_ui_minute = -1;
     g_last_ui_date_key = -1;
@@ -419,19 +512,43 @@ void clear_clock_object_refs()
     g_last_history_drawn_hour = -1;
 }
 
-void clear_info_object_refs()
+void clear_clock_object_refs()
+{
+    clear_work_page_root_refs();
+    clear_work_status_refs();
+    clear_gallery_calendar_refs();
+    clear_weather_clock_refs();
+    clear_flip_clock_refs();
+    clear_battery_segment_refs();
+    clear_history_page_refs();
+    clear_ui_draw_cache_state();
+}
+
+static void clear_aux_page_root_refs()
 {
     g_info_root = nullptr;
     g_network_diag_root = nullptr;
     g_settings_root = nullptr;
+}
+
+static void clear_system_info_refs()
+{
     clear_pointer_array(g_info_labels);
-    clear_pointer_array(g_network_diag_labels);
-    g_network_diag_summary_label = nullptr;
-    g_network_diag_hint_label = nullptr;
     g_info_ota_label = nullptr;
     g_info_ota_hint_label = nullptr;
     g_info_ota_bar_frame = nullptr;
     g_info_ota_bar_fill = nullptr;
+}
+
+static void clear_network_diag_refs()
+{
+    clear_pointer_array(g_network_diag_labels);
+    g_network_diag_summary_label = nullptr;
+    g_network_diag_hint_label = nullptr;
+}
+
+static void clear_settings_page_refs()
+{
     clear_pointer_array(g_settings_labels);
     clear_pointer_array(g_settings_switch_dots);
     clear_pointer_array(g_settings_switch_texts);
@@ -440,6 +557,14 @@ void clear_info_object_refs()
     g_settings_ota_hint_label = nullptr;
     g_settings_ota_bar_frame = nullptr;
     g_settings_ota_bar_fill = nullptr;
+}
+
+void clear_info_object_refs()
+{
+    clear_aux_page_root_refs();
+    clear_system_info_refs();
+    clear_network_diag_refs();
+    clear_settings_page_refs();
 }
 
 void remember_lower_panel_object(lv_obj_t *obj)

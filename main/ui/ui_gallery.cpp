@@ -12,8 +12,24 @@ static int s_last_gallery_image_index = -1;
 static int s_last_gallery_time_key = -1;
 static uint8_t s_custom_gallery_image[CLOCK_GALLERY_IMAGE_BYTES_PER_ROW * CLOCK_GALLERY_IMAGE_HEIGHT];
 
+static constexpr int kGalleryTopLineX = 18;
+static constexpr int kGalleryTopLineY = 54;
+static constexpr int kGalleryTopLineW = 364;
+static constexpr int kGalleryTopLineH = 4;
+static constexpr int kGalleryImageCanvasX = 20;
+static constexpr int kGalleryImageCanvasY = 62;
+static constexpr int kGalleryDividerX = 252;
+static constexpr int kGalleryDividerY = 66;
+static constexpr int kGalleryDividerW = 3;
+static constexpr int kGalleryDividerH = 188;
+static constexpr int kGalleryTimeCanvasX = 268;
+static constexpr int kGalleryTimeCanvasY = 62;
 static constexpr int kGalleryTimeCanvasW = 112;
 static constexpr int kGalleryTimeCanvasH = 198;
+static constexpr int kGallerySayingLabelX = 18;
+static constexpr int kGallerySayingLabelY = 272;
+static constexpr int kGallerySayingLabelW = 364;
+static constexpr int kGallerySayingLabelH = 26;
 static constexpr int kGalleryMinutesPerHour = 60;
 static constexpr int kGalleryBlockDigitRows = 7;
 static constexpr int kGalleryBlockDigitCols = 5;
@@ -46,7 +62,10 @@ static const char *const kBlockDigits[][kGalleryBlockDigitRows] = {
 static constexpr int kGalleryBlockDigitCount = static_cast<int>(array_count(kBlockDigits));
 
 static_assert(kGalleryBlockDigitCount > 0, "Gallery block digit table must not be empty");
+static_assert(kGalleryTopLineW > 0 && kGalleryTopLineH > 0, "Gallery top separator size must be positive");
+static_assert(kGalleryDividerW > 0 && kGalleryDividerH > 0, "Gallery divider size must be positive");
 static_assert(kGalleryTimeCanvasW > 0 && kGalleryTimeCanvasH > 0, "Gallery time canvas dimensions must be positive");
+static_assert(kGallerySayingLabelW > 0 && kGallerySayingLabelH > 0, "Gallery saying label size must be positive");
 static_assert(kGalleryMinutesPerHour > 0, "Gallery minutes per hour must be positive");
 static_assert(kGalleryBlockDigitCount == 10, "Gallery block digit table must contain decimal digits");
 static_assert(kGalleryBlockDigitRows > 0 && kGalleryBlockDigitCols > 0, "Gallery block digit grid must be positive");
@@ -188,7 +207,11 @@ void build_gallery_page()
                                &g_gallery_status_time_label,
                                false);
 
-    lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
+    lv_obj_t *top_line = make_bar(screen,
+                                  kGalleryTopLineX,
+                                  kGalleryTopLineY,
+                                  kGalleryTopLineW,
+                                  kGalleryTopLineH);
     set_obj_black(top_line, true);
 
     if (!g_gallery_image_canvas_buf) {
@@ -199,7 +222,7 @@ void build_gallery_page()
         ESP_LOGW(TAG, "%s", GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG);
     } else {
         lv_obj_clear_flag(g_gallery_image_canvas, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_gallery_image_canvas, 20, 62);
+        lv_obj_set_pos(g_gallery_image_canvas, kGalleryImageCanvasX, kGalleryImageCanvasY);
         lv_obj_set_size(g_gallery_image_canvas, CLOCK_GALLERY_IMAGE_WIDTH, CLOCK_GALLERY_IMAGE_HEIGHT);
         lv_obj_set_style_border_width(g_gallery_image_canvas, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(g_gallery_image_canvas, 0, LV_PART_MAIN);
@@ -213,7 +236,11 @@ void build_gallery_page()
         }
     }
 
-    lv_obj_t *divider = make_bar(screen, 252, 66, 3, 188);
+    lv_obj_t *divider = make_bar(screen,
+                                 kGalleryDividerX,
+                                 kGalleryDividerY,
+                                 kGalleryDividerW,
+                                 kGalleryDividerH);
     set_obj_black(divider, true);
     if (!g_gallery_time_canvas_buf) {
         g_gallery_time_canvas_buf = alloc_canvas_buffer(kGalleryTimeCanvasW, kGalleryTimeCanvasH);
@@ -223,7 +250,7 @@ void build_gallery_page()
         ESP_LOGW(TAG, "%s", GALLERY_TIME_CANVAS_CREATE_FAILED_LOG);
     } else {
         lv_obj_clear_flag(g_gallery_time_canvas, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_gallery_time_canvas, 268, 62);
+        lv_obj_set_pos(g_gallery_time_canvas, kGalleryTimeCanvasX, kGalleryTimeCanvasY);
         lv_obj_set_size(g_gallery_time_canvas, kGalleryTimeCanvasW, kGalleryTimeCanvasH);
         lv_obj_set_style_border_width(g_gallery_time_canvas, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(g_gallery_time_canvas, 0, LV_PART_MAIN);
@@ -237,7 +264,12 @@ void build_gallery_page()
         }
     }
 
-    g_gallery_saying_label = make_label(screen, 18, 272, 364, 26, "");
+    g_gallery_saying_label = make_label(screen,
+                                        kGallerySayingLabelX,
+                                        kGallerySayingLabelY,
+                                        kGallerySayingLabelW,
+                                        kGallerySayingLabelH,
+                                        "");
     if (!g_gallery_saying_label) {
         ESP_LOGW(TAG, "%s", GALLERY_SAYING_LABEL_CREATE_FAILED_LOG);
     } else {

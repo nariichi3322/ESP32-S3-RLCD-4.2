@@ -35,6 +35,12 @@ TickType_t next_battery_wake_after_sample(TickType_t sampled_tick)
     return next_battery_sample_tick(sampled_tick);
 }
 
+TickType_t delay_until_housekeeping_wake(TickType_t next_wake)
+{
+    TickType_t now = xTaskGetTickCount();
+    return next_wake > now ? next_wake - now : kHousekeepingFallbackDelay;
+}
+
 bool system_time_became_valid(bool current_valid, bool previous_valid)
 {
     return current_valid && !previous_valid;
@@ -80,8 +86,6 @@ void housekeeping_task(void *)
             next_battery = next_battery_wake_after_sample(after_battery);
         }
         TickType_t next_wake = next_housekeeping_wake_tick(g_low_battery_mode, next_sensor, next_battery);
-        TickType_t delay_now = xTaskGetTickCount();
-        TickType_t delay_ticks = next_wake > delay_now ? next_wake - delay_now : kHousekeepingFallbackDelay;
-        vTaskDelay(delay_ticks);
+        vTaskDelay(delay_until_housekeeping_wake(next_wake));
     }
 }

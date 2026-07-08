@@ -23,6 +23,10 @@ constexpr int kHistoryAxisMidIndex = 1;
 constexpr int kHistoryAxisMinIndex = 2;
 constexpr int kHistoryCanvasW = 364;
 constexpr int kHistoryCanvasH = 190;
+constexpr int kHistoryTopLineX = 18;
+constexpr int kHistoryTopLineY = 54;
+constexpr int kHistoryTopLineW = 364;
+constexpr int kHistoryTopLineH = 4;
 constexpr int kHistoryBadgeW = 40;
 constexpr int kHistoryBadgeH = 16;
 constexpr int kHistoryBadgeRadius = 6;
@@ -81,6 +85,8 @@ static_assert(kHoursPerDay > 0, "Hours per day must be positive");
 static_assert(kSecondsPerMinute > 0, "Seconds per minute must be positive");
 static_assert(kMinutesPerHour > 0, "Minutes per hour must be positive");
 static_assert(kSecondsPerHour == kSecondsPerMinute * kMinutesPerHour, "Seconds per hour mismatch");
+static_assert(kHistoryCanvasW > 0 && kHistoryCanvasH > 0, "History canvas size must be positive");
+static_assert(kHistoryTopLineW > 0 && kHistoryTopLineH > 0, "History top separator size must be positive");
 static_assert(kHistoryAxisTickCount > 0, "History axis tick count must be positive");
 static_assert(kHistoryAxisValueCount == kHistoryAxisMinIndex + 1, "History axis index count mismatch");
 static_assert(kHistoryAxisMaxIndex >= 0 && kHistoryAxisMaxIndex < kHistoryAxisValueCount,
@@ -535,9 +541,18 @@ void build_history_page()
     g_history_root = screen;
 
     build_battery_icon(screen, g_history_battery_segments);
-    build_work_page_status_bar(screen, 1, &g_history_date_label, &g_history_summary_label, &g_history_status_time_label, true);
+    build_work_page_status_bar(screen,
+                               kWorkPageHistory,
+                               &g_history_date_label,
+                               &g_history_summary_label,
+                               &g_history_status_time_label,
+                               true);
 
-    lv_obj_t *history_top_line = make_bar(screen, 18, 54, 364, 4);
+    lv_obj_t *history_top_line = make_bar(screen,
+                                          kHistoryTopLineX,
+                                          kHistoryTopLineY,
+                                          kHistoryTopLineW,
+                                          kHistoryTopLineH);
     set_obj_black(history_top_line, true);
     lv_obj_t *temp_title = make_label(screen, 24, 67, 80, 24, kHistoryTempTitle);
     if (temp_title) {

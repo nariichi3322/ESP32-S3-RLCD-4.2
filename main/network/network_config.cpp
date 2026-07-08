@@ -69,7 +69,7 @@ static_assert(kHexHighNibbleShift == 4, "Hex high nibble shift must remain 4 bit
 constexpr uint8_t kNvsUnsetU8 = 0xFF;
 constexpr uint8_t kDefaultChimeVolumePercent = 80;
 constexpr uint8_t kValidChimeVolumePercent[] = {20, 40, 60, 80, 100};
-constexpr uint8_t kWeatherClockPageMask = (uint8_t)(1U << kWorkPageWeatherClock);
+constexpr uint8_t kRequiredWorkPageMask = (uint8_t)(1U << kWorkPageHistory);
 constexpr uint8_t kPageMaskV4KnownBits = (uint8_t)((1U << kWorkPageCount) - 1);
 constexpr uint8_t kWeatherBoardPageMask = (uint8_t)(1U << kWorkPageWeatherBoard);
 constexpr uint8_t kFlipClockPageMask = (uint8_t)(1U << kWorkPageFlipClock);
@@ -230,6 +230,27 @@ constexpr const char *kConfigWarningTexts[] = {
     kEmptyWifiSsidSaveLog,
     kInvalidWeatherCitySaveLog,
     FORM_VALUE_TRUNCATED_LOG_FORMAT,
+};
+
+struct ProvisioningFormFields {
+    char ssid[kSetupSsidFieldSize] = {};
+    char pass[kSetupPasswordFieldSize] = {};
+    char api_key[kSetupApiKeyFieldSize] = {};
+    char weather_city[kSetupWeatherCityFieldSize] = {};
+};
+
+struct LoadedNetworkConfig {
+    esp_err_t ssid_err = ESP_FAIL;
+    esp_err_t pass_err = ESP_FAIL;
+    esp_err_t key_err = ESP_FAIL;
+    uint8_t chime = 0;
+    uint8_t all_day = 0;
+    uint8_t volume = kDefaultChimeVolumePercent;
+    uint8_t sound = 0;
+    uint8_t page_mask = kPageMaskV4KnownBits;
+    uint8_t offline = 0;
+    uint8_t page_order[kWorkPageCount] = {};
+    bool have_page_order = false;
 };
 
 constexpr bool cstr_nonempty(const char *text)
@@ -414,8 +435,8 @@ static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
 static_assert(kWorkPageCount <= 8, "work page enabled mask is stored as uint8_t");
 static_assert(kPageMaskV4KnownBits == ((1U << kWorkPageCount) - 1),
               "page mask v4 must cover every current work page");
-static_assert((kPageMaskV4KnownBits & kWeatherClockPageMask) == kWeatherClockPageMask,
-              "weather clock page must be covered by the current page mask");
+static_assert((kPageMaskV4KnownBits & kRequiredWorkPageMask) == kRequiredWorkPageMask,
+              "required work page must be covered by the current page mask");
 static_assert((kPageMaskV4KnownBits & kWeatherBoardPageMask) == kWeatherBoardPageMask,
               "weather board page must be covered by the current page mask");
 static_assert((kPageMaskV4KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
@@ -750,6 +771,33 @@ bool hourly_chime_settings_match_nvs(nvs_handle_t nvs,
            old_sound == sound;
 }
 
+esp_err_t write_hourly_chime_settings_nvs(nvs_handle_t nvs,
+                                          esp_err_t err,
+                                          uint8_t chime,
+                                          uint8_t all_day,
+                                          uint8_t volume,
+                                          uint8_t sound,
+                                          bool *changed)
+{
+    if (changed) {
+        *changed = false;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+    if (hourly_chime_settings_match_nvs(nvs, chime, all_day, volume, sound)) {
+        return ESP_OK;
+    }
+    if (changed) {
+        *changed = true;
+    }
+    err = set_nvs_u8_if_ok(nvs, err, kHourlyChimeKey, chime);
+    err = set_nvs_u8_if_ok(nvs, err, kHourlyAllDayKey, all_day);
+    err = set_nvs_u8_if_ok(nvs, err, kChimeVolumeKey, volume);
+    err = set_nvs_u8_if_ok(nvs, err, kChimeSoundKey, sound);
+    return err;
+}
+
 bool manual_weather_city_matches_nvs(nvs_handle_t nvs, const char *city)
 {
     char saved_city[kManualWeatherCityLen] = {};
@@ -787,6 +835,27 @@ bool saved_page_order_matches(nvs_handle_t nvs, const uint8_t *page_order, size_
            memcmp(saved_order, page_order, page_order_size) == 0;
 }
 
+esp_err_t write_work_page_order_nvs(nvs_handle_t nvs,
+                                    esp_err_t err,
+                                    const uint8_t *page_order,
+                                    size_t page_order_size,
+                                    bool *changed)
+{
+    if (changed) {
+        *changed = false;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+    if (saved_page_order_matches(nvs, page_order, page_order_size)) {
+        return ESP_OK;
+    }
+    if (changed) {
+        *changed = true;
+    }
+    return nvs_set_blob(nvs, kPageOrderV4Key, page_order, page_order_size);
+}
+
 esp_err_t erase_saved_config_keys(nvs_handle_t nvs)
 {
     bool erased = false;
@@ -801,6 +870,22 @@ esp_err_t erase_saved_config_keys(nvs_handle_t nvs)
         erased = erased || key_erased;
     }
     return err == ESP_OK && erased ? commit_nvs_if_ok(nvs, err) : err;
+}
+
+bool clear_saved_config_nvs()
+{
+    nvs_handle_t nvs;
+    esp_err_t open_err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionClearingConfig);
+    if (open_err != ESP_OK) {
+        return false;
+    }
+    esp_err_t err = erase_saved_config_keys(nvs);
+    nvs_close(nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, NVS_CLEAR_CONFIG_FAILED_FORMAT, esp_err_to_name(err));
+        return false;
+    }
+    return true;
 }
 
 void load_saved_manual_weather_city(nvs_handle_t nvs)
@@ -824,12 +909,41 @@ void load_saved_manual_weather_city(nvs_handle_t nvs)
 
 void apply_loaded_page_config(uint8_t page_mask, const uint8_t *page_order, bool have_page_order)
 {
-    g_work_page_enabled_mask = (page_mask | kWeatherClockPageMask) & kPageMaskV4KnownBits;
+    g_work_page_enabled_mask = (page_mask | kRequiredWorkPageMask) & kPageMaskV4KnownBits;
     if (have_page_order && page_order) {
         memcpy(g_work_page_order, page_order, sizeof(g_work_page_order));
     }
     normalize_work_page_order();
     g_active_work_page = first_enabled_work_page();
+}
+
+LoadedNetworkConfig read_loaded_network_config(nvs_handle_t nvs)
+{
+    LoadedNetworkConfig loaded = {};
+    loaded.ssid_err = read_nvs_string(nvs, kWifiSsidKey, g_wifi_ssid, sizeof(g_wifi_ssid));
+    loaded.pass_err = read_nvs_string(nvs, kWifiPassKey, g_wifi_pass, sizeof(g_wifi_pass));
+    loaded.key_err = read_nvs_string(nvs, kWeatherApiKeyKey, g_weather_api_key, sizeof(g_weather_api_key));
+    loaded.chime = read_nvs_u8_or_default(nvs, kHourlyChimeKey, 0);
+    loaded.all_day = read_nvs_u8_or_default(nvs, kHourlyAllDayKey, 0);
+    loaded.volume = read_nvs_u8_or_default(nvs, kChimeVolumeKey, kDefaultChimeVolumePercent);
+    loaded.sound = read_nvs_u8_or_default(nvs, kChimeSoundKey, 0);
+    loaded.page_mask = read_saved_page_mask(nvs);
+    loaded.offline = read_nvs_u8_or_default(nvs, kOfflineModeKey, 0);
+    load_saved_manual_weather_city(nvs);
+    loaded.have_page_order = read_saved_page_order(nvs, loaded.page_order, sizeof(loaded.page_order));
+    return loaded;
+}
+
+void apply_loaded_network_config(const LoadedNetworkConfig &loaded)
+{
+    g_have_weather_key = loaded.key_err == ESP_OK && g_weather_api_key[0] != '\0';
+    g_has_manual_weather_city = g_manual_weather_city[0] != '\0';
+    g_hourly_chime_enabled = loaded.chime != 0;
+    g_hourly_chime_all_day = loaded.all_day != 0;
+    g_offline_mode_ui_enabled = loaded.offline != 0;
+    g_chime_volume_percent = normalize_chime_volume(loaded.volume);
+    g_chime_sound_index = normalize_chime_sound_index(loaded.sound);
+    apply_loaded_page_config(loaded.page_mask, loaded.page_order, loaded.have_page_order);
 }
 } // namespace
 
@@ -840,28 +954,10 @@ bool load_saved_config()
     if (open_err != ESP_OK) {
         return false;
     }
-    esp_err_t ssid_err = read_nvs_string(nvs, kWifiSsidKey, g_wifi_ssid, sizeof(g_wifi_ssid));
-    esp_err_t pass_err = read_nvs_string(nvs, kWifiPassKey, g_wifi_pass, sizeof(g_wifi_pass));
-    esp_err_t key_err = read_nvs_string(nvs, kWeatherApiKeyKey, g_weather_api_key, sizeof(g_weather_api_key));
-    uint8_t page_order[kWorkPageCount] = {};
-    uint8_t chime = read_nvs_u8_or_default(nvs, kHourlyChimeKey, 0);
-    uint8_t all_day = read_nvs_u8_or_default(nvs, kHourlyAllDayKey, 0);
-    uint8_t volume = read_nvs_u8_or_default(nvs, kChimeVolumeKey, kDefaultChimeVolumePercent);
-    uint8_t sound = read_nvs_u8_or_default(nvs, kChimeSoundKey, 0);
-    uint8_t page_mask = read_saved_page_mask(nvs);
-    uint8_t offline = read_nvs_u8_or_default(nvs, kOfflineModeKey, 0);
-    load_saved_manual_weather_city(nvs);
-    bool have_page_order = read_saved_page_order(nvs, page_order, sizeof(page_order));
+    LoadedNetworkConfig loaded = read_loaded_network_config(nvs);
     nvs_close(nvs);
-    g_have_weather_key = key_err == ESP_OK && g_weather_api_key[0] != '\0';
-    g_has_manual_weather_city = g_manual_weather_city[0] != '\0';
-    g_hourly_chime_enabled = chime != 0;
-    g_hourly_chime_all_day = all_day != 0;
-    g_offline_mode_ui_enabled = offline != 0;
-    g_chime_volume_percent = normalize_chime_volume(volume);
-    g_chime_sound_index = normalize_chime_sound_index(sound);
-    apply_loaded_page_config(page_mask, page_order, have_page_order);
-    return ssid_err == ESP_OK && pass_err == ESP_OK && g_wifi_ssid[0] != '\0';
+    apply_loaded_network_config(loaded);
+    return loaded.ssid_err == ESP_OK && loaded.pass_err == ESP_OK && g_wifi_ssid[0] != '\0';
 }
 
 void clear_network_request_bits()
@@ -954,6 +1050,36 @@ bool finish_manual_weather_city_save(nvs_handle_t nvs, esp_err_t err, const char
     return true;
 }
 
+esp_err_t write_manual_weather_city_save_nvs(nvs_handle_t nvs, const char *city)
+{
+    if (manual_weather_city_matches_nvs(nvs, city)) {
+        return write_ignored_asset_weather_city(nvs, nullptr);
+    }
+    esp_err_t err = write_manual_weather_city_key(nvs, city);
+    if (err == ESP_OK) {
+        err = write_ignored_asset_weather_city(nvs, nullptr);
+    }
+    return err;
+}
+
+esp_err_t clear_manual_weather_city_nvs(nvs_handle_t nvs, bool *changed)
+{
+    if (changed) {
+        *changed = false;
+    }
+    bool erased = false;
+    esp_err_t err = erase_nvs_key_if_present(nvs, kManualWeatherCityKey, &erased);
+    if (err == ESP_OK) {
+        bool ignored_asset_city = false;
+        err = write_matching_asset_weather_city_ignore(nvs, g_manual_weather_city, &ignored_asset_city);
+        erased = erased || ignored_asset_city;
+    }
+    if (changed) {
+        *changed = erased;
+    }
+    return err;
+}
+
 void reset_saved_config_runtime_state()
 {
     g_wifi_ssid[0] = '\0';
@@ -981,6 +1107,31 @@ void apply_saved_config_runtime_state(const char *ssid,
     g_have_weather_key = g_weather_api_key[0] != '\0';
 }
 
+esp_err_t write_saved_config_nvs(nvs_handle_t nvs,
+                                 const char *ssid,
+                                 const char *pass,
+                                 const char *api_key,
+                                 const char *city)
+{
+    esp_err_t err = set_nvs_str_if_ok(nvs, ESP_OK, kWifiSsidKey, ssid);
+    err = set_nvs_str_if_ok(nvs, err, kWifiPassKey, pass);
+    err = set_nvs_str_if_ok(nvs, err, kWeatherApiKeyKey, api_key);
+    if (err == ESP_OK) {
+        err = write_manual_weather_city_key(nvs, city);
+    }
+    if (err == ESP_OK) {
+        err = city && city[0] != '\0'
+                  ? write_ignored_asset_weather_city(nvs, nullptr)
+                  : write_current_asset_weather_city_ignore(nvs);
+    }
+    esp_err_t legacy_erase_err = erase_nvs_key_if_present(nvs, kLegacyApiHostKey, nullptr);
+    if (legacy_erase_err != ESP_OK) {
+        ESP_LOGW(TAG, NVS_ERASE_LEGACY_API_HOST_FAILED_FORMAT,
+                 esp_err_to_name(legacy_erase_err));
+    }
+    return err;
+}
+
 bool save_config(const char *ssid, const char *pass, const char *api_key, const char *weather_city)
 {
     if (!ssid || ssid[0] == '\0') {
@@ -1004,24 +1155,7 @@ bool save_config(const char *ssid, const char *pass, const char *api_key, const 
     if (err != ESP_OK) {
         return false;
     }
-    err = set_nvs_str_if_ok(nvs, err, kWifiSsidKey, ssid);
-    err = set_nvs_str_if_ok(nvs, err, kWifiPassKey, pass);
-    err = set_nvs_str_if_ok(nvs, err, kWeatherApiKeyKey, api_key);
-    if (err == ESP_OK) {
-        err = write_manual_weather_city_key(nvs, city);
-    }
-    if (err == ESP_OK) {
-        if (city[0] != '\0') {
-            err = write_ignored_asset_weather_city(nvs, nullptr);
-        } else {
-            err = write_current_asset_weather_city_ignore(nvs);
-        }
-    }
-    esp_err_t legacy_erase_err = erase_nvs_key_if_present(nvs, kLegacyApiHostKey, nullptr);
-    if (legacy_erase_err != ESP_OK) {
-        ESP_LOGW(TAG, NVS_ERASE_LEGACY_API_HOST_FAILED_FORMAT,
-                 esp_err_to_name(legacy_erase_err));
-    }
+    err = write_saved_config_nvs(nvs, ssid, pass, api_key, city);
     err = commit_nvs_if_ok(nvs, err);
     nvs_close(nvs);
     if (err != ESP_OK) {
@@ -1049,14 +1183,7 @@ bool save_manual_weather_city(const char *city)
     if (err != ESP_OK) {
         return false;
     }
-    if (manual_weather_city_matches_nvs(nvs, next)) {
-        err = write_ignored_asset_weather_city(nvs, nullptr);
-        return finish_manual_weather_city_save(nvs, err, next);
-    }
-    err = write_manual_weather_city_key(nvs, next);
-    if (err == ESP_OK) {
-        err = write_ignored_asset_weather_city(nvs, nullptr);
-    }
+    err = write_manual_weather_city_save_nvs(nvs, next);
     return finish_manual_weather_city_save(nvs, err, next);
 }
 
@@ -1067,14 +1194,9 @@ bool clear_manual_weather_city()
     if (err != ESP_OK) {
         return false;
     }
-    bool erased = false;
-    err = erase_nvs_key_if_present(nvs, kManualWeatherCityKey, &erased);
-    if (err == ESP_OK) {
-        bool ignored_asset_city = false;
-        err = write_matching_asset_weather_city_ignore(nvs, g_manual_weather_city, &ignored_asset_city);
-        erased = erased || ignored_asset_city;
-    }
-    if (err == ESP_OK && erased) {
+    bool changed = false;
+    err = clear_manual_weather_city_nvs(nvs, &changed);
+    if (err == ESP_OK && changed) {
         err = commit_nvs_if_ok(nvs, err);
     }
     nvs_close(nvs);
@@ -1097,14 +1219,12 @@ bool save_hourly_chime_setting()
     uint8_t next_all_day = g_hourly_chime_all_day ? 1 : 0;
     uint8_t next_volume = (uint8_t)g_chime_volume_percent;
     uint8_t next_sound = (uint8_t)g_chime_sound_index;
-    if (hourly_chime_settings_match_nvs(nvs, next_chime, next_all_day, next_volume, next_sound)) {
+    bool changed = false;
+    err = write_hourly_chime_settings_nvs(nvs, err, next_chime, next_all_day, next_volume, next_sound, &changed);
+    if (!changed) {
         nvs_close(nvs);
         return true;
     }
-    err = set_nvs_u8_if_ok(nvs, err, kHourlyChimeKey, next_chime);
-    err = set_nvs_u8_if_ok(nvs, err, kHourlyAllDayKey, next_all_day);
-    err = set_nvs_u8_if_ok(nvs, err, kChimeVolumeKey, next_volume);
-    err = set_nvs_u8_if_ok(nvs, err, kChimeSoundKey, next_sound);
     err = commit_nvs_if_ok(nvs, err);
     if (!close_nvs_save_ok(nvs, err)) {
         ESP_LOGW(TAG, NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT, esp_err_to_name(err));
@@ -1120,7 +1240,7 @@ bool save_work_page_settings()
     if (err != ESP_OK) {
         return false;
     }
-    uint8_t mask = (g_work_page_enabled_mask | kWeatherClockPageMask) & kPageMaskV4KnownBits;
+    uint8_t mask = (g_work_page_enabled_mask | kRequiredWorkPageMask) & kPageMaskV4KnownBits;
     bool changed = false;
     err = write_changed_nvs_u8(nvs, err, kPageMaskV4Key, mask, &changed);
     if (changed) {
@@ -1142,11 +1262,12 @@ bool save_work_page_order()
     if (err != ESP_OK) {
         return false;
     }
-    if (saved_page_order_matches(nvs, g_work_page_order, sizeof(g_work_page_order))) {
+    bool changed = false;
+    err = write_work_page_order_nvs(nvs, err, g_work_page_order, sizeof(g_work_page_order), &changed);
+    if (!changed) {
         nvs_close(nvs);
         return true;
     }
-    err = nvs_set_blob(nvs, kPageOrderV4Key, g_work_page_order, sizeof(g_work_page_order));
     err = commit_nvs_if_ok(nvs, err);
     if (!close_nvs_save_ok(nvs, err)) {
         ESP_LOGW(TAG, NVS_SAVE_PAGE_ORDER_FAILED_FORMAT, esp_err_to_name(err));
@@ -1157,16 +1278,7 @@ bool save_work_page_order()
 
 bool clear_saved_config()
 {
-    nvs_handle_t nvs;
-    esp_err_t open_err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionClearingConfig);
-    if (open_err == ESP_OK) {
-        esp_err_t err = erase_saved_config_keys(nvs);
-        nvs_close(nvs);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, NVS_CLEAR_CONFIG_FAILED_FORMAT, esp_err_to_name(err));
-            return false;
-        }
-    } else {
+    if (!clear_saved_config_nvs()) {
         return false;
     }
     reset_saved_config_runtime_state();
@@ -1242,6 +1354,25 @@ void form_value_fallback_trimmed(const char *body, const char *primary_key, cons
     trim_ascii(out);
 }
 
+void read_provisioning_form_fields(const char *body, ProvisioningFormFields *fields)
+{
+    if (!fields) {
+        return;
+    }
+    form_value(body, kFormSsidKey, fields->ssid, sizeof(fields->ssid));
+    form_value_fallback(body, kFormPasswordKey, kFormPasswordFallbackKey, fields->pass, sizeof(fields->pass));
+    form_value_fallback_trimmed(body,
+                                kFormApiKeyKey,
+                                kFormApiKeyFallbackKey,
+                                fields->api_key,
+                                sizeof(fields->api_key));
+    form_value_fallback_trimmed(body,
+                                kFormWeatherCityKey,
+                                kFormWeatherCityFallbackKey,
+                                fields->weather_city,
+                                sizeof(fields->weather_city));
+}
+
 int try_parse_manual_datetime_format(const char *text,
                                      const char *format,
                                      bool has_seconds,
@@ -1276,6 +1407,73 @@ void fill_manual_datetime_tm(struct tm *local, int year, int month, int day, int
     local->tm_isdst = -1;
 }
 
+int parse_manual_datetime_fields(const char *text,
+                                 int *year,
+                                 int *month,
+                                 int *day,
+                                 int *hour,
+                                 int *minute,
+                                 int *second)
+{
+    int parsed = try_parse_manual_datetime_format(text,
+                                                  kManualTimeIsoSecondsFormat,
+                                                  true,
+                                                  year,
+                                                  month,
+                                                  day,
+                                                  hour,
+                                                  minute,
+                                                  second);
+    if (parsed >= kManualTimeRequiredFieldCount) {
+        return parsed;
+    }
+    parsed = try_parse_manual_datetime_format(text,
+                                              kManualTimeSpaceSecondsFormat,
+                                              true,
+                                              year,
+                                              month,
+                                              day,
+                                              hour,
+                                              minute,
+                                              second);
+    if (parsed >= kManualTimeRequiredFieldCount) {
+        return parsed;
+    }
+    return try_parse_manual_datetime_format(text,
+                                            kManualTimeSpaceMinutesFormat,
+                                            false,
+                                            year,
+                                            month,
+                                            day,
+                                            hour,
+                                            minute,
+                                            second);
+}
+
+bool manual_datetime_normalizes(struct tm local, struct tm *normalized)
+{
+    time_t epoch = mktime(&local);
+    if (epoch <= 0) {
+        return false;
+    }
+    struct tm next = {};
+    if (!localtime_r(&epoch, &next)) {
+        ESP_LOGW(TAG, "%s", MANUAL_TIME_NORMALIZATION_FAILED_LOG);
+        return false;
+    }
+    if (next.tm_year != local.tm_year ||
+        next.tm_mon != local.tm_mon ||
+        next.tm_mday != local.tm_mday ||
+        next.tm_hour != local.tm_hour ||
+        next.tm_min != local.tm_min) {
+        return false;
+    }
+    if (normalized) {
+        *normalized = next;
+    }
+    return true;
+}
+
 static bool parse_manual_datetime(const char *text, struct tm *out)
 {
     if (!text || !out || text[0] == '\0') {
@@ -1287,57 +1485,15 @@ static bool parse_manual_datetime(const char *text, struct tm *out)
     int hour = 0;
     int minute = 0;
     int second = 0;
-    int parsed = try_parse_manual_datetime_format(text,
-                                                  kManualTimeIsoSecondsFormat,
-                                                  true,
-                                                  &year,
-                                                  &month,
-                                                  &day,
-                                                  &hour,
-                                                  &minute,
-                                                  &second);
-    if (parsed < kManualTimeRequiredFieldCount) {
-        parsed = try_parse_manual_datetime_format(text,
-                                                  kManualTimeSpaceSecondsFormat,
-                                                  true,
-                                                  &year,
-                                                  &month,
-                                                  &day,
-                                                  &hour,
-                                                  &minute,
-                                                  &second);
-        if (parsed < kManualTimeRequiredFieldCount) {
-            parsed = try_parse_manual_datetime_format(text,
-                                                      kManualTimeSpaceMinutesFormat,
-                                                      false,
-                                                      &year,
-                                                      &month,
-                                                      &day,
-                                                      &hour,
-                                                      &minute,
-                                                      &second);
-        }
-    }
+    int parsed = parse_manual_datetime_fields(text, &year, &month, &day, &hour, &minute, &second);
     if (parsed < kManualTimeRequiredFieldCount ||
         !manual_datetime_fields_in_range(year, month, day, hour, minute, second)) {
         return false;
     }
     struct tm local = {};
     fill_manual_datetime_tm(&local, year, month, day, hour, minute, second);
-    time_t epoch = mktime(&local);
-    if (epoch <= 0) {
-        return false;
-    }
     struct tm normalized = {};
-    if (!localtime_r(&epoch, &normalized)) {
-        ESP_LOGW(TAG, "%s", MANUAL_TIME_NORMALIZATION_FAILED_LOG);
-        return false;
-    }
-    if (normalized.tm_year != local.tm_year ||
-        normalized.tm_mon != local.tm_mon ||
-        normalized.tm_mday != local.tm_mday ||
-        normalized.tm_hour != local.tm_hour ||
-        normalized.tm_min != local.tm_min) {
+    if (!manual_datetime_normalizes(local, &normalized)) {
         return false;
     }
     *out = normalized;
@@ -1389,39 +1545,33 @@ bool save_credentials_from_body(const char *body)
         ESP_LOGW(TAG, "%s", PROVISIONING_EMPTY_BODY_LOG);
         return false;
     }
-    char ssid[kSetupSsidFieldSize] = {};
-    char pass[kSetupPasswordFieldSize] = {};
-    char api_key[kSetupApiKeyFieldSize] = {};
-    char weather_city[kSetupWeatherCityFieldSize] = {};
-    form_value(body, kFormSsidKey, ssid, sizeof(ssid));
-    form_value_fallback(body, kFormPasswordKey, kFormPasswordFallbackKey, pass, sizeof(pass));
-    form_value_fallback_trimmed(body, kFormApiKeyKey, kFormApiKeyFallbackKey, api_key, sizeof(api_key));
-    form_value_fallback_trimmed(body, kFormWeatherCityKey, kFormWeatherCityFallbackKey, weather_city, sizeof(weather_city));
-    if (ssid[0] == '\0') {
+    ProvisioningFormFields fields = {};
+    read_provisioning_form_fields(body, &fields);
+    if (fields.ssid[0] == '\0') {
         ESP_LOGW(TAG, "%s", PROVISIONING_EMPTY_SSID_LOG);
         return false;
     }
-    if (api_key[0] == '\0' && g_weather_api_key[0] != '\0') {
-        strlcpy(api_key, g_weather_api_key, sizeof(api_key));
+    if (fields.api_key[0] == '\0' && g_weather_api_key[0] != '\0') {
+        strlcpy(fields.api_key, g_weather_api_key, sizeof(fields.api_key));
     }
-    if (api_key[0] == '\0') {
+    if (fields.api_key[0] == '\0') {
         ESP_LOGW(TAG, "%s", PROVISIONING_EMPTY_API_KEY_LOG);
         return false;
     }
-    if (!is_weather_city_input_valid(weather_city)) {
+    if (!is_weather_city_input_valid(fields.weather_city)) {
         ESP_LOGW(TAG, "%s", PROVISIONING_INVALID_WEATHER_CITY_LOG);
         return false;
     }
     ESP_LOGI(TAG, PROVISIONING_SAVED_FORMAT,
-             ssid,
-             (unsigned)strlen(pass),
-             api_key[0] ? "set" : "empty",
-             (unsigned)strlen(api_key),
-             weather_city[0] ? "set" : "auto",
-             (unsigned)strlen(weather_city));
+             fields.ssid,
+             (unsigned)strlen(fields.pass),
+             fields.api_key[0] ? "set" : "empty",
+             (unsigned)strlen(fields.api_key),
+             fields.weather_city[0] ? "set" : "auto",
+             (unsigned)strlen(fields.weather_city));
     g_last_wifi_disconnect_reason = 0;
     clear_app_event_bits(kWifiConnectedBit, kConfigEventReasonProvisioningSave);
-    if (!save_config(ssid, pass, api_key, weather_city)) {
+    if (!save_config(fields.ssid, fields.pass, fields.api_key, fields.weather_city)) {
         return false;
     }
     (void)apply_station_config(true);

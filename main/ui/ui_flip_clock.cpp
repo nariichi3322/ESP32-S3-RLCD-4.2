@@ -31,6 +31,10 @@ static constexpr int kSecondsPerHour = kMinutesPerHour * kSecondsPerMinute;
 static constexpr int kSecondsPerDay = kHoursPerDay * kSecondsPerHour;
 static constexpr int kTmYearOffset = 1900;
 static constexpr int kTmMonthOffset = 1;
+static constexpr int kFlipTopLineX = 18;
+static constexpr int kFlipTopLineY = 54;
+static constexpr int kFlipTopLineW = 364;
+static constexpr int kFlipTopLineH = 4;
 static constexpr int kDigitScaleNumerator = 3;
 static constexpr int kDigitScaleDenominator = 4;
 static constexpr int kDigitBaselineY = 84;
@@ -96,6 +100,8 @@ constexpr size_t array_count(const T (&)[N])
 
 static_assert(array_count(kCardX) == kCardCount,
               "flip clock card X table must match card count");
+static_assert(kFlipTopLineW > 0 && kFlipTopLineH > 0,
+              "flip clock top separator size must be positive");
 static_assert(kOkTempMinC <= kComfortTempMinC && kComfortTempMaxC <= kOkTempMaxC,
               "comfortable temperature range must stay inside ok temperature range");
 static_assert(kOkHumiMinPercent <= kComfortHumiMinPercent && kComfortHumiMaxPercent <= kOkHumiMaxPercent,
@@ -572,7 +578,11 @@ void build_flip_clock_page()
                                &g_flip_clock_status_time_label,
                                false);
 
-    lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
+    lv_obj_t *top_line = make_bar(screen,
+                                  kFlipTopLineX,
+                                  kFlipTopLineY,
+                                  kFlipTopLineW,
+                                  kFlipTopLineH);
     set_obj_black(top_line, true);
     build_progress_canvas(screen, &g_flip_clock_day_progress_canvas, &g_flip_clock_day_progress_canvas_buf, 59);
 

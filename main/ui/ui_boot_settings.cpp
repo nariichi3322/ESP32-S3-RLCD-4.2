@@ -41,6 +41,20 @@ void format_text_or_fallback(char *out, size_t out_len, const char *fallback, co
     }
 }
 
+int collect_visible_work_page_order_indices(int *indices, size_t capacity)
+{
+    if (!indices || capacity == 0) {
+        return 0;
+    }
+    int count = 0;
+    for (int order_index = 0; order_index < kWorkPageCount && (size_t)count < capacity; ++order_index) {
+        if (is_work_page_enabled(g_work_page_order[order_index])) {
+            indices[count++] = order_index;
+        }
+    }
+    return count;
+}
+
 constexpr uint32_t kBootAnimLvglLockTimeoutMs = 100;
 constexpr uint32_t kBootAnimFinishLvglLockTimeoutMs = 200;
 constexpr uint32_t kBootAnimFinishHoldMs = 100;
@@ -60,6 +74,34 @@ constexpr int kNetworkDiagGridRowGap = 28;
 constexpr int kNetworkDiagGridColGap = 174;
 constexpr int kNetworkDiagGridW = 160;
 constexpr size_t kNetworkDiagSummaryTextSize = 64;
+constexpr int kAuxPageTitleX = 24;
+constexpr int kAuxPageTitleY = 18;
+constexpr int kAuxPageTitleW = 352;
+constexpr int kInfoPageTitleH = 26;
+constexpr int kNetworkDiagTitleH = 28;
+constexpr int kAuxPageLineX = 24;
+constexpr int kAuxPageLineW = 352;
+constexpr int kInfoPageTopLineY = 50;
+constexpr int kInfoPageTopLineH = 3;
+constexpr int kInfoPageBottomLineY = 238;
+constexpr int kInfoPageBottomLineH = 3;
+constexpr int kInfoReturnHintX = 24;
+constexpr int kInfoReturnHintY = 252;
+constexpr int kInfoReturnHintW = 352;
+constexpr int kInfoReturnHintH = 22;
+constexpr int kNetworkDiagTopLineY = 52;
+constexpr int kNetworkDiagTopLineH = 3;
+constexpr int kNetworkDiagSummaryX = 24;
+constexpr int kNetworkDiagSummaryY = 62;
+constexpr int kNetworkDiagSummaryW = 352;
+constexpr int kNetworkDiagSummaryH = 22;
+constexpr int kNetworkDiagLineH = 22;
+constexpr int kNetworkDiagBottomLineY = 266;
+constexpr int kNetworkDiagBottomLineH = 2;
+constexpr int kNetworkDiagHintX = 24;
+constexpr int kNetworkDiagHintY = 272;
+constexpr int kNetworkDiagHintW = 352;
+constexpr int kNetworkDiagHintH = 20;
 constexpr const char *kNetworkDiagTitle = "网络检测";
 constexpr const char *kNetworkDiagSummaryReady = "准备检测...";
 constexpr const char *kNetworkDiagSummaryRunning = "检测中...";
@@ -281,6 +323,12 @@ constexpr const char *kSetupStaSsidFormat = "STA SSID: %s";
 constexpr const char *kSetupStaIpFormat = "STA IP: %s";
 constexpr const char *kSetupStaIpReasonFormat = "STA IP: --  reason %d";
 constexpr const char *kSetupStaIpPlaceholder = "STA IP: --";
+constexpr size_t kSetupStatusTitleIndex = 0;
+constexpr size_t kSetupStatusApSsidIndex = 1;
+constexpr size_t kSetupStatusApPasswordIndex = 2;
+constexpr size_t kSetupStatusPortalIpIndex = 3;
+constexpr size_t kSetupStatusStaSsidIndex = 4;
+constexpr size_t kSetupStatusStaIpIndex = 5;
 constexpr size_t kInfoTimeTextSize = 32;
 constexpr size_t kInfoLineTextSize = 96;
 constexpr const char *kInfoLastNtpFormat = "Last NTP: %s";
@@ -410,6 +458,16 @@ static_assert(kNetworkDiagWideW > 0 && kNetworkDiagGridW > 0,
               "network diagnostics line widths must be positive");
 static_assert(kNetworkDiagWideW >= kNetworkDiagGridW,
               "network diagnostics wide line must fit grid line width");
+static_assert(kAuxPageTitleW > 0 && kAuxPageLineW > 0, "auxiliary page frame widths must be positive");
+static_assert(kInfoPageTitleH > 0 && kNetworkDiagTitleH > 0,
+              "auxiliary page title heights must be positive");
+static_assert(kInfoReturnHintW > 0 && kInfoReturnHintH > 0,
+              "System Info return hint size must be positive");
+static_assert(kNetworkDiagSummaryW > 0 && kNetworkDiagSummaryH > 0,
+              "network diagnostics summary size must be positive");
+static_assert(kNetworkDiagLineH > 0, "network diagnostics line height must be positive");
+static_assert(kNetworkDiagHintW > 0 && kNetworkDiagHintH > 0,
+              "network diagnostics hint size must be positive");
 static_assert(kNetworkDiagSummaryTextSize > 1,
               "network diagnostics summary buffer must fit text and NUL");
 static_assert(kSettingsOtaLineTextSize > 1 && kSettingsOtaHintTextSize > 1,
@@ -439,6 +497,8 @@ static_assert(kInfoVersionLabelIndex < kInfoSourceLabelIndex,
               "System Info version label must precede source label");
 static_assert(kInfoSourceLabelIndex < kInfoLabelCount,
               "System Info source label index must fit label count");
+static_assert(kSetupStatusStaIpIndex < array_count(g_setup_status_labels),
+              "setup status semantic indices must fit label storage");
 
 bool settings_secondary_index_valid(int index)
 {
@@ -499,6 +559,33 @@ void warn_if_center_align_failed(lv_obj_t *label, const char *message)
     if (!center_align_label(label)) {
         ESP_LOGW(TAG, "%s", cstr_nonempty(message) ? message : kLabelCreateFailedLog);
     }
+}
+
+lv_obj_t *make_centered_label(lv_obj_t *parent,
+                              int x,
+                              int y,
+                              int w,
+                              int h,
+                              const char *text,
+                              const char *warning)
+{
+    lv_obj_t *label = make_label(parent, x, y, w, h, text);
+    warn_if_center_align_failed(label, warning);
+    return label;
+}
+
+lv_obj_t *make_centered_label_with_font(lv_obj_t *parent,
+                                        int x,
+                                        int y,
+                                        int w,
+                                        int h,
+                                        const char *text,
+                                        const lv_font_t *font,
+                                        const char *warning)
+{
+    lv_obj_t *label = make_label_with_font(parent, x, y, w, h, text, font);
+    warn_if_center_align_failed(label, warning);
+    return label;
 }
 }
 
@@ -579,6 +666,13 @@ void style_battery_frame(lv_obj_t *obj)
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(obj, 3, LV_PART_MAIN);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
+}
+
+lv_obj_t *make_black_bar(lv_obj_t *parent, int x, int y, int w, int h)
+{
+    lv_obj_t *bar = make_bar(parent, x, y, w, h);
+    set_obj_black(bar, true);
+    return bar;
 }
 
 void build_battery_icon(lv_obj_t *parent, lv_obj_t **segments)
@@ -728,11 +822,16 @@ void build_boot_info_page()
     g_info_root = screen;
     lv_obj_add_flag(g_info_root, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_t *title = make_label_with_font(screen, 24, 18, 352, 26, "SYSTEM INFO", &lv_font_montserrat_16);
-    warn_if_center_align_failed(title, "system info title create failed");
+    make_centered_label_with_font(screen,
+                                  kAuxPageTitleX,
+                                  kAuxPageTitleY,
+                                  kAuxPageTitleW,
+                                  kInfoPageTitleH,
+                                  "SYSTEM INFO",
+                                  &lv_font_montserrat_16,
+                                  "system info title create failed");
 
-    lv_obj_t *top_line = make_bar(screen, 24, 50, 352, 3);
-    set_obj_black(top_line, true);
+    make_black_bar(screen, kAuxPageLineX, kInfoPageTopLineY, kAuxPageLineW, kInfoPageTopLineH);
 
     static_assert(kInfoLabelCount == array_count(g_info_labels),
                   "System Info labels and row coordinates must stay in sync");
@@ -750,10 +849,15 @@ void build_boot_info_page()
         }
     }
 
-    lv_obj_t *bottom_line = make_bar(screen, 24, 238, 352, 3);
-    set_obj_black(bottom_line, true);
-    g_info_ota_label = make_label_with_font(screen, 24, 252, 352, 22, kInfoReturnHintText, &lv_font_montserrat_14);
-    warn_if_center_align_failed(g_info_ota_label, "system info return label create failed");
+    make_black_bar(screen, kAuxPageLineX, kInfoPageBottomLineY, kAuxPageLineW, kInfoPageBottomLineH);
+    g_info_ota_label = make_centered_label_with_font(screen,
+                                                     kInfoReturnHintX,
+                                                     kInfoReturnHintY,
+                                                     kInfoReturnHintW,
+                                                     kInfoReturnHintH,
+                                                     kInfoReturnHintText,
+                                                     &lv_font_montserrat_14,
+                                                     "system info return label create failed");
     g_info_ota_hint_label = nullptr;
     g_info_ota_bar_frame = nullptr;
     g_info_ota_bar_fill = nullptr;
@@ -864,14 +968,23 @@ void build_network_diag_page()
     g_network_diag_root = screen;
     lv_obj_add_flag(g_network_diag_root, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_t *title = make_label(screen, 24, 18, 352, 28, kNetworkDiagTitle);
-    warn_if_center_align_failed(title, "network diag title create failed");
+    make_centered_label(screen,
+                        kAuxPageTitleX,
+                        kAuxPageTitleY,
+                        kAuxPageTitleW,
+                        kNetworkDiagTitleH,
+                        kNetworkDiagTitle,
+                        "network diag title create failed");
 
-    lv_obj_t *top_line = make_bar(screen, 24, 52, 352, 3);
-    set_obj_black(top_line, true);
+    make_black_bar(screen, kAuxPageLineX, kNetworkDiagTopLineY, kAuxPageLineW, kNetworkDiagTopLineH);
 
-    g_network_diag_summary_label = make_label(screen, 24, 62, 352, 22, kNetworkDiagSummaryReady);
-    warn_if_center_align_failed(g_network_diag_summary_label, "network diag summary label create failed");
+    g_network_diag_summary_label = make_centered_label(screen,
+                                                       kNetworkDiagSummaryX,
+                                                       kNetworkDiagSummaryY,
+                                                       kNetworkDiagSummaryW,
+                                                       kNetworkDiagSummaryH,
+                                                       kNetworkDiagSummaryReady,
+                                                       "network diag summary label create failed");
 
     for (int i = 0; i < kNetworkDiagLineCount; ++i) {
         NetworkDiagLineLayout layout = network_diag_line_layout(i);
@@ -879,7 +992,7 @@ void build_network_diag_page()
                                               layout.x,
                                               layout.y,
                                               layout.w,
-                                              22,
+                                              kNetworkDiagLineH,
                                               kNetworkDiagLinePlaceholder);
         if (g_network_diag_labels[i]) {
             lv_label_set_long_mode(g_network_diag_labels[i], LV_LABEL_LONG_CLIP);
@@ -889,10 +1002,14 @@ void build_network_diag_page()
         }
     }
 
-    lv_obj_t *bottom_line = make_bar(screen, 24, 266, 352, 2);
-    set_obj_black(bottom_line, true);
-    g_network_diag_hint_label = make_label(screen, 24, 272, 352, 20, kNetworkDiagHintIdle);
-    warn_if_center_align_failed(g_network_diag_hint_label, "network diag hint label create failed");
+    make_black_bar(screen, kAuxPageLineX, kNetworkDiagBottomLineY, kAuxPageLineW, kNetworkDiagBottomLineH);
+    g_network_diag_hint_label = make_centered_label(screen,
+                                                    kNetworkDiagHintX,
+                                                    kNetworkDiagHintY,
+                                                    kNetworkDiagHintW,
+                                                    kNetworkDiagHintH,
+                                                    kNetworkDiagHintIdle,
+                                                    "network diag hint label create failed");
 }
 
 bool update_network_diag_page()
@@ -995,7 +1112,7 @@ void handle_settings_key_short()
     g_settings_last_activity_tick = xTaskGetTickCount();
     int primary = clamp_settings_primary(g_settings_primary_selection);
     if (g_settings_page_order_mode) {
-        g_settings_page_order_selection = (g_settings_page_order_selection + 1) % kWorkPageCount;
+        g_settings_page_order_selection = next_enabled_work_page_order_index(g_settings_page_order_selection);
     } else if (g_settings_focus_secondary) {
         int count = settings_secondary_count(primary);
         if (count > 0) {
@@ -1017,7 +1134,7 @@ void handle_settings_key_long()
         g_settings_page_order_mode = false;
         g_settings_focus_secondary = true;
         g_settings_primary_selection = kSettingsPrimaryDisplay;
-        g_settings_selection = 6;
+        g_settings_selection = kDisplaySettingsOrderItem;
         if (save_work_page_order()) {
             g_active_work_page = first_enabled_work_page();
             set_settings_feedback(kSettingsOrderExitSavedFeedback, kSettingsOrderExitFeedbackMs);
@@ -1066,11 +1183,9 @@ void build_settings_page()
 
     lv_obj_t *title = make_label(screen, 24, 18, 352, 28, "设置");
     warn_if_center_align_failed(title, "settings title create failed");
-    lv_obj_t *top_line = make_bar(screen, 24, 52, 352, 3);
-    set_obj_black(top_line, true);
+    make_black_bar(screen, 24, 52, 352, 3);
 
-    lv_obj_t *separator = make_bar(screen, 136, 62, 2, 174);
-    set_obj_black(separator, true);
+    make_black_bar(screen, 136, 62, 2, 174);
 
     for (int i = 0; i < kSettingsPrimaryCount; ++i) {
         g_settings_labels[i] =
@@ -1137,12 +1252,11 @@ void build_settings_page()
     } else {
         ESP_LOGW(TAG, SETTINGS_OTA_BAR_FRAME_CREATE_FAILED_LOG);
     }
-    g_settings_ota_bar_fill = make_bar(screen,
-                                       kSettingsOtaBarFrameX + kSettingsOtaBarInset,
-                                       kSettingsOtaBarFrameY + kSettingsOtaBarInset,
-                                       1,
-                                       kSettingsOtaBarFillH);
-    set_obj_black(g_settings_ota_bar_fill, true);
+    g_settings_ota_bar_fill = make_black_bar(screen,
+                                             kSettingsOtaBarFrameX + kSettingsOtaBarInset,
+                                             kSettingsOtaBarFrameY + kSettingsOtaBarInset,
+                                             1,
+                                             kSettingsOtaBarFillH);
     if (g_settings_ota_bar_fill) {
         lv_obj_set_style_radius(g_settings_ota_bar_fill, 2, LV_PART_MAIN);
         lv_obj_add_flag(g_settings_ota_bar_fill, LV_OBJ_FLAG_HIDDEN);
@@ -1177,6 +1291,8 @@ bool update_settings_page()
     g_settings_selection = selected;
     if (g_settings_page_order_mode) {
         normalize_work_page_order();
+        g_settings_page_order_selection =
+            valid_enabled_work_page_order_index(g_settings_page_order_selection);
     }
 
     if (primary == kSettingsPrimaryNetwork) {
@@ -1250,13 +1366,18 @@ bool update_settings_page()
         }
     }
     int secondary_count = settings_secondary_count(primary);
+    int visible_order_indices[kWorkPageCount] = {};
+    int visible_order_count = g_settings_page_order_mode
+                                  ? collect_visible_work_page_order_indices(visible_order_indices,
+                                                                            array_count(visible_order_indices))
+                                  : 0;
     for (int i = 0; i < kSettingsSecondaryMaxCount; ++i) {
         int slot = kSettingsPrimaryCount + i;
         if (!g_settings_labels[slot]) {
             continue;
         }
         if (g_settings_page_order_mode) {
-            if (i >= kWorkPageCount) {
+            if (i >= visible_order_count) {
                 set_obj_visible(g_settings_labels[slot], false);
                 hide_settings_switch_slot(i);
                 continue;
@@ -1267,9 +1388,12 @@ bool update_settings_page()
                            col == 0 ? kSettingsGridLeftX : kSettingsGridRightX,
                            kSettingsGridRowY[row]);
             lv_obj_set_size(g_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
-            if (i < kWorkPageCount) {
-                format_secondary_text(secondary_items, i, kSettingsPageOrderEntryFormat, i + 1, work_page_name(g_work_page_order[i]));
-            }
+            int order_index = visible_order_indices[i];
+            format_secondary_text(secondary_items,
+                                  i,
+                                  kSettingsPageOrderEntryFormat,
+                                  i + 1,
+                                  work_page_name(g_work_page_order[order_index]));
             hide_settings_switch_slot(i);
         } else if (primary == kSettingsPrimaryDisplay || primary == kSettingsPrimarySystem) {
             int col = i & 1;
@@ -1321,13 +1445,14 @@ bool update_settings_page()
         }
         bool visible = i < secondary_count;
         if (g_settings_page_order_mode) {
-            visible = i < kWorkPageCount;
+            visible = i < visible_order_count;
         }
         set_obj_visible(g_settings_labels[slot], visible);
         if (visible) {
             changed |= set_label_text_if_changed(g_settings_labels[slot], secondary_items[i]);
             if (selection_changed) {
-                bool selected_item = g_settings_page_order_mode ? i == g_settings_page_order_selection :
+                int order_index = g_settings_page_order_mode ? visible_order_indices[i] : -1;
+                bool selected_item = g_settings_page_order_mode ? order_index == g_settings_page_order_selection :
                                      (g_settings_focus_secondary && i == selected);
                 style_settings_item(g_settings_labels[slot], selected_item);
                 if (primary == kSettingsPrimarySystem && i < kSystemSettingsGridItemCount) {
@@ -1351,7 +1476,7 @@ bool update_settings_page()
                    i < kDisplaySettingsPageItemCount) {
             dot_visible = true;
             int page = display_settings_item_work_page(i);
-            if (page == kWorkPageWeatherClock) {
+            if (page == kWorkPageHistory) {
                 dot_on = true;
             } else {
                 dot_on = is_work_page_enabled(page);
@@ -1482,42 +1607,49 @@ void finish_settings_sync(SettingsSyncOp op, const char *text)
     set_settings_feedback(text, 3500);
 }
 
+template <typename... Args>
+bool set_setup_status_line(size_t index, const char *fallback, const char *format, Args... args)
+{
+    char line[kSetupStatusLineSize] = {};
+    format_text_or_fallback(line, sizeof(line), fallback, format, args...);
+    return set_label_text_if_changed(g_setup_status_labels[index], line);
+}
+
 bool update_setup_status_panel()
 {
     bool changed = false;
-    char line[kSetupStatusLineSize] = {};
-    if (!g_setup_status_labels[0]) {
+    if (!g_setup_status_labels[kSetupStatusTitleIndex]) {
         return false;
     }
-    changed |= set_label_text_if_changed(g_setup_status_labels[0], kSetupStatusTitle);
-    format_text_or_fallback(line,
-                            sizeof(line),
-                            kSetupStatusPlaceholder,
-                            kSetupApSsidFormat,
-                            g_ap_ssid[0] ? g_ap_ssid : kSetupStatusPlaceholder);
-    changed |= set_label_text_if_changed(g_setup_status_labels[1], line);
-    format_text_or_fallback(line, sizeof(line), kSetupStatusPlaceholder, kSetupApPasswordFormat, kSetupApPassword);
-    changed |= set_label_text_if_changed(g_setup_status_labels[2], line);
-    format_text_or_fallback(line, sizeof(line), kSetupStatusPlaceholder, kSetupPortalIpFormat, kSetupPortalIp);
-    changed |= set_label_text_if_changed(g_setup_status_labels[3], line);
-    format_text_or_fallback(line,
-                            sizeof(line),
-                            kSetupStatusPlaceholder,
-                            kSetupStaSsidFormat,
-                            g_wifi_ssid[0] ? g_wifi_ssid : kSetupStatusPlaceholder);
-    changed |= set_label_text_if_changed(g_setup_status_labels[4], line);
+    changed |= set_label_text_if_changed(g_setup_status_labels[kSetupStatusTitleIndex], kSetupStatusTitle);
+    changed |= set_setup_status_line(kSetupStatusApSsidIndex,
+                                     kSetupStatusPlaceholder,
+                                     kSetupApSsidFormat,
+                                     g_ap_ssid[0] ? g_ap_ssid : kSetupStatusPlaceholder);
+    changed |= set_setup_status_line(kSetupStatusApPasswordIndex,
+                                     kSetupStatusPlaceholder,
+                                     kSetupApPasswordFormat,
+                                     kSetupApPassword);
+    changed |= set_setup_status_line(kSetupStatusPortalIpIndex,
+                                     kSetupStatusPlaceholder,
+                                     kSetupPortalIpFormat,
+                                     kSetupPortalIp);
+    changed |= set_setup_status_line(kSetupStatusStaSsidIndex,
+                                     kSetupStatusPlaceholder,
+                                     kSetupStaSsidFormat,
+                                     g_wifi_ssid[0] ? g_wifi_ssid : kSetupStatusPlaceholder);
     if (g_sta_ip[0]) {
-        format_text_or_fallback(line, sizeof(line), kSetupStaIpPlaceholder, kSetupStaIpFormat, g_sta_ip);
+        changed |= set_setup_status_line(kSetupStatusStaIpIndex, kSetupStaIpPlaceholder, kSetupStaIpFormat, g_sta_ip);
     } else if (g_last_wifi_disconnect_reason) {
-        format_text_or_fallback(line,
-                                sizeof(line),
-                                kSetupStaIpPlaceholder,
-                                kSetupStaIpReasonFormat,
-                                g_last_wifi_disconnect_reason);
+        changed |= set_setup_status_line(kSetupStatusStaIpIndex,
+                                         kSetupStaIpPlaceholder,
+                                         kSetupStaIpReasonFormat,
+                                         g_last_wifi_disconnect_reason);
     } else {
+        char line[kSetupStatusLineSize] = {};
         copy_text(line, sizeof(line), kSetupStaIpPlaceholder);
+        changed |= set_label_text_if_changed(g_setup_status_labels[kSetupStatusStaIpIndex], line);
     }
-    changed |= set_label_text_if_changed(g_setup_status_labels[5], line);
     return changed;
 }
 
