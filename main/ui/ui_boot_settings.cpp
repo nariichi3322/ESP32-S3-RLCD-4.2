@@ -60,6 +60,18 @@ constexpr uint32_t kBootAnimFinishLvglLockTimeoutMs = 200;
 constexpr uint32_t kBootAnimFinishHoldMs = 100;
 constexpr uint32_t kBootScreenLvglLockTimeoutMs = 2000;
 constexpr uint32_t kSettingsPrimaryExitBlockMs = 800;
+constexpr int kBootContentX = 28;
+constexpr int kBootContentW = 344;
+constexpr int kBootTitleY = 30;
+constexpr int kBootTitleH = 30;
+constexpr int kBootStatusY = 64;
+constexpr int kBootStatusH = 24;
+constexpr int kBootVersionY = 226;
+constexpr int kBootVersionH = 24;
+constexpr int kBootDetailY = 256;
+constexpr int kBootDetailH = 22;
+constexpr int kBootAnimCanvasX = 144;
+constexpr int kBootAnimCanvasY = 100;
 constexpr int kNetworkDiagLocalIpLine = 0;
 constexpr int kNetworkDiagPublicIpLine = 1;
 constexpr int kNetworkDiagGridFirstLine = 2;
@@ -130,6 +142,12 @@ constexpr int kSettingsOtaBarFillH = kSettingsOtaBarFrameH - kSettingsOtaBarInse
 constexpr int kSettingsOtaProgressMax = 100;
 constexpr size_t kSettingsOtaLineTextSize = 96;
 constexpr size_t kSettingsOtaHintTextSize = 48;
+static_assert(kBootContentX >= 0 && kBootContentW > 0,
+              "boot screen content frame must be valid");
+static_assert(kBootTitleH > 0 && kBootStatusH > 0 && kBootVersionH > 0 && kBootDetailH > 0,
+              "boot screen label heights must be positive");
+static_assert(kBootAnimCanvasX >= 0 && kBootAnimCanvasY >= 0,
+              "boot animation canvas position must be non-negative");
 #define BOOT_ANIM_DONE_EVENT_SKIPPED_LOG "boot anim done event skipped: app events unavailable"
 #define BOOT_ANIM_CANVAS_CREATE_FAILED_LOG "boot anim canvas create failed"
 #define NETWORK_DIAG_LINE_LABEL_CREATE_FAILED_FORMAT "network diag line %d label create failed"
@@ -227,6 +245,8 @@ constexpr int kSettingsGridSwitchTextDisplayXOffset = 90;
 constexpr int kSettingsGridSwitchTextSystemW = 26;
 constexpr int kSettingsGridSwitchTextDisplayW = 30;
 constexpr int kSettingsGridSwitchTextYOffset = 7;
+constexpr int kSettingsSystemLongItemY = 144;
+constexpr int kSettingsDisplayLongItemY = 183;
 constexpr const char *kSettingsPrimaryItems[kSettingsPrimaryCount] = {"网络", "声音", "显示", "系统"};
 constexpr bool settings_primary_items_nonempty()
 {
@@ -410,6 +430,40 @@ constexpr bool boot_settings_log_texts_nonempty()
     return cstr_array_nonempty(kBootSettingsLogTexts);
 }
 
+struct SettingsGridCell {
+    int x;
+    int y;
+};
+
+struct SettingsGridSwitchTextLayout {
+    int x_offset;
+    int w;
+};
+
+SettingsGridCell settings_grid_cell(int index)
+{
+    int col = index % kSettingsGridColumns;
+    int row = index / kSettingsGridColumns;
+    return {
+        col == 0 ? kSettingsGridLeftX : kSettingsGridRightX,
+        kSettingsGridRowY[row],
+    };
+}
+
+SettingsGridSwitchTextLayout settings_grid_switch_text_layout(int primary)
+{
+    return primary == kSettingsPrimarySystem
+               ? SettingsGridSwitchTextLayout{kSettingsGridSwitchTextSystemXOffset,
+                                              kSettingsGridSwitchTextSystemW}
+               : SettingsGridSwitchTextLayout{kSettingsGridSwitchTextDisplayXOffset,
+                                              kSettingsGridSwitchTextDisplayW};
+}
+
+int settings_long_item_y(int primary)
+{
+    return primary == kSettingsPrimarySystem ? kSettingsSystemLongItemY : kSettingsDisplayLongItemY;
+}
+
 constexpr int kInfoTextX = 30;
 constexpr int kInfoTextW = 340;
 constexpr int kInfoSourceTextX = 0;
@@ -480,6 +534,8 @@ static_assert(kSettingsSecondaryTextSize > 1, "settings secondary text buffer mu
 static_assert(kSettingsGridColumns > 0, "settings grid must have columns");
 static_assert(kSettingsGridColW > 0 && kSettingsSecondaryH > 0,
               "settings grid item size must be positive");
+static_assert(kSettingsSystemLongItemY >= 0 && kSettingsDisplayLongItemY >= 0,
+              "settings long item y positions must be non-negative");
 static_assert(kSettingsListRowCount >= kSettingsPrimaryCount,
               "settings list rows must fit primary menu items");
 static_assert(kBatteryFrameW > 0 && kBatteryFrameH > 0,
@@ -737,16 +793,40 @@ void show_boot_screen()
     lv_obj_set_style_bg_color(screen, lv_color_white(), LV_PART_MAIN);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
-    lv_obj_t *title = make_label_with_font(screen, 28, 30, 344, 30, kBootTitleText, &lv_font_montserrat_16);
+    lv_obj_t *title = make_label_with_font(screen,
+                                           kBootContentX,
+                                           kBootTitleY,
+                                           kBootContentW,
+                                           kBootTitleH,
+                                           kBootTitleText,
+                                           &lv_font_montserrat_16);
     warn_if_center_align_failed(title, "boot title create failed");
 
-    g_boot_status_label = make_label_with_font(screen, 28, 64, 344, 24, kBootInitialStatusText, &lv_font_montserrat_16);
+    g_boot_status_label = make_label_with_font(screen,
+                                               kBootContentX,
+                                               kBootStatusY,
+                                               kBootContentW,
+                                               kBootStatusH,
+                                               kBootInitialStatusText,
+                                               &lv_font_montserrat_16);
     warn_if_center_align_failed(g_boot_status_label, "boot status label create failed");
 
-    g_boot_detail_label = make_label_with_font(screen, 28, 256, 344, 22, kBootInitialDetailText, &lv_font_montserrat_14);
+    g_boot_detail_label = make_label_with_font(screen,
+                                               kBootContentX,
+                                               kBootDetailY,
+                                               kBootContentW,
+                                               kBootDetailH,
+                                               kBootInitialDetailText,
+                                               &lv_font_montserrat_14);
     warn_if_center_align_failed(g_boot_detail_label, "boot detail label create failed");
 
-    lv_obj_t *version = make_label_with_font(screen, 28, 226, 344, 24, APP_VERSION, &lv_font_montserrat_16);
+    lv_obj_t *version = make_label_with_font(screen,
+                                             kBootContentX,
+                                             kBootVersionY,
+                                             kBootContentW,
+                                             kBootVersionH,
+                                             APP_VERSION,
+                                             &lv_font_montserrat_16);
     warn_if_center_align_failed(version, "boot version label create failed");
 
     if (!g_boot_anim_canvas_buf) {
@@ -755,7 +835,7 @@ void show_boot_screen()
     g_boot_anim_canvas = lv_canvas_create(screen);
     if (g_boot_anim_canvas) {
         lv_obj_clear_flag(g_boot_anim_canvas, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_boot_anim_canvas, 144, 100);
+        lv_obj_set_pos(g_boot_anim_canvas, kBootAnimCanvasX, kBootAnimCanvasY);
         lv_obj_set_size(g_boot_anim_canvas, BOOT_ANIM_WIDTH, BOOT_ANIM_HEIGHT);
         lv_obj_set_style_border_width(g_boot_anim_canvas, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(g_boot_anim_canvas, 0, LV_PART_MAIN);
@@ -1382,11 +1462,10 @@ bool update_settings_page()
                 hide_settings_switch_slot(i);
                 continue;
             }
-            int col = i & 1;
-            int row = i >> 1;
+            SettingsGridCell cell = settings_grid_cell(i);
             lv_obj_set_pos(g_settings_labels[slot],
-                           col == 0 ? kSettingsGridLeftX : kSettingsGridRightX,
-                           kSettingsGridRowY[row]);
+                           cell.x,
+                           cell.y);
             lv_obj_set_size(g_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
             int order_index = visible_order_indices[i];
             format_secondary_text(secondary_items,
@@ -1396,35 +1475,29 @@ bool update_settings_page()
                                   work_page_name(g_work_page_order[order_index]));
             hide_settings_switch_slot(i);
         } else if (primary == kSettingsPrimaryDisplay || primary == kSettingsPrimarySystem) {
-            int col = i & 1;
-            int row = i >> 1;
             bool grid_item = primary == kSettingsPrimaryDisplay
                                  ? i < kDisplaySettingsPageItemCount
                                  : i < kSystemSettingsGridItemCount;
             if (grid_item) {
-                int grid_x = col == 0 ? kSettingsGridLeftX : kSettingsGridRightX;
-                lv_obj_set_pos(g_settings_labels[slot], grid_x, kSettingsGridRowY[row]);
+                SettingsGridCell cell = settings_grid_cell(i);
+                lv_obj_set_pos(g_settings_labels[slot], cell.x, cell.y);
                 lv_obj_set_size(g_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
                 if (g_settings_switch_dots[i]) {
                     lv_obj_set_pos(g_settings_switch_dots[i],
-                                   grid_x + kSettingsGridSwitchDotXOffset,
-                                   kSettingsGridRowY[row] + kSettingsGridSwitchDotYOffset);
+                                   cell.x + kSettingsGridSwitchDotXOffset,
+                                   cell.y + kSettingsGridSwitchDotYOffset);
                 }
                 if (g_settings_switch_texts[i]) {
-                    int status_x = grid_x +
-                                   (primary == kSettingsPrimarySystem ? kSettingsGridSwitchTextSystemXOffset
-                                                                      : kSettingsGridSwitchTextDisplayXOffset);
-                    int status_w = primary == kSettingsPrimarySystem ? kSettingsGridSwitchTextSystemW
-                                                                     : kSettingsGridSwitchTextDisplayW;
+                    SettingsGridSwitchTextLayout text_layout = settings_grid_switch_text_layout(primary);
                     lv_obj_set_pos(g_settings_switch_texts[i],
-                                   status_x,
-                                   kSettingsGridRowY[row] + kSettingsGridSwitchTextYOffset);
-                    lv_obj_set_size(g_settings_switch_texts[i], status_w, kSettingsSwitchTextH);
+                                   cell.x + text_layout.x_offset,
+                                   cell.y + kSettingsGridSwitchTextYOffset);
+                    lv_obj_set_size(g_settings_switch_texts[i], text_layout.w, kSettingsSwitchTextH);
                 }
             } else {
                 lv_obj_set_pos(g_settings_labels[slot],
                                kSettingsSecondaryX,
-                               primary == kSettingsPrimarySystem ? 144 : 183);
+                               settings_long_item_y(primary));
                 lv_obj_set_size(g_settings_labels[slot], kSettingsSecondaryW, kSettingsSecondaryH);
                 hide_settings_switch_slot(i);
             }
@@ -1476,11 +1549,7 @@ bool update_settings_page()
                    i < kDisplaySettingsPageItemCount) {
             dot_visible = true;
             int page = display_settings_item_work_page(i);
-            if (page == kWorkPageHistory) {
-                dot_on = true;
-            } else {
-                dot_on = is_work_page_enabled(page);
-            }
+            dot_on = is_work_page_enabled(page);
         }
         if (g_settings_switch_dots[i]) {
             set_obj_visible(g_settings_switch_dots[i], dot_visible);

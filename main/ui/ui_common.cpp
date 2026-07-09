@@ -17,6 +17,34 @@
 #define UI_LABEL_INVALID_SIZE_FORMAT "label invalid size %dx%d"
 #define UI_LABEL_CREATE_FAILED_LOG "label create failed"
 
+bool canvas_pixel_count(int width, int height, size_t *pixel_count)
+{
+    if (!pixel_count) {
+        return false;
+    }
+    *pixel_count = 0;
+    if (width <= 0 || height <= 0) {
+        ESP_LOGW(TAG, UI_CANVAS_BUFFER_INVALID_SIZE_FORMAT, width, height);
+        return false;
+    }
+    size_t count = static_cast<size_t>(width) * static_cast<size_t>(height);
+    if (count > SIZE_MAX / sizeof(lv_color_t)) {
+        ESP_LOGW(TAG, UI_CANVAS_BUFFER_SIZE_OVERFLOW_FORMAT, width, height);
+        return false;
+    }
+    *pixel_count = count;
+    return true;
+}
+
+static void set_obj_box(lv_obj_t *obj, int x, int y, int w, int h)
+{
+    if (!obj) {
+        return;
+    }
+    lv_obj_set_pos(obj, x, y);
+    lv_obj_set_size(obj, w, h);
+}
+
 void notify_ui_task()
 {
     if (g_ui_task_handle) {
@@ -26,13 +54,8 @@ void notify_ui_task()
 
 lv_color_t *alloc_canvas_buffer(int width, int height)
 {
-    if (width <= 0 || height <= 0) {
-        ESP_LOGW(TAG, UI_CANVAS_BUFFER_INVALID_SIZE_FORMAT, width, height);
-        return nullptr;
-    }
-    size_t pixel_count = (size_t)width * (size_t)height;
-    if (pixel_count > SIZE_MAX / sizeof(lv_color_t)) {
-        ESP_LOGW(TAG, UI_CANVAS_BUFFER_SIZE_OVERFLOW_FORMAT, width, height);
+    size_t pixel_count = 0;
+    if (!canvas_pixel_count(width, height, &pixel_count)) {
         return nullptr;
     }
     lv_color_t *buf = (lv_color_t *)heap_caps_calloc(pixel_count,
@@ -74,8 +97,7 @@ lv_obj_t *make_bar(lv_obj_t *parent, int x, int y, int w, int h)
         return nullptr;
     }
     lv_obj_clear_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(bar, x, y);
-    lv_obj_set_size(bar, w, h);
+    set_obj_box(bar, x, y, w, h);
     lv_obj_set_style_pad_all(bar, 0, LV_PART_MAIN);
     set_obj_black(bar, false);
     return bar;
@@ -121,6 +143,36 @@ bool is_progress_segment_index(int index)
     return index >= 0 && index < kProgressSegmentCount;
 }
 
+static int clamp_progress_filled_count(int filled)
+{
+    if (filled < 0) {
+        return 0;
+    }
+    if (filled > kProgressSegmentCount) {
+        return kProgressSegmentCount;
+    }
+    return filled;
+}
+
+static bool is_progress_segment_border_pixel(int x, int y)
+{
+    return x == 0 || x == kProgressSegmentW - 1 ||
+           y == 0 || y == kProgressSegmentH - 1;
+}
+
+static void invalidate_canvas_rect(lv_obj_t *canvas, int x1, int y1, int x2, int y2)
+{
+    if (!canvas) {
+        return;
+    }
+    lv_area_t area = {};
+    area.x1 = static_cast<lv_coord_t>(x1);
+    area.y1 = static_cast<lv_coord_t>(y1);
+    area.x2 = static_cast<lv_coord_t>(x2);
+    area.y2 = static_cast<lv_coord_t>(y2);
+    lv_obj_invalidate_area(canvas, &area);
+}
+
 bool is_status_gif_frame_index(int frame)
 {
     return frame >= 0 && frame < STATUS_GIF_FRAME_COUNT;
@@ -161,6 +213,11 @@ void expand_area_to_include_pixel(int x, int y, int *min_x, int *min_y, int *max
     }
 }
 
+static bool change_area_valid(bool changed, int min_x, int min_y, int max_x, int max_y)
+{
+    return changed && min_x <= max_x && min_y <= max_y;
+}
+
 void draw_progress_segment(lv_obj_t *canvas, int index, bool filled)
 {
     if (!canvas || !is_progress_segment_index(index)) {
@@ -169,7 +226,7 @@ void draw_progress_segment(lv_obj_t *canvas, int index, bool filled)
     int x0 = index * kProgressSegmentStride;
     for (int y = 0; y < kProgressSegmentH; ++y) {
         for (int x = 0; x < kProgressSegmentW; ++x) {
-            bool border = x == 0 || x == kProgressSegmentW - 1 || y == 0 || y == kProgressSegmentH - 1;
+            bool border = is_progress_segment_border_pixel(x, y);
             lv_canvas_set_px_color(canvas, x0 + x, y, (filled || border) ? lv_color_black() : lv_color_white());
         }
     }
@@ -181,12 +238,7 @@ void invalidate_progress_segment(lv_obj_t *canvas, int index)
         return;
     }
     int x0 = index * kProgressSegmentStride;
-    lv_area_t area = {};
-    area.x1 = static_cast<lv_coord_t>(x0);
-    area.y1 = 0;
-    area.x2 = static_cast<lv_coord_t>(x0 + kProgressSegmentW - 1);
-    area.y2 = static_cast<lv_coord_t>(kProgressSegmentH - 1);
-    lv_obj_invalidate_area(canvas, &area);
+    invalidate_canvas_rect(canvas, x0, 0, x0 + kProgressSegmentW - 1, kProgressSegmentH - 1);
 }
 
 void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf, int y)
@@ -204,8 +256,7 @@ void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf
         return;
     }
     lv_obj_clear_flag(*canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(*canvas, kProgressCanvasX, y);
-    lv_obj_set_size(*canvas, kProgressCanvasW, kProgressCanvasH);
+    set_obj_box(*canvas, kProgressCanvasX, y, kProgressCanvasW, kProgressCanvasH);
     lv_obj_set_style_border_width(*canvas, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(*canvas, 0, LV_PART_MAIN);
     if (*buf) {
@@ -223,11 +274,7 @@ void update_progress_canvas(lv_obj_t *canvas, int filled, int *last_filled)
     if (!canvas || !last_filled) {
         return;
     }
-    if (filled < 0) {
-        filled = 0;
-    } else if (filled > kProgressSegmentCount) {
-        filled = kProgressSegmentCount;
-    }
+    filled = clamp_progress_filled_count(filled);
     if (*last_filled < 0 || filled < *last_filled) {
         for (int i = 0; i < kProgressSegmentCount; ++i) {
             draw_progress_segment(canvas, i, i < filled);
@@ -433,13 +480,8 @@ void draw_status_gif_frame(int frame)
         }
     }
     if (changed || g_last_status_gif_frame != frame) {
-        if (changed && min_x <= max_x && min_y <= max_y) {
-            lv_area_t area = {};
-            area.x1 = static_cast<lv_coord_t>(min_x);
-            area.y1 = static_cast<lv_coord_t>(min_y);
-            area.x2 = static_cast<lv_coord_t>(max_x);
-            area.y2 = static_cast<lv_coord_t>(max_y);
-            lv_obj_invalidate_area(g_status_gif_canvas, &area);
+        if (change_area_valid(changed, min_x, min_y, max_x, max_y)) {
+            invalidate_canvas_rect(g_status_gif_canvas, min_x, min_y, max_x, max_y);
         } else {
             lv_obj_invalidate(g_status_gif_canvas);
         }
@@ -456,8 +498,16 @@ static const char *label_text_or_empty(const char *text)
     return text ? text : "";
 }
 
+static bool text_output_available(const char *out, size_t out_len)
+{
+    return out && out_len > 0;
+}
+
 static void copy_invalid_time_text(char *out, size_t out_len)
 {
+    if (!text_output_available(out, out_len)) {
+        return;
+    }
     strlcpy(out, kInvalidTimeText, out_len);
 }
 
@@ -498,8 +548,7 @@ lv_obj_t *make_label_with_font(lv_obj_t *parent, int x, int y, int w, int h, con
         ESP_LOGW(TAG, "%s", UI_LABEL_CREATE_FAILED_LOG);
         return nullptr;
     }
-    lv_obj_set_pos(label, x, y);
-    lv_obj_set_size(label, w, h);
+    set_obj_box(label, x, y, w, h);
     lv_label_set_text(label, label_text_or_empty(text));
     lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(label, lv_color_black(), LV_PART_MAIN);
@@ -531,7 +580,7 @@ bool set_label_text_if_changed(lv_obj_t *label, const char *text)
 
 void format_time_or_dash(time_t value, char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!text_output_available(out, out_len)) {
         return;
     }
     if (value <= 0) {

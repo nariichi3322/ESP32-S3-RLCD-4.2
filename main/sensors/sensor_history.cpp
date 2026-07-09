@@ -545,8 +545,10 @@ TickType_t next_sensor_sample_tick(TickType_t now)
 
 TickType_t next_battery_sample_tick(TickType_t now)
 {
-    return next_periodic_sample_tick(now,
-                                     kBatterySampleDayMinutes,
-                                     kBatterySampleNightMinutes,
-                                     kBatterySampleUnknownTimeMinutes * kSecondsPerMinute * kMsPerSecond);
+    TickType_t normal_sample = next_periodic_sample_tick(now,
+                                                         kBatterySampleDayMinutes,
+                                                         kBatterySampleNightMinutes,
+                                                         kBatterySampleUnknownTimeMinutes * kSecondsPerMinute * kMsPerSecond);
+    TickType_t charge_probe = now + pdMS_TO_TICKS(kBatteryChargeProbeSampleMs);
+    return charge_probe < normal_sample ? charge_probe : normal_sample;
 }

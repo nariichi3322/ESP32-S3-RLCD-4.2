@@ -18,6 +18,7 @@ constexpr size_t array_count(const T (&)[N])
 
 constexpr int kChimeVolumeLevelCount = static_cast<int>(array_count(kChimeVolumeLevels));
 constexpr int kDefaultChimeVolumePercent = kChimeVolumeLevels[0];
+constexpr uint8_t kAllWorkPageMask = static_cast<uint8_t>((1U << kWorkPageCount) - 1);
 constexpr int kSettingsFeedbackDefaultMs = 2500;
 constexpr int kSettingsFeedbackBusyMs = 2000;
 constexpr int kSettingsFeedbackSavedMs = 1800;
@@ -40,7 +41,7 @@ constexpr const char *kHourlyChimeDisabledFeedback = "整点提醒已关闭";
 constexpr const char *kAllDayChimeEnabledFeedback = "全天提醒已开启";
 constexpr const char *kAllDayChimeDisabledFeedback = "全天提醒已关闭";
 constexpr const char *kPageOrderInstructionFeedback = "BOOT交换并保存";
-constexpr const char *kRequiredWorkPageFeedback = "温湿历史不可关闭";
+constexpr const char *kLastWorkPageFeedback = "至少保留一个页面";
 constexpr const char *kWorkPageFeedbackFormat = "%s%s";
 constexpr const char *kWorkPageEnabledSuffix = "已开启";
 constexpr const char *kWorkPageDisabledSuffix = "已关闭";
@@ -73,7 +74,7 @@ constexpr const char *kClockSettingsFeedbackTexts[] = {
     kAllDayChimeEnabledFeedback,
     kAllDayChimeDisabledFeedback,
     kPageOrderInstructionFeedback,
-    kRequiredWorkPageFeedback,
+    kLastWorkPageFeedback,
     kWorkPageFeedbackFormat,
     kWorkPageEnabledSuffix,
     kWorkPageDisabledSuffix,
@@ -86,6 +87,10 @@ constexpr const char *kClockSettingsFeedbackTexts[] = {
     kClockDateFormat,
     kClockDatePlaceholder,
 };
+static_assert(kWorkPageCount > 0 && kWorkPageCount <= 8,
+              "work page mask in settings UI is stored as uint8_t");
+static_assert(kAllWorkPageMask != 0,
+              "settings UI must have at least one work page bit");
 #define HOURLY_CHIME_SETTING_LOG_FORMAT "hourly chime %s"
 #define ALL_DAY_CHIME_SETTING_LOG_FORMAT "hourly chime all-day %s"
 #define CHIME_SETTING_ENABLED_LOG_VALUE "enabled"
@@ -829,6 +834,12 @@ bool update_time_ui(const struct tm &local, bool clock_page_active, int active_w
     return changed;
 }
 
+uint8_t toggled_work_page_mask(uint8_t current_mask, int page)
+{
+    uint8_t page_mask = static_cast<uint8_t>(1U << page);
+    return static_cast<uint8_t>((current_mask ^ page_mask) & kAllWorkPageMask);
+}
+
 void set_formatted_settings_feedback(const char *format, ...)
 {
     if (!format) {
@@ -1016,14 +1027,17 @@ void handle_settings_action()
             return;
         }
         int page = display_settings_item_work_page(selected);
-        if (page == kWorkPageHistory) {
-            g_work_page_enabled_mask |= (1U << kWorkPageHistory);
-            set_settings_feedback(kRequiredWorkPageFeedback, kSettingsFeedbackDefaultMs);
+        if (page < 0 || page >= kWorkPageCount) {
+            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        uint8_t next_mask = toggled_work_page_mask(g_work_page_enabled_mask, page);
+        if (next_mask == 0) {
+            set_settings_feedback(kLastWorkPageFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
         uint8_t previous = g_work_page_enabled_mask;
-        g_work_page_enabled_mask ^= (1U << page);
-        g_work_page_enabled_mask |= (1U << kWorkPageHistory);
+        g_work_page_enabled_mask = next_mask;
         if (!save_work_page_settings()) {
             g_work_page_enabled_mask = previous;
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);

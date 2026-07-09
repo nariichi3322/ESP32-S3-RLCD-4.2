@@ -7,8 +7,13 @@ namespace {
 #define PAGE_ROOT_CREATE_FAILED_LOG "page root create failed"
 constexpr int kFirstWorkPage = kWorkPageWeatherClock;
 constexpr int kFallbackWorkPage = kWorkPageWeatherClock;
-constexpr int kRequiredWorkPage = kWorkPageHistory;
+constexpr int kInvalidWorkPage = -1;
+constexpr int kInvalidWorkPageOrderIndex = -1;
 constexpr size_t kAuxPageRootCount = 3; // System info, network diagnostics and settings.
+constexpr int kPageRootX = 0;
+constexpr int kPageRootY = 0;
+constexpr int kPageRootW = kDisplayWidth;
+constexpr int kPageRootH = kDisplayHeight;
 constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
     kWorkPageWeatherClock,
     kWorkPageGallery,
@@ -38,6 +43,21 @@ constexpr const char *kUnknownWorkPageName = "未知页面";
 bool is_work_page_index(int page)
 {
     return page >= kFirstWorkPage && page < kWorkPageCount;
+}
+
+bool is_work_page_order_index(int index)
+{
+    return index >= 0 && index < kWorkPageCount;
+}
+
+bool work_page_order_index_found(int index)
+{
+    return index != kInvalidWorkPageOrderIndex;
+}
+
+constexpr uint8_t work_page_mask(int page)
+{
+    return static_cast<uint8_t>(1U << page);
 }
 
 constexpr bool cstr_nonempty(const char *text)
@@ -142,11 +162,11 @@ lv_obj_t *build_work_page_root(int page)
 
 static_assert(kFirstWorkPage == 0, "work page ids must start at zero");
 static_assert(kFallbackWorkPage == kWorkPageWeatherClock, "special-mode fallback page must remain weather clock");
-static_assert(kRequiredWorkPage == kWorkPageHistory, "history page must remain the required enabled work page");
 static_assert(kAuxPageRootCount == 3, "auxiliary roots are info, network diagnostics and settings");
 static_assert(kWorkPageCount > 0, "there must be at least one work page");
-static_assert(kWorkPageCount < static_cast<int>(sizeof(uint32_t) * 8),
-              "work page enabled mask must have room for every work page bit");
+static_assert(kWorkPageCount <= static_cast<int>(sizeof(uint8_t) * 8),
+              "work page enabled mask is stored as uint8_t");
+static_assert(kPageRootW > 0 && kPageRootH > 0, "page root size must be positive");
 static_assert(array_count(kDefaultWorkPageOrder) == kWorkPageCount,
               "default work page order must cover every work page");
 static_assert(array_count(kDisplaySettingPages) == kDisplaySettingsPageItemCount,
@@ -161,6 +181,20 @@ static_assert(page_list_covers_each_work_page_once(kDisplaySettingPages),
               "display settings must map every work page exactly once");
 } // namespace
 
+static void configure_page_root(lv_obj_t *root)
+{
+    if (!root) {
+        return;
+    }
+    lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(root, kPageRootX, kPageRootY);
+    lv_obj_set_size(root, kPageRootW, kPageRootH);
+    lv_obj_set_style_bg_color(root, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(root, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(root, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(root, 0, LV_PART_MAIN);
+}
+
 lv_obj_t *create_page_root()
 {
     lv_obj_t *root = lv_obj_create(lv_scr_act());
@@ -168,13 +202,7 @@ lv_obj_t *create_page_root()
         ESP_LOGW(TAG, "%s", PAGE_ROOT_CREATE_FAILED_LOG);
         return nullptr;
     }
-    lv_obj_clear_flag(root, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(root, 0, 0);
-    lv_obj_set_size(root, kDisplayWidth, kDisplayHeight);
-    lv_obj_set_style_bg_color(root, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(root, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(root, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(root, 0, LV_PART_MAIN);
+    configure_page_root(root);
     return root;
 }
 
@@ -222,10 +250,7 @@ bool is_work_page_enabled(int page)
     if (!is_work_page_index(page)) {
         return false;
     }
-    if (page == kRequiredWorkPage) {
-        return true;
-    }
-    return (g_work_page_enabled_mask & (1U << page)) != 0;
+    return (g_work_page_enabled_mask & work_page_mask(page)) != 0;
 }
 
 const char *work_page_name(int page)
@@ -238,9 +263,8 @@ const char *work_page_name(int page)
 
 int display_settings_item_work_page(int item)
 {
-    constexpr int kDisplaySettingPageCount = static_cast<int>(array_count(kDisplaySettingPages));
-    if (item < 0 || item >= kDisplaySettingPageCount) {
-        return -1;
+    if (item < 0 || item >= kDisplaySettingsPageItemCount) {
+        return kInvalidWorkPage;
     }
     return kDisplaySettingPages[item];
 }
@@ -251,7 +275,7 @@ int first_enabled_work_page()
 {
     normalize_work_page_order();
     int index = first_enabled_work_page_order_index_or_invalid_normalized();
-    return index >= 0 ? g_work_page_order[index] : kRequiredWorkPage;
+    return work_page_order_index_found(index) ? g_work_page_order[index] : kFallbackWorkPage;
 }
 
 void reset_work_page_order()
@@ -287,7 +311,7 @@ static int work_page_order_index_normalized(int page)
             return i;
         }
     }
-    return -1;
+    return kInvalidWorkPageOrderIndex;
 }
 
 static int first_enabled_work_page_order_index_or_invalid_normalized()
@@ -297,7 +321,7 @@ static int first_enabled_work_page_order_index_or_invalid_normalized()
             return i;
         }
     }
-    return -1;
+    return kInvalidWorkPageOrderIndex;
 }
 
 static int next_enabled_work_page_order_index_or_invalid_normalized(int current_order_index)
@@ -308,7 +332,7 @@ static int next_enabled_work_page_order_index_or_invalid_normalized(int current_
             return index;
         }
     }
-    return -1;
+    return kInvalidWorkPageOrderIndex;
 }
 
 int next_enabled_work_page(int current_page)
@@ -319,19 +343,18 @@ int next_enabled_work_page(int current_page)
     normalize_work_page_order();
     int current_index = work_page_order_index_normalized(current_page);
     int next_index = next_enabled_work_page_order_index_or_invalid_normalized(current_index);
-    return next_index >= 0 ? g_work_page_order[next_index] : kRequiredWorkPage;
+    return work_page_order_index_found(next_index) ? g_work_page_order[next_index] : kFallbackWorkPage;
 }
 
 static int first_enabled_work_page_order_index_normalized()
 {
     int index = first_enabled_work_page_order_index_or_invalid_normalized();
-    return index >= 0 ? index : 0;
+    return work_page_order_index_found(index) ? index : 0;
 }
 
 static int valid_enabled_work_page_order_index_normalized(int current_order_index)
 {
-    if (current_order_index < 0 ||
-        current_order_index >= kWorkPageCount ||
+    if (!is_work_page_order_index(current_order_index) ||
         !is_work_page_enabled(g_work_page_order[current_order_index])) {
         return first_enabled_work_page_order_index_normalized();
     }
@@ -349,7 +372,7 @@ int next_enabled_work_page_order_index(int current_order_index)
     normalize_work_page_order();
     current_order_index = valid_enabled_work_page_order_index_normalized(current_order_index);
     int next_index = next_enabled_work_page_order_index_or_invalid_normalized(current_order_index);
-    return next_index >= 0 ? next_index : first_enabled_work_page_order_index_normalized();
+    return work_page_order_index_found(next_index) ? next_index : first_enabled_work_page_order_index_normalized();
 }
 
 int valid_enabled_work_page_order_index(int current_order_index)

@@ -313,16 +313,16 @@ void update_visible_work_page_battery_segments(bool history_page_active,
                                                bool battery_blink_on)
 {
     if (history_page_active) {
-        update_battery_segments(g_history_battery_segments, g_battery_percent);
+        update_battery_segments(g_history_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
     }
     if (gallery_page_active) {
         update_battery_segments(g_gallery_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
     }
     if (calendar_page_active) {
-        update_battery_segments(g_calendar_battery_segments, g_battery_percent);
+        update_battery_segments(g_calendar_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
     }
     if (weather_board_page_active) {
-        update_battery_segments(g_weather_board_battery_segments, g_battery_percent);
+        update_battery_segments(g_weather_board_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
     }
     if (flip_clock_page_active) {
         update_battery_segments(g_flip_clock_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
@@ -452,14 +452,16 @@ void ui_task(void *)
         bool status_due = tick_now - last_status_update >= pdMS_TO_TICKS(kUiStatusRefreshMs);
         bool battery_due = g_battery_version != last_battery_version;
         bool battery_blink_visible = g_battery_charging &&
-                                     (g_active_work_page == kWorkPageWeatherClock ||
-                                      g_active_work_page == kWorkPageGallery ||
-                                      g_active_work_page == kWorkPageFlipClock) &&
+                                     g_active_work_page >= 0 &&
+                                     g_active_work_page < kWorkPageCount &&
                                      !g_setup_portal_active &&
                                      !g_settings_requested &&
                                      !g_boot_info_requested &&
                                      !g_network_diag_page_requested;
-        bool battery_blink_on = battery_blink_visible && is_tm_plausible(local) && (local.tm_sec % 2 == 0);
+        bool battery_blink_second_even = is_tm_plausible(local)
+                                             ? (local.tm_sec % 2 == 0)
+                                             : (((xTaskGetTickCount() / pdMS_TO_TICKS(kAppMsPerSecond)) % 2) == 0);
+        bool battery_blink_on = battery_blink_visible && battery_blink_second_even;
         int battery_blink_phase = battery_blink_on ? 1 : 0;
         bool battery_blink_due = battery_blink_visible != last_battery_charging ||
                                  (battery_blink_visible &&
@@ -993,6 +995,12 @@ void ui_task(void *)
             TickType_t flip_poll_ticks = pdMS_TO_TICKS(kUiFlipClockPollMs);
             if (flip_poll_ticks < delay_ticks) {
                 delay_ticks = flip_poll_ticks;
+            }
+        }
+        if (battery_blink_visible) {
+            TickType_t blink_ticks = next_second_delay_ticks();
+            if (blink_ticks < delay_ticks) {
+                delay_ticks = blink_ticks;
             }
         }
         if (history_idle && history_page_shown_since != 0) {

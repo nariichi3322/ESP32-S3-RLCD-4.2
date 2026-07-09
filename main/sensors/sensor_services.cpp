@@ -13,6 +13,9 @@ constexpr TickType_t kBatteryChargingSampleDelay = pdMS_TO_TICKS(kBatteryChargin
 static_assert(kHousekeepingOtaPauseDelayMs > 0, "housekeeping OTA pause delay must be positive");
 static_assert(kHousekeepingFallbackDelayMs > 0, "housekeeping fallback delay must be positive");
 static_assert(kBatteryChargingSampleMs > 0, "battery charging sample delay must be positive");
+static_assert(kBatteryChargeProbeSampleMs > 0, "battery charge probe delay must be positive");
+static_assert(kBatteryChargingSampleMs < kBatteryChargeProbeSampleMs,
+              "confirmed charging samples should be faster than charge probes");
 static_assert(kHousekeepingOtaPauseDelayMs >= kHousekeepingFallbackDelayMs,
               "housekeeping OTA pause delay should not be shorter than fallback delay");
 static_assert(kHousekeepingOtaPauseDelay > 0, "housekeeping OTA pause tick delay must be positive");

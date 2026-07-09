@@ -69,10 +69,25 @@ static_assert(kHexHighNibbleShift == 4, "Hex high nibble shift must remain 4 bit
 constexpr uint8_t kNvsUnsetU8 = 0xFF;
 constexpr uint8_t kDefaultChimeVolumePercent = 80;
 constexpr uint8_t kValidChimeVolumePercent[] = {20, 40, 60, 80, 100};
-constexpr uint8_t kRequiredWorkPageMask = (uint8_t)(1U << kWorkPageHistory);
-constexpr uint8_t kPageMaskV4KnownBits = (uint8_t)((1U << kWorkPageCount) - 1);
-constexpr uint8_t kWeatherBoardPageMask = (uint8_t)(1U << kWorkPageWeatherBoard);
-constexpr uint8_t kFlipClockPageMask = (uint8_t)(1U << kWorkPageFlipClock);
+constexpr uint8_t work_page_mask_bit(int page)
+{
+    return static_cast<uint8_t>(1U << page);
+}
+
+constexpr uint8_t all_work_page_mask()
+{
+    return static_cast<uint8_t>((1U << kWorkPageCount) - 1);
+}
+
+constexpr bool work_page_mask_has_enabled_page(uint8_t page_mask)
+{
+    return (page_mask & all_work_page_mask()) != 0;
+}
+
+constexpr uint8_t kPageMaskV4KnownBits = all_work_page_mask();
+constexpr uint8_t kDefaultWorkPageMask = kPageMaskV4KnownBits;
+constexpr uint8_t kWeatherBoardPageMask = work_page_mask_bit(kWorkPageWeatherBoard);
+constexpr uint8_t kFlipClockPageMask = work_page_mask_bit(kWorkPageFlipClock);
 constexpr int kTmYearOffset = 1900;
 constexpr int kTmMonthOffset = 1;
 constexpr int kManualTimeMinMonth = 1;
@@ -433,10 +448,11 @@ static_assert(kManualTimeMinSecond == 0 && kManualTimeMaxSecond == 59,
 static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
 static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
 static_assert(kWorkPageCount <= 8, "work page enabled mask is stored as uint8_t");
-static_assert(kPageMaskV4KnownBits == ((1U << kWorkPageCount) - 1),
+static_assert(kPageMaskV4KnownBits == all_work_page_mask(),
               "page mask v4 must cover every current work page");
-static_assert((kPageMaskV4KnownBits & kRequiredWorkPageMask) == kRequiredWorkPageMask,
-              "required work page must be covered by the current page mask");
+static_assert((kDefaultWorkPageMask & kPageMaskV4KnownBits) == kDefaultWorkPageMask &&
+                  work_page_mask_has_enabled_page(kDefaultWorkPageMask),
+              "default work page mask must enable at least one known page");
 static_assert((kPageMaskV4KnownBits & kWeatherBoardPageMask) == kWeatherBoardPageMask,
               "weather board page must be covered by the current page mask");
 static_assert((kPageMaskV4KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
@@ -573,6 +589,16 @@ uint8_t normalize_chime_volume(uint8_t volume)
 uint8_t normalize_chime_sound_index(uint8_t sound)
 {
     return sound < kChimeSoundCount ? sound : 0;
+}
+
+constexpr uint8_t bool_to_nvs_u8(bool value)
+{
+    return value ? 1 : 0;
+}
+
+constexpr bool nvs_u8_to_bool(uint8_t value)
+{
+    return value != 0;
 }
 
 esp_err_t erase_nvs_key_if_present(nvs_handle_t nvs, const char *key, bool *erased)
@@ -804,11 +830,17 @@ bool manual_weather_city_matches_nvs(nvs_handle_t nvs, const char *city)
     return nvs_string_matches(nvs, kManualWeatherCityKey, city, saved_city, sizeof(saved_city));
 }
 
+uint8_t normalize_work_page_mask(uint8_t page_mask)
+{
+    page_mask &= kPageMaskV4KnownBits;
+    return work_page_mask_has_enabled_page(page_mask) ? page_mask : kDefaultWorkPageMask;
+}
+
 uint8_t read_saved_page_mask(nvs_handle_t nvs)
 {
-    uint8_t page_mask = kPageMaskV4KnownBits;
+    uint8_t page_mask = kDefaultWorkPageMask;
     if (nvs_get_u8(nvs, kPageMaskV4Key, &page_mask) == ESP_OK) {
-        return page_mask;
+        return normalize_work_page_mask(page_mask);
     }
     return page_mask;
 }
@@ -909,7 +941,7 @@ void load_saved_manual_weather_city(nvs_handle_t nvs)
 
 void apply_loaded_page_config(uint8_t page_mask, const uint8_t *page_order, bool have_page_order)
 {
-    g_work_page_enabled_mask = (page_mask | kRequiredWorkPageMask) & kPageMaskV4KnownBits;
+    g_work_page_enabled_mask = normalize_work_page_mask(page_mask);
     if (have_page_order && page_order) {
         memcpy(g_work_page_order, page_order, sizeof(g_work_page_order));
     }
@@ -938,9 +970,9 @@ void apply_loaded_network_config(const LoadedNetworkConfig &loaded)
 {
     g_have_weather_key = loaded.key_err == ESP_OK && g_weather_api_key[0] != '\0';
     g_has_manual_weather_city = g_manual_weather_city[0] != '\0';
-    g_hourly_chime_enabled = loaded.chime != 0;
-    g_hourly_chime_all_day = loaded.all_day != 0;
-    g_offline_mode_ui_enabled = loaded.offline != 0;
+    g_hourly_chime_enabled = nvs_u8_to_bool(loaded.chime);
+    g_hourly_chime_all_day = nvs_u8_to_bool(loaded.all_day);
+    g_offline_mode_ui_enabled = nvs_u8_to_bool(loaded.offline);
     g_chime_volume_percent = normalize_chime_volume(loaded.volume);
     g_chime_sound_index = normalize_chime_sound_index(loaded.sound);
     apply_loaded_page_config(loaded.page_mask, loaded.page_order, loaded.have_page_order);
@@ -972,7 +1004,7 @@ bool set_offline_mode_enabled(bool enabled)
     if (err != ESP_OK) {
         return false;
     }
-    uint8_t next_value = enabled ? 1 : 0;
+    uint8_t next_value = bool_to_nvs_u8(enabled);
     bool changed = false;
     err = write_changed_nvs_u8(nvs, err, kOfflineModeKey, next_value, &changed);
     if (changed) {
@@ -1215,8 +1247,8 @@ bool save_hourly_chime_setting()
     if (err != ESP_OK) {
         return false;
     }
-    uint8_t next_chime = g_hourly_chime_enabled ? 1 : 0;
-    uint8_t next_all_day = g_hourly_chime_all_day ? 1 : 0;
+    uint8_t next_chime = bool_to_nvs_u8(g_hourly_chime_enabled);
+    uint8_t next_all_day = bool_to_nvs_u8(g_hourly_chime_all_day);
     uint8_t next_volume = (uint8_t)g_chime_volume_percent;
     uint8_t next_sound = (uint8_t)g_chime_sound_index;
     bool changed = false;
@@ -1240,7 +1272,7 @@ bool save_work_page_settings()
     if (err != ESP_OK) {
         return false;
     }
-    uint8_t mask = (g_work_page_enabled_mask | kRequiredWorkPageMask) & kPageMaskV4KnownBits;
+    uint8_t mask = normalize_work_page_mask(g_work_page_enabled_mask);
     bool changed = false;
     err = write_changed_nvs_u8(nvs, err, kPageMaskV4Key, mask, &changed);
     if (changed) {
