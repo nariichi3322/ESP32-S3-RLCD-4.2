@@ -48,6 +48,11 @@ constexpr bool cstr_nonempty(const char *text)
     return text && text[0] != '\0';
 }
 
+constexpr bool output_buffer_available(char *out, size_t out_len)
+{
+    return out && out_len > 0;
+}
+
 constexpr bool daily_saying_json_fields_nonempty()
 {
     for (const char *field : kDailySayingJsonFields) {
@@ -165,7 +170,7 @@ private:
 
 bool copy_trimmed_saying_text(const char *text, char *out, size_t out_len)
 {
-    if (!text || !out || out_len == 0) {
+    if (!text || !output_buffer_available(out, out_len)) {
         return false;
     }
     strlcpy(out, text, out_len);
@@ -180,7 +185,7 @@ bool plain_text_saying_candidate(const char *text)
 
 bool copy_plain_text_saying_candidate(const char *response, char *out, size_t out_len)
 {
-    if (!response || !out || out_len == 0) {
+    if (!response || !output_buffer_available(out, out_len)) {
         return false;
     }
     strlcpy(out, response, out_len);
@@ -195,7 +200,7 @@ bool daily_saying_json_depth_allowed(int depth)
 
 bool copy_json_saying_field(cJSON *obj, char *out, size_t out_len, int depth)
 {
-    if (!obj || !out || out_len == 0) {
+    if (!obj || !output_buffer_available(out, out_len)) {
         return false;
     }
     if (!daily_saying_json_depth_allowed(depth)) {
@@ -224,7 +229,7 @@ bool copy_json_saying_field(cJSON *obj, char *out, size_t out_len, int depth)
 
 bool extract_daily_saying(const char *response, char *out, size_t out_len)
 {
-    if (!response || !out || out_len == 0) {
+    if (!response || !output_buffer_available(out, out_len)) {
         return false;
     }
     out[0] = '\0';

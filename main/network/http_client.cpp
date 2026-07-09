@@ -355,7 +355,7 @@ bool gzip_payload_range(const uint8_t *data, size_t len, size_t *payload_offset,
 
 esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len)
 {
-    if (!out || out_len == 0 || !body_len) {
+    if (!output_buffer_available(out, out_len) || !body_len) {
         ESP_LOGW(TAG, "%s", kHttpDecodeInvalidArgLog);
         return ESP_ERR_INVALID_ARG;
     }
@@ -396,7 +396,7 @@ esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len)
 
 esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *api_key)
 {
-    if (!url || url[0] == '\0' || !out || out_len == 0) {
+    if (!url || url[0] == '\0' || !output_buffer_available(out, out_len)) {
         ESP_LOGW(TAG, "%s", kHttpGetInvalidArgLog);
         return ESP_ERR_INVALID_ARG;
     }
@@ -493,7 +493,7 @@ bool url_is_unreserved(char ch)
 
 bool url_encode_component(const char *in, char *out, size_t out_len)
 {
-    if (!in || !out || out_len == 0) {
+    if (!in || !output_buffer_available(out, out_len)) {
         return false;
     }
     size_t pos = 0;

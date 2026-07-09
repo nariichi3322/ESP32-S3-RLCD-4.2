@@ -293,6 +293,11 @@ constexpr const char *cstr_or_empty(const char *text)
     return text ? text : "";
 }
 
+constexpr bool output_buffer_available(char *out, size_t out_len)
+{
+    return out && out_len > 0;
+}
+
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
@@ -666,7 +671,7 @@ esp_err_t write_manual_weather_city_key(nvs_handle_t nvs, const char *city)
 
 esp_err_t read_nvs_string(nvs_handle_t nvs, const char *key, char *out, size_t out_len)
 {
-    if (!key || !out || out_len == 0) {
+    if (!key || !output_buffer_available(out, out_len)) {
         return ESP_ERR_INVALID_ARG;
     }
     size_t len = out_len;
@@ -675,7 +680,7 @@ esp_err_t read_nvs_string(nvs_handle_t nvs, const char *key, char *out, size_t o
 
 bool nvs_string_matches(nvs_handle_t nvs, const char *key, const char *expected, char *scratch, size_t scratch_len)
 {
-    if (!cstr_nonempty(expected) || !scratch || scratch_len == 0) {
+    if (!cstr_nonempty(expected) || !output_buffer_available(scratch, scratch_len)) {
         return false;
     }
     scratch[0] = '\0';
@@ -699,7 +704,7 @@ esp_err_t write_ignored_asset_weather_city(nvs_handle_t nvs, const char *city)
 
 bool read_valid_asset_weather_city(char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return false;
     }
     out[0] = '\0';
@@ -1053,7 +1058,7 @@ bool is_weather_city_input_valid(const char *city)
 
 void copy_trimmed_weather_city(char *out, size_t out_len, const char *city)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return;
     }
     out[0] = '\0';
@@ -1319,7 +1324,7 @@ bool clear_saved_config()
 
 void url_decode(char *dst, size_t dst_len, const char *src)
 {
-    if (!dst || dst_len == 0) {
+    if (!output_buffer_available(dst, dst_len)) {
         return;
     }
     if (!src) {
@@ -1343,7 +1348,7 @@ void url_decode(char *dst, size_t dst_len, const char *src)
 
 void form_value(const char *body, const char *key, char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return;
     }
     if (!body || !key || key[0] == '\0') {
@@ -1371,7 +1376,7 @@ void form_value(const char *body, const char *key, char *out, size_t out_len)
 
 void form_value_fallback(const char *body, const char *primary_key, const char *fallback_key, char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return;
     }
     form_value(body, primary_key, out, out_len);

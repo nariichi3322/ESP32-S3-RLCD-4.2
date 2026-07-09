@@ -116,14 +116,19 @@ static bool previous_battery_percent_valid(int percent)
     return percent >= kBatteryPercentMin;
 }
 
-static bool battery_percent_decreased(int previous_percent, int current_percent)
-{
-    return previous_battery_percent_valid(previous_percent) && current_percent < previous_percent;
-}
-
 static bool battery_percent_increased(int previous_percent, int current_percent)
 {
     return previous_battery_percent_valid(previous_percent) && current_percent > previous_percent;
+}
+
+static bool battery_voltage_dropped(float delta)
+{
+    return delta <= -kBatteryChargingStopVoltage;
+}
+
+static bool charging_should_stop(float delta)
+{
+    return battery_voltage_dropped(delta);
 }
 
 static bool battery_time_valid(time_t value)
@@ -278,8 +283,7 @@ static void update_battery_charging_state(int previous_percent,
     float delta = g_battery_voltage - previous_voltage;
     bool charging_activity = delta >= kBatteryChargingRiseVoltage ||
                              battery_percent_increased(previous_percent, current_percent);
-    bool charging_drop = delta <= -kBatteryChargingStopVoltage ||
-                         battery_percent_decreased(previous_percent, current_percent);
+    bool charging_drop = charging_should_stop(delta);
 
     if (charging_activity) {
         if (*charging_rise_samples < kBatteryChargingRiseSamples) {

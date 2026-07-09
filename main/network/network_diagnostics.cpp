@@ -99,6 +99,11 @@ constexpr bool cstr_nonempty(const char *text)
     return text && text[0] != '\0';
 }
 
+constexpr bool output_buffer_available(char *out, size_t out_len)
+{
+    return out && out_len > 0;
+}
+
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
@@ -313,7 +318,7 @@ bool http_probe_ok(const char *url, size_t buffer_len = kNetworkDiagDefaultProbe
 
 bool copy_json_string_value(cJSON *item, char *out, size_t out_len)
 {
-    if (!cJSON_IsString(item) || !item->valuestring || !out || out_len == 0) {
+    if (!cJSON_IsString(item) || !item->valuestring || !output_buffer_available(out, out_len)) {
         return false;
     }
     strlcpy(out, item->valuestring, out_len);
@@ -322,7 +327,7 @@ bool copy_json_string_value(cJSON *item, char *out, size_t out_len)
 
 bool find_json_string_recursive(cJSON *node, const char *name, char *out, size_t out_len, int depth = 0)
 {
-    if (!node || !name || !out || out_len == 0) {
+    if (!node || !name || !output_buffer_available(out, out_len)) {
         return false;
     }
     if (depth > kNetworkDiagJsonSearchMaxDepth) {
@@ -358,7 +363,7 @@ bool network_diag_token_space(char ch)
 
 bool copy_first_token_if_ip_like(const char *text, char *out, size_t out_len)
 {
-    if (!text || !out || out_len == 0) {
+    if (!text || !output_buffer_available(out, out_len)) {
         return false;
     }
     const char *start = text;
@@ -382,7 +387,7 @@ bool copy_first_token_if_ip_like(const char *text, char *out, size_t out_len)
 
 bool lookup_public_ip(char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return false;
     }
     out[0] = '\0';
