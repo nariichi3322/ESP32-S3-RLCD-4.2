@@ -529,13 +529,18 @@ const char *qweather_stage_text(const char *stage)
     return cstr_nonempty(stage) ? stage : kQweatherDefaultStage;
 }
 
+bool qweather_output_available(char *out, size_t out_len)
+{
+    return out && out_len > 0;
+}
+
 void copy_first_nonempty_text(char *out,
                               size_t out_len,
                               const char *first,
                               const char *second = nullptr,
                               const char *third = nullptr)
 {
-    if (!out || out_len == 0) {
+    if (!qweather_output_available(out, out_len)) {
         return;
     }
     const char *selected = cstr_nonempty(first)
@@ -561,7 +566,7 @@ bool qweather_format_failed(int written, size_t out_len)
 
 void copy_ip_city_without_suffix(char *out, size_t out_len, const char *city_part)
 {
-    if (!out || out_len == 0) {
+    if (!qweather_output_available(out, out_len)) {
         return;
     }
     strlcpy(out, city_part ? city_part : "", out_len);
@@ -572,7 +577,7 @@ void copy_ip_city_without_suffix(char *out, size_t out_len, const char *city_par
 
 bool format_qweather_url(char *out, size_t out_len, const char *stage, const char *fmt, ...)
 {
-    if (!out || out_len == 0 || !fmt) {
+    if (!qweather_output_available(out, out_len) || !fmt) {
         ESP_LOGW(TAG, QWEATHER_URL_INVALID_ARG_FORMAT, qweather_stage_text(stage));
         return false;
     }
@@ -642,7 +647,7 @@ bool format_qweather_daily_url_for_city(char *url,
 
 bool format_ip_coordinates(char *out, size_t out_len, double longitude, double latitude)
 {
-    if (!out || out_len == 0) {
+    if (!qweather_output_available(out, out_len)) {
         log_qweather_fixed_warning(kIpLocationInvalidArgLog);
         return false;
     }
@@ -657,7 +662,7 @@ bool format_ip_coordinates(char *out, size_t out_len, double longitude, double l
 
 void copy_ip_coordinate_location(const char *location, char *city_id, size_t city_id_len, WeatherData *weather)
 {
-    if (!location || !city_id || city_id_len == 0 || !weather) {
+    if (!location || !qweather_output_available(city_id, city_id_len) || !weather) {
         return;
     }
     strlcpy(city_id, location, city_id_len);
@@ -676,7 +681,7 @@ void copy_ip_coordinate_location(const char *location, char *city_id, size_t cit
 
 void copy_ip_region_city(char *out, size_t out_len, const char *region)
 {
-    if (!out || out_len == 0 || !region || region[0] == '\0') {
+    if (!qweather_output_available(out, out_len) || !region || region[0] == '\0') {
         return;
     }
 
@@ -855,7 +860,7 @@ uint32_t weather_icon_range_codepoint(int icon, const WeatherIconRange &range)
 
 void write_weather_icon_utf8(char *out, size_t out_len, uint32_t cp)
 {
-    if (!out || out_len == 0) {
+    if (!qweather_output_available(out, out_len)) {
         return;
     }
     out[0] = '\0';
@@ -899,7 +904,8 @@ void write_weather_icon_utf8(char *out, size_t out_len, uint32_t cp)
 
 bool ip_geolocation_lookup(char *location, size_t location_len, char *city, size_t city_len)
 {
-    if (!location || location_len == 0 || !city || city_len == 0) {
+    if (!qweather_output_available(location, location_len) ||
+        !qweather_output_available(city, city_len)) {
         log_qweather_fixed_warning(kIpLocationInvalidArgLog);
         return false;
     }
@@ -947,7 +953,9 @@ QweatherCityLookupStatus qweather_lookup_city_status(const char *location,
                                                       char *lon_out,
                                                       size_t lon_len)
 {
-    if (!location || !city_id || city_id_len == 0 || !city_name || city_name_len == 0) {
+    if (!location ||
+        !qweather_output_available(city_id, city_id_len) ||
+        !qweather_output_available(city_name, city_name_len)) {
         log_qweather_fixed_warning(kQweatherCityInvalidArgLog);
         return kQweatherCityLookupError;
     }
@@ -1090,7 +1098,7 @@ static size_t alert_utf8_char_count(const char *text)
 
 static void alert_utf8_copy_chars(char *out, size_t out_len, const char *in, size_t max_chars)
 {
-    if (!out || out_len == 0) {
+    if (!qweather_output_available(out, out_len)) {
         return;
     }
     out[0] = '\0';
@@ -1115,7 +1123,7 @@ static void alert_utf8_copy_chars(char *out, size_t out_len, const char *in, siz
 
 static void replace_all(char *text, size_t text_len, const char *from, const char *to)
 {
-    if (!text || text_len == 0 || !from || !to) {
+    if (!qweather_output_available(text, text_len) || !from || !to) {
         return;
     }
     char buffer[kWeatherAlertTitleLen] = {};
@@ -1169,7 +1177,7 @@ static void compact_weather_alert_title(char *title, size_t title_len)
 
 static void copy_compact_weather_alert_title(char *out, size_t out_len, const char *title)
 {
-    if (!out || out_len == 0) {
+    if (!qweather_output_available(out, out_len)) {
         return;
     }
     out[0] = '\0';
@@ -1215,7 +1223,7 @@ static void format_weather_alert_title_text(char *title,
                                             const char *event_name,
                                             const char *color_name = nullptr)
 {
-    if (!title || title_len == 0 || !format) {
+    if (!qweather_output_available(title, title_len) || !format) {
         return;
     }
     int written = 0;
@@ -1236,7 +1244,7 @@ static void build_weather_alert_title(char *title,
                                       const char *color_code,
                                       const char *headline)
 {
-    if (!title || title_len == 0) {
+    if (!qweather_output_available(title, title_len)) {
         return;
     }
     title[0] = '\0';

@@ -116,19 +116,29 @@ bool wait_for_wifi_connected(uint32_t timeout_ms)
     return (bits & kWifiConnectedBit) != 0;
 }
 
+bool network_text_output_available(char *out, size_t out_len)
+{
+    return out && out_len > 0;
+}
+
+bool network_format_failed(int written, size_t out_len)
+{
+    return written < 0 || (size_t)written >= out_len;
+}
+
 void copy_boot_detail_fallback_on_format_error(int written, char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!network_text_output_available(out, out_len)) {
         return;
     }
-    if (written < 0 || (size_t)written >= out_len) {
+    if (network_format_failed(written, out_len)) {
         strlcpy(out, kBootSetupDetailFallback, out_len);
     }
 }
 
 void format_boot_setup_detail(char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!network_text_output_available(out, out_len)) {
         return;
     }
     int written = snprintf(out, out_len, kBootSetupDetailFormat, g_ap_ssid);
