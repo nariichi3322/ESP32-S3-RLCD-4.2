@@ -22,6 +22,10 @@ constexpr UBaseType_t kAudioPlaybackTaskPriority = 4;
 constexpr UBaseType_t kSettingsChimeRetryTaskPriority = 3;
 constexpr BaseType_t kAudioTaskCore = 1;
 constexpr int kSettingsChimeRetryAttempts = 8;
+constexpr float kXiaozhiMicGainDb = 37.5f;
+constexpr int kXiaozhiAudioSampleRate = 16000;
+constexpr size_t kXiaozhiSpeakerFadeSamples = 160;
+constexpr size_t kXiaozhiSpeakerTailSilenceSamples = 160;
 constexpr uint32_t kSettingsChimeRetryDelayMs = 180;
 constexpr uint32_t kSetupPromptChainDelayMs = 120;
 constexpr TickType_t kSettingsChimeRetryDelay = pdMS_TO_TICKS(kSettingsChimeRetryDelayMs);
@@ -44,6 +48,7 @@ constexpr const char *kHourlyChimeLogName = "hourly chime";
 constexpr const char *kSetupPromptLogName = "setup prompt";
 constexpr const char *kSettingsChimeBusyLog = "settings confirmation chime skipped: audio busy";
 constexpr const char *kAudioCodecAllocationFailedLog = "audio codec allocation failed";
+constexpr const char *kXiaozhiAudioStartFailedLog = "xiaozhi audio session start failed";
 constexpr const char *kSetupPromptPlayedLog = "setup prompt played";
 constexpr const char *kSetupPromptSkippedLog = "setup prompt skipped";
 constexpr const char *kSetupPromptPendingLog = "setup prompt pending";
@@ -60,6 +65,7 @@ constexpr const char *kAudioTexts[] = {
     kSetupPromptLogName,
     kSettingsChimeBusyLog,
     kAudioCodecAllocationFailedLog,
+    kXiaozhiAudioStartFailedLog,
     kSetupPromptPlayedLog,
     kSetupPromptSkippedLog,
     kSetupPromptPendingLog,
@@ -106,6 +112,9 @@ static_assert(kSettingsChimeRetryDelayMs > 0, "settings chime retry delay must b
 static_assert(kSetupPromptChainDelayMs > 0, "setup prompt chain delay must be positive");
 static_assert(kSettingsChimeRetryDelay > 0, "settings chime retry delay must be positive");
 static_assert(kSetupPromptChainDelay > 0, "setup prompt chain delay must be positive");
+static_assert(kXiaozhiAudioSampleRate > 0, "xiaozhi sample rate must be positive");
+static_assert(kXiaozhiSpeakerFadeSamples > 0, "xiaozhi speaker fade must be positive");
+static_assert(kXiaozhiSpeakerTailSilenceSamples > 0, "xiaozhi speaker tail must be positive");
 static_assert(kHourlyChimeQuietStartHour >= 0 && kHourlyChimeQuietStartHour < 24,
               "hourly chime start hour must be in 0..23");
 static_assert(kHourlyChimeQuietEndHour >= 0 && kHourlyChimeQuietEndHour < 24,
@@ -121,6 +130,14 @@ static_assert(kAudioPaGpio >= GPIO_NUM_0, "audio PA GPIO must be valid");
 static_assert(array_count(kAudioTexts) > 0, "audio text registry must not be empty");
 static_assert(cstr_array_nonempty(kAudioTexts), "audio task names, log names and log formats must be non-empty");
 } // namespace
+
+extern const uint8_t xiaozhi_popup_pcm_start[] asm("_binary_popup_pcm_start");
+extern const uint8_t xiaozhi_popup_pcm_end[] asm("_binary_popup_pcm_end");
+
+static bool s_xiaozhi_speaker_stream_active = false;
+static size_t s_xiaozhi_speaker_fade_progress = 0;
+static int16_t s_xiaozhi_last_speaker_sample = 0;
+static void finish_xiaozhi_speaker_stream();
 
 static void configure_audio_idle_gpio(gpio_num_t pin, gpio_mode_t mode, gpio_pulldown_t pull_down)
 {
@@ -218,6 +235,163 @@ static void finish_audio_playback()
     clear_audio_playing();
 }
 
+bool start_xiaozhi_audio_session()
+{
+    if (!try_mark_audio_playing()) {
+        return false;
+    }
+    acquire_audio_awake_lock();
+    CodecPort *codec = ensure_audio_codec();
+    if (!codec || !codec->CodecPort_OpenXiaozhiMic()) {
+        ESP_LOGW(TAG, "%s", kXiaozhiAudioStartFailedLog);
+        release_audio_codec();
+        park_unused_audio_peripherals();
+        release_audio_awake_lock();
+        clear_audio_playing();
+        return false;
+    }
+    codec->CodecPort_SetMicGain(kXiaozhiMicGainDb);
+    s_xiaozhi_speaker_stream_active = false;
+    s_xiaozhi_speaker_fade_progress = 0;
+    s_xiaozhi_last_speaker_sample = 0;
+    return true;
+}
+
+void stop_xiaozhi_audio_session()
+{
+    if (!is_audio_playing()) {
+        return;
+    }
+    if (g_codec) {
+        finish_xiaozhi_speaker_stream();
+        g_codec->CodecPort_CloseSpeaker();
+        g_codec->CodecPort_CloseMic();
+    }
+    finish_audio_playback();
+}
+
+void set_xiaozhi_audio_high_performance(bool enabled)
+{
+    if (is_audio_playing()) {
+        set_audio_performance_mode(enabled);
+    }
+}
+
+int read_xiaozhi_microphone(void *buffer, size_t bytes)
+{
+    if (!g_codec || !buffer || bytes == 0) {
+        return ESP_FAIL;
+    }
+    return g_codec->CodecPort_EchoRead(buffer, static_cast<int>(bytes));
+}
+
+int write_xiaozhi_speaker(const int16_t *mono_samples, size_t sample_count, int sample_rate)
+{
+    if (!g_codec || !mono_samples || sample_count == 0 || !g_codec->CodecPort_OpenXiaozhiSpeaker(sample_rate)) {
+        return ESP_FAIL;
+    }
+    // 官方同板卡使用标准单声道 TX；RX 的四时隙 TDM 麦克风/参考声道
+    // 与播放并行运行，因此这里直接写入服务器提供的 mono PCM。
+    constexpr size_t kFramesPerChunk = 160;
+    int16_t mono[kFramesPerChunk] = {};
+    size_t offset = 0;
+    while (offset < sample_count) {
+        size_t frames = sample_count - offset;
+        if (frames > kFramesPerChunk) {
+            frames = kFramesPerChunk;
+        }
+        for (size_t frame = 0; frame < frames; ++frame) {
+            int16_t sample = mono_samples[offset + frame];
+            if (s_xiaozhi_speaker_fade_progress < kXiaozhiSpeakerFadeSamples) {
+                sample = static_cast<int16_t>(
+                    (static_cast<int32_t>(sample) *
+                     static_cast<int32_t>(s_xiaozhi_speaker_fade_progress)) /
+                    static_cast<int32_t>(kXiaozhiSpeakerFadeSamples));
+                ++s_xiaozhi_speaker_fade_progress;
+            }
+            mono[frame] = sample;
+            s_xiaozhi_last_speaker_sample = sample;
+            s_xiaozhi_speaker_stream_active = true;
+        }
+        int written = g_codec->CodecPort_PlayWrite(mono, static_cast<int>(frames * sizeof(int16_t)));
+        if (written != ESP_CODEC_DEV_OK) {
+            return written;
+        }
+        offset += frames;
+    }
+    return ESP_CODEC_DEV_OK;
+}
+
+static void finish_xiaozhi_speaker_stream()
+{
+    if (!g_codec || !s_xiaozhi_speaker_stream_active) {
+        s_xiaozhi_speaker_fade_progress = 0;
+        s_xiaozhi_last_speaker_sample = 0;
+        return;
+    }
+    int16_t tail[kXiaozhiSpeakerFadeSamples + kXiaozhiSpeakerTailSilenceSamples] = {};
+    for (size_t index = 0; index < kXiaozhiSpeakerFadeSamples; ++index) {
+        tail[index] = static_cast<int16_t>(
+            (static_cast<int32_t>(s_xiaozhi_last_speaker_sample) *
+             static_cast<int32_t>(kXiaozhiSpeakerFadeSamples - index - 1)) /
+            static_cast<int32_t>(kXiaozhiSpeakerFadeSamples));
+    }
+    (void)write_xiaozhi_speaker(tail,
+                                sizeof(tail) / sizeof(tail[0]),
+                                kXiaozhiAudioSampleRate);
+    s_xiaozhi_speaker_stream_active = false;
+    s_xiaozhi_speaker_fade_progress = 0;
+    s_xiaozhi_last_speaker_sample = 0;
+}
+
+bool resume_xiaozhi_microphone_after_playback()
+{
+    if (!g_codec) {
+        return false;
+    }
+    // STD TX 与 TDM RX 是官方同板卡验证过的全双工布局。结束播放只关闭
+    // 扬声器，麦克风/AEC 流保持连续，避免丢失用户插话的开头。
+    finish_xiaozhi_speaker_stream();
+    g_codec->CodecPort_CloseSpeaker();
+    ESP_LOGI(TAG, "xiaozhi duplex microphone kept active");
+    return true;
+}
+
+bool play_xiaozhi_wake_feedback()
+{
+    // This is the upstream 78/xiaozhi-esp32 assets/common/popup.ogg converted
+    // to 16 kHz mono PCM so the existing shared codec path can play it without
+    // importing the upstream Ogg demuxer or a second audio framework.
+    size_t pcm_bytes = static_cast<size_t>(xiaozhi_popup_pcm_end - xiaozhi_popup_pcm_start);
+    bool pcm_valid = pcm_bytes > 0 && (pcm_bytes % sizeof(int16_t)) == 0;
+    bool played = pcm_valid &&
+                  write_xiaozhi_speaker(
+                      reinterpret_cast<const int16_t *>(xiaozhi_popup_pcm_start),
+                      pcm_bytes / sizeof(int16_t),
+                      kXiaozhiAudioSampleRate) == ESP_CODEC_DEV_OK;
+    bool restored = resume_xiaozhi_microphone_after_playback();
+    ESP_LOGI(TAG, "xiaozhi wake feedback: played=%d microphone=%d", played, restored);
+    return played && restored;
+}
+
+void smooth_xiaozhi_speaker_segment_transition()
+{
+    // sentence_start messages are serialized between the preceding and next
+    // audio packets, so this can safely finish the old waveform without
+    // closing the codec or toggling the PA.
+    finish_xiaozhi_speaker_stream();
+}
+
+void abort_xiaozhi_speaker_playback()
+{
+    if (!g_codec) {
+        return;
+    }
+    finish_xiaozhi_speaker_stream();
+    g_codec->CodecPort_CloseSpeaker();
+    ESP_LOGI(TAG, "xiaozhi speaker playback aborted");
+}
+
 static CodecPort *prepare_audio_codec_for_playback()
 {
     acquire_audio_awake_lock();
@@ -246,10 +420,12 @@ static const char *audio_text_or_default(const char *text, const char *fallback)
 
 void settings_confirmation_chime_task(void *);
 
-static bool create_audio_playback_task(TaskFunction_t task_fn,
-                                       const char *task_name,
-                                       void *task_arg,
-                                       const char *log_name)
+static bool create_audio_task(TaskFunction_t task_fn,
+                              const char *task_name,
+                              uint32_t task_stack,
+                              UBaseType_t task_priority,
+                              void *task_arg,
+                              const char *log_name)
 {
     const char *display_name = audio_text_or_default(log_name, kDefaultAudioLogName);
     const char *rtos_name = audio_text_or_default(task_name, kDefaultAudioTaskName);
@@ -259,9 +435,9 @@ static bool create_audio_playback_task(TaskFunction_t task_fn,
     }
     BaseType_t ok = xTaskCreatePinnedToCore(task_fn,
                                             rtos_name,
-                                            kAudioPlaybackTaskStack,
+                                            task_stack,
                                             task_arg,
-                                            kAudioPlaybackTaskPriority,
+                                            task_priority,
                                             nullptr,
                                             kAudioTaskCore);
     if (ok != pdPASS) {
@@ -269,8 +445,8 @@ static bool create_audio_playback_task(TaskFunction_t task_fn,
                  AUDIO_TASK_CREATE_FAILED_LOG_FORMAT,
                  display_name,
                  rtos_name,
-                 (unsigned)kAudioPlaybackTaskStack,
-                 (unsigned)kAudioPlaybackTaskPriority,
+                 (unsigned)task_stack,
+                 (unsigned)task_priority,
                  (int)kAudioTaskCore,
                  (int)ok);
         return false;
@@ -280,23 +456,12 @@ static bool create_audio_playback_task(TaskFunction_t task_fn,
 
 static void create_settings_chime_retry_task()
 {
-    BaseType_t ok = xTaskCreatePinnedToCore(settings_confirmation_chime_task,
-                                            kSettingsChimeRetryTaskName,
-                                            kSettingsChimeRetryTaskStack,
-                                            nullptr,
-                                            kSettingsChimeRetryTaskPriority,
-                                            nullptr,
-                                            kAudioTaskCore);
-    if (ok != pdPASS) {
-        ESP_LOGW(TAG,
-                 AUDIO_TASK_CREATE_FAILED_LOG_FORMAT,
-                 kSettingsChimeRetryTaskCreateFailedLog,
-                 kSettingsChimeRetryTaskName,
-                 (unsigned)kSettingsChimeRetryTaskStack,
-                 (unsigned)kSettingsChimeRetryTaskPriority,
-                 (int)kAudioTaskCore,
-                 (int)ok);
-    }
+    (void)create_audio_task(settings_confirmation_chime_task,
+                            kSettingsChimeRetryTaskName,
+                            kSettingsChimeRetryTaskStack,
+                            kSettingsChimeRetryTaskPriority,
+                            nullptr,
+                            kSettingsChimeRetryTaskCreateFailedLog);
 }
 
 void hourly_chime_task(void *arg)
@@ -346,10 +511,12 @@ bool start_chime_playback(int source_slot)
     if (!try_mark_audio_playing()) {
         return false;
     }
-    if (!create_audio_playback_task(hourly_chime_task,
-                                    kHourlyChimeTaskName,
-                                    (void *)(intptr_t)source_slot,
-                                    kHourlyChimeLogName)) {
+    if (!create_audio_task(hourly_chime_task,
+                           kHourlyChimeTaskName,
+                           kAudioPlaybackTaskStack,
+                           kAudioPlaybackTaskPriority,
+                           (void *)(intptr_t)source_slot,
+                           kHourlyChimeLogName)) {
         clear_audio_playing();
         return false;
     }
@@ -362,10 +529,12 @@ bool start_setup_prompt_playback()
         return false;
     }
     g_setup_prompt_pending = false;
-    if (!create_audio_playback_task(setup_prompt_task,
-                                    kSetupPromptTaskName,
-                                    nullptr,
-                                    kSetupPromptLogName)) {
+    if (!create_audio_task(setup_prompt_task,
+                           kSetupPromptTaskName,
+                           kAudioPlaybackTaskStack,
+                           kAudioPlaybackTaskPriority,
+                           nullptr,
+                           kSetupPromptLogName)) {
         clear_audio_playing();
         g_setup_prompt_pending = true;
         return false;

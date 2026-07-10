@@ -81,25 +81,19 @@ static constexpr const char *kNetworkDiagWifiOnLog = "wifi radio on for network 
 static constexpr const char *kNetworkSyncWifiStartFailedLog = "wifi start failed during sync window";
 static constexpr const char *kNetworkSyncWifiConnectTimeoutLog = "wifi connect timeout during sync window";
 
-class NetworkDisplayDmaGuard {
-public:
-    explicit NetworkDisplayDmaGuard(bool active) : active_(active)
-    {
-        if (active_) {
-            Display_AcquireDmaConservativeMode();
-        }
+NetworkDisplayDmaGuard::NetworkDisplayDmaGuard(bool active) : active_(active)
+{
+    if (active_) {
+        Display_AcquireDmaConservativeMode();
     }
+}
 
-    ~NetworkDisplayDmaGuard()
-    {
-        if (active_) {
-            Display_ReleaseDmaConservativeMode();
-        }
+NetworkDisplayDmaGuard::~NetworkDisplayDmaGuard()
+{
+    if (active_) {
+        Display_ReleaseDmaConservativeMode();
     }
-
-private:
-    bool active_ = false;
-};
+}
 
 bool wait_for_wifi_connected(uint32_t timeout_ms)
 {
@@ -409,6 +403,31 @@ static void finish_settings_sync_and_clear_bit(SettingsSyncOp op, const char *st
     xEventGroupClearBits(g_app_events, bit);
 }
 
+static void finish_failed_manual_sync_requests(bool provisioning_due,
+                                               bool manual_ntp_due,
+                                               bool manual_weather_due,
+                                               bool manual_saying_due)
+{
+    if (provisioning_due) {
+        xEventGroupClearBits(g_app_events, kProvisioningSyncBit);
+    }
+    if (manual_ntp_due) {
+        finish_settings_sync_and_clear_bit(kSettingsSyncNtp,
+                                           kNetworkSyncTimeFailed,
+                                           kManualNtpSyncBit);
+    }
+    if (manual_weather_due) {
+        finish_settings_sync_and_clear_bit(kSettingsSyncWeather,
+                                           kNetworkSyncWeatherFailed,
+                                           kManualWeatherSyncBit);
+    }
+    if (manual_saying_due) {
+        finish_settings_sync_and_clear_bit(kSettingsSyncSaying,
+                                           kNetworkSyncSayingFailed,
+                                           kManualSayingSyncBit);
+    }
+}
+
 void network_sync_task(void *)
 {
     vTaskDelay(pdMS_TO_TICKS(kNetworkTaskStartupDelayMs));
@@ -578,18 +597,10 @@ void network_sync_task(void *)
         if (!start_wifi_radio(false)) {
             ESP_LOGW(TAG, "%s", kNetworkSyncWifiStartFailedLog);
             clear_ready_boot_sync_flags(boot_weather_ready, boot_saying_ready, &boot_weather_due, &boot_saying_due);
-            if (provisioning_sync_due) {
-                xEventGroupClearBits(g_app_events, kProvisioningSyncBit);
-            }
-            if (manual_ntp_due) {
-                finish_settings_sync_and_clear_bit(kSettingsSyncNtp, kNetworkSyncTimeFailed, kManualNtpSyncBit);
-            }
-            if (manual_weather_due) {
-                finish_settings_sync_and_clear_bit(kSettingsSyncWeather, kNetworkSyncWeatherFailed, kManualWeatherSyncBit);
-            }
-            if (manual_saying_due) {
-                finish_settings_sync_and_clear_bit(kSettingsSyncSaying, kNetworkSyncSayingFailed, kManualSayingSyncBit);
-            }
+            finish_failed_manual_sync_requests(provisioning_sync_due,
+                                               manual_ntp_due,
+                                               manual_weather_due,
+                                               manual_saying_due);
             if (ntp_due) {
                 schedule_ntp_retry(&next_ntp_retry_at);
             }
@@ -645,18 +656,10 @@ void network_sync_task(void *)
         } else {
             ESP_LOGW(TAG, "%s", kNetworkSyncWifiConnectTimeoutLog);
             clear_ready_boot_sync_flags(boot_weather_ready, boot_saying_ready, &boot_weather_due, &boot_saying_due);
-            if (provisioning_sync_due) {
-                xEventGroupClearBits(g_app_events, kProvisioningSyncBit);
-            }
-            if (manual_ntp_due) {
-                finish_settings_sync_and_clear_bit(kSettingsSyncNtp, kNetworkSyncTimeFailed, kManualNtpSyncBit);
-            }
-            if (manual_weather_due) {
-                finish_settings_sync_and_clear_bit(kSettingsSyncWeather, kNetworkSyncWeatherFailed, kManualWeatherSyncBit);
-            }
-            if (manual_saying_due) {
-                finish_settings_sync_and_clear_bit(kSettingsSyncSaying, kNetworkSyncSayingFailed, kManualSayingSyncBit);
-            }
+            finish_failed_manual_sync_requests(provisioning_sync_due,
+                                               manual_ntp_due,
+                                               manual_weather_due,
+                                               manual_saying_due);
             if (ntp_due) {
                 schedule_ntp_retry(&next_ntp_retry_at);
             }

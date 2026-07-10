@@ -1,5 +1,6 @@
 // 负责 Wi-Fi、API Key、页面设置和声音设置的 NVS 配置读写。
 #include "network_services.h"
+#include "xiaozhi_ai.h"
 
 #include "custom_assets.h"
 #include "sensor_services.h"
@@ -31,10 +32,12 @@ constexpr const char *kPageMaskV1Key = "page_mask_v1";
 constexpr const char *kPageMaskV2Key = "page_mask_v2";
 constexpr const char *kPageMaskV3Key = "page_mask_v3";
 constexpr const char *kPageMaskV4Key = "page_mask_v4";
+constexpr const char *kPageMaskV5Key = "page_mask_v5";
 constexpr const char *kPageOrderV1Key = "page_order_v1";
 constexpr const char *kPageOrderV2Key = "page_order_v2";
 constexpr const char *kPageOrderV3Key = "page_order_v3";
 constexpr const char *kPageOrderV4Key = "page_order_v4";
+constexpr const char *kPageOrderV5Key = "page_order_v5";
 constexpr size_t kFormEncodedBufferSize = 160;
 constexpr size_t kManualTimeFieldSize = 32;
 constexpr size_t kSetupSsidFieldSize = 33;
@@ -84,8 +87,9 @@ constexpr bool work_page_mask_has_enabled_page(uint8_t page_mask)
     return (page_mask & all_work_page_mask()) != 0;
 }
 
-constexpr uint8_t kPageMaskV4KnownBits = all_work_page_mask();
-constexpr uint8_t kDefaultWorkPageMask = kPageMaskV4KnownBits;
+constexpr uint8_t kPageMaskV4KnownBits = static_cast<uint8_t>((1U << (kWorkPageHistory + 1)) - 1U);
+constexpr uint8_t kPageMaskV5KnownBits = all_work_page_mask();
+constexpr uint8_t kDefaultWorkPageMask = kPageMaskV5KnownBits;
 constexpr uint8_t kWeatherBoardPageMask = work_page_mask_bit(kWorkPageWeatherBoard);
 constexpr uint8_t kFlipClockPageMask = work_page_mask_bit(kWorkPageFlipClock);
 constexpr int kTmYearOffset = 1900;
@@ -138,6 +142,7 @@ constexpr const char *kEmptyWifiSsidSaveLog = "skip saving empty wifi ssid";
 constexpr const char *kInvalidWeatherCitySaveLog = "skip saving invalid weather city";
 #define CONFIG_EVENT_GROUP_UNAVAILABLE_FORMAT "skip %s event bits for %s: event group unavailable"
 #define NVS_OPEN_FAILED_FORMAT "nvs open failed while %s: %s"
+#define NVS_READ_U8_FAILED_FORMAT "nvs read u8 key=%s failed: %s"
 #define NVS_SAVE_OFFLINE_MODE_FAILED_FORMAT "nvs save offline mode failed: %s"
 #define NVS_ERASE_LEGACY_API_HOST_FAILED_FORMAT "nvs erase legacy api host failed while saving config: %s"
 #define NVS_SAVE_CONFIG_FAILED_FORMAT "nvs save config failed: %s"
@@ -197,10 +202,12 @@ constexpr const char *kNvsConfigTexts[] = {
     kPageMaskV2Key,
     kPageMaskV3Key,
     kPageMaskV4Key,
+    kPageMaskV5Key,
     kPageOrderV1Key,
     kPageOrderV2Key,
     kPageOrderV3Key,
     kPageOrderV4Key,
+    kPageOrderV5Key,
 };
 constexpr const char *kClearConfigKeys[] = {
     kWifiSsidKey,
@@ -214,10 +221,12 @@ constexpr const char *kClearConfigKeys[] = {
     kPageMaskV2Key,
     kPageMaskV3Key,
     kPageMaskV4Key,
+    kPageMaskV5Key,
     kPageOrderV1Key,
     kPageOrderV2Key,
     kPageOrderV3Key,
     kPageOrderV4Key,
+    kPageOrderV5Key,
 };
 constexpr const char *kConfigEventTexts[] = {
     kConfigEventReasonFallback,
@@ -245,6 +254,7 @@ constexpr const char *kConfigWarningTexts[] = {
     kEmptyWifiSsidSaveLog,
     kInvalidWeatherCitySaveLog,
     FORM_VALUE_TRUNCATED_LOG_FORMAT,
+    NVS_READ_U8_FAILED_FORMAT,
 };
 
 struct ProvisioningFormFields {
@@ -262,7 +272,7 @@ struct LoadedNetworkConfig {
     uint8_t all_day = 0;
     uint8_t volume = kDefaultChimeVolumePercent;
     uint8_t sound = 0;
-    uint8_t page_mask = kPageMaskV4KnownBits;
+    uint8_t page_mask = kPageMaskV5KnownBits;
     uint8_t offline = 0;
     uint8_t page_order[kWorkPageCount] = {};
     bool have_page_order = false;
@@ -453,14 +463,16 @@ static_assert(kManualTimeMinSecond == 0 && kManualTimeMaxSecond == 59,
 static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
 static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
 static_assert(kWorkPageCount <= 8, "work page enabled mask is stored as uint8_t");
-static_assert(kPageMaskV4KnownBits == all_work_page_mask(),
-              "page mask v4 must cover every current work page");
-static_assert((kDefaultWorkPageMask & kPageMaskV4KnownBits) == kDefaultWorkPageMask &&
+static_assert((kPageMaskV4KnownBits & work_page_mask_bit(kWorkPageXiaozhiAI)) == 0,
+              "page mask v4 must not include Xiaozhi AI page");
+static_assert(kPageMaskV5KnownBits == all_work_page_mask(),
+              "page mask v5 must cover every current work page");
+static_assert((kDefaultWorkPageMask & kPageMaskV5KnownBits) == kDefaultWorkPageMask &&
                   work_page_mask_has_enabled_page(kDefaultWorkPageMask),
               "default work page mask must enable at least one known page");
-static_assert((kPageMaskV4KnownBits & kWeatherBoardPageMask) == kWeatherBoardPageMask,
+static_assert((kPageMaskV5KnownBits & kWeatherBoardPageMask) == kWeatherBoardPageMask,
               "weather board page must be covered by the current page mask");
-static_assert((kPageMaskV4KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
+static_assert((kPageMaskV5KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
               "flip clock page must be covered by the current page mask");
 
 const char *config_event_reason_text(const char *reason)
@@ -746,7 +758,10 @@ uint8_t read_nvs_u8_or_default(nvs_handle_t nvs, const char *key, uint8_t defaul
         return default_value;
     }
     uint8_t value = default_value;
-    (void)nvs_get_u8(nvs, key, &value);
+    esp_err_t err = nvs_get_u8(nvs, key, &value);
+    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
+        ESP_LOGW(TAG, NVS_READ_U8_FAILED_FORMAT, key, esp_err_to_name(err));
+    }
     return value;
 }
 
@@ -837,15 +852,18 @@ bool manual_weather_city_matches_nvs(nvs_handle_t nvs, const char *city)
 
 uint8_t normalize_work_page_mask(uint8_t page_mask)
 {
-    page_mask &= kPageMaskV4KnownBits;
+    page_mask &= kPageMaskV5KnownBits;
     return work_page_mask_has_enabled_page(page_mask) ? page_mask : kDefaultWorkPageMask;
 }
 
 uint8_t read_saved_page_mask(nvs_handle_t nvs)
 {
     uint8_t page_mask = kDefaultWorkPageMask;
-    if (nvs_get_u8(nvs, kPageMaskV4Key, &page_mask) == ESP_OK) {
+    if (nvs_get_u8(nvs, kPageMaskV5Key, &page_mask) == ESP_OK) {
         return normalize_work_page_mask(page_mask);
+    }
+    if (nvs_get_u8(nvs, kPageMaskV4Key, &page_mask) == ESP_OK) {
+        return normalize_work_page_mask(static_cast<uint8_t>(page_mask | work_page_mask_bit(kWorkPageXiaozhiAI)));
     }
     return page_mask;
 }
@@ -856,8 +874,16 @@ bool read_saved_page_order(nvs_handle_t nvs, uint8_t *page_order, size_t page_or
         return false;
     }
     size_t stored_len = page_order_size;
-    if (nvs_get_blob(nvs, kPageOrderV4Key, page_order, &stored_len) == ESP_OK &&
+    if (nvs_get_blob(nvs, kPageOrderV5Key, page_order, &stored_len) == ESP_OK &&
         stored_len == page_order_size) {
+        return true;
+    }
+    uint8_t legacy_order[kWorkPageHistory + 1] = {};
+    stored_len = sizeof(legacy_order);
+    if (nvs_get_blob(nvs, kPageOrderV4Key, legacy_order, &stored_len) == ESP_OK &&
+        stored_len == sizeof(legacy_order)) {
+        memcpy(page_order, legacy_order, sizeof(legacy_order));
+        page_order[kWorkPageXiaozhiAI] = kWorkPageXiaozhiAI;
         return true;
     }
     return false;
@@ -890,7 +916,7 @@ esp_err_t write_work_page_order_nvs(nvs_handle_t nvs,
     if (changed) {
         *changed = true;
     }
-    return nvs_set_blob(nvs, kPageOrderV4Key, page_order, page_order_size);
+    return nvs_set_blob(nvs, kPageOrderV5Key, page_order, page_order_size);
 }
 
 esp_err_t erase_saved_config_keys(nvs_handle_t nvs)
@@ -1279,7 +1305,7 @@ bool save_work_page_settings()
     }
     uint8_t mask = normalize_work_page_mask(g_work_page_enabled_mask);
     bool changed = false;
-    err = write_changed_nvs_u8(nvs, err, kPageMaskV4Key, mask, &changed);
+    err = write_changed_nvs_u8(nvs, err, kPageMaskV5Key, mask, &changed);
     if (changed) {
         err = commit_nvs_if_ok(nvs, err);
     }
@@ -1318,6 +1344,7 @@ bool clear_saved_config()
     if (!clear_saved_config_nvs()) {
         return false;
     }
+    xiaozhi_ai_clear_activation();
     reset_saved_config_runtime_state();
     return true;
 }

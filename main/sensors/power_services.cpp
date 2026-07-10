@@ -15,6 +15,8 @@
 #define POWER_MUTEX_CREATE_FAILED_LOG_FORMAT "pm lock mutex create failed"
 #define POWER_NETWORK_LOCK_CREATE_FAILED_LOG_FORMAT "network pm lock create failed: %s"
 #define POWER_AUDIO_LOCK_CREATE_FAILED_LOG_FORMAT "audio pm lock create failed: %s"
+#define POWER_AUDIO_WAKE_LOCK_CREATE_FAILED_LOG_FORMAT "audio wake pm lock create failed: %s"
+#define POWER_AUDIO_CPU_LOCK_CREATE_FAILED_LOG_FORMAT "audio cpu pm lock create failed: %s"
 #define POWER_DISABLED_LOG_FORMAT "power management disabled in sdkconfig"
 #define POWER_RTC_INVALID_TIME_LOG_FORMAT "ignore invalid RTC time: %04u-%02u-%02u %02u:%02u:%02u"
 #define POWER_RTC_MKTIME_FAILED_LOG_FORMAT "ignore RTC time: mktime failed"
@@ -37,13 +39,21 @@ constexpr int kTmYearOffset = 1900;
 constexpr int kTmMonthOffset = 1;
 constexpr const char *kNetworkPmLockName = "network_sync";
 constexpr const char *kAudioPmLockName = "audio_play";
+constexpr const char *kAudioWakePmLockName = "audio_wake_80";
+constexpr const char *kAudioCpuPmLockName = "audio_cpu_max";
 constexpr const char *kNetworkPmLogName = "network";
 constexpr const char *kAudioPmLogName = "audio";
+constexpr const char *kAudioWakePmLogName = "audio_wake";
+constexpr const char *kAudioCpuPmLogName = "audio_cpu";
 constexpr const char *const kPowerTexts[] = {
     kNetworkPmLockName,
     kAudioPmLockName,
+    kAudioWakePmLockName,
+    kAudioCpuPmLockName,
     kNetworkPmLogName,
     kAudioPmLogName,
+    kAudioWakePmLogName,
+    kAudioCpuPmLogName,
     POWER_PM_LOCK_MUTEX_UNAVAILABLE_LOG_FORMAT,
     POWER_PM_LOCK_MUTEX_TIMEOUT_LOG_FORMAT,
     POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT,
@@ -54,6 +64,8 @@ constexpr const char *const kPowerTexts[] = {
     POWER_MUTEX_CREATE_FAILED_LOG_FORMAT,
     POWER_NETWORK_LOCK_CREATE_FAILED_LOG_FORMAT,
     POWER_AUDIO_LOCK_CREATE_FAILED_LOG_FORMAT,
+    POWER_AUDIO_WAKE_LOCK_CREATE_FAILED_LOG_FORMAT,
+    POWER_AUDIO_CPU_LOCK_CREATE_FAILED_LOG_FORMAT,
     POWER_DISABLED_LOG_FORMAT,
     POWER_RTC_INVALID_TIME_LOG_FORMAT,
     POWER_RTC_MKTIME_FAILED_LOG_FORMAT,
@@ -232,6 +244,16 @@ void init_power_management()
         g_audio_pm_lock = nullptr;
         ESP_LOGW(TAG, POWER_AUDIO_LOCK_CREATE_FAILED_LOG_FORMAT, esp_err_to_name(err));
     }
+    err = esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, kAudioWakePmLockName, &g_audio_wake_pm_lock);
+    if (err != ESP_OK) {
+        g_audio_wake_pm_lock = nullptr;
+        ESP_LOGW(TAG, POWER_AUDIO_WAKE_LOCK_CREATE_FAILED_LOG_FORMAT, esp_err_to_name(err));
+    }
+    err = esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, kAudioCpuPmLockName, &g_audio_cpu_pm_lock);
+    if (err != ESP_OK) {
+        g_audio_cpu_pm_lock = nullptr;
+        ESP_LOGW(TAG, POWER_AUDIO_CPU_LOCK_CREATE_FAILED_LOG_FORMAT, esp_err_to_name(err));
+    }
 #else
     ESP_LOGW(TAG, POWER_DISABLED_LOG_FORMAT);
 #endif
@@ -251,17 +273,53 @@ void release_network_awake_lock()
 #endif
 }
 
+bool network_awake_lock_active()
+{
+#if CONFIG_PM_ENABLE
+    if (!take_pm_lock_mutex(kNetworkPmLogName)) {
+        return true;
+    }
+    bool active = g_network_pm_lock_depth > 0;
+    give_pm_lock_mutex();
+    return active;
+#else
+    return false;
+#endif
+}
+
 void acquire_audio_awake_lock()
 {
 #if CONFIG_PM_ENABLE
     acquire_pm_lock(g_audio_pm_lock, &g_audio_pm_lock_depth, kAudioPmLogName);
+    acquire_pm_lock(g_audio_wake_pm_lock, &g_audio_wake_pm_lock_depth, kAudioWakePmLogName);
+    set_audio_performance_mode(true);
 #endif
 }
 
 void release_audio_awake_lock()
 {
 #if CONFIG_PM_ENABLE
+    set_audio_performance_mode(false);
+    release_pm_lock(g_audio_wake_pm_lock, &g_audio_wake_pm_lock_depth, kAudioWakePmLogName);
     release_pm_lock(g_audio_pm_lock, &g_audio_pm_lock_depth, kAudioPmLogName);
+#endif
+}
+
+void set_audio_performance_mode(bool enabled)
+{
+#if CONFIG_PM_ENABLE
+    if (!take_pm_lock_mutex(kAudioCpuPmLogName)) {
+        return;
+    }
+    bool active = g_audio_cpu_pm_lock_depth > 0;
+    give_pm_lock_mutex();
+    if (enabled && !active) {
+        acquire_pm_lock(g_audio_cpu_pm_lock, &g_audio_cpu_pm_lock_depth, kAudioCpuPmLogName);
+    } else if (!enabled && active) {
+        release_pm_lock(g_audio_cpu_pm_lock, &g_audio_cpu_pm_lock_depth, kAudioCpuPmLogName);
+    }
+#else
+    (void)enabled;
 #endif
 }
 

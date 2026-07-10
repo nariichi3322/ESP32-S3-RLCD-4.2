@@ -104,6 +104,11 @@ constexpr bool output_buffer_available(char *out, size_t out_len)
     return out && out_len > 0;
 }
 
+constexpr bool http_probe_args_valid(const char *url, size_t buffer_len)
+{
+    return cstr_nonempty(url) && buffer_len > 0;
+}
+
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
@@ -305,7 +310,7 @@ bool dns_lookup_ok(const char *host)
 
 bool http_probe_ok(const char *url, size_t buffer_len = kNetworkDiagDefaultProbeBufferSize)
 {
-    if (!url || url[0] == '\0' || buffer_len == 0) {
+    if (!http_probe_args_valid(url, buffer_len)) {
         ESP_LOGW(TAG, "%s", NETWORK_DIAG_HTTP_PROBE_INVALID_ARG_LOG);
         return false;
     }

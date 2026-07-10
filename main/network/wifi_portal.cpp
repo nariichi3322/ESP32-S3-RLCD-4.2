@@ -3,6 +3,7 @@
 
 #include "audio_services.h"
 #include "ui_views.h"
+#include "xiaozhi_ai.h"
 
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
@@ -133,6 +134,11 @@ constexpr const char *kPortalFixedTexts[] = {
 constexpr bool cstr_nonempty(const char *text)
 {
     return text && text[0] != '\0';
+}
+
+bool portal_output_buffer_available(char *out, size_t out_len)
+{
+    return out && out_len > 0;
 }
 
 constexpr size_t cstr_len(const char *text)
@@ -616,7 +622,7 @@ void configure_captive_portal_dhcp()
 
 void html_append(char *html, size_t html_len, const char *fmt, ...)
 {
-    if (!html || html_len == 0 || !fmt) {
+    if (!portal_output_buffer_available(html, html_len) || !fmt) {
         return;
     }
     size_t used = strnlen(html, html_len);
@@ -640,7 +646,7 @@ void html_append(char *html, size_t html_len, const char *fmt, ...)
 
 void html_escape(const char *src, char *dst, size_t dst_len)
 {
-    if (!dst || dst_len == 0) {
+    if (!portal_output_buffer_available(dst, dst_len)) {
         return;
     }
     if (!src) {
@@ -748,7 +754,7 @@ void append_wifi_scan_message_and_close(char *html, size_t html_len, const char 
 
 void append_wifi_scan_list(char *html, size_t html_len)
 {
-    if (!html || html_len == 0) {
+    if (!portal_output_buffer_available(html, html_len)) {
         return;
     }
     html_append(html, html_len, "<section><div class='section-title'><span>Nearby Wi-Fi</span><a href='/'>Refresh</a></div><div class='wifi-list'>");
@@ -1238,6 +1244,10 @@ void stop_wifi_radio(bool force_setup_portal)
     }
     if ((g_ota_state == kOtaChecking || g_ota_state == kOtaUpdating) && !force_setup_portal) {
         ESP_LOGI(TAG, WIFI_STOP_SKIPPED_OTA_LOG);
+        return;
+    }
+    if (xiaozhi_ai_network_keepalive_active() && !force_setup_portal) {
+        ESP_LOGI(TAG, "Wi-Fi stop skipped: Xiaozhi AI page is active");
         return;
     }
     if (g_setup_portal_active && !force_setup_portal) {

@@ -86,6 +86,16 @@ constexpr bool cstr_nonempty(const char *text)
     return text && text[0] != '\0';
 }
 
+bool sensor_history_output_buffer_available(char *out, size_t out_len)
+{
+    return out && out_len > 0;
+}
+
+bool sensor_history_format_failed(int written, size_t out_len)
+{
+    return written < 0 || (size_t)written >= out_len;
+}
+
 template <std::size_t N>
 constexpr std::size_t array_count(const char *const (&)[N])
 {
@@ -285,7 +295,7 @@ void update_sensor_trend_from_average(const SensorHistoryAverage &average)
 
 static bool hourly_slot_key(int index, char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!sensor_history_output_buffer_available(out, out_len)) {
         return false;
     }
     if (!is_hourly_history_index_valid(index)) {
@@ -294,7 +304,7 @@ static bool hourly_slot_key(int index, char *out, size_t out_len)
         return false;
     }
     int written = snprintf(out, out_len, kHourlySlotKeyFormat, index);
-    if (written < 0 || (size_t)written >= out_len) {
+    if (sensor_history_format_failed(written, out_len)) {
         out[0] = '\0';
         ESP_LOGW(TAG, HOURLY_SLOT_KEY_TRUNCATED_LOG_FORMAT, index);
         return false;

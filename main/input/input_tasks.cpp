@@ -146,6 +146,7 @@ void return_to_system_settings_item(int selection, TickType_t now)
 {
     g_settings_requested = true;
     g_settings_focus_secondary = true;
+    g_settings_page_toggle_mode = false;
     g_settings_page_order_mode = false;
     g_settings_primary_selection = kSettingsPrimarySystem;
     g_settings_selection = selection;
@@ -158,6 +159,7 @@ void enter_settings_primary_menu(TickType_t now)
     g_boot_info_requested = false;
     g_settings_requested = true;
     g_settings_focus_secondary = false;
+    g_settings_page_toggle_mode = false;
     g_settings_page_order_mode = false;
     g_settings_primary_selection = kSettingsPrimaryNetwork;
     g_settings_selection = 0;

@@ -11,6 +11,7 @@ idf_component_register(
         "ui/ui_history.cpp"
         "ui/ui_gallery.cpp"
         "ui/ui_flip_clock.cpp"
+        "ui/ui_xiaozhi.cpp"
         "ui/ui_calendar.cpp"
         "ui/ui_weather_board.cpp"
         "ui/ui_clock.cpp"
@@ -31,6 +32,8 @@ idf_component_register(
         "sensors/sensor_history.cpp"
         "sensors/sensor_services.cpp"
         "audio/audio_services.cpp"
+        "xiaozhi/xiaozhi_ai.cpp"
+        "xiaozhi/xiaozhi_voice.cpp"
         "input/input_tasks.cpp"
         "assets/boot_anim.c"
         "assets/qweather_icons_36.c"
@@ -44,6 +47,7 @@ idf_component_register(
         "ota"
         "sensors"
         "audio"
+        "xiaozhi"
         "input"
         "storage"
         "assets"
@@ -60,12 +64,14 @@ idf_component_register(
         esp_https_ota
         lwip
         app_update
+        spi_flash
         esp_timer
         esp_pm
         esp_adc
         esp_driver_gpio
         json
-        mbedtls)
+        mbedtls
+        tcp_transport)
 
 string(TIMESTAMP WEATHER_CLOCK_BUILD_DATE "%Y-%m-%d")
 target_compile_definitions(${COMPONENT_LIB} PRIVATE WEATHER_CLOCK_BUILD_DATE="${WEATHER_CLOCK_BUILD_DATE}")

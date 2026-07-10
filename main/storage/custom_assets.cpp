@@ -66,12 +66,13 @@ constexpr const char *const kCustomAssetLogTexts[] = {
     CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT,
 };
 
+static constexpr uint16_t kCustomAssetMaxGalleryImages = 24;
 static const esp_partition_t *s_assets_partition = nullptr;
 static CustomAssetsHeader s_assets_header = {};
 static CustomAssetEntry s_entries[kCustomAssetMaxEntries] = {};
 static int s_entry_count = 0;
 static const CustomAssetEntry *s_main_gif_entry = nullptr;
-static const CustomAssetEntry *s_gallery_entries[kCustomAssetMaxEntries] = {};
+static const CustomAssetEntry *s_gallery_entries[kCustomAssetMaxGalleryImages] = {};
 static const CustomAssetEntry *s_weather_city_entry = nullptr;
 static const CustomAssetEntry *s_ota_manifest_url_entry = nullptr;
 static int s_gallery_count = 0;
@@ -81,7 +82,6 @@ static constexpr size_t kCustomAssetCrcChunkSize = 256;
 static constexpr uint16_t kBitsPerByte = 8;
 static constexpr uint32_t kCustomAssetCrc32Polynomial = 0xEDB88320U;
 static constexpr uint32_t kCustomAssetCrc32Initial = 0xFFFFFFFFU;
-static constexpr uint16_t kCustomAssetMaxGalleryImages = 24;
 static constexpr int kCustomAssetDiagGifFrames[] = {0, 1, 30, 59};
 
 template <typename T, size_t N>
@@ -156,6 +156,11 @@ static void trim_custom_asset_text(char *text)
             text[len - 1] == '\n')) {
         text[--len] = '\0';
     }
+}
+
+static bool custom_asset_text_read_args_valid(const CustomAssetEntry *entry, const char *out, size_t out_len)
+{
+    return entry && out && out_len > 0 && entry->length < out_len;
 }
 
 static_assert(array_count(kCustomAssetDiagGifFrames) > 0,
@@ -253,9 +258,14 @@ static bool partition_range_valid(uint32_t offset, size_t length)
     return true;
 }
 
+static bool partition_io_args_valid(const void *out)
+{
+    return s_assets_partition && out;
+}
+
 static bool partition_crc(uint32_t offset, uint32_t length, uint32_t *crc_out)
 {
-    if (!s_assets_partition || !crc_out) {
+    if (!partition_io_args_valid(crc_out)) {
         return false;
     }
     if (!partition_range_valid(offset, length)) {
@@ -282,7 +292,7 @@ static bool partition_crc(uint32_t offset, uint32_t length, uint32_t *crc_out)
 
 static bool read_checked(uint32_t offset, void *out, size_t len)
 {
-    if (!s_assets_partition || !out) {
+    if (!partition_io_args_valid(out)) {
         return false;
     }
     if (!partition_range_valid(offset, len)) {
@@ -582,7 +592,8 @@ void custom_assets_init()
                 return;
             }
             s_main_gif_entry = &entry;
-        } else if (entry.type == kCustomAssetTypeGalleryImage && s_gallery_count < kCustomAssetMaxEntries) {
+        } else if (entry.type == kCustomAssetTypeGalleryImage &&
+                   s_gallery_count < kCustomAssetMaxGalleryImages) {
             for (int j = 0; j < s_gallery_count; ++j) {
                 if (s_gallery_entries[j] && s_gallery_entries[j]->index == entry.index) {
                     ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_DUPLICATE_GALLERY_LOG_FORMAT, entry.index);
@@ -680,7 +691,7 @@ bool custom_assets_read_gallery_image(int index, uint8_t *out, size_t out_len)
 
 static bool custom_assets_read_text(const CustomAssetEntry *entry, char *out, size_t out_len)
 {
-    if (!entry || !out || out_len == 0 || entry->length >= out_len) {
+    if (!custom_asset_text_read_args_valid(entry, out, out_len)) {
         return false;
     }
     memset(out, 0, out_len);

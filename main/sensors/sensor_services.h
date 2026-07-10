@@ -5,8 +5,10 @@
 void init_power_management();
 void acquire_network_awake_lock();
 void release_network_awake_lock();
+bool network_awake_lock_active();
 void acquire_audio_awake_lock();
 void release_audio_awake_lock();
+void set_audio_performance_mode(bool enabled);
 void restore_system_time_from_rtc();
 void sync_rtc_from_system_time();
 void release_battery_gauge();

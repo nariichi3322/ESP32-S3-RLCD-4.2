@@ -143,8 +143,17 @@ bool update_calendar_page(const struct tm &local);
 void build_calendar_page();
 bool update_weather_board_page(const struct tm &local);
 void build_weather_board_page();
+void build_inverted_clock_cards(lv_obj_t *parent,
+                                lv_obj_t *card_canvas[3],
+                                lv_color_t *card_canvas_buf[3]);
+bool update_inverted_clock_cards(const struct tm &local,
+                                 lv_obj_t *card_canvas[3],
+                                 int last_values[3]);
 bool update_flip_clock_page(const struct tm &local);
 void build_flip_clock_page();
+bool update_xiaozhi_page(const struct tm &local);
+uint32_t xiaozhi_subtitle_animation_delay_ms();
+void build_xiaozhi_page();
 void build_clock_ui();
 bool update_time_ui(const struct tm &local, bool clock_page_active, int active_work_page);
 void handle_settings_action();

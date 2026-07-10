@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "network_services.h"
+#include "ui_text_format.h"
 
 namespace {
 
@@ -211,16 +212,9 @@ void style_weather_card(lv_obj_t *obj)
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
 }
 
-template <typename... Args>
-void format_weather_board_text_or_fallback(char *out, size_t out_len, const char *fallback, const char *format, Args... args)
+bool output_buffer_available(char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
-        return;
-    }
-    int written = snprintf(out, out_len, format, args...);
-    if (written < 0 || static_cast<size_t>(written) >= out_len) {
-        strlcpy(out, fallback, out_len);
-    }
+    return out && out_len > 0;
 }
 
 void set_card_visible(ForecastCardUi &card, bool visible)
@@ -286,7 +280,7 @@ time_t weather_board_time_on_day(const struct tm &local, const char *hhmm, int d
 
 void set_sun_countdown_placeholder(char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return;
     }
     strlcpy(out, kWeatherBoardSunCountdownPlaceholder, out_len);
@@ -297,7 +291,7 @@ void format_weather_board_sun_countdown(const struct tm &local,
                                         char *out,
                                         size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return;
     }
     const WeatherForecastDay *today = forecast_day_or_null(forecast, 0);
@@ -332,7 +326,7 @@ void format_weather_board_sun_countdown(const struct tm &local,
     int total_minutes = (int)((target - now + (kSecondsPerMinute - 1)) / kSecondsPerMinute);
     int hours = total_minutes / kMinutesPerHour;
     int minutes = total_minutes % kMinutesPerHour;
-    format_weather_board_text_or_fallback(out,
+    ui_text::format_or_fallback(out,
                                           out_len,
                                           kWeatherBoardSunCountdownPlaceholder,
                                           kWeatherBoardSunCountdownFormat,
@@ -378,14 +372,14 @@ void format_short_date(const char *date, char *out, size_t out_len)
     int year = 0;
     int month = 0;
     int day = 0;
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return;
     }
     if (!parse_forecast_date(date, year, month, day)) {
         strlcpy(out, kWeatherBoardShortDatePlaceholder, out_len);
         return;
     }
-    format_weather_board_text_or_fallback(out,
+    ui_text::format_or_fallback(out,
                                           out_len,
                                           kWeatherBoardShortDatePlaceholder,
                                           kForecastShortDateFormat,
@@ -394,10 +388,10 @@ void format_short_date(const char *date, char *out, size_t out_len)
 
 void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return;
     }
-    format_weather_board_text_or_fallback(out,
+    ui_text::format_or_fallback(out,
                                           out_len,
                                           kWeatherBoardTodayRangePlaceholder,
                                           kWeatherBoardTodayRangeFormat,
@@ -407,12 +401,12 @@ void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len
 
 void format_forecast_date_line(const WeatherForecastDay &day, char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return;
     }
     char date_short[kForecastShortDateSize] = {};
     format_short_date(day.date, date_short, sizeof(date_short));
-    format_weather_board_text_or_fallback(out,
+    ui_text::format_or_fallback(out,
                                           out_len,
                                           kWeatherBoardShortDatePlaceholder,
                                           kForecastDateLineFormat,
@@ -422,10 +416,10 @@ void format_forecast_date_line(const WeatherForecastDay &day, char *out, size_t 
 
 void format_forecast_temp_range(const WeatherForecastDay &day, char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return;
     }
-    format_weather_board_text_or_fallback(out,
+    ui_text::format_or_fallback(out,
                                           out_len,
                                           kWeatherBoardShortDatePlaceholder,
                                           kForecastTempRangeFormat,
@@ -435,7 +429,7 @@ void format_forecast_temp_range(const WeatherForecastDay &day, char *out, size_t
 
 void format_weather_board_alert_line(const WeatherAlertData &alert, char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!output_buffer_available(out, out_len)) {
         return;
     }
     if (!alert.active || alert.count <= 0 || !alert.titles[0][0]) {
@@ -703,7 +697,7 @@ bool update_weather_board_page(const struct tm &local)
     char alert_line[kWeatherBoardAlertLineSize] = {};
     const WeatherForecastDay *today = forecast_day_or_null(forecast, 0);
     if (air.ready) {
-        format_weather_board_text_or_fallback(air_line,
+        ui_text::format_or_fallback(air_line,
                                               sizeof(air_line),
                                               kWeatherBoardAirPlaceholder,
                                               kWeatherBoardAirFormat,
@@ -712,23 +706,23 @@ bool update_weather_board_page(const struct tm &local)
     } else {
         strlcpy(air_line, kWeatherBoardAirPlaceholder, sizeof(air_line));
     }
-    format_weather_board_text_or_fallback(humi_line,
+    ui_text::format_or_fallback(humi_line,
                                           sizeof(humi_line),
                                           kWeatherBoardHumidityPlaceholder,
                                           kWeatherBoardHumidityFormat,
                                           today && today->humidity[0] ? today->humidity : text_or_dash(weather.humidity));
-    format_weather_board_text_or_fallback(wind_line,
+    ui_text::format_or_fallback(wind_line,
                                           sizeof(wind_line),
                                           kWeatherBoardWindPlaceholder,
                                           kWeatherBoardWindFormat,
                                           today ? text_or_dash(today->wind_dir) : kWeatherBoardDash,
                                           today ? text_or_dash(today->wind_scale) : kWeatherBoardDash);
-    format_weather_board_text_or_fallback(sunrise_line,
+    ui_text::format_or_fallback(sunrise_line,
                                           sizeof(sunrise_line),
                                           kWeatherBoardSunrisePlaceholder,
                                           kWeatherBoardSunriseFormat,
                                           today && today->sunrise[0] ? today->sunrise : kWeatherBoardTimePlaceholder);
-    format_weather_board_text_or_fallback(sunset_line,
+    ui_text::format_or_fallback(sunset_line,
                                           sizeof(sunset_line),
                                           kWeatherBoardSunsetPlaceholder,
                                           kWeatherBoardSunsetFormat,

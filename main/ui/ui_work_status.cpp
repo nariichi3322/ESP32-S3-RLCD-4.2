@@ -93,6 +93,11 @@ bool set_status_icon_visible_if_changed(lv_obj_t *icon, bool visible)
     return true;
 }
 
+bool work_status_format_failed(int written, size_t out_len)
+{
+    return written < 0 || (size_t)written >= out_len;
+}
+
 void log_status_label_create_failed(StatusLabelKind kind, int page)
 {
     switch (kind) {
@@ -212,7 +217,7 @@ bool update_work_page_status_time(lv_obj_t *label, const struct tm &local)
     }
     char text[kStatusTimeTextSize] = {};
     int written = snprintf(text, sizeof(text), kStatusTimeFormat, local.tm_hour, local.tm_min);
-    if (written < 0 || (size_t)written >= sizeof(text)) {
+    if (work_status_format_failed(written, sizeof(text))) {
         strlcpy(text, kStatusTimePlaceholder, sizeof(text));
     }
     return set_label_text_if_changed(label, text);

@@ -263,9 +263,19 @@ static const char *ota_status_text_or_fallback(const char *text)
     return cstr_nonempty(text) ? text : kOtaStatusFallbackError;
 }
 
+static bool ota_output_buffer_available(char *out, size_t out_len)
+{
+    return out && out_len > 0;
+}
+
+static bool ota_format_failed(int written, size_t out_len)
+{
+    return written < 0 || static_cast<size_t>(written) >= out_len;
+}
+
 static void format_ota_status_text(char *out, size_t out_len, const char *fmt, ...)
 {
-    if (!out || out_len == 0) {
+    if (!ota_output_buffer_available(out, out_len)) {
         return;
     }
     if (!fmt) {
@@ -276,7 +286,7 @@ static void format_ota_status_text(char *out, size_t out_len, const char *fmt, .
     va_start(args, fmt);
     int written = vsnprintf(out, out_len, fmt, args);
     va_end(args);
-    if (written < 0 || written >= (int)out_len) {
+    if (ota_format_failed(written, out_len)) {
         strlcpy(out, kOtaStatusFallbackError, out_len);
     }
 }
@@ -585,6 +595,7 @@ static void keep_ota_settings_panel_visible()
     TickType_t now = xTaskGetTickCount();
     g_settings_requested = true;
     g_settings_focus_secondary = true;
+    g_settings_page_toggle_mode = false;
     g_settings_page_order_mode = false;
     g_settings_primary_selection = kSettingsPrimarySystem;
     g_settings_selection = kSystemSettingsOtaItem;
@@ -875,7 +886,7 @@ static bool fetch_ota_manifest_from_source(const OtaManifestSource &source, OtaM
 
 static void store_ota_manifest_source_name(char *out, size_t out_len, const char *name)
 {
-    if (!out || out_len == 0) {
+    if (!ota_output_buffer_available(out, out_len)) {
         return;
     }
     strlcpy(out, ota_manifest_source_name_or_unknown(name), out_len);

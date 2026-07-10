@@ -41,6 +41,7 @@ constexpr const char *kHourlyChimeDisabledFeedback = "整点提醒已关闭";
 constexpr const char *kAllDayChimeEnabledFeedback = "全天提醒已开启";
 constexpr const char *kAllDayChimeDisabledFeedback = "全天提醒已关闭";
 constexpr const char *kPageOrderInstructionFeedback = "BOOT交换并保存";
+constexpr const char *kPageSwitchInstructionFeedback = "页面开关：BOOT切换";
 constexpr const char *kLastWorkPageFeedback = "至少保留一个页面";
 constexpr const char *kWorkPageFeedbackFormat = "%s%s";
 constexpr const char *kWorkPageEnabledSuffix = "已开启";
@@ -74,6 +75,7 @@ constexpr const char *kClockSettingsFeedbackTexts[] = {
     kAllDayChimeEnabledFeedback,
     kAllDayChimeDisabledFeedback,
     kPageOrderInstructionFeedback,
+    kPageSwitchInstructionFeedback,
     kLastWorkPageFeedback,
     kWorkPageFeedbackFormat,
     kWorkPageEnabledSuffix,
@@ -172,6 +174,21 @@ constexpr const char *kClockLogTexts[] = {
 constexpr bool cstr_nonempty(const char *text)
 {
     return text && text[0] != '\0';
+}
+
+constexpr bool clock_work_page_index_valid(int page)
+{
+    return page >= 0 && page < kWorkPageCount;
+}
+
+bool clock_output_buffer_available(char *out, size_t out_len)
+{
+    return out && out_len > 0;
+}
+
+bool clock_format_failed(int written, size_t out_len)
+{
+    return written < 0 || static_cast<size_t>(written) >= out_len;
 }
 
 template <typename T, size_t N>
@@ -752,7 +769,7 @@ void build_clock_ui()
 
 void format_clock_date_text(char *out, size_t out_len, const struct tm &local, const char *weekday)
 {
-    if (!out || out_len == 0) {
+    if (!clock_output_buffer_available(out, out_len)) {
         return;
     }
     int written = snprintf(out,
@@ -762,7 +779,7 @@ void format_clock_date_text(char *out, size_t out_len, const struct tm &local, c
                            local.tm_mon + kTmMonthOffset,
                            local.tm_mday,
                            weekday ? weekday : kClockDatePlaceholder);
-    if (written < 0 || static_cast<size_t>(written) >= out_len) {
+    if (clock_format_failed(written, out_len)) {
         strlcpy(out, kClockDatePlaceholder, out_len);
     }
 }
@@ -782,6 +799,8 @@ lv_obj_t *work_page_date_label(int page)
         return g_weather_board_date_label;
     case kWorkPageFlipClock:
         return g_flip_clock_date_label;
+    case kWorkPageXiaozhiAI:
+        return g_xiaozhi_date_label;
     default:
         return nullptr;
     }
@@ -836,6 +855,9 @@ bool update_time_ui(const struct tm &local, bool clock_page_active, int active_w
 
 uint8_t toggled_work_page_mask(uint8_t current_mask, int page)
 {
+    if (!clock_work_page_index_valid(page)) {
+        return static_cast<uint8_t>(current_mask & kAllWorkPageMask);
+    }
     uint8_t page_mask = static_cast<uint8_t>(1U << page);
     return static_cast<uint8_t>((current_mask ^ page_mask) & kAllWorkPageMask);
 }
@@ -851,7 +873,7 @@ void set_formatted_settings_feedback(const char *format, ...)
     va_start(args, format);
     int written = vsnprintf(feedback, sizeof(feedback), format, args);
     va_end(args);
-    if (written < 0) {
+    if (clock_format_failed(written, sizeof(feedback))) {
         set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
         return;
     }
@@ -1019,34 +1041,45 @@ void handle_settings_action()
         return;
     }
     if (primary == kSettingsPrimaryDisplay) {
+        if (g_settings_page_toggle_mode) {
+            int page = g_settings_selection;
+            if (!clock_work_page_index_valid(page)) {
+                page = kWorkPageWeatherClock;
+            }
+            uint8_t next_mask = toggled_work_page_mask(g_work_page_enabled_mask, page);
+            if (next_mask == 0) {
+                set_settings_feedback(kLastWorkPageFeedback, kSettingsFeedbackDefaultMs);
+                return;
+            }
+            uint8_t previous = g_work_page_enabled_mask;
+            g_work_page_enabled_mask = next_mask;
+            if (!save_work_page_settings()) {
+                g_work_page_enabled_mask = previous;
+                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+                return;
+            }
+            ensure_active_work_page_enabled();
+            set_formatted_settings_feedback(kWorkPageFeedbackFormat,
+                                            work_page_name(page),
+                                            is_work_page_enabled(page) ? kWorkPageEnabledSuffix : kWorkPageDisabledSuffix);
+            return;
+        }
+        if (selected == kDisplaySettingsPageSwitchItem) {
+            g_settings_page_order_mode = false;
+            g_settings_page_toggle_mode = true;
+            g_settings_selection = 0;
+            set_settings_feedback(kPageSwitchInstructionFeedback, kSettingsFeedbackInstructionMs);
+            return;
+        }
         if (selected == kDisplaySettingsOrderItem) {
+            g_settings_page_toggle_mode = false;
             g_settings_page_order_mode = true;
             normalize_work_page_order();
             g_settings_page_order_selection = first_enabled_work_page_order_index();
             set_settings_feedback(kPageOrderInstructionFeedback, kSettingsFeedbackInstructionMs);
             return;
         }
-        int page = display_settings_item_work_page(selected);
-        if (page < 0 || page >= kWorkPageCount) {
-            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-            return;
-        }
-        uint8_t next_mask = toggled_work_page_mask(g_work_page_enabled_mask, page);
-        if (next_mask == 0) {
-            set_settings_feedback(kLastWorkPageFeedback, kSettingsFeedbackDefaultMs);
-            return;
-        }
-        uint8_t previous = g_work_page_enabled_mask;
-        g_work_page_enabled_mask = next_mask;
-        if (!save_work_page_settings()) {
-            g_work_page_enabled_mask = previous;
-            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-            return;
-        }
-        ensure_active_work_page_enabled();
-        set_formatted_settings_feedback(kWorkPageFeedbackFormat,
-                                        work_page_name(page),
-                                        is_work_page_enabled(page) ? kWorkPageEnabledSuffix : kWorkPageDisabledSuffix);
+        set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
         return;
     }
     if (primary == kSettingsPrimarySystem) {
@@ -1112,11 +1145,13 @@ void handle_settings_action()
                 return;
             }
             g_settings_requested = false;
+            g_settings_page_toggle_mode = false;
             g_settings_page_order_mode = false;
             g_factory_reset_confirm_pending = false;
             g_offline_disable_confirm_pending = false;
         } else if (selected == kSystemSettingsInfoItem) {
             g_settings_requested = false;
+            g_settings_page_toggle_mode = false;
             g_settings_page_order_mode = false;
             g_factory_reset_confirm_pending = false;
             g_boot_info_requested = true;

@@ -5,6 +5,7 @@
 #include "network_services.h"
 #include "ota_services.h"
 #include "sensor_services.h"
+#include "ui_text_format.h"
 
 #include <stdarg.h>
 
@@ -15,30 +16,6 @@ template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
     return N;
-}
-
-void copy_text(char *out, size_t out_len, const char *text)
-{
-    if (!out || out_len == 0) {
-        return;
-    }
-    strlcpy(out, text ? text : "", out_len);
-}
-
-template <typename... Args>
-void format_text_or_fallback(char *out, size_t out_len, const char *fallback, const char *format, Args... args)
-{
-    if (!out || out_len == 0) {
-        return;
-    }
-    if (!format) {
-        copy_text(out, out_len, fallback);
-        return;
-    }
-    int written = snprintf(out, out_len, format, args...);
-    if (written < 0 || written >= (int)out_len) {
-        copy_text(out, out_len, fallback);
-    }
 }
 
 int collect_visible_work_page_order_indices(int *indices, size_t capacity)
@@ -231,7 +208,7 @@ constexpr int kSettingsSwitchTextW = 28;
 constexpr int kSettingsSwitchTextH = 18;
 constexpr size_t kSettingsSecondaryTextSize = 56;
 constexpr int kSettingsListRowY[] = {66, 105, 144, 183, 222, 222, 222};
-constexpr int kSettingsGridRowY[] = {66, 105, 144};
+constexpr int kSettingsGridRowY[] = {66, 105, 144, 183};
 constexpr size_t kSettingsListRowCount = array_count(kSettingsListRowY);
 constexpr size_t kSettingsGridRowCount = array_count(kSettingsGridRowY);
 constexpr int kSettingsGridColumns = 2;
@@ -267,6 +244,7 @@ constexpr const char *kSettingsSoundVolumeFormat = "音量 %d%%";
 constexpr const char *kSettingsSoundChoiceFormat = "声音选择 %d";
 constexpr const char *kSettingsHourlyText = "整点提醒 7:00 - 22:00";
 constexpr const char *kSettingsAllDayText = "全天提醒 0:00 - 24:00";
+constexpr const char *kSettingsPageSwitchText = "页面开关";
 constexpr const char *kSettingsPageOrderText = "页面顺序";
 constexpr const char *kSettingsPageOrderEntryFormat = "%d %s";
 constexpr const char *kSettingsOfflineFormat = "离线模式 %s";
@@ -290,6 +268,7 @@ constexpr const char *kSettingsSecondaryTexts[] = {
     kSettingsSoundChoiceFormat,
     kSettingsHourlyText,
     kSettingsAllDayText,
+    kSettingsPageSwitchText,
     kSettingsPageOrderText,
     kSettingsPageOrderEntryFormat,
     kSettingsOfflineFormat,
@@ -567,7 +546,7 @@ void set_secondary_text(char items[][kSettingsSecondaryTextSize], int index, con
         ESP_LOGW(TAG, SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT, index);
         return;
     }
-    copy_text(items[index], kSettingsSecondaryTextSize, text);
+    ui_text::copy(items[index], kSettingsSecondaryTextSize, text);
 }
 
 void format_secondary_text(char items[][kSettingsSecondaryTextSize], int index, const char *format, ...)
@@ -581,7 +560,7 @@ void format_secondary_text(char items[][kSettingsSecondaryTextSize], int index, 
     va_start(args, format);
     int written = vsnprintf(items[index], kSettingsSecondaryTextSize, format ? format : "", args);
     va_end(args);
-    if (written < 0) {
+    if (ui_text::format_failed(written, kSettingsSecondaryTextSize)) {
         items[index][0] = '\0';
         ESP_LOGW(TAG, SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT, index);
     }
@@ -980,14 +959,14 @@ void set_info_time_label(size_t index, const char *format, time_t value)
     char time_text[kInfoTimeTextSize] = {};
     char line[kInfoLineTextSize] = {};
     format_time_or_dash(value, time_text, sizeof(time_text));
-    format_text_or_fallback(line, sizeof(line), kInfoLinePlaceholder, format, time_text);
+    ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder, format, time_text);
     set_label_text_if_changed(g_info_labels[index], line);
 }
 
 void set_info_string_label(size_t index, const char *format, const char *value)
 {
     char line[kInfoLineTextSize] = {};
-    format_text_or_fallback(line, sizeof(line), kInfoLinePlaceholder, format, value ? value : "");
+    ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder, format, value ? value : "");
     set_label_text_if_changed(g_info_labels[index], line);
 }
 
@@ -997,7 +976,7 @@ void set_info_battery_label()
     char charge_time[kInfoTimeTextSize] = {};
     format_time_or_dash(g_last_charge_time, charge_time, sizeof(charge_time));
     if (g_battery_percent >= 0 && g_battery_voltage >= 0.0f) {
-        format_text_or_fallback(line,
+        ui_text::format_or_fallback(line,
                                 sizeof(line),
                                 kInfoBatteryPlaceholder,
                                 kInfoBatteryFullFormat,
@@ -1005,14 +984,14 @@ void set_info_battery_label()
                                 g_battery_voltage,
                                 charge_time);
     } else if (g_battery_percent >= 0) {
-        format_text_or_fallback(line,
+        ui_text::format_or_fallback(line,
                                 sizeof(line),
                                 kInfoBatteryPlaceholder,
                                 kInfoBatteryPercentOnlyFormat,
                                 g_battery_percent,
                                 charge_time);
     } else {
-        copy_text(line, sizeof(line), kInfoBatteryPlaceholder);
+        ui_text::copy(line, sizeof(line), kInfoBatteryPlaceholder);
     }
     set_label_text_if_changed(g_info_labels[kInfoBatteryLabelIndex], line);
 }
@@ -1020,7 +999,7 @@ void set_info_battery_label()
 void set_info_version_label()
 {
     char line[kInfoLineTextSize] = {};
-    format_text_or_fallback(line, sizeof(line), kInfoLinePlaceholder, kInfoVersionFormat, APP_VERSION, APP_BUILD_DATE);
+    ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder, kInfoVersionFormat, APP_VERSION, APP_BUILD_DATE);
     set_label_text_if_changed(g_info_labels[kInfoVersionLabelIndex], line);
 }
 
@@ -1097,11 +1076,11 @@ bool update_network_diag_page()
     bool changed = false;
     char summary[kNetworkDiagSummaryTextSize] = {};
     if (g_network_diag_state == kNetworkDiagRunning) {
-        copy_text(summary, sizeof(summary), kNetworkDiagSummaryRunning);
+        ui_text::copy(summary, sizeof(summary), kNetworkDiagSummaryRunning);
     } else if (g_network_diag_state == kNetworkDiagDone) {
-        copy_text(summary, sizeof(summary), kNetworkDiagSummaryDone);
+        ui_text::copy(summary, sizeof(summary), kNetworkDiagSummaryDone);
     } else {
-        copy_text(summary, sizeof(summary), kNetworkDiagSummaryIdle);
+        ui_text::copy(summary, sizeof(summary), kNetworkDiagSummaryIdle);
     }
     changed |= set_label_text_if_changed(g_network_diag_summary_label, summary);
     for (int i = 0; i < kNetworkDiagLineCount; ++i) {
@@ -1193,6 +1172,8 @@ void handle_settings_key_short()
     int primary = clamp_settings_primary(g_settings_primary_selection);
     if (g_settings_page_order_mode) {
         g_settings_page_order_selection = next_enabled_work_page_order_index(g_settings_page_order_selection);
+    } else if (g_settings_page_toggle_mode) {
+        g_settings_selection = (g_settings_selection + 1) % kWorkPageCount;
     } else if (g_settings_focus_secondary) {
         int count = settings_secondary_count(primary);
         if (count > 0) {
@@ -1224,6 +1205,15 @@ void handle_settings_key_long()
         reset_settings_confirmation();
         notify_ui_task();
         return;
+    } else if (g_settings_page_toggle_mode) {
+        g_settings_page_toggle_mode = false;
+        g_settings_focus_secondary = true;
+        g_settings_primary_selection = kSettingsPrimaryDisplay;
+        g_settings_selection = kDisplaySettingsPageSwitchItem;
+        reset_settings_confirmation();
+        g_settings_feedback[0] = '\0';
+        notify_ui_task();
+        return;
     } else if (g_settings_focus_secondary) {
         g_settings_focus_secondary = false;
         g_settings_selection = 0;
@@ -1237,6 +1227,7 @@ void handle_settings_key_long()
         }
         s_settings_primary_exit_block_until = 0;
         g_settings_requested = false;
+        g_settings_page_toggle_mode = false;
         g_settings_page_order_mode = false;
         g_settings_focus_secondary = false;
         reset_settings_confirmation();
@@ -1366,7 +1357,14 @@ bool update_settings_page()
 
     char secondary_items[kSettingsSecondaryMaxCount][kSettingsSecondaryTextSize] = {};
     int primary = clamp_settings_primary(g_settings_primary_selection);
-    int selected = clamp_settings_secondary(primary, g_settings_selection);
+    int selected = g_settings_selection;
+    if (g_settings_page_toggle_mode) {
+        if (selected < 0 || selected >= kWorkPageCount) {
+            selected = 0;
+        }
+    } else {
+        selected = clamp_settings_secondary(primary, selected);
+    }
     g_settings_primary_selection = primary;
     g_settings_selection = selected;
     if (g_settings_page_order_mode) {
@@ -1399,9 +1397,7 @@ bool update_settings_page()
         set_secondary_text(secondary_items, kSoundSettingsHourlyItem, kSettingsHourlyText);
         set_secondary_text(secondary_items, kSoundSettingsAllDayItem, kSettingsAllDayText);
     } else if (primary == kSettingsPrimaryDisplay) {
-        for (int i = 0; i < kDisplaySettingsPageItemCount; ++i) {
-            set_secondary_text(secondary_items, i, work_page_name(display_settings_item_work_page(i)));
-        }
+        set_secondary_text(secondary_items, kDisplaySettingsPageSwitchItem, kSettingsPageSwitchText);
         set_secondary_text(secondary_items, kDisplaySettingsOrderItem, kSettingsPageOrderText);
     } else {
         format_secondary_text(secondary_items,
@@ -1417,10 +1413,12 @@ bool update_settings_page()
         set_secondary_text(secondary_items, kSystemSettingsOtaItem, kSettingsCheckUpdateText);
     }
     static bool last_page_order_mode = false;
+    static bool last_page_toggle_mode = false;
     static int last_page_order_selection = -1;
     bool selection_changed = selected != last_selected ||
                              primary != last_primary ||
                              g_settings_focus_secondary != last_focus_secondary ||
+                             g_settings_page_toggle_mode != last_page_toggle_mode ||
                              g_settings_page_order_mode != last_page_order_mode ||
                              g_settings_page_order_selection != last_page_order_selection ||
                              g_ota_state != last_ota_state ||
@@ -1431,6 +1429,7 @@ bool update_settings_page()
         last_selected = selected;
         last_primary = primary;
         last_focus_secondary = g_settings_focus_secondary;
+        last_page_toggle_mode = g_settings_page_toggle_mode;
         last_page_order_mode = g_settings_page_order_mode;
         last_page_order_selection = g_settings_page_order_selection;
         last_ota_state = g_ota_state;
@@ -1456,28 +1455,34 @@ bool update_settings_page()
         if (!g_settings_labels[slot]) {
             continue;
         }
-        if (g_settings_page_order_mode) {
-            if (i >= visible_order_count) {
+        if (g_settings_page_order_mode || g_settings_page_toggle_mode) {
+            int manager_item_count = g_settings_page_order_mode ? visible_order_count : kWorkPageCount;
+            if (i >= manager_item_count) {
                 set_obj_visible(g_settings_labels[slot], false);
                 hide_settings_switch_slot(i);
                 continue;
             }
             SettingsGridCell cell = settings_grid_cell(i);
-            lv_obj_set_pos(g_settings_labels[slot],
-                           cell.x,
-                           cell.y);
+            lv_obj_set_pos(g_settings_labels[slot], cell.x, cell.y);
             lv_obj_set_size(g_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
-            int order_index = visible_order_indices[i];
-            format_secondary_text(secondary_items,
-                                  i,
-                                  kSettingsPageOrderEntryFormat,
-                                  i + 1,
-                                  work_page_name(g_work_page_order[order_index]));
-            hide_settings_switch_slot(i);
-        } else if (primary == kSettingsPrimaryDisplay || primary == kSettingsPrimarySystem) {
-            bool grid_item = primary == kSettingsPrimaryDisplay
-                                 ? i < kDisplaySettingsPageItemCount
-                                 : i < kSystemSettingsGridItemCount;
+            if (g_settings_page_order_mode) {
+                int order_index = visible_order_indices[i];
+                format_secondary_text(secondary_items,
+                                      i,
+                                      kSettingsPageOrderEntryFormat,
+                                      i + 1,
+                                      work_page_name(g_work_page_order[order_index]));
+                hide_settings_switch_slot(i);
+            } else {
+                set_secondary_text(secondary_items, i, work_page_name(i));
+                if (g_settings_switch_dots[i]) {
+                    lv_obj_set_pos(g_settings_switch_dots[i],
+                                   cell.x + kSettingsGridSwitchDotXOffset,
+                                   cell.y + kSettingsGridSwitchDotYOffset);
+                }
+            }
+        } else if (primary == kSettingsPrimarySystem) {
+            bool grid_item = i < kSystemSettingsGridItemCount;
             if (grid_item) {
                 SettingsGridCell cell = settings_grid_cell(i);
                 lv_obj_set_pos(g_settings_labels[slot], cell.x, cell.y);
@@ -1519,6 +1524,8 @@ bool update_settings_page()
         bool visible = i < secondary_count;
         if (g_settings_page_order_mode) {
             visible = i < visible_order_count;
+        } else if (g_settings_page_toggle_mode) {
+            visible = i < kWorkPageCount;
         }
         set_obj_visible(g_settings_labels[slot], visible);
         if (visible) {
@@ -1526,6 +1533,7 @@ bool update_settings_page()
             if (selection_changed) {
                 int order_index = g_settings_page_order_mode ? visible_order_indices[i] : -1;
                 bool selected_item = g_settings_page_order_mode ? order_index == g_settings_page_order_selection :
+                                     g_settings_page_toggle_mode ? i == selected :
                                      (g_settings_focus_secondary && i == selected);
                 style_settings_item(g_settings_labels[slot], selected_item);
                 if (primary == kSettingsPrimarySystem && i < kSystemSettingsGridItemCount) {
@@ -1545,11 +1553,9 @@ bool update_settings_page()
             }
         } else if (visible &&
                    primary == kSettingsPrimaryDisplay &&
-                   !g_settings_page_order_mode &&
-                   i < kDisplaySettingsPageItemCount) {
+                   g_settings_page_toggle_mode) {
             dot_visible = true;
-            int page = display_settings_item_work_page(i);
-            dot_on = is_work_page_enabled(page);
+            dot_on = is_work_page_enabled(i);
         }
         if (g_settings_switch_dots[i]) {
             set_obj_visible(g_settings_switch_dots[i], dot_visible);
@@ -1578,41 +1584,41 @@ bool update_settings_page()
             if (g_ota_state == kOtaUpdating && progress >= 0) {
                 progress_visible = true;
                 if (g_ota_speed_kbps > 0) {
-                    format_text_or_fallback(ota_line,
+                    ui_text::format_or_fallback(ota_line,
                                             sizeof(ota_line),
                                             kSettingsOtaLinePlaceholder,
                                             kSettingsOtaUpdatingWithSpeedFormat,
                                             progress,
                                             g_ota_speed_kbps);
                 } else {
-                    format_text_or_fallback(ota_line,
+                    ui_text::format_or_fallback(ota_line,
                                             sizeof(ota_line),
                                             kSettingsOtaLinePlaceholder,
                                             kSettingsOtaUpdatingFormat,
                                             progress);
                 }
-                copy_text(ota_hint, sizeof(ota_hint), kSettingsOtaHintDownloading);
+                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintDownloading);
             } else if (g_ota_state == kOtaAvailable) {
-                copy_text(ota_line, sizeof(ota_line), g_ota_status);
-                copy_text(ota_hint, sizeof(ota_hint), kSettingsOtaHintInstall);
+                ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
+                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintInstall);
             } else if (g_ota_state == kOtaChecking) {
-                copy_text(ota_line, sizeof(ota_line), g_ota_status);
-                copy_text(ota_hint, sizeof(ota_hint), kSettingsOtaHintChecking);
+                ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
+                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintChecking);
             } else if (g_ota_state == kOtaSucceeded) {
                 progress_visible = true;
                 progress = kSettingsOtaProgressMax;
-                copy_text(ota_line, sizeof(ota_line), g_ota_status);
-                copy_text(ota_hint, sizeof(ota_hint), kSettingsOtaHintRebooting);
+                ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
+                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintRebooting);
             } else if (g_ota_state == kOtaFailed || g_ota_state == kOtaNoUpdate) {
-                copy_text(ota_line, sizeof(ota_line), g_ota_status);
-                copy_text(ota_hint, sizeof(ota_hint), kSettingsOtaHintRetry);
+                ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
+                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintRetry);
             } else {
-                format_text_or_fallback(ota_line,
+                ui_text::format_or_fallback(ota_line,
                                         sizeof(ota_line),
                                         kSettingsOtaLinePlaceholder,
                                         kSettingsOtaCurrentVersionFormat,
                                         APP_VERSION);
-                copy_text(ota_hint, sizeof(ota_hint), kSettingsOtaHintCheck);
+                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintCheck);
             }
         }
         changed |= set_label_text_if_changed(g_settings_ota_status_label, ota_line);
@@ -1641,7 +1647,7 @@ bool update_settings_page()
 
 void set_settings_feedback(const char *text, uint32_t duration_ms)
 {
-    copy_text(g_settings_feedback, sizeof(g_settings_feedback), text);
+    ui_text::copy(g_settings_feedback, sizeof(g_settings_feedback), text);
     TickType_t now = xTaskGetTickCount();
     g_settings_feedback_until_tick = now + pdMS_TO_TICKS(duration_ms);
     if (g_settings_requested) {
@@ -1680,7 +1686,7 @@ template <typename... Args>
 bool set_setup_status_line(size_t index, const char *fallback, const char *format, Args... args)
 {
     char line[kSetupStatusLineSize] = {};
-    format_text_or_fallback(line, sizeof(line), fallback, format, args...);
+    ui_text::format_or_fallback(line, sizeof(line), fallback, format, args...);
     return set_label_text_if_changed(g_setup_status_labels[index], line);
 }
 
@@ -1716,7 +1722,7 @@ bool update_setup_status_panel()
                                          g_last_wifi_disconnect_reason);
     } else {
         char line[kSetupStatusLineSize] = {};
-        copy_text(line, sizeof(line), kSetupStaIpPlaceholder);
+        ui_text::copy(line, sizeof(line), kSetupStaIpPlaceholder);
         changed |= set_label_text_if_changed(g_setup_status_labels[kSetupStatusStaIpIndex], line);
     }
     return changed;

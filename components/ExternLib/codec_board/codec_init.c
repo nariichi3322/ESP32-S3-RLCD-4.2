@@ -152,7 +152,7 @@ static int _i2s_init(uint8_t port, esp_codec_dev_type_t dev_type, codec_init_cfg
     chan_cfg.auto_clear = true;
     i2s_std_config_t std_cfg = {
         .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(16000),
-        .slot_cfg = I2S_STD_MSB_SLOT_DEFAULT_CONFIG(32, I2S_SLOT_MODE_STEREO),
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(16, I2S_SLOT_MODE_STEREO),
         .gpio_cfg = {
             .mclk = i2s_cfg.mclk,
             .bclk = i2s_cfg.bclk,
@@ -173,10 +173,16 @@ static int _i2s_init(uint8_t port, esp_codec_dev_type_t dev_type, codec_init_cfg
     if (input == false && output == false) {
         return 0;
     }
+    // 小智同板卡官方实现使用 STD TX + TDM RX 全双工。缩小 DMA 缓冲，
+    // 为 AEC、TLS 与 Opus 保留内部 SRAM，同时仍覆盖多个 30 ms AFE 分块。
+    if (input && output) {
+        chan_cfg.dma_desc_num = 3;
+        chan_cfg.dma_frame_num = 64;
+    }
 #ifdef SOC_I2S_SUPPORTS_TDM
     i2s_tdm_slot_mask_t slot_mask = I2S_TDM_SLOT0 | I2S_TDM_SLOT1 | I2S_TDM_SLOT2 | I2S_TDM_SLOT3;
     i2s_tdm_config_t tdm_cfg = {
-        .slot_cfg = I2S_TDM_PHILIPS_SLOT_DEFAULT_CONFIG(32, I2S_SLOT_MODE_STEREO, slot_mask),
+        .slot_cfg = I2S_TDM_PHILIPS_SLOT_DEFAULT_CONFIG(16, I2S_SLOT_MODE_STEREO, slot_mask),
         .clk_cfg = I2S_TDM_CLK_DEFAULT_CONFIG(16000),
         .gpio_cfg = {
             .mclk = i2s_cfg.mclk,
@@ -186,7 +192,8 @@ static int _i2s_init(uint8_t port, esp_codec_dev_type_t dev_type, codec_init_cfg
             .din = i2s_cfg.din,
         },
     };
-    tdm_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_384;
+    tdm_cfg.clk_cfg.mclk_multiple = I2S_MCLK_MULTIPLE_256;
+    tdm_cfg.clk_cfg.bclk_div = 8;
     tdm_cfg.slot_cfg.total_slot = 4;
 #endif
     chan_cfg.id = I2S_NUM_AUTO; // Use auto ID

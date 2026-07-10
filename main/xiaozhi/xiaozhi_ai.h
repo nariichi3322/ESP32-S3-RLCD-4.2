@@ -1,0 +1,32 @@
+// 管理小智官方激活、会话状态和页面生命周期，不接管本机配网或 OTA。
+#pragma once
+
+#include <stddef.h>
+#include <stdint.h>
+
+enum XiaozhiAiState {
+    kXiaozhiAiInactive = 0,
+    kXiaozhiAiWaitingForWifi,
+    kXiaozhiAiActivating,
+    kXiaozhiAiBinding,
+    kXiaozhiAiReady,
+    kXiaozhiAiListening,
+    kXiaozhiAiSpeaking,
+    kXiaozhiAiError,
+};
+
+struct XiaozhiAiSnapshot {
+    XiaozhiAiState state;
+    char status[32];
+    char detail[192];
+    char binding_code[24];
+    char emotion[24];
+    uint8_t waveform_level;
+};
+
+void xiaozhi_ai_init();
+void xiaozhi_ai_set_page_active(bool active);
+bool xiaozhi_ai_page_active();
+bool xiaozhi_ai_network_keepalive_active();
+void xiaozhi_ai_get_snapshot(XiaozhiAiSnapshot *out);
+void xiaozhi_ai_clear_activation();

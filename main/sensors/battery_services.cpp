@@ -89,6 +89,8 @@ static_assert(kTmYearOffset > 0, "tm year offset must be positive");
 static_assert(kBatteryMinValidYear > kTmYearOffset, "battery valid year must exceed tm year offset");
 static_assert(kBatteryMinValidTmYear >= 0, "battery valid time year floor must be non-negative");
 static_assert(kBatteryChargingRiseSamples > 0, "charging detection must require at least one rising sample");
+static_assert(kBatteryChargingStopSamples > 0,
+              "charging stop detection must require at least one confirming sample");
 static_assert(kBatteryChargingRiseVoltage > kBatteryChargingStopVoltage,
               "charging rise threshold must stay above stop threshold");
 static_assert(array_count(kBatteryLogTexts) > 0,
@@ -121,14 +123,15 @@ static bool battery_percent_increased(int previous_percent, int current_percent)
     return previous_battery_percent_valid(previous_percent) && current_percent > previous_percent;
 }
 
-static bool battery_voltage_dropped(float delta)
+static bool battery_voltage_dropped_from_peak(float voltage, float peak_voltage)
 {
-    return delta <= -kBatteryChargingStopVoltage;
+    return peak_voltage > 0.0f && voltage <= peak_voltage - kBatteryChargingStopVoltage;
 }
 
-static bool charging_should_stop(float delta)
+static bool charging_should_stop(float voltage, float peak_voltage, int stop_samples)
 {
-    return battery_voltage_dropped(delta);
+    return battery_voltage_dropped_from_peak(voltage, peak_voltage) &&
+           stop_samples >= kBatteryChargingStopSamples;
 }
 
 static bool battery_time_valid(time_t value)
@@ -270,20 +273,23 @@ bool read_battery_percent(int *percent)
 static void update_battery_charging_state(int previous_percent,
                                           float previous_voltage,
                                           int current_percent,
-                                          int *charging_rise_samples)
+                                          int *charging_rise_samples,
+                                          int *charging_stop_samples,
+                                          float *charging_peak_voltage)
 {
-    if (!charging_rise_samples) {
+    if (!charging_rise_samples || !charging_stop_samples || !charging_peak_voltage) {
         return;
     }
     if (!previous_battery_voltage_valid(previous_voltage)) {
         *charging_rise_samples = 0;
+        *charging_stop_samples = 0;
+        *charging_peak_voltage = 0.0f;
         return;
     }
 
     float delta = g_battery_voltage - previous_voltage;
     bool charging_activity = delta >= kBatteryChargingRiseVoltage ||
                              battery_percent_increased(previous_percent, current_percent);
-    bool charging_drop = charging_should_stop(delta);
 
     if (charging_activity) {
         if (*charging_rise_samples < kBatteryChargingRiseSamples) {
@@ -294,21 +300,44 @@ static void update_battery_charging_state(int previous_percent,
     }
 
     if (g_battery_charging) {
-        if (charging_drop) {
+        if (g_battery_voltage > *charging_peak_voltage) {
+            *charging_peak_voltage = g_battery_voltage;
+            *charging_stop_samples = 0;
+        } else if (battery_voltage_dropped_from_peak(g_battery_voltage, *charging_peak_voltage)) {
+            if (*charging_stop_samples < kBatteryChargingStopSamples) {
+                ++(*charging_stop_samples);
+            }
+        } else {
+            *charging_stop_samples = 0;
+        }
+
+        if (charging_should_stop(g_battery_voltage, *charging_peak_voltage, *charging_stop_samples)) {
             g_battery_charging = false;
             *charging_rise_samples = 0;
+            *charging_stop_samples = 0;
+            *charging_peak_voltage = 0.0f;
         }
     } else if (*charging_rise_samples >= kBatteryChargingRiseSamples) {
         g_battery_charging = true;
+        *charging_stop_samples = 0;
+        *charging_peak_voltage = g_battery_voltage;
     }
 }
 
-static void reset_battery_state_after_sample_failure(int *charging_rise_samples)
+static void reset_battery_state_after_sample_failure(int *charging_rise_samples,
+                                                      int *charging_stop_samples,
+                                                      float *charging_peak_voltage)
 {
     g_battery_percent = kBatteryPercentUnknown;
     g_battery_charging = false;
     if (charging_rise_samples) {
         *charging_rise_samples = 0;
+    }
+    if (charging_stop_samples) {
+        *charging_stop_samples = 0;
+    }
+    if (charging_peak_voltage) {
+        *charging_peak_voltage = 0.0f;
     }
 }
 
@@ -324,6 +353,8 @@ static void publish_battery_sample_update(bool force)
 void sample_battery()
 {
     static int charging_rise_samples = 0;
+    static int charging_stop_samples = 0;
+    static float charging_peak_voltage = 0.0f;
     int percent = kBatteryPercentUnknown;
     bool previous_charging = g_battery_charging;
     int previous_percent = g_battery_percent;
@@ -333,13 +364,17 @@ void sample_battery()
         update_battery_charging_state(previous_percent,
                                       previous_voltage,
                                       percent,
-                                      &charging_rise_samples);
+                                      &charging_rise_samples,
+                                      &charging_stop_samples,
+                                      &charging_peak_voltage);
         if (previous_charging && !g_battery_charging) {
             update_last_charge_time_if_needed();
         }
         release_battery_gauge();
     } else {
-        reset_battery_state_after_sample_failure(&charging_rise_samples);
+        reset_battery_state_after_sample_failure(&charging_rise_samples,
+                                                 &charging_stop_samples,
+                                                 &charging_peak_voltage);
     }
     bool sample_changed = previous_percent != g_battery_percent ||
                           previous_charging != g_battery_charging;

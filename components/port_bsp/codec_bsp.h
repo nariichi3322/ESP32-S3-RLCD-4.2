@@ -36,6 +36,8 @@ public:
 
     int CodecPort_PlayWrite(void *ptr,int ptr_len);
     int CodecPort_EchoRead(void *ptr,int ptr_len);
+    bool CodecPort_OpenXiaozhiMic(void);
+    bool CodecPort_OpenXiaozhiSpeaker(int sample_rate);
     bool CodecPort_IsReady(void) const;
     bool CodecPort_PlayHourlyChime(void);
     bool CodecPort_PlayHourlyChimeSlot(int source_slot);

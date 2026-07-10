@@ -338,6 +338,7 @@ constexpr const char *kWeatherFetchStatusCached = "cached";
 #define WEATHER_USING_IP_COORDINATES_FORMAT "using ip coordinates for weather now: %s"
 constexpr const char *kWeatherIpLookupUpdateFailedLog = "weather update failed after ip lookup";
 constexpr const char *kWeatherIpGeolocationLookupFailedLog = "ip geolocation lookup failed";
+constexpr const char *kWeatherReadyEventUnavailableLog = "weather ready event skipped: app events unavailable";
 constexpr const char *kQweatherFixedWarningTexts[] = {
     kIpLocationInvalidArgLog,
     kIpLocationCoordinateTooLongLog,
@@ -355,6 +356,7 @@ constexpr const char *kQweatherFixedWarningTexts[] = {
     kQweatherDailyLocationTooLongLog,
     kQweatherAirInvalidArgLog,
     kQweatherAirLocationTooLongLog,
+    kWeatherReadyEventUnavailableLog,
 };
 constexpr const char *kQweatherStageAndStatusTexts[] = {
     kQweatherDefaultStage,
@@ -1633,6 +1635,24 @@ void get_weather_air_snapshot(WeatherAirData *air)
     portEXIT_CRITICAL(&g_weather_state_mux);
 }
 
+static void publish_weather_ready_event()
+{
+    if (!g_app_events) {
+        log_qweather_fixed_warning(kWeatherReadyEventUnavailableLog);
+        return;
+    }
+    xEventGroupSetBits(g_app_events, kWeatherReadyBit);
+}
+
+static void clear_weather_ready_event()
+{
+    if (!g_app_events) {
+        log_qweather_fixed_warning(kWeatherReadyEventUnavailableLog);
+        return;
+    }
+    xEventGroupClearBits(g_app_events, kWeatherReadyBit);
+}
+
 static void commit_weather_update_snapshot(const WeatherData &next,
                                            const WeatherAlertData &next_alert,
                                            const WeatherForecastData &next_forecast,
@@ -1653,7 +1673,7 @@ static void commit_weather_update_snapshot(const WeatherData &next,
     }
     g_last_weather_sync_time = now;
     portEXIT_CRITICAL(&g_weather_state_mux);
-    xEventGroupSetBits(g_app_events, kWeatherReadyBit);
+    publish_weather_ready_event();
     ESP_LOGI(TAG, WEATHER_UPDATED_LOG_FORMAT,
              next.city,
              next.text,
@@ -1736,7 +1756,7 @@ static bool update_weather_by_ip_location()
 bool perform_weather_update()
 {
     if (!g_have_weather_key || g_low_battery_mode) {
-        xEventGroupClearBits(g_app_events, kWeatherReadyBit);
+        clear_weather_ready_event();
         return false;
     }
 

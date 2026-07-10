@@ -291,12 +291,17 @@ static void set_calendar_subtext(CalendarDayInfo *info, const char *text)
     strlcpy(info->subtext, text ? text : kCalendarLunarPlaceholder, sizeof(info->subtext));
 }
 
+static bool calendar_lunar_format_failed(int written, size_t out_len)
+{
+    return written < 0 || (size_t)written >= out_len;
+}
+
 static void set_calendar_lunar_month_subtext(CalendarDayInfo *info)
 {
     int written = snprintf(info->subtext, sizeof(info->subtext), kLunarMonthDisplayFormat,
                            info->lunar_leap ? "闰" : "",
                            kLunarMonthNames[info->lunar_month]);
-    if (written < 0 || written >= (int)sizeof(info->subtext)) {
+    if (calendar_lunar_format_failed(written, sizeof(info->subtext))) {
         set_calendar_subtext(info, nullptr);
     }
 }

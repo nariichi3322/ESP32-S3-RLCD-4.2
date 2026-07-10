@@ -2,7 +2,7 @@
 #include "app_state.h"
 
 const char *const TAG = "WeatherClock";
-const char *const APP_VERSION = "v1.4.59";
+const char *const APP_VERSION = "v1.5.0";
 #ifndef WEATHER_CLOCK_BUILD_DATE
 #define WEATHER_CLOCK_BUILD_DATE "unknown"
 #endif
@@ -19,8 +19,12 @@ volatile bool g_setup_prompt_pending = false;
 #if CONFIG_PM_ENABLE
 esp_pm_lock_handle_t g_network_pm_lock = nullptr;
 esp_pm_lock_handle_t g_audio_pm_lock = nullptr;
+esp_pm_lock_handle_t g_audio_wake_pm_lock = nullptr;
+esp_pm_lock_handle_t g_audio_cpu_pm_lock = nullptr;
 int g_network_pm_lock_depth = 0;
 int g_audio_pm_lock_depth = 0;
+int g_audio_wake_pm_lock_depth = 0;
+int g_audio_cpu_pm_lock_depth = 0;
 #endif
 adc_oneshot_unit_handle_t g_battery_adc = nullptr;
 adc_cali_handle_t g_battery_adc_cali = nullptr;
@@ -65,6 +69,7 @@ volatile bool g_boot_info_requested = false;
 volatile bool g_network_diag_page_requested = false;
 volatile bool g_settings_requested = false;
 volatile bool g_settings_focus_secondary = false;
+volatile bool g_settings_page_toggle_mode = false;
 volatile bool g_settings_page_order_mode = false;
 volatile int g_settings_primary_selection = kSettingsPrimaryNetwork;
 volatile int g_settings_selection = 0;
@@ -120,6 +125,7 @@ uint8_t g_work_page_order[kWorkPageCount] = {
     kWorkPageFlipClock,
     kWorkPageCalendar,
     kWorkPageHistory,
+    kWorkPageXiaozhiAI,
 };
 lv_obj_t *g_clock_root;
 lv_obj_t *g_history_root;
@@ -127,6 +133,7 @@ lv_obj_t *g_gallery_root;
 lv_obj_t *g_calendar_root;
 lv_obj_t *g_weather_board_root;
 lv_obj_t *g_flip_clock_root;
+lv_obj_t *g_xiaozhi_root;
 lv_obj_t *g_info_root;
 lv_obj_t *g_network_diag_root;
 lv_obj_t *g_settings_root;
@@ -137,16 +144,24 @@ lv_obj_t *g_gallery_date_label;
 lv_obj_t *g_calendar_date_label;
 lv_obj_t *g_weather_board_date_label;
 lv_obj_t *g_flip_clock_date_label;
+lv_obj_t *g_xiaozhi_date_label;
 lv_obj_t *g_history_summary_label;
 lv_obj_t *g_gallery_summary_label;
 lv_obj_t *g_calendar_summary_label;
 lv_obj_t *g_weather_board_summary_label;
 lv_obj_t *g_flip_clock_summary_label;
+lv_obj_t *g_xiaozhi_summary_label;
 lv_obj_t *g_history_status_time_label;
 lv_obj_t *g_gallery_status_time_label;
 lv_obj_t *g_calendar_status_time_label;
 lv_obj_t *g_weather_board_status_time_label;
 lv_obj_t *g_flip_clock_status_time_label;
+lv_obj_t *g_xiaozhi_status_time_label;
+lv_obj_t *g_xiaozhi_title_label;
+lv_obj_t *g_xiaozhi_state_label;
+lv_obj_t *g_xiaozhi_detail_label;
+lv_obj_t *g_xiaozhi_wave_canvas;
+lv_color_t *g_xiaozhi_wave_canvas_buf;
 lv_obj_t *g_work_status_chime_icon_canvas[kWorkPageCount];
 lv_color_t *g_work_status_chime_icon_canvas_buf[kWorkPageCount];
 lv_obj_t *g_work_status_wifi_icon_canvas[kWorkPageCount];
@@ -192,6 +207,7 @@ lv_obj_t *g_gallery_battery_segments[5];
 lv_obj_t *g_calendar_battery_segments[5];
 lv_obj_t *g_weather_board_battery_segments[5];
 lv_obj_t *g_flip_clock_battery_segments[5];
+lv_obj_t *g_xiaozhi_battery_segments[5];
 lv_obj_t *g_calendar_month_label;
 lv_obj_t *g_calendar_canvas;
 lv_color_t *g_calendar_canvas_buf;

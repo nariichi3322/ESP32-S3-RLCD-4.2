@@ -5,6 +5,8 @@
 #include "network_services.h"
 #include "ota_services.h"
 #include "sensor_services.h"
+#include "ui_text_format.h"
+#include "xiaozhi_ai.h"
 
 #include <stdint.h>
 
@@ -155,38 +157,14 @@ static_assert((kDisplayFullReasonTooManyRanges & kDisplayFullReasonCoveredWide) 
               DISPLAY_FULL_REASON_OVERLAP_ASSERT);
 static_assert(kRlcdBlackThreshold > 0, "RLCD black threshold must be nonzero");
 
-void copy_ui_text(char *out, size_t out_len, const char *text)
-{
-    if (!out || out_len == 0) {
-        return;
-    }
-    strlcpy(out, text ? text : "", out_len);
-}
-
-template <typename... Args>
-void format_ui_status_value(char *out, size_t out_len, const char *fallback, const char *format, Args... args)
-{
-    if (!out || out_len == 0) {
-        return;
-    }
-    if (!format) {
-        copy_ui_text(out, out_len, fallback);
-        return;
-    }
-    int written = snprintf(out, out_len, format, args...);
-    if (written < 0 || written >= (int)out_len) {
-        copy_ui_text(out, out_len, fallback);
-    }
-}
-
 void format_sensor_status_text(char *temp, size_t temp_len, char *humi, size_t humi_len)
 {
     if (g_sensor_ok) {
-        format_ui_status_value(temp, temp_len, kUiSensorTempPlaceholder, kUiSensorTempFormat, g_temperature);
-        format_ui_status_value(humi, humi_len, kUiSensorHumidityPlaceholder, kUiSensorHumidityFormat, g_humidity);
+        ui_text::format_or_fallback(temp, temp_len, kUiSensorTempPlaceholder, kUiSensorTempFormat, g_temperature);
+        ui_text::format_or_fallback(humi, humi_len, kUiSensorHumidityPlaceholder, kUiSensorHumidityFormat, g_humidity);
     } else {
-        copy_ui_text(temp, temp_len, kUiSensorTempPlaceholder);
-        copy_ui_text(humi, humi_len, kUiSensorHumidityPlaceholder);
+        ui_text::copy(temp, temp_len, kUiSensorTempPlaceholder);
+        ui_text::copy(humi, humi_len, kUiSensorHumidityPlaceholder);
     }
 }
 
@@ -198,9 +176,9 @@ void format_weather_status_text(const WeatherData &weather,
                                 char *humi,
                                 size_t humi_len)
 {
-    copy_ui_text(city, city_len, weather.city);
-    format_ui_status_value(temp, temp_len, kClockWeatherTempPlaceholder, kUiWeatherTempFormat, weather.temp);
-    format_ui_status_value(humi, humi_len, kClockWeatherHumidityPlaceholder, kUiWeatherHumidityFormat, weather.humidity);
+    ui_text::copy(city, city_len, weather.city);
+    ui_text::format_or_fallback(temp, temp_len, kClockWeatherTempPlaceholder, kUiWeatherTempFormat, weather.temp);
+    ui_text::format_or_fallback(humi, humi_len, kClockWeatherHumidityPlaceholder, kUiWeatherHumidityFormat, weather.humidity);
 }
 
 TickType_t next_second_delay_ticks()
@@ -273,7 +251,8 @@ bool update_invalid_time_labels_for_active_page(bool clock_page_active,
                                                 bool gallery_page_active,
                                                 bool calendar_page_active,
                                                 bool weather_board_page_active,
-                                                bool flip_clock_page_active)
+                                                bool flip_clock_page_active,
+                                                bool xiaozhi_page_active)
 {
     if (clock_page_active || g_low_battery_mode || g_setup_portal_active) {
         return set_label_text_if_changed(g_date_label, kUiDatePlaceholder);
@@ -301,6 +280,11 @@ bool update_invalid_time_labels_for_active_page(bool clock_page_active,
     if (flip_clock_page_active) {
         return set_label_text_if_changed(g_flip_clock_date_label, kUiDatePlaceholder);
     }
+    if (xiaozhi_page_active) {
+        bool changed = set_label_text_if_changed(g_xiaozhi_date_label, kUiDatePlaceholder);
+        changed |= set_label_text_if_changed(g_xiaozhi_status_time_label, kUiTimePlaceholder);
+        return changed;
+    }
     return false;
 }
 
@@ -309,6 +293,7 @@ void update_visible_work_page_battery_segments(bool history_page_active,
                                                bool calendar_page_active,
                                                bool weather_board_page_active,
                                                bool flip_clock_page_active,
+                                               bool xiaozhi_page_active,
                                                bool battery_blink_visible,
                                                bool battery_blink_on)
 {
@@ -326,6 +311,9 @@ void update_visible_work_page_battery_segments(bool history_page_active,
     }
     if (flip_clock_page_active) {
         update_battery_segments(g_flip_clock_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
+    }
+    if (xiaozhi_page_active) {
+        update_battery_segments(g_xiaozhi_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
     }
 }
 
@@ -447,6 +435,12 @@ void ui_task(void *)
         if (!g_low_battery_mode && !g_setup_portal_active) {
             ensure_active_work_page_enabled();
         }
+        xiaozhi_ai_set_page_active(g_active_work_page == kWorkPageXiaozhiAI &&
+                                   !g_low_battery_mode &&
+                                   !g_setup_portal_active &&
+                                   !g_settings_requested &&
+                                   !g_boot_info_requested &&
+                                   !g_network_diag_page_requested);
 
         TickType_t tick_now = xTaskGetTickCount();
         bool status_due = tick_now - last_status_update >= pdMS_TO_TICKS(kUiStatusRefreshMs);
@@ -475,6 +469,25 @@ void ui_task(void *)
             bool network_diag_requested = g_network_diag_page_requested;
             bool settings_requested = g_settings_requested;
             TickType_t info_until = g_info_page_until_tick;
+            auto restore_active_work_page_after_aux = [&](bool clear_info_timeout) {
+                show_active_work_page();
+                if (clear_info_timeout) {
+                    g_info_page_until_tick = 0;
+                }
+                visible_work_page = g_active_work_page;
+                history_page_shown_since = g_active_work_page == kWorkPageHistory ? tick_now : 0;
+                setup_panel_visible = false;
+                low_mode_visible = g_low_battery_mode;
+                apply_clock_mode_visibility(false);
+                status_due = true;
+                battery_due = true;
+                battery_blink_due = true;
+                g_last_ui_second = -1;
+                g_last_ui_minute = -1;
+                g_last_ui_date_key = -1;
+                g_last_ui_date_page = -1;
+                refresh_now = true;
+            };
             if (info_requested && info_until != 0 && tick_now >= info_until && !ota_flow_active()) {
                 g_boot_info_requested = false;
                 g_info_page_until_tick = 0;
@@ -528,22 +541,8 @@ void ui_task(void *)
                 continue;
             }
             if (info_page_visible) {
-                show_active_work_page();
                 info_page_visible = false;
-                g_info_page_until_tick = 0;
-                visible_work_page = g_active_work_page;
-                history_page_shown_since = g_active_work_page == kWorkPageHistory ? tick_now : 0;
-                setup_panel_visible = false;
-                low_mode_visible = g_low_battery_mode;
-                apply_clock_mode_visibility(false);
-                status_due = true;
-                battery_due = true;
-                battery_blink_due = true;
-                g_last_ui_second = -1;
-                g_last_ui_minute = -1;
-                g_last_ui_date_key = -1;
-                g_last_ui_date_page = -1;
-                refresh_now = true;
+                restore_active_work_page_after_aux(true);
             }
 
             if (network_diag_requested &&
@@ -568,21 +567,8 @@ void ui_task(void *)
                 continue;
             }
             if (network_diag_page_visible) {
-                show_active_work_page();
                 network_diag_page_visible = false;
-                visible_work_page = g_active_work_page;
-                history_page_shown_since = g_active_work_page == kWorkPageHistory ? tick_now : 0;
-                setup_panel_visible = false;
-                low_mode_visible = g_low_battery_mode;
-                apply_clock_mode_visibility(false);
-                status_due = true;
-                battery_due = true;
-                battery_blink_due = true;
-                g_last_ui_second = -1;
-                g_last_ui_minute = -1;
-                g_last_ui_date_key = -1;
-                g_last_ui_date_page = -1;
-                refresh_now = true;
+                restore_active_work_page_after_aux(false);
             }
 
             if (settings_requested) {
@@ -667,6 +653,7 @@ void ui_task(void *)
                         }
                         g_settings_requested = false;
                         g_settings_focus_secondary = false;
+                        g_settings_page_toggle_mode = false;
                         g_settings_page_order_mode = false;
                         g_factory_reset_confirm_pending = false;
                         g_offline_disable_confirm_pending = false;
@@ -684,21 +671,8 @@ void ui_task(void *)
             }
 
             if (settings_page_visible) {
-                show_active_work_page();
                 settings_page_visible = false;
-                visible_work_page = g_active_work_page;
-                history_page_shown_since = g_active_work_page == kWorkPageHistory ? tick_now : 0;
-                setup_panel_visible = false;
-                low_mode_visible = g_low_battery_mode;
-                apply_clock_mode_visibility(false);
-                status_due = true;
-                battery_due = true;
-                battery_blink_due = true;
-                g_last_ui_second = -1;
-                g_last_ui_minute = -1;
-                g_last_ui_date_key = -1;
-                g_last_ui_date_page = -1;
-                refresh_now = true;
+                restore_active_work_page_after_aux(false);
             }
 
             if (g_low_battery_mode || g_setup_portal_active) {
@@ -711,6 +685,7 @@ void ui_task(void *)
             if (visible_work_page != g_active_work_page) {
                 show_active_work_page();
                 visible_work_page = g_active_work_page;
+                xiaozhi_ai_set_page_active(visible_work_page == kWorkPageXiaozhiAI);
                 history_page_shown_since = g_active_work_page == kWorkPageHistory ? tick_now : 0;
                 status_due = true;
                 battery_due = true;
@@ -752,6 +727,7 @@ void ui_task(void *)
             bool calendar_page_active = normal_work_page_active(kWorkPageCalendar);
             bool weather_board_page_active = normal_work_page_active(kWorkPageWeatherBoard);
             bool flip_clock_page_active = normal_work_page_active(kWorkPageFlipClock);
+            bool xiaozhi_page_active = normal_work_page_active(kWorkPageXiaozhiAI);
             bool clock_page_active = g_active_work_page == kWorkPageWeatherClock;
             bool weather_data_page_active = clock_page_active || weather_board_page_active;
             if (!weather_data_page_active) {
@@ -828,6 +804,9 @@ void ui_task(void *)
                 if (flip_clock_page_active && update_flip_clock_page(local)) {
                     refresh_now = true;
                 }
+                if (xiaozhi_page_active && update_xiaozhi_page(local)) {
+                    refresh_now = true;
+                }
                 if (clock_page_active) {
                     WeatherAlertData alert = {};
                     get_weather_snapshot(nullptr, &alert);
@@ -853,7 +832,8 @@ void ui_task(void *)
                                                                           gallery_page_active,
                                                                           calendar_page_active,
                                                                           weather_board_page_active,
-                                                                          flip_clock_page_active);
+                                                                          flip_clock_page_active,
+                                                                          xiaozhi_page_active);
                 g_last_ui_date_key = -1;
                 g_last_ui_date_page = -1;
                 update_alert_pill(false);
@@ -958,6 +938,7 @@ void ui_task(void *)
                                                               calendar_page_active,
                                                               weather_board_page_active,
                                                               flip_clock_page_active,
+                                                              xiaozhi_page_active,
                                                               battery_blink_visible,
                                                               battery_blink_on);
                 }
@@ -995,6 +976,18 @@ void ui_task(void *)
             TickType_t flip_poll_ticks = pdMS_TO_TICKS(kUiFlipClockPollMs);
             if (flip_poll_ticks < delay_ticks) {
                 delay_ticks = flip_poll_ticks;
+            }
+        }
+        if (normal_work_page_active(kWorkPageXiaozhiAI)) {
+            uint32_t subtitle_delay_ms = xiaozhi_subtitle_animation_delay_ms();
+            if (subtitle_delay_ms > 0) {
+                TickType_t subtitle_delay_ticks = pdMS_TO_TICKS(subtitle_delay_ms);
+                if (subtitle_delay_ticks == 0) {
+                    subtitle_delay_ticks = 1;
+                }
+                if (subtitle_delay_ticks < delay_ticks) {
+                    delay_ticks = subtitle_delay_ticks;
+                }
             }
         }
         if (battery_blink_visible) {

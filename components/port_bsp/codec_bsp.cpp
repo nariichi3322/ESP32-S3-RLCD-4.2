@@ -19,11 +19,15 @@ static constexpr int kCodecEchoChannelCount = 2;
 static constexpr int kCodecEchoBitsPerSample = 16;
 static constexpr int kCodecTdmChannelCount = 4;
 static constexpr uint32_t kCodecTdmChannelMask = 0x0F;
-static constexpr int kCodecTdmMclkMultiple = 384;
+static constexpr uint32_t kCodecXiaozhiInputMask = 0x03;
+static constexpr int kCodecTdmMclkMultiple = 256;
 static constexpr size_t kCodecPcmPlaybackSlotBufferSize = 4096;
 static constexpr int kCodecPcmPlaybackSampleRateHz = 24000;
 static constexpr int kCodecPcmPlaybackChannelCount = kCodecTdmChannelCount;
 static constexpr int kCodecPcmPlaybackBitsPerSample = 16;
+static constexpr int kCodecXiaozhiSampleRateHz = 16000;
+static constexpr int kCodecXiaozhiInputSlotCount = 4;
+static constexpr int kCodecXiaozhiSpeakerVolume = 80;
 static constexpr const char *kCodecMusicTaskName = "CodecPort_MusicTask";
 static constexpr const char *kCodecEchoTaskName = "CodecPort_EchoTask";
 static constexpr uint32_t kCodecTaskStackWords = 4 * 1024;
@@ -37,11 +41,15 @@ static_assert(kCodecEchoChannelCount > 0, "Echo channel count must be positive")
 static_assert(kCodecEchoBitsPerSample > 0, "Echo bits per sample must be positive");
 static_assert(kCodecTdmChannelCount > 0, "Codec TDM channel count must be positive");
 static_assert(kCodecTdmChannelMask != 0, "Codec TDM channel mask must not be empty");
+static_assert(kCodecXiaozhiInputMask != 0, "Xiaozhi input mask must not be empty");
 static_assert(kCodecTdmMclkMultiple > 0, "Codec TDM MCLK multiple must be positive");
 static_assert(kCodecPcmPlaybackSlotBufferSize > 0, "Codec PCM playback buffer size must be positive");
 static_assert(kCodecPcmPlaybackSampleRateHz > 0, "Codec PCM playback sample rate must be positive");
 static_assert(kCodecPcmPlaybackChannelCount > 0, "Codec PCM playback channel count must be positive");
 static_assert(kCodecPcmPlaybackBitsPerSample > 0, "Codec PCM playback bits per sample must be positive");
+static_assert(kCodecXiaozhiSampleRateHz > 0, "Xiaozhi sample rate must be positive");
+static_assert(kCodecXiaozhiSpeakerVolume >= 0 && kCodecXiaozhiSpeakerVolume <= 100,
+              "Xiaozhi speaker volume must be in range");
 static_assert(kCodecMusicTaskName[0] != '\0', "Music task name must not be empty");
 static_assert(kCodecEchoTaskName[0] != '\0', "Echo task name must not be empty");
 static_assert(kCodecTaskStackWords > 0, "Codec task stack size must be positive");
@@ -103,9 +111,11 @@ i2cbus_(i2cbus)
 {
     set_codec_board_type(strName);
     codec_init_cfg_t codec_cfg = {};
-    codec_cfg.in_mode          = CODEC_I2S_MODE_NONE;
-    codec_cfg.out_mode         = CODEC_I2S_MODE_TDM;
-    codec_cfg.in_use_tdm       = false;
+    // 与官方同板卡 BoxAudioCodec 保持一致：ES8311 走标准 TX，ES7210
+    // 走四时隙 TDM RX，从 slot0/1 取得麦克风与播放参考用于设备端 AEC。
+    codec_cfg.in_mode          = CODEC_I2S_MODE_TDM;
+    codec_cfg.out_mode         = CODEC_I2S_MODE_STD;
+    codec_cfg.in_use_tdm       = true;
     codec_cfg.reuse_dev        = false;
     esp_err_t err = init_codec(&codec_cfg);
     if (err != ESP_OK) {
@@ -210,6 +220,45 @@ int CodecPort::CodecPort_EchoRead(void *ptr,int ptr_len) {
 	return esp_codec_dev_read(record, ptr, ptr_len);
 }
 
+bool CodecPort::CodecPort_OpenXiaozhiMic(void) {
+    if (mic_open) {
+        return true;
+    }
+    esp_codec_dev_sample_info_t fs = {};
+    fs.sample_rate = kCodecXiaozhiSampleRateHz;
+    fs.channel = kCodecXiaozhiInputSlotCount;
+    fs.channel_mask = kCodecXiaozhiInputMask;
+    fs.bits_per_sample = kCodecPcmPlaybackBitsPerSample;
+    fs.mclk_multiple = kCodecTdmMclkMultiple;
+    int ret = esp_codec_dev_open(record, &fs);
+    mic_open = ret == ESP_CODEC_DEV_OK;
+    if (!mic_open) {
+        ESP_LOGW(TAG, "Xiaozhi duplex microphone open failed: %d", ret);
+    }
+    return mic_open;
+}
+
+bool CodecPort::CodecPort_OpenXiaozhiSpeaker(int sample_rate) {
+    if (sample_rate <= 0) {
+        return false;
+    }
+    if (speaker_open) {
+        return true;
+    }
+    bool opened = CodecPort_SetInfo(kCodecNameEs8311,
+                                    1,
+                                    sample_rate,
+                                    1,
+                                    kCodecPcmPlaybackBitsPerSample);
+    if (opened) {
+        CodecPort_SetSpeakerVol(kCodecXiaozhiSpeakerVolume);
+        ESP_LOGI(TAG, "Xiaozhi speaker opened: %d Hz volume=%d%%",
+                 sample_rate,
+                 kCodecXiaozhiSpeakerVolume);
+    }
+    return opened;
+}
+
 bool CodecPort::CodecPort_SetInfo(const char *strName,int open_en,int sample_rate,int channel,int bits_per_sample) {
     esp_codec_dev_sample_info_t fs = {};
     	fs.sample_rate = sample_rate;
@@ -250,25 +299,25 @@ bool CodecPort::CodecPort_IsReady(void) const {
 
 static bool play_pcm_to_slot0(CodecPort *codec, const uint8_t *pcm_start, const uint8_t *pcm_end, int source_slot, int volume)
 {
-    static uint8_t slot_buffer[kCodecPcmPlaybackSlotBufferSize];
+    static int16_t mono_buffer[kCodecPcmPlaybackSlotBufferSize / sizeof(int16_t)];
     constexpr int kSampleRate = kCodecPcmPlaybackSampleRateHz;
-    constexpr int kChannels = kCodecPcmPlaybackChannelCount;
+    constexpr int kSourceChannels = kCodecPcmPlaybackChannelCount;
     constexpr int kBytesPerSample = sizeof(int16_t);
-    constexpr int kFrameBytes = kChannels * kBytesPerSample;
+    constexpr int kSourceFrameBytes = kSourceChannels * kBytesPerSample;
     constexpr int kWarmupMs = 90;
     constexpr int kFadeInMs = 80;
     constexpr int kFadeOutMs = 36;
     constexpr int kTailSilenceMs = 40;
-    const size_t warmup_bytes = (kSampleRate * kWarmupMs / 1000) * kFrameBytes;
+    const size_t warmup_frames = kSampleRate * kWarmupMs / 1000;
     const size_t fade_frames = kSampleRate * kFadeInMs / 1000;
     const size_t fade_out_frames = kSampleRate * kFadeOutMs / 1000;
-    const size_t tail_bytes = (kSampleRate * kTailSilenceMs / 1000) * kFrameBytes;
+    const size_t tail_frames = kSampleRate * kTailSilenceMs / 1000;
 
     if (!codec || !codec->CodecPort_IsReady()) {
         ESP_LOGW(TAG, "codec is not ready");
         return false;
     }
-    if (source_slot < 0 || source_slot >= kChannels) {
+    if (source_slot < 0 || source_slot >= kSourceChannels) {
         ESP_LOGW(TAG, "invalid pcm source slot: %d", source_slot);
         return false;
     }
@@ -276,23 +325,23 @@ static bool play_pcm_to_slot0(CodecPort *codec, const uint8_t *pcm_start, const 
         ESP_LOGW(TAG, "invalid pcm range");
         return false;
     }
-    if (!codec->CodecPort_SetInfo(kCodecNameEs8311, 1, kCodecPcmPlaybackSampleRateHz, kCodecPcmPlaybackChannelCount, kCodecPcmPlaybackBitsPerSample)) {
+    if (!codec->CodecPort_SetInfo(kCodecNameEs8311, 1, kCodecPcmPlaybackSampleRateHz, 1, kCodecPcmPlaybackBitsPerSample)) {
         return false;
     }
     codec->CodecPort_SetSpeakerVol(0);
-    memset(slot_buffer, 0, sizeof(slot_buffer));
+    memset(mono_buffer, 0, sizeof(mono_buffer));
     size_t warmup_written = 0;
-    while (warmup_written < warmup_bytes) {
-        size_t chunk = warmup_bytes - warmup_written;
-        if (chunk > sizeof(slot_buffer)) {
-            chunk = sizeof(slot_buffer);
+    while (warmup_written < warmup_frames) {
+        size_t frames = warmup_frames - warmup_written;
+        if (frames > sizeof(mono_buffer) / sizeof(mono_buffer[0])) {
+            frames = sizeof(mono_buffer) / sizeof(mono_buffer[0]);
         }
-        if (codec->CodecPort_PlayWrite((void *)slot_buffer, (int)chunk) != ESP_CODEC_DEV_OK) {
+        if (codec->CodecPort_PlayWrite(mono_buffer, (int)(frames * sizeof(int16_t))) != ESP_CODEC_DEV_OK) {
             ESP_LOGW(TAG, "audio warmup write failed");
             codec->CodecPort_CloseSpeaker();
             return false;
         }
-        warmup_written += chunk;
+        warmup_written += frames;
     }
     if (volume < 0) {
         volume = 0;
@@ -301,20 +350,17 @@ static bool play_pcm_to_slot0(CodecPort *codec, const uint8_t *pcm_start, const 
     }
     codec->CodecPort_SetSpeakerVol(volume);
     const size_t bytes_size = pcm_end - pcm_start;
-    const size_t total_frames = bytes_size / kFrameBytes;
-    const uint8_t *data_ptr = pcm_start;
-    size_t bytes_written = 0;
-    while (bytes_written < bytes_size) {
-        size_t chunk = bytes_size - bytes_written;
-        if (chunk > sizeof(slot_buffer)) {
-            chunk = sizeof(slot_buffer);
+    const size_t total_frames = bytes_size / kSourceFrameBytes;
+    const int16_t *source = reinterpret_cast<const int16_t *>(pcm_start);
+    size_t frames_written = 0;
+    while (frames_written < total_frames) {
+        size_t frames = total_frames - frames_written;
+        if (frames > sizeof(mono_buffer) / sizeof(mono_buffer[0])) {
+            frames = sizeof(mono_buffer) / sizeof(mono_buffer[0]);
         }
-        memcpy(slot_buffer, data_ptr, chunk);
-        int16_t *samples = reinterpret_cast<int16_t *>(slot_buffer);
-        size_t frames = chunk / kFrameBytes;
         for (size_t frame = 0; frame < frames; ++frame) {
-            size_t global_frame = (bytes_written / kFrameBytes) + frame;
-            int16_t selected_sample = samples[frame * kChannels + source_slot];
+            size_t global_frame = frames_written + frame;
+            int16_t selected_sample = source[global_frame * kSourceChannels + source_slot];
             if (global_frame < fade_frames) {
                 selected_sample = (int16_t)(((int32_t)selected_sample * (int32_t)global_frame) / (int32_t)fade_frames);
             }
@@ -324,31 +370,28 @@ static bool play_pcm_to_slot0(CodecPort *codec, const uint8_t *pcm_start, const 
                     selected_sample = (int16_t)(((int32_t)selected_sample * (int32_t)frames_left) / (int32_t)fade_out_frames);
                 }
             }
-            for (int slot = 0; slot < kChannels; ++slot) {
-                samples[frame * kChannels + slot] = slot == 0 ? selected_sample : 0;
-            }
+            mono_buffer[frame] = selected_sample;
         }
-        if (codec->CodecPort_PlayWrite((void *)slot_buffer, (int)chunk) != ESP_CODEC_DEV_OK) {
+        if (codec->CodecPort_PlayWrite(mono_buffer, (int)(frames * sizeof(int16_t))) != ESP_CODEC_DEV_OK) {
             ESP_LOGW(TAG, "pcm write failed");
             codec->CodecPort_CloseSpeaker();
             return false;
         }
-        data_ptr += chunk;
-        bytes_written += chunk;
+        frames_written += frames;
     }
     size_t tail_written = 0;
-    memset(slot_buffer, 0, sizeof(slot_buffer));
-    while (tail_written < tail_bytes) {
-        size_t chunk = tail_bytes - tail_written;
-        if (chunk > sizeof(slot_buffer)) {
-            chunk = sizeof(slot_buffer);
+    memset(mono_buffer, 0, sizeof(mono_buffer));
+    while (tail_written < tail_frames) {
+        size_t frames = tail_frames - tail_written;
+        if (frames > sizeof(mono_buffer) / sizeof(mono_buffer[0])) {
+            frames = sizeof(mono_buffer) / sizeof(mono_buffer[0]);
         }
-        if (codec->CodecPort_PlayWrite((void *)slot_buffer, (int)chunk) != ESP_CODEC_DEV_OK) {
+        if (codec->CodecPort_PlayWrite(mono_buffer, (int)(frames * sizeof(int16_t))) != ESP_CODEC_DEV_OK) {
             ESP_LOGW(TAG, "audio tail silence write failed");
             codec->CodecPort_CloseSpeaker();
             return false;
         }
-        tail_written += chunk;
+        tail_written += frames;
     }
     codec->CodecPort_CloseSpeaker();
     return true;

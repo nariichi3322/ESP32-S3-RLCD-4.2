@@ -50,6 +50,11 @@ constexpr size_t array_count(const T (&)[N])
     return N;
 }
 
+static bool calendar_output_buffer_available(char *out, size_t out_len)
+{
+    return out && out_len > 0;
+}
+
 static_assert(array_count(kCalendarWeekdays) == kCalendarWeekdayCount,
               "calendar weekday label table must match weekday count");
 static_assert(kCalendarCanvasW > 0 && kCalendarCanvasH > 0,
@@ -135,7 +140,7 @@ static void draw_calendar_text(lv_obj_t *canvas,
 
 static void format_calendar_day_text(char *out, size_t out_len, int day)
 {
-    if (!out || out_len == 0) {
+    if (!calendar_output_buffer_available(out, out_len)) {
         return;
     }
     if (day < 10 && out_len >= 2) {

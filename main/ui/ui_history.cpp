@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "sensor_services.h"
+#include "ui_text_format.h"
 
 #include <string.h>
 
@@ -113,6 +114,11 @@ static_assert(array_count(kHistoryAxisTickHours) == kHistoryAxisTickCount,
 #define HISTORY_TIME_LABEL_CREATE_FAILED_FORMAT "history time label create failed index=%d"
 #define HISTORY_TEMP_AXIS_LABEL_CREATE_FAILED_FORMAT "history temp axis label create failed index=%d"
 #define HISTORY_HUMI_AXIS_LABEL_CREATE_FAILED_FORMAT "history humi axis label create failed index=%d"
+
+bool history_window_args_valid(const HourlySensorSample *out, const int *out_count)
+{
+    return out && out_count;
+}
 } // namespace
 
 enum class HistoryLabelLogKind {
@@ -139,34 +145,14 @@ void style_history_value_badge(lv_obj_t *label)
     lv_obj_set_style_pad_bottom(label, 0, LV_PART_MAIN);
 }
 
-void copy_history_placeholder_on_format_error(int written, char *out, size_t out_len, const char *placeholder)
-{
-    if (!out || out_len == 0) {
-        return;
-    }
-    if (written < 0 || (size_t)written >= out_len) {
-        strlcpy(out, placeholder ? placeholder : "", out_len);
-    }
-}
-
-template <typename... Args>
-void format_history_text_or_placeholder(char *out, size_t out_len, const char *placeholder, const char *format, Args... args)
-{
-    if (!out || out_len == 0) {
-        return;
-    }
-    int written = snprintf(out, out_len, format, args...);
-    copy_history_placeholder_on_format_error(written, out, out_len, placeholder);
-}
-
 void format_axis_hour(time_t value, char *out, size_t out_len)
 {
-    if (!out || out_len == 0) {
+    if (!ui_text::output_buffer_available(out, out_len)) {
         return;
     }
     struct tm local = {};
     localtime_r(&value, &local);
-    format_history_text_or_placeholder(out, out_len, kHistoryTimePlaceholder, kHistoryAxisHourFormat, local.tm_hour);
+    ui_text::format_or_fallback(out, out_len, kHistoryTimePlaceholder, kHistoryAxisHourFormat, local.tm_hour);
 }
 
 int value_to_plot_y(float value, float min_value, float max_value, int y, int h)
@@ -185,7 +171,7 @@ int value_to_plot_y(float value, float min_value, float max_value, int y, int h)
 
 void format_history_axis_value(bool temperature, float value, char *out, size_t out_len)
 {
-    format_history_text_or_placeholder(out,
+    ui_text::format_or_fallback(out,
                                        out_len,
                                        kHistoryAxisPlaceholder,
                                        temperature ? kHistoryTempAxisFormat : kHistoryHumiAxisFormat,
@@ -194,7 +180,7 @@ void format_history_axis_value(bool temperature, float value, char *out, size_t 
 
 void format_history_badge_value(bool temperature, float value, char *out, size_t out_len)
 {
-    format_history_text_or_placeholder(out,
+    ui_text::format_or_fallback(out,
                                        out_len,
                                        kHistoryAxisPlaceholder,
                                        temperature ? kHistoryTempBadgeFormat : kHistoryHumiBadgeFormat,
@@ -248,7 +234,7 @@ bool collect_history_window(time_t end_hour,
     if (out_count) {
         *out_count = 0;
     }
-    if (!out || !out_count) {
+    if (!history_window_args_valid(out, out_count)) {
         ESP_LOGW(TAG, "%s", HISTORY_WINDOW_INVALID_ARG_LOG);
         return false;
     }
@@ -307,7 +293,7 @@ bool update_work_page_sensor_summary(lv_obj_t *label)
     }
     char text[kHistorySensorSummaryTextSize] = {};
     if (g_sensor_ok) {
-        format_history_text_or_placeholder(text,
+        ui_text::format_or_fallback(text,
                                            sizeof(text),
                                            kHistorySensorSummaryPlaceholder,
                                            kHistorySensorSummaryFormat,

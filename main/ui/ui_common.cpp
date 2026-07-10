@@ -138,6 +138,11 @@ bool packed_1bit_bit_is_set(const uint8_t *bits, uint32_t bit_index)
     return bits[bit_index / kBitsPerByte] & (kPacked1BitMsbMask >> (bit_index & (kBitsPerByte - 1)));
 }
 
+static bool icon_draw_args_valid(lv_obj_t *canvas, const uint8_t *bits)
+{
+    return canvas && bits;
+}
+
 bool is_progress_segment_index(int index)
 {
     return index >= 0 && index < kProgressSegmentCount;
@@ -241,6 +246,11 @@ void invalidate_progress_segment(lv_obj_t *canvas, int index)
     invalidate_canvas_rect(canvas, x0, 0, x0 + kProgressSegmentW - 1, kProgressSegmentH - 1);
 }
 
+bool progress_update_args_valid(lv_obj_t *canvas, const int *last_filled)
+{
+    return canvas && last_filled;
+}
+
 void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf, int y)
 {
     if (!parent || !canvas || !buf) {
@@ -271,7 +281,7 @@ void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf
 
 void update_progress_canvas(lv_obj_t *canvas, int filled, int *last_filled)
 {
-    if (!canvas || !last_filled) {
+    if (!progress_update_args_valid(canvas, last_filled)) {
         return;
     }
     filled = clamp_progress_filled_count(filled);
@@ -301,7 +311,7 @@ void draw_1bit_icon(lv_obj_t *canvas,
                     lv_color_t fg,
                     lv_color_t bg)
 {
-    if (!canvas || !bits) {
+    if (!icon_draw_args_valid(canvas, bits)) {
         return;
     }
     if (width <= 0 || height <= 0 || bytes_per_row <= 0) {
@@ -404,13 +414,18 @@ static void format_two_digit_second_text(char out[kSecondTextSize], int second)
     out[2] = '\0';
 }
 
+static bool ui_common_format_failed(int written, size_t out_len)
+{
+    return written < 0 || static_cast<size_t>(written) >= out_len;
+}
+
 static void format_hour_minute_text(char out[kHourMinuteTextSize], const struct tm &local)
 {
     if (!out) {
         return;
     }
     int written = snprintf(out, kHourMinuteTextSize, kHourMinuteFormat, local.tm_hour, local.tm_min);
-    if (written < 0 || written >= static_cast<int>(kHourMinuteTextSize)) {
+    if (ui_common_format_failed(written, kHourMinuteTextSize)) {
         out[0] = '\0';
     }
 }
@@ -526,7 +541,7 @@ static void format_full_datetime_text(char *out, size_t out_len, const struct tm
                            local.tm_hour,
                            local.tm_min,
                            local.tm_sec);
-    if (written < 0 || written >= static_cast<int>(sizeof(formatted))) {
+    if (ui_common_format_failed(written, sizeof(formatted))) {
         copy_invalid_time_text(out, out_len);
         return;
     }

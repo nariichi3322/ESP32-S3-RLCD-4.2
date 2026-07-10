@@ -3,6 +3,7 @@
 
 #include "calendar_lunar.h"
 #include "flip_sensor_icons.h"
+#include "ui_text_format.h"
 
 #include <algorithm>
 
@@ -218,12 +219,11 @@ void draw_card_digits(lv_obj_t *canvas, int value, int clip_y0 = 0, int clip_y1 
                            clip_y1);
 }
 
-void draw_flip_card(int card_index, int value)
+void draw_flip_card(lv_obj_t *canvas, int value)
 {
-    if (card_index < 0 || card_index >= kCardCount || !g_flip_clock_card_canvas[card_index]) {
+    if (!canvas) {
         return;
     }
-    lv_obj_t *canvas = g_flip_clock_card_canvas[card_index];
     draw_card_shell(canvas);
     draw_card_digits(canvas, value);
     apply_card_rounding(canvas);
@@ -357,18 +357,6 @@ bool set_flip_text_on_labels(const char *text, Labels... labels)
     return changed;
 }
 
-template <typename... Args>
-void format_flip_text_or_fallback(char *out, size_t out_len, const char *fallback, const char *format, Args... args)
-{
-    if (!out || out_len == 0) {
-        return;
-    }
-    int written = snprintf(out, out_len, format, args...);
-    if (written < 0 || static_cast<size_t>(written) >= out_len) {
-        strlcpy(out, fallback, out_len);
-    }
-}
-
 bool update_flip_sensor_text()
 {
     if (!g_flip_clock_sensor_label &&
@@ -380,8 +368,8 @@ bool update_flip_sensor_text()
     char temp_text[kFlipSensorTextSize] = {};
     char humi_text[kFlipSensorTextSize] = {};
     if (g_sensor_ok) {
-        format_flip_text_or_fallback(temp_text, sizeof(temp_text), kFlipTempPlaceholder, kFlipTempFormat, g_temperature);
-        format_flip_text_or_fallback(humi_text, sizeof(humi_text), kFlipHumiPlaceholder, kFlipHumiFormat, g_humidity);
+        ui_text::format_or_fallback(temp_text, sizeof(temp_text), kFlipTempPlaceholder, kFlipTempFormat, g_temperature);
+        ui_text::format_or_fallback(humi_text, sizeof(humi_text), kFlipHumiPlaceholder, kFlipHumiFormat, g_humidity);
     } else {
         strlcpy(temp_text, kFlipTempPlaceholder, sizeof(temp_text));
         strlcpy(humi_text, kFlipHumiPlaceholder, sizeof(humi_text));
@@ -428,7 +416,7 @@ bool update_flip_date_text(const struct tm &local)
     CalendarDayInfo info = {};
     bool lunar_ok = calendar_day_info(local, &info);
     char day_text[kFlipDayTextSize] = {};
-    format_flip_text_or_fallback(day_text, sizeof(day_text), kFlipDayPlaceholder, kFlipDayFormat, local.tm_mday);
+    ui_text::format_or_fallback(day_text, sizeof(day_text), kFlipDayPlaceholder, kFlipDayFormat, local.tm_mday);
     const char *lunar_text = lunar_ok && info.subtext[0] ? info.subtext : kFlipDayPlaceholder;
     bool changed = false;
     changed |= set_flip_text_on_labels(day_text,
@@ -558,6 +546,57 @@ void build_flip_trend_canvas(lv_obj_t *screen,
 
 } // namespace
 
+void build_inverted_clock_cards(lv_obj_t *parent,
+                                lv_obj_t *card_canvas[3],
+                                lv_color_t *card_canvas_buf[3])
+{
+    if (!parent || !card_canvas || !card_canvas_buf) {
+        return;
+    }
+    for (int i = 0; i < kCardCount; ++i) {
+        if (!card_canvas_buf[i]) {
+            card_canvas_buf[i] = alloc_canvas_buffer(kCardW, kCardH);
+        }
+        card_canvas[i] = lv_canvas_create(parent);
+        if (!card_canvas[i]) {
+            ESP_LOGW(TAG, FLIP_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT, i);
+            continue;
+        }
+        lv_obj_clear_flag(card_canvas[i], LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_pos(card_canvas[i], kCardX[i], kCardY);
+        lv_obj_set_size(card_canvas[i], kCardW, kCardH);
+        lv_obj_set_style_border_width(card_canvas[i], 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(card_canvas[i], 0, LV_PART_MAIN);
+        if (card_canvas_buf[i]) {
+            lv_canvas_set_buffer(card_canvas[i],
+                                 card_canvas_buf[i],
+                                 kCardW,
+                                 kCardH,
+                                 LV_IMG_CF_TRUE_COLOR);
+            lv_canvas_fill_bg(card_canvas[i], lv_color_black(), LV_OPA_COVER);
+        }
+    }
+}
+
+bool update_inverted_clock_cards(const struct tm &local,
+                                 lv_obj_t *card_canvas[3],
+                                 int last_values[3])
+{
+    if (!card_canvas || !last_values) {
+        return false;
+    }
+    const int values[kCardCount] = {local.tm_hour, local.tm_min, local.tm_sec};
+    bool changed = false;
+    for (int i = 0; i < kCardCount; ++i) {
+        if (values[i] != last_values[i]) {
+            last_values[i] = values[i];
+            draw_flip_card(card_canvas[i], values[i]);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 void build_flip_clock_page()
 {
     if (g_flip_clock_root) {
@@ -586,29 +625,9 @@ void build_flip_clock_page()
     set_obj_black(top_line, true);
     build_progress_canvas(screen, &g_flip_clock_day_progress_canvas, &g_flip_clock_day_progress_canvas_buf, 59);
 
-    for (int i = 0; i < kCardCount; ++i) {
-        if (!g_flip_clock_card_canvas_buf[i]) {
-            g_flip_clock_card_canvas_buf[i] = alloc_canvas_buffer(kCardW, kCardH);
-        }
-        g_flip_clock_card_canvas[i] = lv_canvas_create(screen);
-        if (!g_flip_clock_card_canvas[i]) {
-            ESP_LOGW(TAG, FLIP_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT, i);
-            continue;
-        }
-        lv_obj_clear_flag(g_flip_clock_card_canvas[i], LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_flip_clock_card_canvas[i], kCardX[i], kCardY);
-        lv_obj_set_size(g_flip_clock_card_canvas[i], kCardW, kCardH);
-        lv_obj_set_style_border_width(g_flip_clock_card_canvas[i], 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(g_flip_clock_card_canvas[i], 0, LV_PART_MAIN);
-        if (g_flip_clock_card_canvas_buf[i]) {
-            lv_canvas_set_buffer(g_flip_clock_card_canvas[i],
-                                 g_flip_clock_card_canvas_buf[i],
-                                 kCardW,
-                                 kCardH,
-                                 LV_IMG_CF_TRUE_COLOR);
-            lv_canvas_fill_bg(g_flip_clock_card_canvas[i], lv_color_black(), LV_OPA_COVER);
-        }
-    }
+    build_inverted_clock_cards(screen,
+                               g_flip_clock_card_canvas,
+                               g_flip_clock_card_canvas_buf);
 
     lv_obj_t *sensor_panel = make_bar(screen,
                                       kFlipSensorPanelX,
@@ -762,25 +781,18 @@ bool update_flip_clock_page(const struct tm &local)
     if (!g_flip_clock_root) {
         return false;
     }
-    bool changed = false;
-    int hour = local.tm_hour;
+    int last_values[kCardCount] = {
+        g_last_flip_clock_hour,
+        g_last_flip_clock_minute,
+        g_last_flip_clock_second,
+    };
+    bool changed = update_inverted_clock_cards(local,
+                                                g_flip_clock_card_canvas,
+                                                last_values);
+    g_last_flip_clock_hour = last_values[kHourCardIndex];
+    g_last_flip_clock_minute = last_values[kMinuteCardIndex];
+    g_last_flip_clock_second = last_values[kSecondCardIndex];
     int minute = local.tm_min;
-    int second = local.tm_sec;
-    if (hour != g_last_flip_clock_hour) {
-        g_last_flip_clock_hour = hour;
-        draw_flip_card(kHourCardIndex, hour);
-        changed = true;
-    }
-    if (minute != g_last_flip_clock_minute) {
-        g_last_flip_clock_minute = minute;
-        draw_flip_card(kMinuteCardIndex, minute);
-        changed = true;
-    }
-    if (second != g_last_flip_clock_second) {
-        g_last_flip_clock_second = second;
-        draw_flip_card(kSecondCardIndex, second);
-        changed = true;
-    }
     int date_key = flip_date_key(local);
     if (date_key != g_last_flip_date_key) {
         g_last_flip_date_key = date_key;

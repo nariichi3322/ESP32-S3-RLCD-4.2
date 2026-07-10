@@ -16,6 +16,16 @@ bool canvas_size_valid(int w, int h)
     return w > 0 && h > 0;
 }
 
+bool canvas_point_in_bounds(int x, int y, int w, int h)
+{
+    return canvas_size_valid(w, h) && x >= 0 && y >= 0 && x < w && y < h;
+}
+
+bool canvas_y_in_bounds(int y, int w, int h)
+{
+    return canvas_size_valid(w, h) && y >= 0 && y < h;
+}
+
 void order_int_pair(int *first, int *second)
 {
     if (!first || !second || *first <= *second) {
@@ -56,7 +66,7 @@ int clamp_int(int value, int min_value, int max_value)
 
 void canvas_set_px_safe(lv_obj_t *canvas, int x, int y, int w, int h, lv_color_t color)
 {
-    if (!canvas || !canvas_size_valid(w, h) || x < 0 || y < 0 || x >= w || y >= h) {
+    if (!canvas || !canvas_point_in_bounds(x, y, w, h)) {
         return;
     }
     lv_canvas_set_px_color(canvas, x, y, color);
@@ -91,7 +101,7 @@ void canvas_draw_line(lv_obj_t *canvas, int w, int h, int x0, int y0, int x1, in
 
 void canvas_draw_dashed_hline(lv_obj_t *canvas, int w, int h, int x1, int x2, int y, lv_color_t color)
 {
-    if (!canvas || !canvas_size_valid(w, h) || y < 0 || y >= h) {
+    if (!canvas || !canvas_y_in_bounds(y, w, h)) {
         return;
     }
     order_int_pair(&x1, &x2);

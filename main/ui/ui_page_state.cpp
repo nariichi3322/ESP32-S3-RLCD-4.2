@@ -21,6 +21,7 @@ constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
     kWorkPageFlipClock,
     kWorkPageCalendar,
     kWorkPageHistory,
+    kWorkPageXiaozhiAI,
 };
 constexpr int kDisplaySettingPages[kDisplaySettingsPageItemCount] = {
     kWorkPageWeatherClock,
@@ -29,6 +30,7 @@ constexpr int kDisplaySettingPages[kDisplaySettingsPageItemCount] = {
     kWorkPageFlipClock,
     kWorkPageCalendar,
     kWorkPageHistory,
+    kWorkPageXiaozhiAI,
 };
 constexpr const char *kWorkPageNames[kWorkPageCount] = {
     "天气时钟",
@@ -37,6 +39,7 @@ constexpr const char *kWorkPageNames[kWorkPageCount] = {
     "温湿时钟",
     "日历",
     "温湿历史",
+    "小智AI",
 };
 constexpr const char *kUnknownWorkPageName = "未知页面";
 
@@ -128,6 +131,7 @@ PageRootList current_page_roots()
         g_calendar_root,
         g_weather_board_root,
         g_flip_clock_root,
+        g_xiaozhi_root,
         g_info_root,
         g_network_diag_root,
         g_settings_root,
@@ -155,6 +159,9 @@ lv_obj_t *build_work_page_root(int page)
     case kWorkPageFlipClock:
         build_flip_clock_page();
         return work_page_root_or_fallback(g_flip_clock_root);
+    case kWorkPageXiaozhiAI:
+        build_xiaozhi_page();
+        return work_page_root_or_fallback(g_xiaozhi_root);
     default:
         return g_clock_root;
     }
@@ -285,22 +292,31 @@ void reset_work_page_order()
     memcpy(g_work_page_order, kDefaultWorkPageOrder, sizeof(g_work_page_order));
 }
 
-void normalize_work_page_order()
+static bool work_page_order_valid(const uint8_t *order, size_t order_size)
 {
+    if (!order || order_size != kWorkPageCount) {
+        return false;
+    }
     bool seen[kWorkPageCount] = {};
     for (int i = 0; i < kWorkPageCount; ++i) {
-        uint8_t page = g_work_page_order[i];
+        uint8_t page = order[i];
         if (page >= kWorkPageCount || seen[page]) {
-            reset_work_page_order();
-            return;
+            return false;
         }
         seen[page] = true;
     }
     for (bool present : seen) {
         if (!present) {
-            reset_work_page_order();
-            return;
+            return false;
         }
+    }
+    return true;
+}
+
+void normalize_work_page_order()
+{
+    if (!work_page_order_valid(g_work_page_order, sizeof(g_work_page_order))) {
+        reset_work_page_order();
     }
 }
 
@@ -396,6 +412,7 @@ static void clear_work_page_root_refs()
     g_calendar_root = nullptr;
     g_weather_board_root = nullptr;
     g_flip_clock_root = nullptr;
+    g_xiaozhi_root = nullptr;
 }
 
 static void clear_work_status_refs()
@@ -407,16 +424,19 @@ static void clear_work_status_refs()
     g_calendar_date_label = nullptr;
     g_weather_board_date_label = nullptr;
     g_flip_clock_date_label = nullptr;
+    g_xiaozhi_date_label = nullptr;
     g_history_summary_label = nullptr;
     g_gallery_summary_label = nullptr;
     g_calendar_summary_label = nullptr;
     g_weather_board_summary_label = nullptr;
     g_flip_clock_summary_label = nullptr;
+    g_xiaozhi_summary_label = nullptr;
     g_history_status_time_label = nullptr;
     g_gallery_status_time_label = nullptr;
     g_calendar_status_time_label = nullptr;
     g_weather_board_status_time_label = nullptr;
     g_flip_clock_status_time_label = nullptr;
+    g_xiaozhi_status_time_label = nullptr;
     clear_pointer_array(g_work_status_chime_icon_canvas);
     clear_pointer_array(g_work_status_wifi_icon_canvas);
 }
@@ -485,6 +505,14 @@ static void clear_flip_clock_refs()
     g_flip_clock_second_progress_canvas = nullptr;
 }
 
+static void clear_xiaozhi_refs()
+{
+    g_xiaozhi_title_label = nullptr;
+    g_xiaozhi_state_label = nullptr;
+    g_xiaozhi_detail_label = nullptr;
+    g_xiaozhi_wave_canvas = nullptr;
+}
+
 static void clear_battery_segment_refs()
 {
     clear_pointer_array(g_battery_segments);
@@ -493,6 +521,7 @@ static void clear_battery_segment_refs()
     clear_pointer_array(g_calendar_battery_segments);
     clear_pointer_array(g_weather_board_battery_segments);
     clear_pointer_array(g_flip_clock_battery_segments);
+    clear_pointer_array(g_xiaozhi_battery_segments);
 }
 
 static void clear_history_page_refs()
@@ -542,6 +571,7 @@ void clear_clock_object_refs()
     clear_gallery_calendar_refs();
     clear_weather_clock_refs();
     clear_flip_clock_refs();
+    clear_xiaozhi_refs();
     clear_battery_segment_refs();
     clear_history_page_refs();
     clear_ui_draw_cache_state();

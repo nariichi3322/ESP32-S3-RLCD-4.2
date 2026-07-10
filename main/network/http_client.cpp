@@ -37,6 +37,8 @@ constexpr const char *kHttpDecodeInvalidArgLog = "decode http body invalid arg";
 constexpr const char *kHttpGetInvalidArgLog = "http get invalid arg";
 constexpr const char *kHttpBootBudgetExhaustedLog = "http get skipped: boot sync time budget exhausted";
 constexpr const char *kHttpClientInitFailedLog = "http client init failed";
+constexpr const char *kHttpTransactionLockTimeoutLog = "http transaction deferred: TLS session is busy";
+SemaphoreHandle_t s_http_transaction_mutex = nullptr;
 constexpr bool gzip_flag_bits_valid()
 {
     constexpr uint8_t flags[] = {
@@ -151,6 +153,28 @@ static_assert(array_count(kHttpLogTexts) > 0,
               "HTTP log format guard must cover HTTP log formats");
 static_assert(cstr_array_nonempty(kHttpLogTexts), "HTTP log format texts must be non-empty");
 
+class HttpTransactionLock {
+public:
+    explicit HttpTransactionLock(TickType_t timeout) : locked_(acquire_network_http_transaction_lock(timeout))
+    {
+    }
+
+    ~HttpTransactionLock()
+    {
+        if (locked_) {
+            release_network_http_transaction_lock();
+        }
+    }
+
+    bool locked() const
+    {
+        return locked_;
+    }
+
+private:
+    bool locked_ = false;
+};
+
 bool is_qweather_url(const char *url)
 {
     return url &&
@@ -222,6 +246,16 @@ bool skip_gzip_zero_terminated_field(const uint8_t *data, size_t len, size_t *po
 bool output_buffer_available(char *out, size_t out_len)
 {
     return out && out_len > 0;
+}
+
+bool decode_http_body_args_valid(char *out, size_t out_len, const size_t *body_len)
+{
+    return output_buffer_available(out, out_len) && body_len;
+}
+
+bool http_get_text_args_valid(const char *url, char *out, size_t out_len)
+{
+    return cstr_nonempty(url) && output_buffer_available(out, out_len);
 }
 
 bool http_buffer_can_accept_data(const HttpBuffer *buffer)
@@ -355,7 +389,7 @@ bool gzip_payload_range(const uint8_t *data, size_t len, size_t *payload_offset,
 
 esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len)
 {
-    if (!output_buffer_available(out, out_len) || !body_len) {
+    if (!decode_http_body_args_valid(out, out_len, body_len)) {
         ESP_LOGW(TAG, "%s", kHttpDecodeInvalidArgLog);
         return ESP_ERR_INVALID_ARG;
     }
@@ -394,9 +428,34 @@ esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len)
     return ESP_OK;
 }
 
+bool init_network_http_transaction_lock()
+{
+    if (s_http_transaction_mutex) {
+        return true;
+    }
+    s_http_transaction_mutex = xSemaphoreCreateMutex();
+    if (!s_http_transaction_mutex) {
+        ESP_LOGE(TAG, "http transaction mutex create failed");
+        return false;
+    }
+    return true;
+}
+
+bool acquire_network_http_transaction_lock(TickType_t timeout)
+{
+    return s_http_transaction_mutex && xSemaphoreTake(s_http_transaction_mutex, timeout) == pdTRUE;
+}
+
+void release_network_http_transaction_lock()
+{
+    if (s_http_transaction_mutex) {
+        xSemaphoreGive(s_http_transaction_mutex);
+    }
+}
+
 esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *api_key)
 {
-    if (!url || url[0] == '\0' || !output_buffer_available(out, out_len)) {
+    if (!http_get_text_args_valid(url, out, out_len)) {
         ESP_LOGW(TAG, "%s", kHttpGetInvalidArgLog);
         return ESP_ERR_INVALID_ARG;
     }
@@ -408,6 +467,11 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
     config.user_data = &buffer;
     int timeout_ms = 0;
     if (!compute_http_timeout_ms(&timeout_ms)) {
+        return ESP_ERR_TIMEOUT;
+    }
+    HttpTransactionLock transaction_lock(pdMS_TO_TICKS(timeout_ms));
+    if (!transaction_lock.locked()) {
+        ESP_LOGW(TAG, "%s", kHttpTransactionLockTimeoutLog);
         return ESP_ERR_TIMEOUT;
     }
     config.timeout_ms = timeout_ms;

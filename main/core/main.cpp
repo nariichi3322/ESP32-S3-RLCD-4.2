@@ -7,6 +7,7 @@
 #include "ota_services.h"
 #include "sensor_services.h"
 #include "ui_views.h"
+#include "xiaozhi_ai.h"
 
 #include <new>
 
@@ -122,6 +123,34 @@ static void create_app_task(TaskFunction_t task,
     }
 }
 
+struct AppTaskSpec {
+    TaskFunction_t task;
+    const char *name;
+    uint32_t stack_depth;
+    UBaseType_t priority;
+    TaskHandle_t *handle;
+    BaseType_t core_id;
+};
+
+static void create_regular_app_tasks()
+{
+    const AppTaskSpec tasks[] = {
+        {network_sync_task, kNetworkSyncTaskName, kNetworkSyncTaskStack, kHighServiceTaskPriority, nullptr, kNetworkTaskCore},
+        {ota_task, kOtaTaskName, kOtaTaskStack, kHighServiceTaskPriority, nullptr, kNetworkTaskCore},
+        {housekeeping_task, kHousekeepingTaskName, kHousekeepingTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
+        {ui_task, kUiTaskName, kUiTaskStack, kNormalServiceTaskPriority, &g_ui_task_handle, kUiTaskCore},
+        {button_task, kButtonTaskName, kButtonTaskStack, kInputTaskPriority, nullptr, kUiTaskCore},
+    };
+    for (const AppTaskSpec &task : tasks) {
+        create_app_task(task.task,
+                        task.name,
+                        task.stack_depth,
+                        task.priority,
+                        task.handle,
+                        task.core_id);
+    }
+}
+
 static bool init_nvs_storage()
 {
     esp_err_t ret = nvs_flash_init();
@@ -203,6 +232,9 @@ extern "C" void app_main(void)
     if (!init_system_event_services()) {
         return;
     }
+    if (!init_network_http_transaction_lock()) {
+        return;
+    }
     init_power_management();
     load_hourly_sensor_history();
     load_daily_saying_cache();
@@ -220,6 +252,7 @@ extern "C" void app_main(void)
     sample_battery();
     init_wifi();
     park_unused_audio_peripherals();
+    xiaozhi_ai_init();
 
     g_display.RLCD_Init();
     g_display.RLCD_ColorClear(ColorWhite);
@@ -262,36 +295,7 @@ extern "C" void app_main(void)
     finish_boot_screen();
     g_startup_screen_active = false;
 
-    create_app_task(network_sync_task,
-                    kNetworkSyncTaskName,
-                    kNetworkSyncTaskStack,
-                    kHighServiceTaskPriority,
-                    nullptr,
-                    kNetworkTaskCore);
-    create_app_task(ota_task,
-                    kOtaTaskName,
-                    kOtaTaskStack,
-                    kHighServiceTaskPriority,
-                    nullptr,
-                    kNetworkTaskCore);
-    create_app_task(housekeeping_task,
-                    kHousekeepingTaskName,
-                    kHousekeepingTaskStack,
-                    kNormalServiceTaskPriority,
-                    nullptr,
-                    kUiTaskCore);
-    create_app_task(ui_task,
-                    kUiTaskName,
-                    kUiTaskStack,
-                    kNormalServiceTaskPriority,
-                    &g_ui_task_handle,
-                    kUiTaskCore);
-    create_app_task(button_task,
-                    kButtonTaskName,
-                    kButtonTaskStack,
-                    kInputTaskPriority,
-                    nullptr,
-                    kUiTaskCore);
+    create_regular_app_tasks();
 
     if (g_setup_prompt_pending) {
         vTaskDelay(pdMS_TO_TICKS(kSetupPromptStartDelayMs));

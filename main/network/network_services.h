@@ -8,6 +8,20 @@ struct HttpBuffer {
     size_t cap;
 };
 
+// TLS 握手期间切换到显示 DMA 保守模式，避免网络大块内存分配与 LCD
+// 刷新争用内部 DMA 内存。天气、小智等联网模块复用同一个守卫。
+class NetworkDisplayDmaGuard {
+public:
+    explicit NetworkDisplayDmaGuard(bool active);
+    ~NetworkDisplayDmaGuard();
+
+    NetworkDisplayDmaGuard(const NetworkDisplayDmaGuard &) = delete;
+    NetworkDisplayDmaGuard &operator=(const NetworkDisplayDmaGuard &) = delete;
+
+private:
+    bool active_ = false;
+};
+
 bool load_saved_config();
 bool save_config(const char *ssid, const char *pass, const char *api_key, const char *weather_city = nullptr);
 bool save_manual_weather_city(const char *city);
@@ -45,6 +59,10 @@ void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, v
 void init_wifi();
 bool perform_ntp_sync(int max_retries = 30);
 int boot_sync_remaining_ms();
+// ESP32-S3 的 TLS 硬件密码锁不能被并发握手安全共享；所有 HTTPS/WSS 建连经此锁串行化。
+bool init_network_http_transaction_lock();
+bool acquire_network_http_transaction_lock(TickType_t timeout);
+void release_network_http_transaction_lock();
 esp_err_t http_event_handler(esp_http_client_event_t *evt);
 bool gzip_payload_range(const uint8_t *data, size_t len, size_t *payload_offset, size_t *payload_len);
 esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len);

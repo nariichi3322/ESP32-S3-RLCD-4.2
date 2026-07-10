@@ -23,7 +23,7 @@ LV_FONT_DECLARE(zh_flip_lunar_22);
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.4.59";
+static const char *APP_VERSION = "v1.5.0";
 static const char *const kPreviewWeekDaysFull[] = {
     "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六",
 };
@@ -116,6 +116,7 @@ static std::vector<lv_color_t> g_flip_day_progress_pixels(kProgressCanvasW * kPr
 static std::vector<lv_color_t> g_flip_second_progress_pixels(kProgressCanvasW * kProgressCanvasH);
 static std::vector<lv_color_t> g_flip_temp_mood_pixels(FLIP_SENSOR_ICON_WIDTH * FLIP_SENSOR_ICON_HEIGHT);
 static std::vector<lv_color_t> g_flip_humi_mood_pixels(FLIP_SENSOR_ICON_WIDTH * FLIP_SENSOR_ICON_HEIGHT);
+static std::vector<lv_color_t> g_xiaozhi_face_pixels(76 * 76);
 
 struct PreviewHistorySample {
     float temp;
@@ -1410,6 +1411,112 @@ static void build_flip_clock_preview_ui()
     }
 }
 
+static const char *latest_xiaozhi_preview_subtitle(const char *text)
+{
+    static char visible[192] = {};
+    const char *window_start = text ? text : "";
+    lv_point_t text_size = {};
+    lv_txt_get_size(&text_size,
+                    window_start,
+                    &zh_font_16,
+                    0,
+                    0,
+                    248,
+                    LV_TEXT_FLAG_NONE);
+    while (text_size.y > 58 && window_start[0] != '\0') {
+        uint32_t first_line_bytes = _lv_txt_get_next_line(window_start,
+                                                         &zh_font_16,
+                                                         0,
+                                                         248,
+                                                         nullptr,
+                                                         LV_TEXT_FLAG_NONE);
+        if (first_line_bytes == 0 || window_start[first_line_bytes] == '\0') {
+            break;
+        }
+        window_start += first_line_bytes;
+        lv_txt_get_size(&text_size,
+                        window_start,
+                        &zh_font_16,
+                        0,
+                        0,
+                        248,
+                        LV_TEXT_FLAG_NONE);
+    }
+    strlcpy(visible, window_start, sizeof(visible));
+    return visible;
+}
+
+static void build_xiaozhi_preview_ui()
+{
+    lv_obj_t *screen = lv_scr_act();
+    lv_obj_clean(screen);
+    lv_obj_set_style_bg_color(screen, lv_color_white(), LV_PART_MAIN);
+    lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+
+    time_t now = preview_time();
+    struct tm local = {};
+    localtime_r(&now, &local);
+    build_preview_work_status_bar(screen, local, true, true);
+
+    lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
+    set_obj_black(top_line, true);
+    lv_obj_t *day_progress = nullptr;
+    build_progress_canvas(screen, &day_progress, g_flip_day_progress_pixels, 59);
+    int last_day = -1;
+    int seconds_of_day = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
+    update_progress_canvas(day_progress, (seconds_of_day * 60) / (24 * 3600), &last_day);
+
+    static const int card_x[3] = {18, 144, 270};
+    int values[3] = {local.tm_hour, local.tm_min, local.tm_sec};
+    for (int i = 0; i < 3; ++i) {
+        lv_obj_t *card = lv_canvas_create(screen);
+        lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_pos(card, card_x[i], 66);
+        lv_obj_set_size(card, kFlipCardW, kFlipCardH);
+        lv_obj_set_style_border_width(card, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(card, 0, LV_PART_MAIN);
+        lv_canvas_set_buffer(card, g_flip_card_pixels[i].data(), kFlipCardW, kFlipCardH, LV_IMG_CF_TRUE_COLOR);
+        draw_preview_flip_card(card, values[i]);
+    }
+
+    lv_obj_t *panel = make_bar(screen, 18, 188, 364, 102);
+    set_obj_black(panel, true);
+    lv_obj_set_style_radius(panel, 18, LV_PART_MAIN);
+    lv_obj_set_style_clip_corner(panel, true, LV_PART_MAIN);
+
+    lv_obj_t *face = lv_canvas_create(screen);
+    lv_obj_clear_flag(face, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(face, 30, 201);
+    lv_obj_set_size(face, 76, 76);
+    lv_obj_set_style_border_width(face, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(face, 0, LV_PART_MAIN);
+    lv_canvas_set_buffer(face, g_xiaozhi_face_pixels.data(), 76, 76, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_fill_bg(face, lv_color_black(), LV_OPA_COVER);
+    canvas_draw_filled_circle(face, 76, 76, 38, 38, 32, lv_color_white());
+    canvas_draw_filled_circle(face, 76, 76, 38, 38, 29, lv_color_black());
+    canvas_draw_line(face, 76, 76, 22, 31, 27, 27, lv_color_white());
+    canvas_draw_line(face, 76, 76, 27, 27, 32, 31, lv_color_white());
+    canvas_draw_line(face, 76, 76, 44, 31, 49, 27, lv_color_white());
+    canvas_draw_line(face, 76, 76, 49, 27, 54, 31, lv_color_white());
+    canvas_draw_filled_circle(face, 76, 76, 38, 51, 8, lv_color_white());
+    canvas_draw_filled_circle(face, 76, 76, 38, 51, 5, lv_color_black());
+
+    lv_obj_t *state = make_label_with_font(screen, 118, 196, 248, 28, "小智正在说话", &zh_font_16);
+    lv_obj_t *detail = make_label_with_font(screen,
+                                            118,
+                                            224,
+                                            248,
+                                            58,
+                                            latest_xiaozhi_preview_subtitle(
+                                                "杭州今天白天多云，气温会逐渐升高，午后体感偏热。外出时建议带好饮用水并注意防晒，如果傍晚出门散步，最新预报显示风力会减弱，体感会更舒适。"),
+                                            &zh_font_16);
+    lv_obj_set_style_text_color(state, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_color(detail, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_text_align(state, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
+    lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
+    lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
+}
+
 static void build_info_preview_ui()
 {
     lv_obj_t *screen = lv_scr_act();
@@ -1980,6 +2087,23 @@ static time_t preview_time()
     return time(nullptr);
 }
 
+static void cleanup_sdl_preview()
+{
+    if (g_texture) {
+        SDL_DestroyTexture(g_texture);
+        g_texture = nullptr;
+    }
+    if (g_renderer) {
+        SDL_DestroyRenderer(g_renderer);
+        g_renderer = nullptr;
+    }
+    if (g_window) {
+        SDL_DestroyWindow(g_window);
+        g_window = nullptr;
+    }
+    SDL_Quit();
+}
+
 int main(int, char **)
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
@@ -1991,9 +2115,27 @@ int main(int, char **)
                                 SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                 kDisplayWidth * kWindowScale, kDisplayHeight * kWindowScale,
                                 SDL_WINDOW_SHOWN);
+    if (!g_window) {
+        fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
+        cleanup_sdl_preview();
+        return 1;
+    }
     g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    if (!g_renderer) {
+        g_renderer = SDL_CreateRenderer(g_window, -1, SDL_RENDERER_SOFTWARE);
+    }
+    if (!g_renderer) {
+        fprintf(stderr, "SDL_CreateRenderer failed: %s\n", SDL_GetError());
+        cleanup_sdl_preview();
+        return 1;
+    }
     g_texture = SDL_CreateTexture(g_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STREAMING,
                                   kDisplayWidth, kDisplayHeight);
+    if (!g_texture) {
+        fprintf(stderr, "SDL_CreateTexture failed: %s\n", SDL_GetError());
+        cleanup_sdl_preview();
+        return 1;
+    }
 
     lv_init();
     static lv_color_t draw_buf_1[kDisplayWidth * 40];
@@ -2019,6 +2161,7 @@ int main(int, char **)
             SDL_Delay(16);
         }
         save_screenshot_ppm(screenshot_path);
+        cleanup_sdl_preview();
         return 0;
     }
     uint32_t boot_start = SDL_GetTicks();
@@ -2045,6 +2188,7 @@ int main(int, char **)
     bool history_preview = preview_mode_is(preview_mode, "history");
     bool gallery_preview = preview_mode_is(preview_mode, "gallery");
     bool flip_clock_preview = preview_mode_is(preview_mode, "flip_clock");
+    bool xiaozhi_preview = preview_mode_is(preview_mode, "xiaozhi");
     bool calendar_preview = preview_mode_is(preview_mode, "calendar");
     bool weather_board_preview = preview_mode_is(preview_mode, "weather_board");
     bool info_preview = preview_mode_is(preview_mode, "info");
@@ -2054,6 +2198,8 @@ int main(int, char **)
         build_gallery_preview_ui();
     } else if (flip_clock_preview) {
         build_flip_clock_preview_ui();
+    } else if (xiaozhi_preview) {
+        build_xiaozhi_preview_ui();
     } else if (calendar_preview) {
         build_calendar_preview_ui();
     } else if (weather_board_preview) {
@@ -2073,7 +2219,7 @@ int main(int, char **)
     }
 
     if (screenshot_path && screenshot_path[0]) {
-        if (history_preview || gallery_preview || flip_clock_preview || calendar_preview || weather_board_preview || info_preview) {
+        if (history_preview || gallery_preview || flip_clock_preview || xiaozhi_preview || calendar_preview || weather_board_preview || info_preview) {
             // Alternate work pages are already built above.
         } else if (preview_mode_is(preview_mode, "settings") || preview_mode_has_prefix(preview_mode, "settings_")) {
             build_settings_page();
@@ -2091,7 +2237,7 @@ int main(int, char **)
         time_t now = preview_time();
         struct tm local;
         localtime_r(&now, &local);
-        if (!history_preview && !gallery_preview && !flip_clock_preview && !calendar_preview && !weather_board_preview &&
+        if (!history_preview && !gallery_preview && !flip_clock_preview && !xiaozhi_preview && !calendar_preview && !weather_board_preview &&
             !info_preview &&
             !preview_mode_is(preview_mode, "settings") &&
             !preview_mode_has_prefix(preview_mode, "settings_")) {
@@ -2106,6 +2252,7 @@ int main(int, char **)
             SDL_Delay(16);
         }
         save_screenshot_ppm(screenshot_path);
+        cleanup_sdl_preview();
         return 0;
     }
 
@@ -2135,9 +2282,6 @@ int main(int, char **)
         SDL_Delay(5);
     }
 
-    SDL_DestroyTexture(g_texture);
-    SDL_DestroyRenderer(g_renderer);
-    SDL_DestroyWindow(g_window);
-    SDL_Quit();
+    cleanup_sdl_preview();
     return 0;
 }
