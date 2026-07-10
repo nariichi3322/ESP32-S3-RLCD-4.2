@@ -32,7 +32,7 @@ TickType_t next_housekeeping_wake_tick(bool low_battery, TickType_t next_sensor,
 
 TickType_t next_battery_wake_after_sample(TickType_t sampled_tick)
 {
-    if (g_battery_charging) {
+    if (g_battery_charging && !g_battery_animation_complete) {
         return sampled_tick + kBatteryChargingSampleDelay;
     }
     return next_battery_sample_tick(sampled_tick);

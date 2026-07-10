@@ -23,10 +23,13 @@ constexpr uint32_t kDetectTaskStackBytes = 4096;
 constexpr UBaseType_t kTaskPriority = 5;
 constexpr TickType_t kFetchWaitTicks = pdMS_TO_TICKS(100);
 constexpr int kTaskStopRetries = 100;
+constexpr uint32_t kTaskStopWaitMs = 20;
+constexpr TickType_t kTaskStopWaitTicks = pdMS_TO_TICKS(kTaskStopWaitMs);
 constexpr float kWakeNetThreshold = 0.60f;
 constexpr TickType_t kLevelLogIntervalTicks = pdMS_TO_TICKS(3000);
 constexpr TickType_t kFetchWarningIntervalTicks = pdMS_TO_TICKS(3000);
 constexpr size_t kProcessedStreamBytes = 16 * 1024;
+#define XIAOZHI_VOICE_TASK_STOP_TIMEOUT_FORMAT "MR AEC task stop timeout: feed_pending=%d detect_pending=%d"
 
 std::atomic<bool> s_running{false};
 std::atomic<bool> s_detected{false};
@@ -43,6 +46,10 @@ srmodel_list_t *s_models = nullptr;
 const esp_afe_sr_iface_t *s_afe_iface = nullptr;
 esp_afe_sr_data_t *s_afe_data = nullptr;
 StreamBufferHandle_t s_processed_stream = nullptr;
+
+static_assert(kTaskStopRetries > 0, "voice task stop retries must be positive");
+static_assert(kTaskStopWaitMs > 0, "voice task stop wait must be positive");
+static_assert(kTaskStopWaitTicks > 0, "voice task stop wait tick conversion must be positive");
 
 void release_task_storage()
 {
@@ -249,10 +256,18 @@ void wait_for_tasks_to_stop()
 {
     for (int retry = 0;
          ((!s_feed_exited.load() && s_feed_task) ||
-          (!s_detect_exited.load() && s_detect_task)) &&
+         (!s_detect_exited.load() && s_detect_task)) &&
          retry < kTaskStopRetries;
          ++retry) {
-        vTaskDelay(pdMS_TO_TICKS(20));
+        vTaskDelay(kTaskStopWaitTicks);
+    }
+    bool feed_pending = !s_feed_exited.load() && s_feed_task;
+    bool detect_pending = !s_detect_exited.load() && s_detect_task;
+    if (feed_pending || detect_pending) {
+        ESP_LOGW(kTag,
+                 XIAOZHI_VOICE_TASK_STOP_TIMEOUT_FORMAT,
+                 feed_pending ? 1 : 0,
+                 detect_pending ? 1 : 0);
     }
 }
 

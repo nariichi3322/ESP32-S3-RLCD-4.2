@@ -20,7 +20,7 @@ constexpr size_t array_count(const T (&)[N])
     return N;
 }
 
-static const LunarYearInfo kLunarYears[] = {
+static constexpr LunarYearInfo kLunarYears[] = {
     {2023, 0x0d2b2},
     {2024, 0x0a950},
     {2025, 0x0b557},
@@ -35,6 +35,16 @@ static const LunarYearInfo kLunarYears[] = {
     {2034, 0x05b52},
     {2035, 0x04b60},
 };
+
+constexpr bool lunar_year_table_contiguous()
+{
+    for (size_t i = 1; i < array_count(kLunarYears); ++i) {
+        if (kLunarYears[i].year != kLunarYears[i - 1].year + 1) {
+            return false;
+        }
+    }
+    return true;
+}
 
 static const char *const kLunarDayNames[] = {
     "",
@@ -121,6 +131,15 @@ static const CalendarFestivalRule kLunarFestivals[] = {
     {9, 9, "重阳"},
     {12, 8, "腊八"},
 };
+static_assert(array_count(kLunarYears) > 0, "lunar year table must not be empty");
+static_assert(kLunarYears[0].year <= kMinValidYear &&
+                  kLunarYears[array_count(kLunarYears) - 1].year >= kMaxValidYear,
+              "lunar year table must cover the supported calendar range");
+static_assert(lunar_year_table_contiguous(), "lunar year table must stay contiguous");
+static_assert(array_count(kLunarDayNames) == static_cast<size_t>(kLunarLargeMonthDays + 1),
+              "lunar day names must cover day zero through day thirty");
+static_assert(array_count(kLunarMonthNames) == static_cast<size_t>(kLastLunarMonth + 1),
+              "lunar month names must cover month zero through month twelve");
 static_assert(array_count(kSolarTermNames) == kLastGregorianMonth * kSolarTermsPerMonth,
               "solar term names must cover two terms per month");
 static_assert(array_count(kSolarTermMinutes) == kLastGregorianMonth * kSolarTermsPerMonth,

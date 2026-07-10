@@ -15,6 +15,7 @@
 #define HOURLY_SLOT_INDEX_INVALID_LOG_FORMAT "hourly sensor slot index invalid: %d"
 #define SENSOR_NVS_OPEN_FAILED_LOG_FORMAT "open sensor nvs failed: %s"
 #define HOURLY_SLOT_SAVE_FAILED_LOG_FORMAT "save hourly sensor slot failed: %s"
+#define HOURLY_SNAPSHOT_INVALID_ARG_LOG "hourly sensor snapshot invalid arg"
 
 static constexpr uint16_t kHourlyHistoryMetaVersion = 2;
 static constexpr uint16_t kLegacyHourlyHistoryVersion = 1;
@@ -79,7 +80,10 @@ constexpr const char *kSensorHistoryTexts[] = {
     HOURLY_SLOT_INDEX_INVALID_LOG_FORMAT,
     SENSOR_NVS_OPEN_FAILED_LOG_FORMAT,
     HOURLY_SLOT_SAVE_FAILED_LOG_FORMAT,
+    HOURLY_SNAPSHOT_INVALID_ARG_LOG,
 };
+portMUX_TYPE s_hourly_history_mux = portMUX_INITIALIZER_UNLOCKED;
+portMUX_TYPE s_local_sensor_mux = portMUX_INITIALIZER_UNLOCKED;
 
 constexpr bool cstr_nonempty(const char *text)
 {
@@ -120,8 +124,6 @@ static_assert(kHourlyHistoryCount >= kLegacyHourlyHistoryCount,
               "new hourly history must cover legacy history samples");
 static_assert(kHourlyHistoryMetaVersion > kLegacyHourlyHistoryVersion,
               "hourly sensor history meta version must be newer than legacy blob version");
-static_assert(kHourlyHistoryMetaVersion != kLegacyHourlyHistoryVersion,
-              "new hourly metadata version must differ from legacy blob version");
 static_assert(kHourlySlotKeyBufferSize >= sizeof("h00"), "hourly slot key buffer must fit hNN plus terminator");
 static_assert(array_count(kSensorHistoryTexts) > 0,
               "sensor history text registry must not be empty");
@@ -270,22 +272,24 @@ SensorHistoryAverage calculate_sensor_history_average()
     return average;
 }
 
-void update_sensor_trend_from_average(const SensorHistoryAverage &average)
+void calculate_sensor_trend_from_average(const SensorHistoryAverage &average,
+                                          int *temperature_trend,
+                                          int *humidity_trend)
 {
+    if (!temperature_trend || !humidity_trend) {
+        return;
+    }
+    *temperature_trend = 0;
+    *humidity_trend = 0;
     if (average.count <= 0) {
-        g_temp_trend = 0;
-        g_humi_trend = 0;
         g_sensor_average_valid = false;
         return;
     }
     if (g_sensor_average_valid && average.count >= 2) {
         float temp_delta = average.temperature - g_last_temp_average;
         float humi_delta = average.humidity - g_last_humi_average;
-        g_temp_trend = temp_delta > kTrendEpsilon ? 1 : (temp_delta < -kTrendEpsilon ? -1 : 0);
-        g_humi_trend = humi_delta > kTrendEpsilon ? 1 : (humi_delta < -kTrendEpsilon ? -1 : 0);
-    } else {
-        g_temp_trend = 0;
-        g_humi_trend = 0;
+        *temperature_trend = temp_delta > kTrendEpsilon ? 1 : (temp_delta < -kTrendEpsilon ? -1 : 0);
+        *humidity_trend = humi_delta > kTrendEpsilon ? 1 : (humi_delta < -kTrendEpsilon ? -1 : 0);
     }
     g_last_temp_average = average.temperature;
     g_last_humi_average = average.humidity;
@@ -331,10 +335,13 @@ static bool load_hourly_sensor_slot(nvs_handle_t nvs, int index, int64_t *newest
     return false;
 }
 
-static esp_err_t save_hourly_sensor_meta_and_slot(nvs_handle_t nvs, int index)
+static esp_err_t save_hourly_sensor_meta_and_slot(nvs_handle_t nvs,
+                                                  int index,
+                                                  int64_t last_saved_at,
+                                                  const HourlySensorSample &sample)
 {
     HourlySensorHistoryMeta meta = {};
-    meta.last_saved_at = g_last_hourly_saved_at;
+    meta.last_saved_at = last_saved_at;
     esp_err_t err = nvs_set_blob(nvs, kHourlyHistoryMetaKey, &meta, sizeof(meta));
     if (err != ESP_OK) {
         return err;
@@ -344,7 +351,7 @@ static esp_err_t save_hourly_sensor_meta_and_slot(nvs_handle_t nvs, int index)
     if (!hourly_slot_key(index, key, sizeof(key))) {
         return ESP_ERR_INVALID_ARG;
     }
-    return nvs_set_blob(nvs, key, &g_hourly_history.samples[index], sizeof(g_hourly_history.samples[index]));
+    return nvs_set_blob(nvs, key, &sample, sizeof(sample));
 }
 
 int boot_sync_remaining_ms()
@@ -400,12 +407,14 @@ time_t hour_start_from_time(time_t value)
 
 void reset_hourly_sensor_history()
 {
+    portENTER_CRITICAL(&s_hourly_history_mux);
     memset(&g_hourly_history, 0, sizeof(g_hourly_history));
     g_hourly_history.magic = kHourlyHistoryMagic;
     g_hourly_history.version = kLegacyHourlyHistoryVersion;
     g_hourly_history.count = kHourlyHistoryCount;
     g_last_hourly_saved_at = 0;
     ++g_hourly_history_version;
+    portEXIT_CRITICAL(&s_hourly_history_mux);
 }
 
 void load_hourly_sensor_history()
@@ -457,7 +466,9 @@ void load_hourly_sensor_history()
     ++g_hourly_history_version;
 }
 
-static bool save_hourly_sensor_slot(int index)
+static bool save_hourly_sensor_slot(int index,
+                                    int64_t last_saved_at,
+                                    const HourlySensorSample &sample)
 {
     if (!is_hourly_history_index_valid(index)) {
         ESP_LOGW(TAG, HOURLY_SLOT_INDEX_INVALID_LOG_FORMAT, index);
@@ -469,7 +480,7 @@ static bool save_hourly_sensor_slot(int index)
         ESP_LOGW(TAG, SENSOR_NVS_OPEN_FAILED_LOG_FORMAT, esp_err_to_name(err));
         return false;
     }
-    err = save_hourly_sensor_meta_and_slot(nvs, index);
+    err = save_hourly_sensor_meta_and_slot(nvs, index, last_saved_at, sample);
     if (err == ESP_OK) {
         err = nvs_commit(nvs);
     }
@@ -489,18 +500,44 @@ void record_hourly_sensor_sample(float temp, float humi)
     }
     time_t now = mktime(&local);
     time_t hour_start = hour_start_from_time(now);
-    if (hour_start <= 0 || hour_start == g_last_hourly_saved_at) {
+    portENTER_CRITICAL(&s_hourly_history_mux);
+    bool already_saved = hour_start == g_last_hourly_saved_at;
+    portEXIT_CRITICAL(&s_hourly_history_mux);
+    if (hour_start <= 0 || already_saved) {
         return;
     }
     int index = hourly_slot_index_for_time(hour_start);
-    g_hourly_history.samples[index].timestamp = hour_start;
-    g_hourly_history.samples[index].temperature = temp;
-    g_hourly_history.samples[index].humidity = humi;
-    g_hourly_history.samples[index].valid = 1;
+    HourlySensorSample sample = {};
+    sample.timestamp = hour_start;
+    sample.temperature = temp;
+    sample.humidity = humi;
+    sample.valid = 1;
+    if (!save_hourly_sensor_slot(index, hour_start, sample)) {
+        return;
+    }
+    portENTER_CRITICAL(&s_hourly_history_mux);
+    g_hourly_history.samples[index] = sample;
     g_last_hourly_saved_at = hour_start;
     ++g_hourly_history_version;
-    save_hourly_sensor_slot(index);
+    portEXIT_CRITICAL(&s_hourly_history_mux);
     notify_ui_task();
+}
+
+bool get_hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history, uint32_t *version)
+{
+    if (!history && !version) {
+        ESP_LOGW(TAG, "%s", HOURLY_SNAPSHOT_INVALID_ARG_LOG);
+        return false;
+    }
+    portENTER_CRITICAL(&s_hourly_history_mux);
+    if (history) {
+        *history = g_hourly_history;
+    }
+    if (version) {
+        *version = g_hourly_history_version;
+    }
+    portEXIT_CRITICAL(&s_hourly_history_mux);
+    return true;
 }
 
 time_t next_weather_sync_time(time_t from)
@@ -526,23 +563,73 @@ time_t next_weather_sync_time(time_t from)
     return from + kWeatherSyncFallbackSeconds;
 }
 
-void update_sensor_history(float temp, float humi)
+static void calculate_updated_sensor_trends(float temp,
+                                            float humi,
+                                            int *temperature_trend,
+                                            int *humidity_trend)
 {
     append_sensor_history_sample(temp, humi);
-    update_sensor_trend_from_average(calculate_sensor_history_average());
+    calculate_sensor_trend_from_average(calculate_sensor_history_average(),
+                                        temperature_trend,
+                                        humidity_trend);
+}
+
+void update_sensor_history(float temp, float humi)
+{
+    int temperature_trend = 0;
+    int humidity_trend = 0;
+    calculate_updated_sensor_trends(temp, humi, &temperature_trend, &humidity_trend);
+    portENTER_CRITICAL(&s_local_sensor_mux);
+    g_temp_trend = temperature_trend;
+    g_humi_trend = humidity_trend;
+    portEXIT_CRITICAL(&s_local_sensor_mux);
 }
 
 void sample_sensor()
 {
     float temp = 0.0f;
     float humi = 0.0f;
-    g_sensor_ok = g_shtc3 && g_shtc3->Shtc3_ReadTempHumi(&temp, &humi) == 0;
-    if (g_sensor_ok) {
+    bool sensor_ok = g_shtc3 && g_shtc3->Shtc3_ReadTempHumi(&temp, &humi) == 0;
+    if (sensor_ok) {
+        int temperature_trend = 0;
+        int humidity_trend = 0;
+        calculate_updated_sensor_trends(temp, humi, &temperature_trend, &humidity_trend);
+        portENTER_CRITICAL(&s_local_sensor_mux);
+        g_sensor_ok = true;
         g_temperature = temp;
         g_humidity = humi;
-        update_sensor_history(temp, humi);
+        g_temp_trend = temperature_trend;
+        g_humi_trend = humidity_trend;
+        portEXIT_CRITICAL(&s_local_sensor_mux);
         record_hourly_sensor_sample(temp, humi);
+    } else {
+        portENTER_CRITICAL(&s_local_sensor_mux);
+        g_sensor_ok = false;
+        portEXIT_CRITICAL(&s_local_sensor_mux);
     }
+}
+
+bool get_local_sensor_snapshot(float *temperature,
+                               float *humidity,
+                               int *temperature_trend,
+                               int *humidity_trend)
+{
+    portENTER_CRITICAL(&s_local_sensor_mux);
+    bool sensor_ok = g_sensor_ok;
+    if (temperature) {
+        *temperature = g_temperature;
+    }
+    if (humidity) {
+        *humidity = g_humidity;
+    }
+    if (temperature_trend) {
+        *temperature_trend = g_temp_trend;
+    }
+    if (humidity_trend) {
+        *humidity_trend = g_humi_trend;
+    }
+    portEXIT_CRITICAL(&s_local_sensor_mux);
+    return sensor_ok;
 }
 
 TickType_t next_sensor_sample_tick(TickType_t now)

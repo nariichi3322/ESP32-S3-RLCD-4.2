@@ -240,6 +240,7 @@ static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must b
 #define CAPTIVE_DNS_TASK_START_FAILED_LOG "captive dns task start failed"
 #define SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG "setup portal running without captive dns"
 #define PORTAL_HTTP_SERVER_START_FAILED_FORMAT "http server start failed: %s"
+#define PORTAL_HTTP_SERVER_STOP_FAILED_FORMAT "http server stop failed: %s"
 #define PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT "http uri register failed: %s"
 #define PORTAL_HTML_APPEND_FAILED_LOG "setup html append failed"
 #define PORTAL_HTML_TRUNCATED_FORMAT "setup html truncated buffer=%u"
@@ -267,6 +268,7 @@ static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must b
 #define WIFI_GOT_IP_EVENT_MISSING_LOG "got ip event missing data"
 #define WIFI_GOT_IP_FORMAT "got ip: " IPSTR
 #define WIFI_STA_IP_FORMAT_FAILED_LOG "sta ip format failed"
+#define WIFI_CONNECTION_EVENT_GROUP_UNAVAILABLE_LOG "wifi connection event unavailable: app events not initialized"
 #define WIFI_MAC_READ_FAILED_FORMAT "wifi mac read failed: %s"
 #define WIFI_SETUP_AP_SSID_FORMAT_FAILED_LOG "setup AP ssid format failed"
 #define WIFI_STA_NETIF_CREATE_FAILED_LOG "wifi sta netif create failed"
@@ -277,6 +279,7 @@ static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must b
 #define WIFI_IP_EVENT_HANDLER_REGISTER_FAILED_FORMAT "ip event handler register failed: %s"
 #define WIFI_INITIAL_MODE_SETUP_FAILED_FORMAT "wifi initial mode setup failed: %s"
 #define WIFI_INITIAL_SOFTAP_SETUP_FAILED_FORMAT "wifi initial softap setup failed: %s"
+#define PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG "setup save skipped initial sync request: app events unavailable"
 constexpr const char *kPortalLogTexts[] = {
     CAPTIVE_DNS_SOCKET_FAILED_LOG,
     CAPTIVE_DNS_BIND_FAILED_LOG,
@@ -292,6 +295,7 @@ constexpr const char *kPortalLogTexts[] = {
     CAPTIVE_DNS_TASK_START_FAILED_LOG,
     SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG,
     PORTAL_HTTP_SERVER_START_FAILED_FORMAT,
+    PORTAL_HTTP_SERVER_STOP_FAILED_FORMAT,
     PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT,
     PORTAL_HTML_APPEND_FAILED_LOG,
     PORTAL_HTML_TRUNCATED_FORMAT,
@@ -319,6 +323,7 @@ constexpr const char *kPortalLogTexts[] = {
     WIFI_GOT_IP_EVENT_MISSING_LOG,
     WIFI_GOT_IP_FORMAT,
     WIFI_STA_IP_FORMAT_FAILED_LOG,
+    WIFI_CONNECTION_EVENT_GROUP_UNAVAILABLE_LOG,
     WIFI_MAC_READ_FAILED_FORMAT,
     WIFI_SETUP_AP_SSID_FORMAT_FAILED_LOG,
     WIFI_STA_NETIF_CREATE_FAILED_LOG,
@@ -329,9 +334,19 @@ constexpr const char *kPortalLogTexts[] = {
     WIFI_IP_EVENT_HANDLER_REGISTER_FAILED_FORMAT,
     WIFI_INITIAL_MODE_SETUP_FAILED_FORMAT,
     WIFI_INITIAL_SOFTAP_SETUP_FAILED_FORMAT,
+    PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG,
 };
 static_assert(array_count(kPortalLogTexts) > 0, "portal log text registry must not be empty");
 static_assert(cstr_array_nonempty(kPortalLogTexts), "portal log texts must be non-empty");
+
+void request_provisioning_sync_after_save()
+{
+    if (!g_app_events) {
+        ESP_LOGW(TAG, "%s", PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG);
+        return;
+    }
+    xEventGroupSetBits(g_app_events, kProvisioningSyncBit);
+}
 constexpr const char *kPortalHtmlHeadPrefix =
     "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
 
@@ -434,6 +449,25 @@ void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
         g_sta_ip[0] = '\0';
         ESP_LOGW(TAG, WIFI_STA_IP_FORMAT_FAILED_LOG);
     }
+}
+
+void set_wifi_connected_event(bool connected)
+{
+    if (!g_app_events) {
+        ESP_LOGW(TAG, "%s", WIFI_CONNECTION_EVENT_GROUP_UNAVAILABLE_LOG);
+        return;
+    }
+    if (connected) {
+        xEventGroupSetBits(g_app_events, kWifiConnectedBit);
+    } else {
+        xEventGroupClearBits(g_app_events, kWifiConnectedBit);
+    }
+}
+
+void clear_sta_connection_state()
+{
+    g_sta_ip[0] = '\0';
+    set_wifi_connected_event(false);
 }
 
 void format_setup_ap_ssid(uint8_t mac4, uint8_t mac5)
@@ -832,7 +866,10 @@ bool apply_station_config(bool reconnect)
 void stop_http_server()
 {
     if (g_http_server) {
-        httpd_stop(g_http_server);
+        esp_err_t err = httpd_stop(g_http_server);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, PORTAL_HTTP_SERVER_STOP_FAILED_FORMAT, esp_err_to_name(err));
+        }
         g_http_server = nullptr;
     }
     stop_captive_dns_server();
@@ -992,7 +1029,7 @@ static esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
     }
     esp_err_t err = send_save_result_page(req, saved, connected, extra_message);
     if (connected) {
-        xEventGroupSetBits(g_app_events, kProvisioningSyncBit);
+        request_provisioning_sync_after_save();
     }
     return err;
 }
@@ -1177,8 +1214,7 @@ bool start_wifi_radio(bool enable_setup_portal)
             }
             if (!g_have_wifi_creds) {
                 (void)esp_wifi_disconnect();
-                xEventGroupClearBits(g_app_events, kWifiConnectedBit);
-                g_sta_ip[0] = '\0';
+                clear_sta_connection_state();
             }
         }
         if (enable_setup_portal && !g_setup_portal_active) {
@@ -1269,8 +1305,7 @@ void stop_wifi_radio(bool force_setup_portal)
     } else {
         g_wifi_radio_on = false;
         g_wifi_stop_requested = false;
-        xEventGroupClearBits(g_app_events, kWifiConnectedBit);
-        g_sta_ip[0] = '\0';
+        clear_sta_connection_state();
         ESP_LOGI(TAG, WIFI_RADIO_OFF_LOG);
     }
 }
@@ -1282,9 +1317,8 @@ void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, v
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
         g_last_wifi_disconnect_reason = event ? event->reason : -1;
-        g_sta_ip[0] = '\0';
+        clear_sta_connection_state();
         ESP_LOGW(TAG, WIFI_DISCONNECTED_FORMAT, event ? event->reason : -1);
-        xEventGroupClearBits(g_app_events, kWifiConnectedBit);
         notify_ui_task();
         if (g_have_wifi_creds && g_wifi_radio_on && !g_wifi_stop_requested) {
             esp_err_t err = esp_wifi_connect();
@@ -1300,7 +1334,7 @@ void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, v
         }
         ESP_LOGI(TAG, WIFI_GOT_IP_FORMAT, IP2STR(&event->ip_info.ip));
         format_sta_ip_or_clear(&event->ip_info.ip);
-        xEventGroupSetBits(g_app_events, kWifiConnectedBit);
+        set_wifi_connected_event(true);
         notify_ui_task();
     }
 }

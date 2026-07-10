@@ -61,6 +61,16 @@ static_assert(kCalendarCanvasW > 0 && kCalendarCanvasH > 0,
               "calendar canvas size must be positive");
 static_assert(kCalendarTopLineW > 0 && kCalendarTopLineH > 0,
               "calendar top separator size must be positive");
+static_assert(kCalendarGridX + kCalendarCellW * kCalendarWeekdayCount == kCalendarCanvasW,
+              "calendar columns must fill canvas width");
+static_assert(kCalendarCellY + (kCalendarVisibleRowCount - 1) * kCalendarCellH +
+                      kCalendarSubTextY + kCalendarSubTextH <=
+                  kCalendarCanvasH,
+              "calendar last visible row text must fit canvas height");
+static_assert(kCalendarTodayRadius > 0 &&
+                  kCalendarTodayRadius * 2 <= kCalendarCellW - kCalendarTodayInsetW &&
+                  kCalendarTodayRadius * 2 <= kCalendarCellH - kCalendarTodayInsetH,
+              "calendar today radius must fit highlight box");
 
 static void canvas_fill_rect_safe(lv_obj_t *canvas, int w, int h, int x, int y, int rw, int rh, lv_color_t color)
 {
@@ -329,6 +339,11 @@ void build_calendar_page()
     if (!g_calendar_canvas_buf) {
         g_calendar_canvas_buf = alloc_canvas_buffer(kCalendarCanvasW, kCalendarCanvasH);
     }
+    if (!g_calendar_canvas_buf) {
+        lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
+        update_battery_segments(g_calendar_battery_segments, g_battery_percent);
+        return;
+    }
     g_calendar_canvas = lv_canvas_create(screen);
     if (!g_calendar_canvas) {
         ESP_LOGW(TAG, "%s", CALENDAR_CANVAS_CREATE_FAILED_LOG);
@@ -338,14 +353,12 @@ void build_calendar_page()
         lv_obj_set_size(g_calendar_canvas, kCalendarCanvasW, kCalendarCanvasH);
         lv_obj_set_style_border_width(g_calendar_canvas, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(g_calendar_canvas, 0, LV_PART_MAIN);
-        if (g_calendar_canvas_buf) {
-            lv_canvas_set_buffer(g_calendar_canvas,
-                                 g_calendar_canvas_buf,
-                                 kCalendarCanvasW,
-                                 kCalendarCanvasH,
-                                 LV_IMG_CF_TRUE_COLOR);
-            lv_canvas_fill_bg(g_calendar_canvas, lv_color_white(), LV_OPA_COVER);
-        }
+        lv_canvas_set_buffer(g_calendar_canvas,
+                             g_calendar_canvas_buf,
+                             kCalendarCanvasW,
+                             kCalendarCanvasH,
+                             LV_IMG_CF_TRUE_COLOR);
+        lv_canvas_fill_bg(g_calendar_canvas, lv_color_white(), LV_OPA_COVER);
     }
 
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);

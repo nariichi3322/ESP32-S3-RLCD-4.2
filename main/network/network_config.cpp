@@ -1,5 +1,7 @@
 // 负责 Wi-Fi、API Key、页面设置和声音设置的 NVS 配置读写。
 #include "network_services.h"
+#include "network_form.h"
+#include "manual_time_parser.h"
 #include "xiaozhi_ai.h"
 
 #include "custom_assets.h"
@@ -7,8 +9,6 @@
 #include "ui_views.h"
 
 #include <errno.h>
-
-#define FORM_VALUE_TRUNCATED_LOG_FORMAT "form value truncated for key=%s len=%u cap=%u"
 
 namespace {
 constexpr size_t max_size(size_t a, size_t b)
@@ -38,7 +38,6 @@ constexpr const char *kPageOrderV2Key = "page_order_v2";
 constexpr const char *kPageOrderV3Key = "page_order_v3";
 constexpr const char *kPageOrderV4Key = "page_order_v4";
 constexpr const char *kPageOrderV5Key = "page_order_v5";
-constexpr size_t kFormEncodedBufferSize = 160;
 constexpr size_t kManualTimeFieldSize = 32;
 constexpr size_t kSetupSsidFieldSize = 33;
 constexpr size_t kSetupPasswordFieldSize = 65;
@@ -48,27 +47,6 @@ constexpr size_t kMaxSetupFormFieldSize =
     max_size(max_size(max_size(kManualTimeFieldSize, kSetupSsidFieldSize),
                       max_size(kSetupPasswordFieldSize, kSetupApiKeyFieldSize)),
              kSetupWeatherCityFieldSize);
-constexpr char kFormKeyValueSeparator = '=';
-constexpr char kFormFieldSeparator = '&';
-constexpr char kUrlPercentMarker = '%';
-constexpr char kFormEncodedSpace = '+';
-constexpr char kFormDecodedSpace = ' ';
-constexpr size_t kFormSeparatorLen = 1;
-constexpr size_t kUrlPercentMarkerIndex = 0;
-constexpr size_t kUrlPercentHighNibbleIndex = 1;
-constexpr size_t kUrlPercentLowNibbleIndex = 2;
-constexpr size_t kUrlPercentDecodedSkip = kUrlPercentLowNibbleIndex;
-constexpr int kHexAlphaDigitBaseValue = 10;
-constexpr int kHexHighNibbleShift = 4;
-static_assert(kFormSeparatorLen == 1, "HTML form separators must be one byte");
-static_assert(kUrlPercentMarkerIndex == 0, "Percent-encoded byte must start with marker");
-static_assert(kUrlPercentHighNibbleIndex == kUrlPercentMarkerIndex + 1,
-              "Percent-encoded high nibble must follow marker");
-static_assert(kUrlPercentLowNibbleIndex == kUrlPercentHighNibbleIndex + 1,
-              "Percent-encoded low nibble must follow high nibble");
-static_assert(kUrlPercentDecodedSkip == 2, "Percent decode must skip two hex characters");
-static_assert(kHexAlphaDigitBaseValue == 10, "Hex alpha digits start at decimal 10");
-static_assert(kHexHighNibbleShift == 4, "Hex high nibble shift must remain 4 bits");
 constexpr uint8_t kNvsUnsetU8 = 0xFF;
 constexpr uint8_t kDefaultChimeVolumePercent = 80;
 constexpr uint8_t kValidChimeVolumePercent[] = {20, 40, 60, 80, 100};
@@ -92,19 +70,6 @@ constexpr uint8_t kPageMaskV5KnownBits = all_work_page_mask();
 constexpr uint8_t kDefaultWorkPageMask = kPageMaskV5KnownBits;
 constexpr uint8_t kWeatherBoardPageMask = work_page_mask_bit(kWorkPageWeatherBoard);
 constexpr uint8_t kFlipClockPageMask = work_page_mask_bit(kWorkPageFlipClock);
-constexpr int kTmYearOffset = 1900;
-constexpr int kTmMonthOffset = 1;
-constexpr int kManualTimeMinMonth = 1;
-constexpr int kManualTimeMaxMonth = 12;
-constexpr int kManualTimeMinDay = 1;
-constexpr int kManualTimeMaxDay = 31;
-constexpr int kManualTimeMinHour = 0;
-constexpr int kManualTimeMaxHour = 23;
-constexpr int kManualTimeMinMinute = 0;
-constexpr int kManualTimeMaxMinute = 59;
-constexpr int kManualTimeMinSecond = 0;
-constexpr int kManualTimeMaxSecond = 59;
-constexpr int kManualTimeRequiredFieldCount = 5; // year, month, day, hour and minute.
 constexpr EventBits_t kNetworkRequestClearBits = kProvisioningSyncBit |
                                                  kManualNtpSyncBit |
                                                  kManualWeatherSyncBit |
@@ -117,9 +82,6 @@ static_assert((kNetworkRequestClearBits & kManualWeatherSyncBit) != 0,
 static_assert((kNetworkRequestClearBits & kOtaCheckBit) != 0 &&
                   (kNetworkRequestClearBits & kOtaInstallBit) != 0,
               "network request clear bits must include OTA request bits");
-constexpr const char *kManualTimeIsoSecondsFormat = "%d-%d-%dT%d:%d:%d";
-constexpr const char *kManualTimeSpaceSecondsFormat = "%d-%d-%d %d:%d:%d";
-constexpr const char *kManualTimeSpaceMinutesFormat = "%d-%d-%d %d:%d";
 constexpr const char *kConfigEventReasonFallback = "config";
 constexpr const char *kConfigEventReasonNetworkRequestReset = "network request reset";
 constexpr const char *kConfigEventReasonFactoryReset = "factory reset";
@@ -140,6 +102,7 @@ constexpr const char *kNvsActionSavingPageOrder = "saving page order";
 constexpr const char *kNvsActionClearingConfig = "clearing config";
 constexpr const char *kEmptyWifiSsidSaveLog = "skip saving empty wifi ssid";
 constexpr const char *kInvalidWeatherCitySaveLog = "skip saving invalid weather city";
+constexpr const char *kInvalidWeatherCityLoadLog = "ignore invalid weather city loaded from NVS";
 #define CONFIG_EVENT_GROUP_UNAVAILABLE_FORMAT "skip %s event bits for %s: event group unavailable"
 #define NVS_OPEN_FAILED_FORMAT "nvs open failed while %s: %s"
 #define NVS_READ_U8_FAILED_FORMAT "nvs read u8 key=%s failed: %s"
@@ -153,7 +116,6 @@ constexpr const char *kInvalidWeatherCitySaveLog = "skip saving invalid weather 
 #define NVS_SAVE_PAGE_ORDER_FAILED_FORMAT "nvs save page order failed: %s"
 #define NVS_ERASE_KEY_CLEARING_CONFIG_FAILED_FORMAT "nvs erase key %s failed while clearing config: %s"
 #define NVS_CLEAR_CONFIG_FAILED_FORMAT "nvs clear config failed: %s"
-#define MANUAL_TIME_NORMALIZATION_FAILED_LOG "manual offline time localtime normalization failed"
 #define OFFLINE_SETUP_EMPTY_BODY_LOG "offline setup ignored empty request body"
 #define OFFLINE_SETUP_INVALID_MANUAL_TIME_LOG "offline setup ignored invalid manual time"
 #define MANUAL_TIME_MKTIME_FAILED_LOG "set manual offline time skipped: mktime failed"
@@ -253,7 +215,7 @@ constexpr const char *kNvsActionTexts[] = {
 constexpr const char *kConfigWarningTexts[] = {
     kEmptyWifiSsidSaveLog,
     kInvalidWeatherCitySaveLog,
-    FORM_VALUE_TRUNCATED_LOG_FORMAT,
+    kInvalidWeatherCityLoadLog,
     NVS_READ_U8_FAILED_FORMAT,
 };
 
@@ -401,8 +363,7 @@ constexpr bool cstr_contains_char(const char *text, char needle)
     return false;
 }
 
-static_assert(kFormEncodedBufferSize > 0, "form encoded scratch buffer must be nonzero");
-static_assert(kFormEncodedBufferSize >= kMaxSetupFormFieldSize,
+static_assert(kNetworkFormEncodedBufferSize >= kMaxSetupFormFieldSize,
               "form encoded scratch buffer must fit the largest setup field");
 static_assert(kManualTimeFieldSize > 1, "manual time field must fit text and NUL");
 static_assert(kSetupSsidFieldSize > 1, "setup SSID field must fit text and NUL");
@@ -427,10 +388,6 @@ static_assert(cstr_array_contains(kClearConfigKeys, kIgnoredAssetWeatherCityKey)
               "factory reset must clear ignored asset weather city");
 static_assert(cstr_array_contains(kClearConfigKeys, kLegacyApiHostKey), "factory reset must clear legacy API host");
 static_assert(cstr_array_contains(kClearConfigKeys, kOfflineModeKey), "factory reset must clear offline mode");
-static_assert(kManualTimeRequiredFieldCount == 5, "manual time requires year/month/day/hour/minute");
-static_assert(cstr_nonempty(kManualTimeIsoSecondsFormat), "manual ISO time format must be non-empty");
-static_assert(cstr_nonempty(kManualTimeSpaceSecondsFormat), "manual space time format must be non-empty");
-static_assert(cstr_nonempty(kManualTimeSpaceMinutesFormat), "manual minute time format must be non-empty");
 static_assert(array_count(kFormConfigTexts) > 0, "form config text registry must not be empty");
 static_assert(form_config_texts_nonempty(), "setup form keys must be non-empty");
 static_assert(cstr_nonempty(kInvalidWeatherCityChars), "invalid weather city character list must be non-empty");
@@ -453,15 +410,6 @@ static_assert(array_count(kConfigWarningTexts) > 0, "configuration warning text 
 static_assert(config_event_texts_nonempty(), "config event reason/action texts must be non-empty");
 static_assert(nvs_action_texts_nonempty(), "NVS action texts must be non-empty");
 static_assert(config_warning_texts_nonempty(), "configuration warning texts must be non-empty");
-static_assert(kManualTimeMinMonth == 1 && kManualTimeMaxMonth == 12, "manual time month range must be 1..12");
-static_assert(kManualTimeMinDay == 1 && kManualTimeMaxDay == 31, "manual time day range must be 1..31");
-static_assert(kManualTimeMinHour == 0 && kManualTimeMaxHour == 23, "manual time hour range must be 0..23");
-static_assert(kManualTimeMinMinute == 0 && kManualTimeMaxMinute == 59,
-              "manual time minute range must be 0..59");
-static_assert(kManualTimeMinSecond == 0 && kManualTimeMaxSecond == 59,
-              "manual time second range must be 0..59");
-static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
-static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
 static_assert(kWorkPageCount <= 8, "work page enabled mask is stored as uint8_t");
 static_assert((kPageMaskV4KnownBits & work_page_mask_bit(kWorkPageXiaozhiAI)) == 0,
               "page mask v4 must not include Xiaozhi AI page");
@@ -513,84 +461,6 @@ void set_app_event_bits(EventBits_t bits, const char *reason)
         return;
     }
     xEventGroupSetBits(g_app_events, bits);
-}
-
-bool form_field_matches_key(const char *field, size_t field_len, const char *key, size_t key_len)
-{
-    return field && key &&
-           field_len > key_len &&
-           field[key_len] == kFormKeyValueSeparator &&
-           strncmp(field, key, key_len) == 0;
-}
-
-bool find_form_value_range(const char *body, const char *key, const char **value_start, size_t *value_len)
-{
-    if (!body || !key || key[0] == '\0' || !value_start || !value_len) {
-        return false;
-    }
-
-    const size_t key_len = strlen(key);
-    const char *field = body;
-    while (*field) {
-        const char *field_end = strchr(field, kFormFieldSeparator);
-        const size_t field_len = field_end ? (size_t)(field_end - field) : strlen(field);
-        if (form_field_matches_key(field, field_len, key, key_len)) {
-            *value_start = field + key_len + kFormSeparatorLen;
-            *value_len = field_len - key_len - kFormSeparatorLen;
-            return true;
-        }
-        if (!field_end) {
-            break;
-        }
-        field = field_end + kFormSeparatorLen;
-    }
-    return false;
-}
-
-int hex_digit_value(char ch)
-{
-    if (ch >= '0' && ch <= '9') {
-        return ch - '0';
-    }
-    if (ch >= 'a' && ch <= 'f') {
-        return ch - 'a' + kHexAlphaDigitBaseValue;
-    }
-    if (ch >= 'A' && ch <= 'F') {
-        return ch - 'A' + kHexAlphaDigitBaseValue;
-    }
-    return -1;
-}
-
-bool decode_url_percent_byte(const char *src, char *out)
-{
-    if (!src || !out ||
-        src[kUrlPercentMarkerIndex] != kUrlPercentMarker ||
-        src[kUrlPercentHighNibbleIndex] == '\0' ||
-        src[kUrlPercentLowNibbleIndex] == '\0') {
-        return false;
-    }
-    const int hi = hex_digit_value(src[kUrlPercentHighNibbleIndex]);
-    const int lo = hex_digit_value(src[kUrlPercentLowNibbleIndex]);
-    if (hi < 0 || lo < 0) {
-        return false;
-    }
-    *out = (char)((hi << kHexHighNibbleShift) | lo);
-    return true;
-}
-
-bool value_in_range(int value, int min_value, int max_value)
-{
-    return value >= min_value && value <= max_value;
-}
-
-bool manual_datetime_fields_in_range(int year, int month, int day, int hour, int minute, int second)
-{
-    return value_in_range(year, kMinValidYear, kMaxValidYear) &&
-           value_in_range(month, kManualTimeMinMonth, kManualTimeMaxMonth) &&
-           value_in_range(day, kManualTimeMinDay, kManualTimeMaxDay) &&
-           value_in_range(hour, kManualTimeMinHour, kManualTimeMaxHour) &&
-           value_in_range(minute, kManualTimeMinMinute, kManualTimeMaxMinute) &&
-           value_in_range(second, kManualTimeMinSecond, kManualTimeMaxSecond);
 }
 
 uint8_t normalize_chime_volume(uint8_t volume)
@@ -959,6 +829,10 @@ void load_saved_manual_weather_city(nvs_handle_t nvs)
                                          sizeof(g_manual_weather_city));
     if (city_err == ESP_OK) {
         trim_ascii(g_manual_weather_city);
+        if (!is_weather_city_input_valid(g_manual_weather_city)) {
+            ESP_LOGW(TAG, "%s", kInvalidWeatherCityLoadLog);
+            g_manual_weather_city[0] = '\0';
+        }
     } else {
         g_manual_weather_city[0] = '\0';
     }
@@ -1101,9 +975,14 @@ void set_manual_weather_city_state(const char *city)
     g_has_manual_weather_city = g_manual_weather_city[0] != '\0';
 }
 
-bool finish_manual_weather_city_save(nvs_handle_t nvs, esp_err_t err, const char *city)
+bool finish_manual_weather_city_save(nvs_handle_t nvs,
+                                     esp_err_t err,
+                                     const char *city,
+                                     bool changed)
 {
-    err = commit_nvs_if_ok(nvs, err);
+    if (changed) {
+        err = commit_nvs_if_ok(nvs, err);
+    }
     nvs_close(nvs);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, NVS_SAVE_WEATHER_CITY_FAILED_FORMAT, esp_err_to_name(err));
@@ -1113,10 +992,18 @@ bool finish_manual_weather_city_save(nvs_handle_t nvs, esp_err_t err, const char
     return true;
 }
 
-esp_err_t write_manual_weather_city_save_nvs(nvs_handle_t nvs, const char *city)
+esp_err_t write_manual_weather_city_save_nvs(nvs_handle_t nvs,
+                                             const char *city,
+                                             bool *changed)
 {
+    if (changed) {
+        *changed = false;
+    }
     if (manual_weather_city_matches_nvs(nvs, city)) {
-        return write_ignored_asset_weather_city(nvs, nullptr);
+        return erase_nvs_key_if_present(nvs, kIgnoredAssetWeatherCityKey, changed);
+    }
+    if (changed) {
+        *changed = true;
     }
     esp_err_t err = write_manual_weather_city_key(nvs, city);
     if (err == ESP_OK) {
@@ -1187,6 +1074,9 @@ esp_err_t write_saved_config_nvs(nvs_handle_t nvs,
                   ? write_ignored_asset_weather_city(nvs, nullptr)
                   : write_current_asset_weather_city_ignore(nvs);
     }
+    // Provisioning credentials are only useful after leaving offline mode. Keep both
+    // changes in this transaction so a later NVS write cannot leave them out of sync.
+    err = set_nvs_u8_if_ok(nvs, err, kOfflineModeKey, 0);
     esp_err_t legacy_erase_err = erase_nvs_key_if_present(nvs, kLegacyApiHostKey, nullptr);
     if (legacy_erase_err != ESP_OK) {
         ESP_LOGW(TAG, NVS_ERASE_LEGACY_API_HOST_FAILED_FORMAT,
@@ -1226,7 +1116,7 @@ bool save_config(const char *ssid, const char *pass, const char *api_key, const 
         return false;
     }
     apply_saved_config_runtime_state(ssid, pass, api_key, city);
-    (void)set_offline_mode_enabled(false);
+    g_offline_mode_ui_enabled = false;
     return true;
 }
 
@@ -1246,8 +1136,9 @@ bool save_manual_weather_city(const char *city)
     if (err != ESP_OK) {
         return false;
     }
-    err = write_manual_weather_city_save_nvs(nvs, next);
-    return finish_manual_weather_city_save(nvs, err, next);
+    bool changed = false;
+    err = write_manual_weather_city_save_nvs(nvs, next, &changed);
+    return finish_manual_weather_city_save(nvs, err, next, changed);
 }
 
 bool clear_manual_weather_city()
@@ -1284,7 +1175,7 @@ bool save_hourly_chime_setting()
     uint8_t next_sound = (uint8_t)g_chime_sound_index;
     bool changed = false;
     err = write_hourly_chime_settings_nvs(nvs, err, next_chime, next_all_day, next_volume, next_sound, &changed);
-    if (!changed) {
+    if (err == ESP_OK && !changed) {
         nvs_close(nvs);
         return true;
     }
@@ -1327,7 +1218,7 @@ bool save_work_page_order()
     }
     bool changed = false;
     err = write_work_page_order_nvs(nvs, err, g_work_page_order, sizeof(g_work_page_order), &changed);
-    if (!changed) {
+    if (err == ESP_OK && !changed) {
         nvs_close(nvs);
         return true;
     }
@@ -1347,69 +1238,6 @@ bool clear_saved_config()
     xiaozhi_ai_clear_activation();
     reset_saved_config_runtime_state();
     return true;
-}
-
-void url_decode(char *dst, size_t dst_len, const char *src)
-{
-    if (!output_buffer_available(dst, dst_len)) {
-        return;
-    }
-    if (!src) {
-        dst[0] = '\0';
-        return;
-    }
-    size_t di = 0;
-    for (size_t si = 0; src[si] != '\0' && di + 1 < dst_len; ++si) {
-        char decoded = '\0';
-        if (decode_url_percent_byte(&src[si], &decoded)) {
-            dst[di++] = decoded;
-            si += kUrlPercentDecodedSkip;
-        } else if (src[si] == kFormEncodedSpace) {
-            dst[di++] = kFormDecodedSpace;
-        } else {
-            dst[di++] = src[si];
-        }
-    }
-    dst[di] = '\0';
-}
-
-void form_value(const char *body, const char *key, char *out, size_t out_len)
-{
-    if (!output_buffer_available(out, out_len)) {
-        return;
-    }
-    if (!body || !key || key[0] == '\0') {
-        out[0] = '\0';
-        return;
-    }
-    const char *start = nullptr;
-    size_t len = 0;
-    if (!find_form_value_range(body, key, &start, &len)) {
-        out[0] = '\0';
-        return;
-    }
-    char encoded[kFormEncodedBufferSize] = {};
-    if (len >= sizeof(encoded)) {
-        ESP_LOGW(TAG, FORM_VALUE_TRUNCATED_LOG_FORMAT,
-                 key,
-                 (unsigned)len,
-                 (unsigned)sizeof(encoded));
-        len = sizeof(encoded) - 1;
-    }
-    memcpy(encoded, start, len);
-    encoded[len] = '\0';
-    url_decode(out, out_len, encoded);
-}
-
-void form_value_fallback(const char *body, const char *primary_key, const char *fallback_key, char *out, size_t out_len)
-{
-    if (!output_buffer_available(out, out_len)) {
-        return;
-    }
-    form_value(body, primary_key, out, out_len);
-    if (out[0] == '\0' && fallback_key) {
-        form_value(body, fallback_key, out, out_len);
-    }
 }
 
 void form_value_fallback_trimmed(const char *body, const char *primary_key, const char *fallback_key, char *out, size_t out_len)
@@ -1437,133 +1265,6 @@ void read_provisioning_form_fields(const char *body, ProvisioningFormFields *fie
                                 sizeof(fields->weather_city));
 }
 
-int try_parse_manual_datetime_format(const char *text,
-                                     const char *format,
-                                     bool has_seconds,
-                                     int *year,
-                                     int *month,
-                                     int *day,
-                                     int *hour,
-                                     int *minute,
-                                     int *second)
-{
-    if (!text || !format || !year || !month || !day || !hour || !minute || !second) {
-        return 0;
-    }
-    *second = 0;
-    return has_seconds
-               ? sscanf(text, format, year, month, day, hour, minute, second)
-               : sscanf(text, format, year, month, day, hour, minute);
-}
-
-void fill_manual_datetime_tm(struct tm *local, int year, int month, int day, int hour, int minute, int second)
-{
-    if (!local) {
-        return;
-    }
-    *local = {};
-    local->tm_year = year - kTmYearOffset;
-    local->tm_mon = month - kTmMonthOffset;
-    local->tm_mday = day;
-    local->tm_hour = hour;
-    local->tm_min = minute;
-    local->tm_sec = second;
-    local->tm_isdst = -1;
-}
-
-int parse_manual_datetime_fields(const char *text,
-                                 int *year,
-                                 int *month,
-                                 int *day,
-                                 int *hour,
-                                 int *minute,
-                                 int *second)
-{
-    int parsed = try_parse_manual_datetime_format(text,
-                                                  kManualTimeIsoSecondsFormat,
-                                                  true,
-                                                  year,
-                                                  month,
-                                                  day,
-                                                  hour,
-                                                  minute,
-                                                  second);
-    if (parsed >= kManualTimeRequiredFieldCount) {
-        return parsed;
-    }
-    parsed = try_parse_manual_datetime_format(text,
-                                              kManualTimeSpaceSecondsFormat,
-                                              true,
-                                              year,
-                                              month,
-                                              day,
-                                              hour,
-                                              minute,
-                                              second);
-    if (parsed >= kManualTimeRequiredFieldCount) {
-        return parsed;
-    }
-    return try_parse_manual_datetime_format(text,
-                                            kManualTimeSpaceMinutesFormat,
-                                            false,
-                                            year,
-                                            month,
-                                            day,
-                                            hour,
-                                            minute,
-                                            second);
-}
-
-bool manual_datetime_normalizes(struct tm local, struct tm *normalized)
-{
-    time_t epoch = mktime(&local);
-    if (epoch <= 0) {
-        return false;
-    }
-    struct tm next = {};
-    if (!localtime_r(&epoch, &next)) {
-        ESP_LOGW(TAG, "%s", MANUAL_TIME_NORMALIZATION_FAILED_LOG);
-        return false;
-    }
-    if (next.tm_year != local.tm_year ||
-        next.tm_mon != local.tm_mon ||
-        next.tm_mday != local.tm_mday ||
-        next.tm_hour != local.tm_hour ||
-        next.tm_min != local.tm_min) {
-        return false;
-    }
-    if (normalized) {
-        *normalized = next;
-    }
-    return true;
-}
-
-static bool parse_manual_datetime(const char *text, struct tm *out)
-{
-    if (!text || !out || text[0] == '\0') {
-        return false;
-    }
-    int year = 0;
-    int month = 0;
-    int day = 0;
-    int hour = 0;
-    int minute = 0;
-    int second = 0;
-    int parsed = parse_manual_datetime_fields(text, &year, &month, &day, &hour, &minute, &second);
-    if (parsed < kManualTimeRequiredFieldCount ||
-        !manual_datetime_fields_in_range(year, month, day, hour, minute, second)) {
-        return false;
-    }
-    struct tm local = {};
-    fill_manual_datetime_tm(&local, year, month, day, hour, minute, second);
-    struct tm normalized = {};
-    if (!manual_datetime_normalizes(local, &normalized)) {
-        return false;
-    }
-    *out = normalized;
-    return true;
-}
-
 bool save_offline_datetime_from_body(const char *body)
 {
     if (!body) {
@@ -1573,7 +1274,7 @@ bool save_offline_datetime_from_body(const char *body)
     char manual_time[kManualTimeFieldSize] = {};
     form_value_fallback_trimmed(body, kFormManualTimeKey, kFormManualTimeFallbackKey, manual_time, sizeof(manual_time));
     struct tm local = {};
-    if (!parse_manual_datetime(manual_time, &local)) {
+    if (!parse_manual_datetime_text(manual_time, &local)) {
         ESP_LOGW(TAG, "%s", OFFLINE_SETUP_INVALID_MANUAL_TIME_LOG);
         return false;
     }
@@ -1594,8 +1295,8 @@ bool save_offline_datetime_from_body(const char *body)
     }
     set_app_event_bits(kTimeSyncedBit, kConfigEventReasonOfflineManualTime);
     ESP_LOGI(TAG, OFFLINE_MODE_ENABLED_MANUAL_TIME_FORMAT,
-             local.tm_year + kTmYearOffset,
-             local.tm_mon + kTmMonthOffset,
+             local.tm_year + kManualTimeTmYearOffset,
+             local.tm_mon + kManualTimeTmMonthOffset,
              local.tm_mday,
              local.tm_hour,
              local.tm_min,

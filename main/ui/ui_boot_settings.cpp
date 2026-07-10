@@ -1,4 +1,4 @@
-// 构建启动页、System Info、设置页和配网状态页面。
+// 构建设置页、配网状态页面和电池图标。
 #include "ui_views.h"
 
 #include "audio_services.h"
@@ -32,83 +32,7 @@ int collect_visible_work_page_order_indices(int *indices, size_t capacity)
     return count;
 }
 
-constexpr uint32_t kBootAnimLvglLockTimeoutMs = 100;
-constexpr uint32_t kBootAnimFinishLvglLockTimeoutMs = 200;
-constexpr uint32_t kBootAnimFinishHoldMs = 100;
-constexpr uint32_t kBootScreenLvglLockTimeoutMs = 2000;
 constexpr uint32_t kSettingsPrimaryExitBlockMs = 800;
-constexpr int kBootContentX = 28;
-constexpr int kBootContentW = 344;
-constexpr int kBootTitleY = 30;
-constexpr int kBootTitleH = 30;
-constexpr int kBootStatusY = 64;
-constexpr int kBootStatusH = 24;
-constexpr int kBootVersionY = 226;
-constexpr int kBootVersionH = 24;
-constexpr int kBootDetailY = 256;
-constexpr int kBootDetailH = 22;
-constexpr int kBootAnimCanvasX = 144;
-constexpr int kBootAnimCanvasY = 100;
-constexpr int kNetworkDiagLocalIpLine = 0;
-constexpr int kNetworkDiagPublicIpLine = 1;
-constexpr int kNetworkDiagGridFirstLine = 2;
-constexpr int kNetworkDiagWideLine = kNetworkDiagLineCount - 1;
-constexpr int kNetworkDiagGridColumns = 2;
-constexpr int kNetworkDiagWideX = 30;
-constexpr int kNetworkDiagWideW = 340;
-constexpr int kNetworkDiagLocalIpY = 88;
-constexpr int kNetworkDiagPublicIpY = 112;
-constexpr int kNetworkDiagGridStartY = 142;
-constexpr int kNetworkDiagGridRowGap = 28;
-constexpr int kNetworkDiagGridColGap = 174;
-constexpr int kNetworkDiagGridW = 160;
-constexpr size_t kNetworkDiagSummaryTextSize = 64;
-constexpr int kAuxPageTitleX = 24;
-constexpr int kAuxPageTitleY = 18;
-constexpr int kAuxPageTitleW = 352;
-constexpr int kInfoPageTitleH = 26;
-constexpr int kNetworkDiagTitleH = 28;
-constexpr int kAuxPageLineX = 24;
-constexpr int kAuxPageLineW = 352;
-constexpr int kInfoPageTopLineY = 50;
-constexpr int kInfoPageTopLineH = 3;
-constexpr int kInfoPageBottomLineY = 238;
-constexpr int kInfoPageBottomLineH = 3;
-constexpr int kInfoReturnHintX = 24;
-constexpr int kInfoReturnHintY = 252;
-constexpr int kInfoReturnHintW = 352;
-constexpr int kInfoReturnHintH = 22;
-constexpr int kNetworkDiagTopLineY = 52;
-constexpr int kNetworkDiagTopLineH = 3;
-constexpr int kNetworkDiagSummaryX = 24;
-constexpr int kNetworkDiagSummaryY = 62;
-constexpr int kNetworkDiagSummaryW = 352;
-constexpr int kNetworkDiagSummaryH = 22;
-constexpr int kNetworkDiagLineH = 22;
-constexpr int kNetworkDiagBottomLineY = 266;
-constexpr int kNetworkDiagBottomLineH = 2;
-constexpr int kNetworkDiagHintX = 24;
-constexpr int kNetworkDiagHintY = 272;
-constexpr int kNetworkDiagHintW = 352;
-constexpr int kNetworkDiagHintH = 20;
-constexpr const char *kNetworkDiagTitle = "网络检测";
-constexpr const char *kNetworkDiagSummaryReady = "准备检测...";
-constexpr const char *kNetworkDiagSummaryRunning = "检测中...";
-constexpr const char *kNetworkDiagSummaryDone = "检测完成";
-constexpr const char *kNetworkDiagSummaryIdle = "等待开始";
-constexpr const char *kNetworkDiagLinePlaceholder = "--";
-constexpr const char *kNetworkDiagHintIdle = "Hold KEY to return";
-constexpr const char *kNetworkDiagHintRunning = "Checking... Hold KEY to return";
-constexpr const char *kNetworkDiagFixedTexts[] = {
-    kNetworkDiagTitle,
-    kNetworkDiagSummaryReady,
-    kNetworkDiagSummaryRunning,
-    kNetworkDiagSummaryDone,
-    kNetworkDiagSummaryIdle,
-    kNetworkDiagLinePlaceholder,
-    kNetworkDiagHintIdle,
-    kNetworkDiagHintRunning,
-};
 constexpr int kSettingsOtaBarFrameX = 164;
 constexpr int kSettingsOtaBarFrameY = 203;
 constexpr int kSettingsOtaBarFrameW = 200;
@@ -119,15 +43,6 @@ constexpr int kSettingsOtaBarFillH = kSettingsOtaBarFrameH - kSettingsOtaBarInse
 constexpr int kSettingsOtaProgressMax = 100;
 constexpr size_t kSettingsOtaLineTextSize = 96;
 constexpr size_t kSettingsOtaHintTextSize = 48;
-static_assert(kBootContentX >= 0 && kBootContentW > 0,
-              "boot screen content frame must be valid");
-static_assert(kBootTitleH > 0 && kBootStatusH > 0 && kBootVersionH > 0 && kBootDetailH > 0,
-              "boot screen label heights must be positive");
-static_assert(kBootAnimCanvasX >= 0 && kBootAnimCanvasY >= 0,
-              "boot animation canvas position must be non-negative");
-#define BOOT_ANIM_DONE_EVENT_SKIPPED_LOG "boot anim done event skipped: app events unavailable"
-#define BOOT_ANIM_CANVAS_CREATE_FAILED_LOG "boot anim canvas create failed"
-#define NETWORK_DIAG_LINE_LABEL_CREATE_FAILED_FORMAT "network diag line %d label create failed"
 #define SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT "settings primary label create failed index=%d"
 #define SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT "settings secondary label create failed index=%d"
 #define SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT "settings secondary text format failed index=%d"
@@ -284,6 +199,7 @@ constexpr const char *kSettingsSecondaryTexts[] = {
 };
 #define SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT "settings secondary text index out of range: %d"
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
+#define SETUP_STATUS_LINE_INDEX_OUT_OF_RANGE_FORMAT "setup status line index out of range: %u"
 #define BATTERY_ICON_INVALID_ARG_LOG "battery icon invalid arg"
 #define BATTERY_FRAME_CREATE_FAILED_LOG "battery frame create failed"
 #define BATTERY_INNER_CREATE_FAILED_LOG "battery inner create failed"
@@ -309,9 +225,6 @@ constexpr int kBatterySegmentY = 4;
 constexpr int kBatterySegmentW = 4;
 constexpr int kBatterySegmentH = 8;
 constexpr int kBatterySegmentGap = 6;
-constexpr const char *kBootTitleText = "RLCD Weather Clock";
-constexpr const char *kBootInitialStatusText = "Starting...";
-constexpr const char *kBootInitialDetailText = "Preparing system";
 constexpr size_t kSetupStatusLineSize = 96;
 constexpr const char *kSetupStatusTitle = "Setup Mode";
 constexpr const char *kSetupStatusPlaceholder = "--";
@@ -328,25 +241,9 @@ constexpr size_t kSetupStatusApPasswordIndex = 2;
 constexpr size_t kSetupStatusPortalIpIndex = 3;
 constexpr size_t kSetupStatusStaSsidIndex = 4;
 constexpr size_t kSetupStatusStaIpIndex = 5;
-constexpr size_t kInfoTimeTextSize = 32;
-constexpr size_t kInfoLineTextSize = 96;
-constexpr const char *kInfoLastNtpFormat = "Last NTP: %s";
-constexpr const char *kInfoWifiFormat = "WiFi: %s";
-constexpr const char *kInfoLastWeatherFormat = "Last Weather: %s";
-constexpr const char *kInfoBatteryFullFormat = "Battery: %d%%  %.2fV \\ %s";
-constexpr const char *kInfoBatteryPercentOnlyFormat = "Battery: %d%%  -- \\ %s";
-constexpr const char *kInfoBatteryPlaceholder = "Battery: --  -- \\ --";
-constexpr const char *kInfoVersionFormat = "Version: %s / %s";
-constexpr const char *kInfoSourceFormat = "Source: %s";
-constexpr const char *kProjectSourceUrl = "github.com/wickenzh/ESP32-S3-RLCD-4.2";
-constexpr const char *kInfoLinePlaceholder = "--";
-constexpr const char *kInfoReturnHintText = "Hold KEY to return";
 constexpr const char *kSettingsLabelPlaceholder = "--";
 constexpr const char *kSetupInfoTexts[] = {
     kLabelCreateFailedLog,
-    kBootTitleText,
-    kBootInitialStatusText,
-    kBootInitialDetailText,
     kSetupStatusTitle,
     kSetupStatusPlaceholder,
     kSetupApSsidFormat,
@@ -356,23 +253,9 @@ constexpr const char *kSetupInfoTexts[] = {
     kSetupStaIpFormat,
     kSetupStaIpReasonFormat,
     kSetupStaIpPlaceholder,
-    kInfoLastNtpFormat,
-    kInfoWifiFormat,
-    kInfoLastWeatherFormat,
-    kInfoBatteryFullFormat,
-    kInfoBatteryPercentOnlyFormat,
-    kInfoBatteryPlaceholder,
-    kInfoVersionFormat,
-    kInfoSourceFormat,
-    kProjectSourceUrl,
-    kInfoLinePlaceholder,
-    kInfoReturnHintText,
     kSettingsLabelPlaceholder,
 };
 constexpr const char *kBootSettingsLogTexts[] = {
-    BOOT_ANIM_DONE_EVENT_SKIPPED_LOG,
-    BOOT_ANIM_CANVAS_CREATE_FAILED_LOG,
-    NETWORK_DIAG_LINE_LABEL_CREATE_FAILED_FORMAT,
     SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT,
     SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT,
     SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT,
@@ -382,17 +265,13 @@ constexpr const char *kBootSettingsLogTexts[] = {
     SETTINGS_OTA_BAR_FILL_CREATE_FAILED_LOG,
     SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT,
     SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT,
+    SETUP_STATUS_LINE_INDEX_OUT_OF_RANGE_FORMAT,
     BATTERY_ICON_INVALID_ARG_LOG,
     BATTERY_FRAME_CREATE_FAILED_LOG,
     BATTERY_INNER_CREATE_FAILED_LOG,
     BATTERY_TIP_CREATE_FAILED_LOG,
     BATTERY_SEGMENT_CREATE_FAILED_FORMAT,
 };
-
-constexpr bool network_diag_texts_nonempty()
-{
-    return cstr_array_nonempty(kNetworkDiagFixedTexts);
-}
 
 constexpr bool settings_secondary_texts_nonempty()
 {
@@ -443,66 +322,30 @@ int settings_long_item_y(int primary)
     return primary == kSettingsPrimarySystem ? kSettingsSystemLongItemY : kSettingsDisplayLongItemY;
 }
 
-constexpr int kInfoTextX = 30;
-constexpr int kInfoTextW = 340;
-constexpr int kInfoSourceTextX = 0;
-constexpr int kInfoSourceTextW = 400;
-constexpr int kInfoLabelY[] = {70, 104, 138, 172, 206, 276};
-constexpr size_t kInfoLabelCount = array_count(kInfoLabelY);
-constexpr size_t kInfoNtpLabelIndex = 0;
-constexpr size_t kInfoWifiLabelIndex = 1;
-constexpr size_t kInfoWeatherLabelIndex = 2;
-constexpr size_t kInfoBatteryLabelIndex = 3;
-constexpr size_t kInfoVersionLabelIndex = 4;
-constexpr size_t kInfoSourceLabelIndex = kInfoLabelCount - 1;
 static_assert(kSettingsListRowCount == kSettingsSecondaryMaxCount,
               "settings list rows must match secondary slot count");
 static_assert(kSettingsGridRowCount * kSettingsGridColumns >= kWorkPageCount,
               "settings grid capacity must cover all work pages");
+static_assert(kSettingsGridRowCount * kSettingsGridColumns >= kSystemSettingsGridItemCount,
+              "settings grid capacity must cover system grid items");
 static_assert(array_count(kSettingsPrimaryItems) == kSettingsPrimaryCount,
               "settings primary item table must match primary count");
+static_assert(array_count(g_settings_labels) == kSettingsLabelCount,
+              "settings label storage must match configured label count");
+static_assert(array_count(g_settings_switch_dots) == kSettingsSecondaryMaxCount,
+              "settings switch dot storage must match secondary slot count");
+static_assert(array_count(g_settings_switch_texts) == kSettingsSecondaryMaxCount,
+              "settings switch text storage must match secondary slot count");
 static_assert(array_count(kSettingsOtaHintTexts) > 0, "settings OTA hint text registry must not be empty");
-static_assert(array_count(kNetworkDiagFixedTexts) > 0, "network diagnostics text registry must not be empty");
 static_assert(array_count(kSettingsSecondaryTexts) > 0, "settings secondary text registry must not be empty");
 static_assert(array_count(kSetupInfoTexts) > 0, "setup and info text registry must not be empty");
 static_assert(array_count(kBootSettingsLogTexts) > 0, "boot/settings log registry must not be empty");
 static_assert(settings_primary_items_nonempty(), "settings primary menu texts must be non-empty");
 static_assert(settings_ota_hint_texts_nonempty(), "settings OTA status and hint texts must be non-empty");
-static_assert(network_diag_texts_nonempty(), "network diagnostics fixed texts must be non-empty");
 static_assert(settings_secondary_texts_nonempty(), "settings secondary menu texts must be non-empty");
 static_assert(setup_info_texts_nonempty(), "setup and info fixed texts must be non-empty");
 static_assert(boot_settings_log_texts_nonempty(), "boot/settings log texts must be non-empty");
-static_assert(kBootAnimLvglLockTimeoutMs > 0, "boot animation LVGL lock timeout must be positive");
-static_assert(kBootAnimFinishLvglLockTimeoutMs >= kBootAnimLvglLockTimeoutMs,
-              "boot animation finish lock timeout must cover the normal lock timeout");
-static_assert(kBootScreenLvglLockTimeoutMs >= kBootAnimFinishLvglLockTimeoutMs,
-              "boot screen lock timeout must cover boot animation finish lock timeout");
 static_assert(kSettingsPrimaryExitBlockMs > 0, "settings primary exit block duration must be positive");
-static_assert(kNetworkDiagLocalIpLine < kNetworkDiagPublicIpLine,
-              "network diagnostics local IP line must precede public IP line");
-static_assert(kNetworkDiagPublicIpLine < kNetworkDiagGridFirstLine,
-              "network diagnostics public IP line must precede grid lines");
-static_assert(kNetworkDiagGridFirstLine <= kNetworkDiagWideLine,
-              "network diagnostics grid first line must not follow wide line");
-static_assert(kNetworkDiagWideLine < kNetworkDiagLineCount,
-              "network diagnostics wide line must fit line count");
-static_assert(kNetworkDiagGridColumns > 0, "network diagnostics grid must have columns");
-static_assert(kNetworkDiagWideW > 0 && kNetworkDiagGridW > 0,
-              "network diagnostics line widths must be positive");
-static_assert(kNetworkDiagWideW >= kNetworkDiagGridW,
-              "network diagnostics wide line must fit grid line width");
-static_assert(kAuxPageTitleW > 0 && kAuxPageLineW > 0, "auxiliary page frame widths must be positive");
-static_assert(kInfoPageTitleH > 0 && kNetworkDiagTitleH > 0,
-              "auxiliary page title heights must be positive");
-static_assert(kInfoReturnHintW > 0 && kInfoReturnHintH > 0,
-              "System Info return hint size must be positive");
-static_assert(kNetworkDiagSummaryW > 0 && kNetworkDiagSummaryH > 0,
-              "network diagnostics summary size must be positive");
-static_assert(kNetworkDiagLineH > 0, "network diagnostics line height must be positive");
-static_assert(kNetworkDiagHintW > 0 && kNetworkDiagHintH > 0,
-              "network diagnostics hint size must be positive");
-static_assert(kNetworkDiagSummaryTextSize > 1,
-              "network diagnostics summary buffer must fit text and NUL");
 static_assert(kSettingsOtaLineTextSize > 1 && kSettingsOtaHintTextSize > 1,
               "settings OTA text buffers must fit text and NUL");
 static_assert(kSettingsOtaBarInset >= 0, "settings OTA progress inset must be non-negative");
@@ -528,10 +371,6 @@ static_assert(kBatterySegmentW > 0 && kBatterySegmentH > 0,
               "battery segment size must be positive");
 static_assert(kBatterySegmentCount * kBatteryPercentPerSegment == 100,
               "battery segments must cover exactly 100 percent");
-static_assert(kInfoVersionLabelIndex < kInfoSourceLabelIndex,
-              "System Info version label must precede source label");
-static_assert(kInfoSourceLabelIndex < kInfoLabelCount,
-              "System Info source label index must fit label count");
 static_assert(kSetupStatusStaIpIndex < array_count(g_setup_status_labels),
               "setup status semantic indices must fit label storage");
 
@@ -580,15 +419,6 @@ void hide_settings_switch_slot(int index)
     }
 }
 
-bool center_align_label(lv_obj_t *label)
-{
-    if (!label) {
-        return false;
-    }
-    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    return true;
-}
-
 void warn_if_center_align_failed(lv_obj_t *label, const char *message)
 {
     if (!center_align_label(label)) {
@@ -596,85 +426,6 @@ void warn_if_center_align_failed(lv_obj_t *label, const char *message)
     }
 }
 
-lv_obj_t *make_centered_label(lv_obj_t *parent,
-                              int x,
-                              int y,
-                              int w,
-                              int h,
-                              const char *text,
-                              const char *warning)
-{
-    lv_obj_t *label = make_label(parent, x, y, w, h, text);
-    warn_if_center_align_failed(label, warning);
-    return label;
-}
-
-lv_obj_t *make_centered_label_with_font(lv_obj_t *parent,
-                                        int x,
-                                        int y,
-                                        int w,
-                                        int h,
-                                        const char *text,
-                                        const lv_font_t *font,
-                                        const char *warning)
-{
-    lv_obj_t *label = make_label_with_font(parent, x, y, w, h, text, font);
-    warn_if_center_align_failed(label, warning);
-    return label;
-}
-}
-
-void draw_boot_anim_frame_index(int frame)
-{
-    if (!g_boot_anim_canvas) {
-        return;
-    }
-    if (frame < 0) {
-        frame = 0;
-    } else if (frame >= BOOT_ANIM_FRAME_COUNT) {
-        frame = BOOT_ANIM_FRAME_COUNT - 1;
-    }
-    const uint8_t *pixels = boot_anim_frames[frame];
-    uint32_t bit = 0;
-    for (int y = 0; y < BOOT_ANIM_HEIGHT; ++y) {
-        for (int x = 0; x < BOOT_ANIM_WIDTH; ++x, ++bit) {
-            bool black = packed_1bit_bit_is_set(pixels, bit);
-            lv_canvas_set_px_color(g_boot_anim_canvas, x, y, black ? lv_color_black() : lv_color_white());
-        }
-    }
-    lv_obj_invalidate(g_boot_anim_canvas);
-}
-
-void boot_anim_task(void *)
-{
-    int frame = 0;
-    while (g_boot_anim_running) {
-        if (Lvgl_lock(kBootAnimLvglLockTimeoutMs)) {
-            draw_boot_anim_frame_index(frame);
-            g_boot_anim_current_frame = frame;
-            Lvgl_unlock();
-        }
-        frame = (frame + 1) % BOOT_ANIM_FRAME_COUNT;
-        vTaskDelay(pdMS_TO_TICKS(kBootAnimRunFrameMs));
-    }
-    if (g_app_events) {
-        xEventGroupSetBits(g_app_events, kBootAnimDoneBit);
-    } else {
-        ESP_LOGW(TAG, BOOT_ANIM_DONE_EVENT_SKIPPED_LOG);
-    }
-    g_boot_anim_task_handle = nullptr;
-    vTaskDelete(nullptr);
-}
-
-void finish_boot_anim_to_last_frame()
-{
-    if (Lvgl_lock(kBootAnimFinishLvglLockTimeoutMs)) {
-        draw_boot_anim_frame_index(BOOT_ANIM_FRAME_COUNT - 1);
-        g_boot_anim_current_frame = BOOT_ANIM_FRAME_COUNT - 1;
-        lv_refr_now(nullptr);
-        Lvgl_unlock();
-    }
-    vTaskDelay(pdMS_TO_TICKS(kBootAnimFinishHoldMs));
 }
 
 void style_battery_part(lv_obj_t *obj, bool filled)
@@ -701,13 +452,6 @@ void style_battery_frame(lv_obj_t *obj)
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(obj, 3, LV_PART_MAIN);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
-}
-
-lv_obj_t *make_black_bar(lv_obj_t *parent, int x, int y, int w, int h)
-{
-    lv_obj_t *bar = make_bar(parent, x, y, w, h);
-    set_obj_black(bar, true);
-    return bar;
 }
 
 void build_battery_icon(lv_obj_t *parent, lv_obj_t **segments)
@@ -763,335 +507,6 @@ void build_battery_icon(lv_obj_t *parent, lv_obj_t **segments)
         lv_obj_set_style_border_width(segments[i], 0, LV_PART_MAIN);
         lv_obj_set_style_radius(segments[i], 1, LV_PART_MAIN);
     }
-}
-
-void show_boot_screen()
-{
-    lv_obj_t *screen = lv_scr_act();
-    lv_obj_clean(screen);
-    lv_obj_set_style_bg_color(screen, lv_color_white(), LV_PART_MAIN);
-    lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
-
-    lv_obj_t *title = make_label_with_font(screen,
-                                           kBootContentX,
-                                           kBootTitleY,
-                                           kBootContentW,
-                                           kBootTitleH,
-                                           kBootTitleText,
-                                           &lv_font_montserrat_16);
-    warn_if_center_align_failed(title, "boot title create failed");
-
-    g_boot_status_label = make_label_with_font(screen,
-                                               kBootContentX,
-                                               kBootStatusY,
-                                               kBootContentW,
-                                               kBootStatusH,
-                                               kBootInitialStatusText,
-                                               &lv_font_montserrat_16);
-    warn_if_center_align_failed(g_boot_status_label, "boot status label create failed");
-
-    g_boot_detail_label = make_label_with_font(screen,
-                                               kBootContentX,
-                                               kBootDetailY,
-                                               kBootContentW,
-                                               kBootDetailH,
-                                               kBootInitialDetailText,
-                                               &lv_font_montserrat_14);
-    warn_if_center_align_failed(g_boot_detail_label, "boot detail label create failed");
-
-    lv_obj_t *version = make_label_with_font(screen,
-                                             kBootContentX,
-                                             kBootVersionY,
-                                             kBootContentW,
-                                             kBootVersionH,
-                                             APP_VERSION,
-                                             &lv_font_montserrat_16);
-    warn_if_center_align_failed(version, "boot version label create failed");
-
-    if (!g_boot_anim_canvas_buf) {
-        g_boot_anim_canvas_buf = alloc_canvas_buffer(BOOT_ANIM_WIDTH, BOOT_ANIM_HEIGHT);
-    }
-    g_boot_anim_canvas = lv_canvas_create(screen);
-    if (g_boot_anim_canvas) {
-        lv_obj_clear_flag(g_boot_anim_canvas, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_boot_anim_canvas, kBootAnimCanvasX, kBootAnimCanvasY);
-        lv_obj_set_size(g_boot_anim_canvas, BOOT_ANIM_WIDTH, BOOT_ANIM_HEIGHT);
-        lv_obj_set_style_border_width(g_boot_anim_canvas, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(g_boot_anim_canvas, 0, LV_PART_MAIN);
-    } else {
-        ESP_LOGW(TAG, BOOT_ANIM_CANVAS_CREATE_FAILED_LOG);
-    }
-    if (g_boot_anim_canvas && g_boot_anim_canvas_buf) {
-        lv_canvas_set_buffer(g_boot_anim_canvas,
-                             g_boot_anim_canvas_buf,
-                             BOOT_ANIM_WIDTH,
-                             BOOT_ANIM_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        lv_canvas_fill_bg(g_boot_anim_canvas, lv_color_white(), LV_OPA_COVER);
-        draw_boot_anim_frame_index(0);
-    }
-
-    lv_refr_now(nullptr);
-}
-
-void update_boot_screen(int percent, const char *status, const char *detail)
-{
-    if (percent < 0) {
-        percent = 0;
-    } else if (percent > 100) {
-        percent = 100;
-    }
-    if (Lvgl_lock(kBootScreenLvglLockTimeoutMs)) {
-        if (g_boot_status_label) {
-            set_label_text_if_changed(g_boot_status_label, status);
-        }
-        if (g_boot_detail_label) {
-            set_label_text_if_changed(g_boot_detail_label, detail);
-        }
-        lv_refr_now(nullptr);
-        Lvgl_unlock();
-    }
-}
-
-void finish_boot_screen()
-{
-    if (Lvgl_lock(kBootScreenLvglLockTimeoutMs)) {
-        lv_obj_clean(lv_scr_act());
-        clear_clock_object_refs();
-        clear_info_object_refs();
-        g_boot_status_label = nullptr;
-        g_boot_detail_label = nullptr;
-        g_boot_anim_canvas = nullptr;
-        g_active_work_page = first_enabled_work_page();
-        show_active_work_page();
-        lv_refr_now(nullptr);
-        Lvgl_unlock();
-    }
-}
-
-void build_boot_info_page()
-{
-    if (g_info_root) {
-        return;
-    }
-    lv_obj_t *screen = create_page_root();
-    if (!screen) {
-        return;
-    }
-    g_info_root = screen;
-    lv_obj_add_flag(g_info_root, LV_OBJ_FLAG_HIDDEN);
-
-    make_centered_label_with_font(screen,
-                                  kAuxPageTitleX,
-                                  kAuxPageTitleY,
-                                  kAuxPageTitleW,
-                                  kInfoPageTitleH,
-                                  "SYSTEM INFO",
-                                  &lv_font_montserrat_16,
-                                  "system info title create failed");
-
-    make_black_bar(screen, kAuxPageLineX, kInfoPageTopLineY, kAuxPageLineW, kInfoPageTopLineH);
-
-    static_assert(kInfoLabelCount == array_count(g_info_labels),
-                  "System Info labels and row coordinates must stay in sync");
-    for (size_t i = 0; i < kInfoLabelCount; ++i) {
-        const bool source_line = i == kInfoSourceLabelIndex;
-        g_info_labels[i] = make_label_with_font(screen,
-                                                source_line ? kInfoSourceTextX : kInfoTextX,
-                                                kInfoLabelY[i],
-                                                source_line ? kInfoSourceTextW : kInfoTextW,
-                                                source_line ? 18 : 24,
-                                                kInfoLinePlaceholder,
-                                                source_line ? &lv_font_montserrat_12 : &lv_font_montserrat_14);
-        if (source_line) {
-            (void)center_align_label(g_info_labels[i]);
-        }
-    }
-
-    make_black_bar(screen, kAuxPageLineX, kInfoPageBottomLineY, kAuxPageLineW, kInfoPageBottomLineH);
-    g_info_ota_label = make_centered_label_with_font(screen,
-                                                     kInfoReturnHintX,
-                                                     kInfoReturnHintY,
-                                                     kInfoReturnHintW,
-                                                     kInfoReturnHintH,
-                                                     kInfoReturnHintText,
-                                                     &lv_font_montserrat_14,
-                                                     "system info return label create failed");
-    g_info_ota_hint_label = nullptr;
-    g_info_ota_bar_frame = nullptr;
-    g_info_ota_bar_fill = nullptr;
-}
-
-struct NetworkDiagLineLayout {
-    int x;
-    int y;
-    int w;
-};
-
-NetworkDiagLineLayout network_diag_line_layout(int index)
-{
-    NetworkDiagLineLayout layout = {
-        kNetworkDiagWideX,
-        kNetworkDiagLocalIpY,
-        kNetworkDiagWideW,
-    };
-    if (index == kNetworkDiagLocalIpLine) {
-        layout.y = kNetworkDiagLocalIpY;
-    } else if (index == kNetworkDiagPublicIpLine) {
-        layout.y = kNetworkDiagPublicIpY;
-    } else {
-        int grid = index - kNetworkDiagGridFirstLine;
-        int row = grid / kNetworkDiagGridColumns;
-        int col = grid % kNetworkDiagGridColumns;
-        layout.x = kNetworkDiagWideX + col * kNetworkDiagGridColGap;
-        layout.y = kNetworkDiagGridStartY + row * kNetworkDiagGridRowGap;
-        layout.w = kNetworkDiagGridW;
-        if (index == kNetworkDiagWideLine) {
-            layout.x = kNetworkDiagWideX;
-            layout.w = kNetworkDiagWideW;
-        }
-    }
-    return layout;
-}
-
-void set_info_time_label(size_t index, const char *format, time_t value)
-{
-    char time_text[kInfoTimeTextSize] = {};
-    char line[kInfoLineTextSize] = {};
-    format_time_or_dash(value, time_text, sizeof(time_text));
-    ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder, format, time_text);
-    set_label_text_if_changed(g_info_labels[index], line);
-}
-
-void set_info_string_label(size_t index, const char *format, const char *value)
-{
-    char line[kInfoLineTextSize] = {};
-    ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder, format, value ? value : "");
-    set_label_text_if_changed(g_info_labels[index], line);
-}
-
-void set_info_battery_label()
-{
-    char line[kInfoLineTextSize] = {};
-    char charge_time[kInfoTimeTextSize] = {};
-    format_time_or_dash(g_last_charge_time, charge_time, sizeof(charge_time));
-    if (g_battery_percent >= 0 && g_battery_voltage >= 0.0f) {
-        ui_text::format_or_fallback(line,
-                                sizeof(line),
-                                kInfoBatteryPlaceholder,
-                                kInfoBatteryFullFormat,
-                                g_battery_percent,
-                                g_battery_voltage,
-                                charge_time);
-    } else if (g_battery_percent >= 0) {
-        ui_text::format_or_fallback(line,
-                                sizeof(line),
-                                kInfoBatteryPlaceholder,
-                                kInfoBatteryPercentOnlyFormat,
-                                g_battery_percent,
-                                charge_time);
-    } else {
-        ui_text::copy(line, sizeof(line), kInfoBatteryPlaceholder);
-    }
-    set_label_text_if_changed(g_info_labels[kInfoBatteryLabelIndex], line);
-}
-
-void set_info_version_label()
-{
-    char line[kInfoLineTextSize] = {};
-    ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder, kInfoVersionFormat, APP_VERSION, APP_BUILD_DATE);
-    set_label_text_if_changed(g_info_labels[kInfoVersionLabelIndex], line);
-}
-
-void update_boot_info_page()
-{
-    set_info_time_label(kInfoNtpLabelIndex, kInfoLastNtpFormat, g_last_ntp_sync_time);
-    set_info_string_label(kInfoWifiLabelIndex, kInfoWifiFormat, g_wifi_ssid[0] ? g_wifi_ssid : "--");
-    set_info_time_label(kInfoWeatherLabelIndex, kInfoLastWeatherFormat, g_last_weather_sync_time);
-    set_info_battery_label();
-    set_info_version_label();
-    set_info_string_label(kInfoSourceLabelIndex, kInfoSourceFormat, kProjectSourceUrl);
-
-    ota_reset_status_if_idle();
-}
-
-void build_network_diag_page()
-{
-    if (g_network_diag_root) {
-        return;
-    }
-    lv_obj_t *screen = create_page_root();
-    if (!screen) {
-        return;
-    }
-    g_network_diag_root = screen;
-    lv_obj_add_flag(g_network_diag_root, LV_OBJ_FLAG_HIDDEN);
-
-    make_centered_label(screen,
-                        kAuxPageTitleX,
-                        kAuxPageTitleY,
-                        kAuxPageTitleW,
-                        kNetworkDiagTitleH,
-                        kNetworkDiagTitle,
-                        "network diag title create failed");
-
-    make_black_bar(screen, kAuxPageLineX, kNetworkDiagTopLineY, kAuxPageLineW, kNetworkDiagTopLineH);
-
-    g_network_diag_summary_label = make_centered_label(screen,
-                                                       kNetworkDiagSummaryX,
-                                                       kNetworkDiagSummaryY,
-                                                       kNetworkDiagSummaryW,
-                                                       kNetworkDiagSummaryH,
-                                                       kNetworkDiagSummaryReady,
-                                                       "network diag summary label create failed");
-
-    for (int i = 0; i < kNetworkDiagLineCount; ++i) {
-        NetworkDiagLineLayout layout = network_diag_line_layout(i);
-        g_network_diag_labels[i] = make_label(screen,
-                                              layout.x,
-                                              layout.y,
-                                              layout.w,
-                                              kNetworkDiagLineH,
-                                              kNetworkDiagLinePlaceholder);
-        if (g_network_diag_labels[i]) {
-            lv_label_set_long_mode(g_network_diag_labels[i], LV_LABEL_LONG_CLIP);
-            lv_obj_set_style_text_align(g_network_diag_labels[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-        } else {
-            ESP_LOGW(TAG, NETWORK_DIAG_LINE_LABEL_CREATE_FAILED_FORMAT, i);
-        }
-    }
-
-    make_black_bar(screen, kAuxPageLineX, kNetworkDiagBottomLineY, kAuxPageLineW, kNetworkDiagBottomLineH);
-    g_network_diag_hint_label = make_centered_label(screen,
-                                                    kNetworkDiagHintX,
-                                                    kNetworkDiagHintY,
-                                                    kNetworkDiagHintW,
-                                                    kNetworkDiagHintH,
-                                                    kNetworkDiagHintIdle,
-                                                    "network diag hint label create failed");
-}
-
-bool update_network_diag_page()
-{
-    bool changed = false;
-    char summary[kNetworkDiagSummaryTextSize] = {};
-    if (g_network_diag_state == kNetworkDiagRunning) {
-        ui_text::copy(summary, sizeof(summary), kNetworkDiagSummaryRunning);
-    } else if (g_network_diag_state == kNetworkDiagDone) {
-        ui_text::copy(summary, sizeof(summary), kNetworkDiagSummaryDone);
-    } else {
-        ui_text::copy(summary, sizeof(summary), kNetworkDiagSummaryIdle);
-    }
-    changed |= set_label_text_if_changed(g_network_diag_summary_label, summary);
-    for (int i = 0; i < kNetworkDiagLineCount; ++i) {
-        changed |= set_label_text_if_changed(g_network_diag_labels[i],
-                                             g_network_diag_lines[i][0] ? g_network_diag_lines[i] :
-                                                                          kNetworkDiagLinePlaceholder);
-    }
-    changed |= set_label_text_if_changed(g_network_diag_hint_label,
-                                         g_network_diag_state == kNetworkDiagRunning ? kNetworkDiagHintRunning :
-                                                                                       kNetworkDiagHintIdle);
-    return changed;
 }
 
 void style_settings_item(lv_obj_t *label, bool selected)
@@ -1348,6 +763,7 @@ bool update_settings_page()
 {
     ota_reset_status_if_idle();
     bool changed = false;
+    static lv_obj_t *last_settings_root = nullptr;
     static int last_primary = -1;
     static int last_selected = -1;
     static bool last_focus_secondary = false;
@@ -1415,7 +831,8 @@ bool update_settings_page()
     static bool last_page_order_mode = false;
     static bool last_page_toggle_mode = false;
     static int last_page_order_selection = -1;
-    bool selection_changed = selected != last_selected ||
+    bool selection_changed = g_settings_root != last_settings_root ||
+                             selected != last_selected ||
                              primary != last_primary ||
                              g_settings_focus_secondary != last_focus_secondary ||
                              g_settings_page_toggle_mode != last_page_toggle_mode ||
@@ -1426,6 +843,7 @@ bool update_settings_page()
                              g_ota_speed_kbps != last_ota_speed;
     if (selection_changed) {
         changed = true;
+        last_settings_root = g_settings_root;
         last_selected = selected;
         last_primary = primary;
         last_focus_secondary = g_settings_focus_secondary;
@@ -1685,6 +1103,10 @@ void finish_settings_sync(SettingsSyncOp op, const char *text)
 template <typename... Args>
 bool set_setup_status_line(size_t index, const char *fallback, const char *format, Args... args)
 {
+    if (index >= array_count(g_setup_status_labels)) {
+        ESP_LOGW(TAG, SETUP_STATUS_LINE_INDEX_OUT_OF_RANGE_FORMAT, (unsigned)index);
+        return false;
+    }
     char line[kSetupStatusLineSize] = {};
     ui_text::format_or_fallback(line, sizeof(line), fallback, format, args...);
     return set_label_text_if_changed(g_setup_status_labels[index], line);
@@ -1737,7 +1159,7 @@ void update_battery_segments(lv_obj_t **segments, int percent, bool charging, bo
             percent = 100;
         }
         filled = (percent + kBatteryPercentPerSegment - 1) / kBatteryPercentPerSegment;
-        if (charging && percent < 100) {
+        if (charging && percent < kBatteryChargingAnimationStopPercent) {
             blink_index = percent / kBatteryPercentPerSegment;
             if (blink_index >= kBatterySegmentCount) {
                 blink_index = kBatterySegmentCount - 1;

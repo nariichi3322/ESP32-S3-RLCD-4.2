@@ -14,6 +14,8 @@ constexpr uint32_t kShtc3I2cSpeedHz = 400000;
 constexpr uint32_t kRtcI2cSpeedHz = 300000;
 constexpr const char *kShtc3LogTag = "shtc3";
 constexpr const char *kRtcLogTag = "rtc";
+#define SHTC3_DEVICE_ADD_FAILED_FORMAT "device add failed: %s"
+#define RTC_DEVICE_ADD_FAILED_FORMAT "device add failed: %s"
 constexpr float kShtc3RawFullScale = 65536.0f;
 constexpr float kShtc3TemperatureScaleC = 175.0f;
 constexpr float kShtc3TemperatureOffsetC = -45.0f;
@@ -43,7 +45,11 @@ i2cbus_(i2cbus) {
     dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
     dev_cfg.device_address  = Shtc3Address;
     dev_cfg.scl_speed_hz    = kShtc3I2cSpeedHz;
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(I2cMasterBus, &dev_cfg, &I2c_DevShtc3));
+    esp_err_t err = i2c_master_bus_add_device(I2cMasterBus, &dev_cfg, &I2c_DevShtc3);
+    if (err != ESP_OK) {
+        ESP_LOGW(kShtc3LogTag, SHTC3_DEVICE_ADD_FAILED_FORMAT, esp_err_to_name(err));
+        return;
+    }
 
     Shtc3_Wakeup();
     Shtc3_SoftReset();
@@ -188,6 +194,9 @@ etError Shtc3Port::Shtc3_Sleep() {
 }
 
 uint8_t Shtc3Port::Shtc3_ReadTempHumi(float *t,float *h) {
+    if (!I2c_DevShtc3 || !t || !h) {
+        return 1;
+    }
     etError      error;
     Shtc3_Wakeup();
     error = Shtc3_GetTempAndHumiPolling(t, h);
@@ -199,11 +208,14 @@ uint8_t Shtc3Port::Shtc3_ReadTempHumi(float *t,float *h) {
 }
 
 static i2c_master_dev_handle_t I2cRTCdev = NULL;
-static uint8_t                 I2cRTCAddress;
 static I2cMasterBus           *I2cbus_   = NULL;
+static bool                    s_rtc_ready = false;
 SensorPCF85063 rtc;
 
 static bool I2cDevCallback(uint8_t address, uint8_t reg, uint8_t *buf, size_t len, bool writeReg, bool isWrite) {
+    if (!I2cbus_ || !I2cRTCdev || !buf || len == 0) {
+        return false;
+    }
     int                     ret;
     i2c_master_dev_handle_t dev_handle = NULL;
     dev_handle = I2cRTCdev;
@@ -224,6 +236,10 @@ static bool I2cDevCallback(uint8_t address, uint8_t reg, uint8_t *buf, size_t le
 }
 
 void Rtc_Setup(I2cMasterBus *i2cbus,uint8_t dev_addr) {
+    if (!i2cbus) {
+        ESP_LOGW(kRtcLogTag, RTC_DEVICE_ADD_FAILED_FORMAT, esp_err_to_name(ESP_ERR_INVALID_ARG));
+        return;
+    }
     if (I2cbus_ == NULL) {
         I2cbus_ = i2cbus;
     }
@@ -233,10 +249,14 @@ void Rtc_Setup(I2cMasterBus *i2cbus,uint8_t dev_addr) {
         dev_cfg.dev_addr_length           = I2C_ADDR_BIT_LEN_7;
         dev_cfg.scl_speed_hz              = kRtcI2cSpeedHz;
         dev_cfg.device_address            = dev_addr;
-        ESP_ERROR_CHECK(i2c_master_bus_add_device(BusHandle, &dev_cfg, &I2cRTCdev));
-        I2cRTCAddress = dev_addr;
+        esp_err_t err = i2c_master_bus_add_device(BusHandle, &dev_cfg, &I2cRTCdev);
+        if (err != ESP_OK) {
+            ESP_LOGW(kRtcLogTag, RTC_DEVICE_ADD_FAILED_FORMAT, esp_err_to_name(err));
+            return;
+        }
     }
-    if (rtc.begin(I2cDevCallback)) {
+    s_rtc_ready = rtc.begin(I2cDevCallback);
+    if (s_rtc_ready) {
         ESP_LOGI(kRtcLogTag, "InitWill");
     } else {
         ESP_LOGE(kRtcLogTag, "InitFailure");
@@ -244,10 +264,20 @@ void Rtc_Setup(I2cMasterBus *i2cbus,uint8_t dev_addr) {
 }
 
 void Rtc_SetTime(uint16_t year,uint8_t month,uint8_t day,uint8_t hour,uint8_t minute,uint8_t second) {
+    if (!s_rtc_ready) {
+        return;
+    }
     rtc.setDateTime(year, month, day, hour, minute, second);
 }
 
 void Rtc_GetTime(rtcTimeStruct_t *time) {
+    if (!time) {
+        return;
+    }
+    *time = {};
+    if (!s_rtc_ready) {
+        return;
+    }
     RTC_DateTime  datetime = rtc.getDateTime();
     time->year              = datetime.getYear();
     time->month             = datetime.getMonth();

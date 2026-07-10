@@ -158,6 +158,14 @@ static_assert(array_count(kWeatherBoardWeekdayNames) == kWeatherBoardWeekdayCoun
               "weather board weekday names must match weekday count");
 static_assert(array_count(kForecastCardX) == kWeatherForecastDays,
               "weather forecast card positions must match forecast day count");
+static_assert(array_count(s_cards) == kWeatherForecastDays,
+              "weather forecast card storage must match forecast day count");
+static_assert(kWeatherBoardMaxAlertTitles > 0 && kWeatherBoardMaxAlertTitles <= kMaxWeatherAlerts,
+              "weather board alert display limit must fit alert storage");
+static_assert(kForecastCardRangeY + kForecastCardRangeH <= kForecastCardH,
+              "weather forecast card content must fit card height");
+static_assert(kForecastCardX[kWeatherForecastDays - 1] + kForecastCardW <= kDisplayWidth,
+              "weather forecast cards must fit display width");
 static_assert(kWeatherBoardTopLineW > 0 && kWeatherBoardTopLineH > 0,
               "weather board top line size must be positive");
 static_assert(kWeatherBoardCurrentCityW > 0 && kWeatherBoardCurrentCityH > 0,
@@ -210,11 +218,6 @@ void style_weather_card(lv_obj_t *obj)
     lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_radius(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
-}
-
-bool output_buffer_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
 }
 
 void set_card_visible(ForecastCardUi &card, bool visible)
@@ -280,7 +283,7 @@ time_t weather_board_time_on_day(const struct tm &local, const char *hhmm, int d
 
 void set_sun_countdown_placeholder(char *out, size_t out_len)
 {
-    if (!output_buffer_available(out, out_len)) {
+    if (!ui_text::output_buffer_available(out, out_len)) {
         return;
     }
     strlcpy(out, kWeatherBoardSunCountdownPlaceholder, out_len);
@@ -291,7 +294,7 @@ void format_weather_board_sun_countdown(const struct tm &local,
                                         char *out,
                                         size_t out_len)
 {
-    if (!output_buffer_available(out, out_len)) {
+    if (!ui_text::output_buffer_available(out, out_len)) {
         return;
     }
     const WeatherForecastDay *today = forecast_day_or_null(forecast, 0);
@@ -372,7 +375,7 @@ void format_short_date(const char *date, char *out, size_t out_len)
     int year = 0;
     int month = 0;
     int day = 0;
-    if (!output_buffer_available(out, out_len)) {
+    if (!ui_text::output_buffer_available(out, out_len)) {
         return;
     }
     if (!parse_forecast_date(date, year, month, day)) {
@@ -388,7 +391,7 @@ void format_short_date(const char *date, char *out, size_t out_len)
 
 void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len)
 {
-    if (!output_buffer_available(out, out_len)) {
+    if (!ui_text::output_buffer_available(out, out_len)) {
         return;
     }
     ui_text::format_or_fallback(out,
@@ -401,7 +404,7 @@ void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len
 
 void format_forecast_date_line(const WeatherForecastDay &day, char *out, size_t out_len)
 {
-    if (!output_buffer_available(out, out_len)) {
+    if (!ui_text::output_buffer_available(out, out_len)) {
         return;
     }
     char date_short[kForecastShortDateSize] = {};
@@ -416,7 +419,7 @@ void format_forecast_date_line(const WeatherForecastDay &day, char *out, size_t 
 
 void format_forecast_temp_range(const WeatherForecastDay &day, char *out, size_t out_len)
 {
-    if (!output_buffer_available(out, out_len)) {
+    if (!ui_text::output_buffer_available(out, out_len)) {
         return;
     }
     ui_text::format_or_fallback(out,
@@ -429,7 +432,7 @@ void format_forecast_temp_range(const WeatherForecastDay &day, char *out, size_t
 
 void format_weather_board_alert_line(const WeatherAlertData &alert, char *out, size_t out_len)
 {
-    if (!output_buffer_available(out, out_len)) {
+    if (!ui_text::output_buffer_available(out, out_len)) {
         return;
     }
     if (!alert.active || alert.count <= 0 || !alert.titles[0][0]) {
@@ -651,9 +654,7 @@ bool update_weather_board_page(const struct tm &local)
     WeatherAlertData alert = {};
     WeatherForecastData forecast = {};
     WeatherAirData air = {};
-    get_weather_snapshot(&weather, &alert);
-    get_weather_forecast_snapshot(&forecast);
-    get_weather_air_snapshot(&air);
+    get_weather_full_snapshot(&weather, &alert, &forecast, &air);
     EventBits_t bits = xEventGroupGetBits(g_app_events);
     bool weather_ready = (bits & kWeatherReadyBit) != 0;
     bool changed = update_work_page_status_time(g_weather_board_status_time_label, local);

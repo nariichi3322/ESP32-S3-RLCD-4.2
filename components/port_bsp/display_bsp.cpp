@@ -14,6 +14,10 @@ static constexpr int kRlcdTxChunkBytes = 2048;
 static constexpr int kRlcdOtaTxChunkBytes = 512;
 static constexpr int kRlcdTxRetryCount = 4;
 static constexpr int kRlcdOtaTxRetryCount = 8;
+static constexpr int kRlcdTxRetryBaseDelayMs = 2;
+static constexpr int kRlcdTxRetryStepDelayMs = 2;
+static constexpr int kRlcdOtaTxRetryBaseDelayMs = 8;
+static constexpr int kRlcdOtaTxRetryStepDelayMs = 4;
 static constexpr int kRlcdLcdCommandBits = 8;
 static constexpr int kRlcdLcdParamBits = 8;
 static constexpr int kRlcdSpiMode = 0;
@@ -31,6 +35,17 @@ static_assert(kRlcdResetHighDelayMs > 0, "RLCD reset high delay must be positive
 static_assert(kRlcdResetLowDelayMs > 0, "RLCD reset low delay must be positive");
 static_assert(kRlcdLcdCommandBits > 0, "RLCD command bit width must be positive");
 static_assert(kRlcdLcdParamBits > 0, "RLCD parameter bit width must be positive");
+static_assert(kRlcdTxChunkBytes > 0 && kRlcdOtaTxChunkBytes > 0,
+              "RLCD transfer chunk sizes must be positive");
+static_assert(kRlcdOtaTxChunkBytes <= kRlcdTxChunkBytes,
+              "RLCD conservative transfer chunks must not exceed normal chunks");
+static_assert(kRlcdTxRetryCount > 0 && kRlcdOtaTxRetryCount >= kRlcdTxRetryCount,
+              "RLCD conservative retries must cover normal retries");
+static_assert(kRlcdTxRetryBaseDelayMs > 0 && kRlcdTxRetryStepDelayMs >= 0,
+              "RLCD normal retry delays must be valid");
+static_assert(kRlcdOtaTxRetryBaseDelayMs >= kRlcdTxRetryBaseDelayMs &&
+                  kRlcdOtaTxRetryStepDelayMs >= kRlcdTxRetryStepDelayMs,
+              "RLCD conservative retry delays must not be shorter than normal delays");
 static_assert(kRlcdSpiMode >= 0, "RLCD SPI mode must not be negative");
 static_assert(kRlcdSpiTransQueueDepth > 0, "RLCD SPI transaction queue depth must be positive");
 static_assert(kRlcdDmaConservativeMaxDepth > 0, "RLCD DMA conservative depth limit must be positive");
@@ -41,6 +56,13 @@ static_assert(kRlcdResetLowDelay > 0, "RLCD reset low tick delay must be positiv
 static bool s_ota_quiet_mode = false;
 static int s_dma_conservative_depth = 0;
 static portMUX_TYPE s_dma_mode_mux = portMUX_INITIALIZER_UNLOCKED;
+
+static int RlcdTxRetryDelayMs(bool conservative, int attempt)
+{
+    int base_delay = conservative ? kRlcdOtaTxRetryBaseDelayMs : kRlcdTxRetryBaseDelayMs;
+    int step_delay = conservative ? kRlcdOtaTxRetryStepDelayMs : kRlcdTxRetryStepDelayMs;
+    return base_delay + attempt * step_delay;
+}
 
 static void LogDisplayAllocationFailure(const char *name, size_t bytes)
 {
@@ -369,8 +391,7 @@ void DisplayPort::RLCD_Sendbuffera(uint8_t *Data, int len) {
             if (err != ESP_ERR_NO_MEM && err != ESP_ERR_TIMEOUT) {
                 break;
             }
-            int delay_ms = quiet ? (8 + attempt * 4) : (2 + attempt * 2);
-            vTaskDelay(pdMS_TO_TICKS(delay_ms));
+            vTaskDelay(pdMS_TO_TICKS(RlcdTxRetryDelayMs(quiet, attempt)));
         }
 
         if (err != ESP_OK) {

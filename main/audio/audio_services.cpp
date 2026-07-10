@@ -244,10 +244,7 @@ bool start_xiaozhi_audio_session()
     CodecPort *codec = ensure_audio_codec();
     if (!codec || !codec->CodecPort_OpenXiaozhiMic()) {
         ESP_LOGW(TAG, "%s", kXiaozhiAudioStartFailedLog);
-        release_audio_codec();
-        park_unused_audio_peripherals();
-        release_audio_awake_lock();
-        clear_audio_playing();
+        finish_audio_playback();
         return false;
     }
     codec->CodecPort_SetMicGain(kXiaozhiMicGainDb);

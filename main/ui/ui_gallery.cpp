@@ -114,7 +114,7 @@ static void draw_block_number(lv_obj_t *canvas, int value, int y)
 
 static bool update_gallery_time_labels(const struct tm &local)
 {
-    if (!g_gallery_time_canvas) {
+    if (!g_gallery_time_canvas || !g_gallery_time_canvas_buf) {
         return false;
     }
     lv_canvas_fill_bg(g_gallery_time_canvas, lv_color_white(), LV_OPA_COVER);
@@ -145,7 +145,7 @@ static void style_gallery_saying_label(lv_obj_t *label)
 
 static bool update_gallery_image_for_hour(int hour)
 {
-    if (!g_gallery_image_canvas) {
+    if (!g_gallery_image_canvas || !g_gallery_image_canvas_buf) {
         return false;
     }
     int custom_count = custom_assets_gallery_count();
@@ -204,7 +204,7 @@ void build_gallery_page()
                                kWorkPageGallery,
                                &g_gallery_date_label,
                                &g_gallery_summary_label,
-                               &g_gallery_status_time_label,
+                               nullptr,
                                false);
 
     lv_obj_t *top_line = make_bar(screen,
@@ -217,23 +217,23 @@ void build_gallery_page()
     if (!g_gallery_image_canvas_buf) {
         g_gallery_image_canvas_buf = alloc_canvas_buffer(CLOCK_GALLERY_IMAGE_WIDTH, CLOCK_GALLERY_IMAGE_HEIGHT);
     }
-    g_gallery_image_canvas = lv_canvas_create(screen);
-    if (!g_gallery_image_canvas) {
-        ESP_LOGW(TAG, "%s", GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG);
-    } else {
+    if (g_gallery_image_canvas_buf) {
+        g_gallery_image_canvas = lv_canvas_create(screen);
+    }
+    if (g_gallery_image_canvas) {
         lv_obj_clear_flag(g_gallery_image_canvas, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_pos(g_gallery_image_canvas, kGalleryImageCanvasX, kGalleryImageCanvasY);
         lv_obj_set_size(g_gallery_image_canvas, CLOCK_GALLERY_IMAGE_WIDTH, CLOCK_GALLERY_IMAGE_HEIGHT);
         lv_obj_set_style_border_width(g_gallery_image_canvas, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(g_gallery_image_canvas, 0, LV_PART_MAIN);
-        if (g_gallery_image_canvas_buf) {
-            lv_canvas_set_buffer(g_gallery_image_canvas,
-                                 g_gallery_image_canvas_buf,
-                                 CLOCK_GALLERY_IMAGE_WIDTH,
-                                 CLOCK_GALLERY_IMAGE_HEIGHT,
-                                 LV_IMG_CF_TRUE_COLOR);
-            lv_canvas_fill_bg(g_gallery_image_canvas, lv_color_white(), LV_OPA_COVER);
-        }
+        lv_canvas_set_buffer(g_gallery_image_canvas,
+                             g_gallery_image_canvas_buf,
+                             CLOCK_GALLERY_IMAGE_WIDTH,
+                             CLOCK_GALLERY_IMAGE_HEIGHT,
+                             LV_IMG_CF_TRUE_COLOR);
+        lv_canvas_fill_bg(g_gallery_image_canvas, lv_color_white(), LV_OPA_COVER);
+    } else if (g_gallery_image_canvas_buf) {
+        ESP_LOGW(TAG, "%s", GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG);
     }
 
     lv_obj_t *divider = make_bar(screen,
@@ -245,23 +245,23 @@ void build_gallery_page()
     if (!g_gallery_time_canvas_buf) {
         g_gallery_time_canvas_buf = alloc_canvas_buffer(kGalleryTimeCanvasW, kGalleryTimeCanvasH);
     }
-    g_gallery_time_canvas = lv_canvas_create(screen);
-    if (!g_gallery_time_canvas) {
-        ESP_LOGW(TAG, "%s", GALLERY_TIME_CANVAS_CREATE_FAILED_LOG);
-    } else {
+    if (g_gallery_time_canvas_buf) {
+        g_gallery_time_canvas = lv_canvas_create(screen);
+    }
+    if (g_gallery_time_canvas) {
         lv_obj_clear_flag(g_gallery_time_canvas, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_pos(g_gallery_time_canvas, kGalleryTimeCanvasX, kGalleryTimeCanvasY);
         lv_obj_set_size(g_gallery_time_canvas, kGalleryTimeCanvasW, kGalleryTimeCanvasH);
         lv_obj_set_style_border_width(g_gallery_time_canvas, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(g_gallery_time_canvas, 0, LV_PART_MAIN);
-        if (g_gallery_time_canvas_buf) {
-            lv_canvas_set_buffer(g_gallery_time_canvas,
-                                 g_gallery_time_canvas_buf,
-                                 kGalleryTimeCanvasW,
-                                 kGalleryTimeCanvasH,
-                                 LV_IMG_CF_TRUE_COLOR);
-            lv_canvas_fill_bg(g_gallery_time_canvas, lv_color_white(), LV_OPA_COVER);
-        }
+        lv_canvas_set_buffer(g_gallery_time_canvas,
+                             g_gallery_time_canvas_buf,
+                             kGalleryTimeCanvasW,
+                             kGalleryTimeCanvasH,
+                             LV_IMG_CF_TRUE_COLOR);
+        lv_canvas_fill_bg(g_gallery_time_canvas, lv_color_white(), LV_OPA_COVER);
+    } else if (g_gallery_time_canvas_buf) {
+        ESP_LOGW(TAG, "%s", GALLERY_TIME_CANVAS_CREATE_FAILED_LOG);
     }
 
     g_gallery_saying_label = make_label(screen,

@@ -138,6 +138,7 @@ static constexpr const char *kOtaManifestJsonParseFailedLog = "OTA manifest JSON
 #define OTA_MANIFEST_SOURCE_SKIPPED_FORMAT "OTA manifest source skipped: %s"
 static constexpr const char *kOtaManifestResponseAllocFailedLog = "OTA manifest response alloc failed";
 #define OTA_MANIFEST_FETCH_FAILED_FORMAT "OTA manifest failed source=%s err=%s"
+#define OTA_MANIFEST_PARSE_FAILED_FORMAT "OTA manifest parse failed source=%s"
 #define OTA_MANIFEST_LOADED_FORMAT "OTA manifest loaded source=%s version=%s"
 #define OTA_BACKUP_MANIFEST_MISMATCH_FORMAT "OTA backup manifest mismatch current=%s backup=%s"
 static constexpr const char *kOtaManifestInvalidForInstallLog = "OTA manifest invalid for install";
@@ -209,6 +210,7 @@ static constexpr const char *kOtaLogTexts[] = {
     OTA_MANIFEST_SOURCE_SKIPPED_FORMAT,
     kOtaManifestResponseAllocFailedLog,
     OTA_MANIFEST_FETCH_FAILED_FORMAT,
+    OTA_MANIFEST_PARSE_FAILED_FORMAT,
     OTA_MANIFEST_LOADED_FORMAT,
     OTA_BACKUP_MANIFEST_MISMATCH_FORMAT,
     kOtaManifestInvalidForInstallLog,
@@ -365,6 +367,9 @@ public:
     {
         Display_SetOtaQuietMode(false);
     }
+
+    OtaDisplayQuietGuard(const OtaDisplayQuietGuard &) = delete;
+    OtaDisplayQuietGuard &operator=(const OtaDisplayQuietGuard &) = delete;
 };
 
 class OtaTaskWatchdogGuard {
@@ -393,6 +398,9 @@ public:
             }
         }
     }
+
+    OtaTaskWatchdogGuard(const OtaTaskWatchdogGuard &) = delete;
+    OtaTaskWatchdogGuard &operator=(const OtaTaskWatchdogGuard &) = delete;
 
     void reset()
     {
@@ -876,8 +884,14 @@ static bool fetch_ota_manifest_from_source(const OtaManifestSource &source, OtaM
         return false;
     }
     esp_err_t err = http_get_text(source.url, response.data(), response.size());
-    if (err != ESP_OK || !parse_ota_manifest(response.data(), manifest)) {
+    if (err != ESP_OK) {
         ESP_LOGW(TAG, OTA_MANIFEST_FETCH_FAILED_FORMAT, ota_manifest_source_name_or_unknown(source.name), esp_err_to_name(err));
+        return false;
+    }
+    if (!parse_ota_manifest(response.data(), manifest)) {
+        ESP_LOGW(TAG,
+                 OTA_MANIFEST_PARSE_FAILED_FORMAT,
+                 ota_manifest_source_name_or_unknown(source.name));
         return false;
     }
     ESP_LOGI(TAG, OTA_MANIFEST_LOADED_FORMAT, ota_manifest_source_name_or_unknown(source.name), manifest->version);
@@ -912,6 +926,15 @@ static bool fetch_ota_manifest(OtaManifest *manifest, char *source_name = nullpt
     return false;
 }
 
+static bool ota_backup_manifest_matches_current(const OtaManifest &current,
+                                                const OtaManifest &candidate)
+{
+    const bool versions_match = strcmp(candidate.version, current.version) == 0;
+    const bool checksums_match = strcasecmp(candidate.sha256, current.sha256) == 0;
+    const bool sizes_match = current.size <= 0 || candidate.size <= 0 || current.size == candidate.size;
+    return versions_match && checksums_match && sizes_match;
+}
+
 static bool fetch_backup_manifest_for_install(const OtaManifest &current, OtaManifest *backup)
 {
     if (!backup || current.version[0] == '\0' || !valid_sha256_string(current.sha256)) {
@@ -923,9 +946,7 @@ static bool fetch_backup_manifest_for_install(const OtaManifest &current, OtaMan
     if (!fetch_ota_manifest_from_source(backup_source, &candidate)) {
         return false;
     }
-    if (strcmp(candidate.version, current.version) != 0 ||
-        strcasecmp(candidate.sha256, current.sha256) != 0 ||
-        (current.size > 0 && candidate.size > 0 && current.size != candidate.size)) {
+    if (!ota_backup_manifest_matches_current(current, candidate)) {
         ESP_LOGW(TAG,
                  OTA_BACKUP_MANIFEST_MISMATCH_FORMAT,
                  current.version,

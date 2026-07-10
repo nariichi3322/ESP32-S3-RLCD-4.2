@@ -38,6 +38,7 @@ constexpr size_t kDeviceIdSize = 18;
 constexpr size_t kClientIdSize = 37;
 constexpr uint32_t kWifiWaitMs = 30000;
 constexpr uint32_t kActivationRetryMs = 15000;
+constexpr uint32_t kActivationHttpTimeoutMs = 12000;
 constexpr uint32_t kLoopIdleMs = 500;
 constexpr uint32_t kWebsocketTimeoutMs = 12000;
 constexpr uint32_t kConversationIdleTimeoutMs = 30000;
@@ -61,6 +62,10 @@ constexpr UBaseType_t kTtsPlaybackTaskPriority = 5;
 constexpr uint32_t kXiaozhiTaskStackSize = 24 * 1024;
 constexpr int kBindingPcmSampleRate = 16000;
 constexpr size_t kBindingPauseSamples = 1280;
+constexpr uint32_t kBindingVoiceTaskStackBytes = 6144;
+constexpr UBaseType_t kBindingVoiceTaskPriority = 3;
+constexpr int kTtsPlaybackStopRetryCount = 200;
+constexpr uint32_t kTtsPlaybackStopRetryDelayMs = 10;
 constexpr const char *kNvsNamespace = "xiaozhi";
 constexpr const char *kWebsocketUrlKey = "ws_url";
 constexpr const char *kWebsocketTokenKey = "ws_token";
@@ -76,6 +81,8 @@ constexpr const char *kActivatingStatus = "正在连接小智服务";
 constexpr const char *kBindingStatus = "请绑定设备";
 constexpr const char *kReadyStatus = "等待唤醒词";
 constexpr const char *kErrorStatus = "小智服务不可用";
+constexpr const char *kSpeakingStatus = "小智正在说话";
+constexpr const char *kNeutralEmotion = "neutral";
 constexpr const char *kNoWifiDetail = "请先在系统设置中配置 Wi-Fi";
 constexpr const char *kOfflineDetail = "离线模式下无法使用小智 AI";
 constexpr const char *kBoundDetail = "说出唤醒词即可开始对话";
@@ -84,6 +91,18 @@ constexpr const char *kActivationFailureDetail = "稍后将自动重试";
 constexpr const char *kBindingFallbackDetail = "请在小智服务中输入绑定 ID";
 constexpr EventBits_t kAiPageActiveBit = BIT0;
 constexpr EventBits_t kAiWakeBit = BIT1;
+#define XIAOZHI_BINDING_COPY_ALLOC_FAILED_LOG "xiaozhi binding code copy allocation failed"
+#define XIAOZHI_BINDING_TASK_CREATE_FAILED_LOG "xiaozhi binding voice task creation failed"
+#define XIAOZHI_TTS_STREAM_CREATE_FAILED_LOG "xiaozhi TTS stream buffer creation failed"
+#define XIAOZHI_TTS_TASK_CREATE_FAILED_LOG "xiaozhi TTS playback task creation failed"
+#define XIAOZHI_STATE_INIT_FAILED_LOG "Xiaozhi AI state initialization failed"
+#define XIAOZHI_NVS_CLEAR_OPEN_FAILED_FORMAT "xiaozhi activation NVS open for clear failed: %s"
+#define XIAOZHI_NVS_CLEAR_ERASE_FAILED_FORMAT "xiaozhi activation NVS erase failed: %s"
+#define XIAOZHI_NVS_CLEAR_COMMIT_FAILED_FORMAT "xiaozhi activation NVS clear commit failed: %s"
+#define XIAOZHI_ACTIVATION_NVS_OPEN_FAILED_FORMAT "xiaozhi activation NVS open failed: %s"
+#define XIAOZHI_ACTIVATION_NVS_SAVE_FAILED_FORMAT "xiaozhi activation NVS save failed: %s"
+#define XIAOZHI_CLIENT_ID_NVS_OPEN_FAILED_FORMAT "xiaozhi client id NVS open failed: %s"
+#define XIAOZHI_CLIENT_ID_NVS_SAVE_FAILED_FORMAT "xiaozhi client id NVS save failed: %s"
 
 struct ActivationBuffer {
     char data[kActivationResponseSize] = {};
@@ -108,11 +127,16 @@ TaskHandle_t s_task_handle = nullptr;
 std::atomic<bool> s_task_exited{true};
 static_assert(kXiaozhiTaskStackSize % sizeof(StackType_t) == 0,
               "Xiaozhi task stack must align to StackType_t");
+static_assert(kActivationHttpTimeoutMs > 0 && kBindingVoiceTaskStackBytes > 0,
+              "Xiaozhi activation timeout and binding task stack must be positive");
+static_assert(kTtsPlaybackStopRetryCount > 0 && kTtsPlaybackStopRetryDelayMs > 0,
+              "Xiaozhi TTS stop retry settings must be positive");
 // The main AI task reads NVS. Flash/NVS operations temporarily disable the
 // external-memory cache, so its stack must stay in internal DRAM. Reserving it
 // statically avoids the late 24 KiB contiguous-heap allocation failure.
 StackType_t s_task_stack[kXiaozhiTaskStackSize / sizeof(StackType_t)];
 StaticTask_t s_task_buffer;
+// 固定 char 数组的静态聚合初始化需要字符串字面量；运行期更新仍复用状态常量。
 XiaozhiAiSnapshot s_snapshot = {kXiaozhiAiInactive, "等待进入小智页", "", "", "neutral", 0};
 bool s_network_lock_held = false;
 bool s_network_keepalive = false;
@@ -338,10 +362,17 @@ void announce_binding_id_once(const char *binding_code)
     }
     char *code_copy = static_cast<char *>(calloc(1, sizeof(s_last_announced_binding_code)));
     if (!code_copy) {
+        ESP_LOGW(TAG, XIAOZHI_BINDING_COPY_ALLOC_FAILED_LOG);
         return;
     }
     strlcpy(code_copy, binding_code, sizeof(s_last_announced_binding_code));
-    if (xTaskCreate(binding_id_voice_task, "xiaozhi_bind", 6144, code_copy, 3, nullptr) != pdPASS) {
+    if (xTaskCreate(binding_id_voice_task,
+                    "xiaozhi_bind",
+                    kBindingVoiceTaskStackBytes,
+                    code_copy,
+                    kBindingVoiceTaskPriority,
+                    nullptr) != pdPASS) {
+        ESP_LOGW(TAG, XIAOZHI_BINDING_TASK_CREATE_FAILED_LOG);
         free(code_copy);
         return;
     }
@@ -547,7 +578,7 @@ void publish_pending_assistant_text(WebsocketSession *session)
     char text[sizeof(session->pending_assistant_text)] = {};
     strlcpy(text, session->pending_assistant_text, sizeof(text));
     session->pending_assistant_text[0] = '\0';
-    snapshot_set(kXiaozhiAiSpeaking, "小智正在说话", text);
+    snapshot_set(kXiaozhiAiSpeaking, kSpeakingStatus, text);
 }
 
 void update_incoming_text(WebsocketSession *session, const char *json, size_t len)
@@ -566,9 +597,9 @@ void update_incoming_text(WebsocketSession *session, const char *json, size_t le
             session->resume_listening_pending = false;
             session->discard_tts_audio = false;
             if (user_subtitle_hold_active(session)) {
-                snapshot_set_status_preserving_detail(kXiaozhiAiSpeaking, "小智正在说话");
+                snapshot_set_status_preserving_detail(kXiaozhiAiSpeaking, kSpeakingStatus);
             } else {
-                snapshot_set(kXiaozhiAiSpeaking, "小智正在说话", "直接说话即可打断");
+                snapshot_set(kXiaozhiAiSpeaking, kSpeakingStatus, "直接说话即可打断");
             }
         } else if (strcmp(state->valuestring, "stop") == 0) {
             // Keep the speaker open until any final binary frames already in
@@ -590,7 +621,7 @@ void update_incoming_text(WebsocketSession *session, const char *json, size_t le
                             text->valuestring,
                             sizeof(session->pending_assistant_text));
                 } else {
-                    snapshot_set(kXiaozhiAiSpeaking, "小智正在说话", text->valuestring);
+                    snapshot_set(kXiaozhiAiSpeaking, kSpeakingStatus, text->valuestring);
                 }
             }
         }
@@ -691,9 +722,9 @@ void stop_tts_playback()
 {
     s_tts_playback_running.store(false);
     for (int retry = 0;
-         s_tts_playback_task && !s_tts_playback_exited.load() && retry < 200;
+         s_tts_playback_task && !s_tts_playback_exited.load() && retry < kTtsPlaybackStopRetryCount;
          ++retry) {
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(kTtsPlaybackStopRetryDelayMs));
     }
     if (s_tts_playback_task) {
         vTaskDelete(s_tts_playback_task);
@@ -730,6 +761,7 @@ bool start_tts_playback()
         s_tts_playback_storage,
         s_tts_playback_stream_buffer);
     if (!s_tts_playback_stream) {
+        ESP_LOGW(TAG, XIAOZHI_TTS_STREAM_CREATE_FAILED_LOG);
         release_tts_playback_storage();
         return false;
     }
@@ -747,6 +779,7 @@ bool start_tts_playback()
         s_tts_playback_task_buffer,
         1);
     if (!s_tts_playback_task) {
+        ESP_LOGW(TAG, XIAOZHI_TTS_TASK_CREATE_FAILED_LOG);
         s_tts_playback_running.store(false);
         s_tts_playback_exited.store(true);
         release_tts_playback_storage();
@@ -1129,7 +1162,7 @@ void snapshot_set(XiaozhiAiState state, const char *status, const char *detail, 
     utf8_safe_copy(s_snapshot.detail, sizeof(s_snapshot.detail), detail);
     utf8_safe_copy(s_snapshot.binding_code, sizeof(s_snapshot.binding_code), binding_code);
     if (state != kXiaozhiAiSpeaking) {
-        strlcpy(s_snapshot.emotion, "neutral", sizeof(s_snapshot.emotion));
+        strlcpy(s_snapshot.emotion, kNeutralEmotion, sizeof(s_snapshot.emotion));
     }
     s_snapshot.waveform_level = state == kXiaozhiAiListening || state == kXiaozhiAiSpeaking ? 1 : 0;
     xSemaphoreGive(s_snapshot_mutex);
@@ -1144,7 +1177,7 @@ void snapshot_set_status_preserving_detail(XiaozhiAiState state, const char *sta
     s_snapshot.state = state;
     utf8_safe_copy(s_snapshot.status, sizeof(s_snapshot.status), status);
     if (state != kXiaozhiAiSpeaking) {
-        strlcpy(s_snapshot.emotion, "neutral", sizeof(s_snapshot.emotion));
+        strlcpy(s_snapshot.emotion, kNeutralEmotion, sizeof(s_snapshot.emotion));
     }
     s_snapshot.waveform_level =
         state == kXiaozhiAiListening || state == kXiaozhiAiSpeaking ? 1 : 0;
@@ -1209,10 +1242,12 @@ bool save_activation_config(cJSON *websocket, const char *challenge)
         return false;
     }
     nvs_handle_t nvs;
-    if (nvs_open(kNvsNamespace, NVS_READWRITE, &nvs) != ESP_OK) {
+    esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, XIAOZHI_ACTIVATION_NVS_OPEN_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
-    esp_err_t err = nvs_set_str(nvs, kWebsocketUrlKey, url->valuestring);
+    err = nvs_set_str(nvs, kWebsocketUrlKey, url->valuestring);
     if (err == ESP_OK && cJSON_IsString(token) && token->valuestring) {
         err = nvs_set_str(nvs, kWebsocketTokenKey, token->valuestring);
     }
@@ -1229,6 +1264,9 @@ bool save_activation_config(cJSON *websocket, const char *challenge)
         err = nvs_commit(nvs);
     }
     nvs_close(nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, XIAOZHI_ACTIVATION_NVS_SAVE_FAILED_FORMAT, esp_err_to_name(err));
+    }
     return err == ESP_OK;
 }
 
@@ -1250,7 +1288,9 @@ bool load_or_create_client_id(char *out, size_t out_len)
         return false;
     }
     nvs_handle_t nvs;
-    if (nvs_open(kNvsNamespace, NVS_READWRITE, &nvs) != ESP_OK) {
+    esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, XIAOZHI_CLIENT_ID_NVS_OPEN_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
     size_t stored_len = out_len;
@@ -1269,11 +1309,14 @@ bool load_or_create_client_id(char *out, size_t out_len)
              uuid[4], uuid[5], uuid[6], uuid[7],
              uuid[8], uuid[9], uuid[10], uuid[11],
              uuid[12], uuid[13], uuid[14], uuid[15]);
-    esp_err_t err = nvs_set_str(nvs, kClientIdKey, out);
+    err = nvs_set_str(nvs, kClientIdKey, out);
     if (err == ESP_OK) {
         err = nvs_commit(nvs);
     }
     nvs_close(nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, XIAOZHI_CLIENT_ID_NVS_SAVE_FAILED_FORMAT, esp_err_to_name(err));
+    }
     return err == ESP_OK;
 }
 
@@ -1348,7 +1391,7 @@ bool request_activation(ActivationBuffer *response)
     esp_http_client_config_t config = {};
     config.url = kActivationUrl;
     config.method = HTTP_METHOD_POST;
-    config.timeout_ms = 12000;
+    config.timeout_ms = kActivationHttpTimeoutMs;
     config.event_handler = activation_http_event;
     config.user_data = response;
     config.crt_bundle_attach = esp_crt_bundle_attach;
@@ -1609,7 +1652,15 @@ void xiaozhi_ai_init()
     s_events = xEventGroupCreate();
     s_snapshot_mutex = xSemaphoreCreateMutex();
     if (!s_events || !s_snapshot_mutex) {
-        ESP_LOGW(TAG, "Xiaozhi AI state initialization failed");
+        ESP_LOGW(TAG, "%s", XIAOZHI_STATE_INIT_FAILED_LOG);
+        if (s_snapshot_mutex) {
+            vSemaphoreDelete(s_snapshot_mutex);
+            s_snapshot_mutex = nullptr;
+        }
+        if (s_events) {
+            vEventGroupDelete(s_events);
+            s_events = nullptr;
+        }
         return;
     }
 }
@@ -1698,11 +1749,19 @@ void xiaozhi_ai_clear_activation()
 {
     release_realtime_network();
     nvs_handle_t nvs;
-    if (nvs_open(kNvsNamespace, NVS_READWRITE, &nvs) != ESP_OK) {
+    esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, XIAOZHI_NVS_CLEAR_OPEN_FAILED_FORMAT, esp_err_to_name(err));
         return;
     }
-    if (nvs_erase_all(nvs) == ESP_OK) {
-        (void)nvs_commit(nvs);
+    err = nvs_erase_all(nvs);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, XIAOZHI_NVS_CLEAR_ERASE_FAILED_FORMAT, esp_err_to_name(err));
+    } else {
+        err = nvs_commit(nvs);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, XIAOZHI_NVS_CLEAR_COMMIT_FAILED_FORMAT, esp_err_to_name(err));
+        }
     }
     nvs_close(nvs);
 }

@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "custom_assets.h"
+#include "ui_text_format.h"
 
 #define UI_CANVAS_BUFFER_INVALID_SIZE_FORMAT "canvas buffer invalid size %dx%d"
 #define UI_CANVAS_BUFFER_SIZE_OVERFLOW_FORMAT "canvas buffer size overflow %dx%d"
@@ -100,6 +101,13 @@ lv_obj_t *make_bar(lv_obj_t *parent, int x, int y, int w, int h)
     set_obj_box(bar, x, y, w, h);
     lv_obj_set_style_pad_all(bar, 0, LV_PART_MAIN);
     set_obj_black(bar, false);
+    return bar;
+}
+
+lv_obj_t *make_black_bar(lv_obj_t *parent, int x, int y, int w, int h)
+{
+    lv_obj_t *bar = make_bar(parent, x, y, w, h);
+    set_obj_black(bar, true);
     return bar;
 }
 
@@ -260,6 +268,9 @@ void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf
     if (!*buf) {
         *buf = alloc_canvas_buffer(kProgressCanvasW, kProgressCanvasH);
     }
+    if (!*buf) {
+        return;
+    }
     *canvas = lv_canvas_create(parent);
     if (!*canvas) {
         ESP_LOGW(TAG, "%s", UI_PROGRESS_CANVAS_CREATE_FAILED_LOG);
@@ -269,14 +280,12 @@ void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf
     set_obj_box(*canvas, kProgressCanvasX, y, kProgressCanvasW, kProgressCanvasH);
     lv_obj_set_style_border_width(*canvas, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(*canvas, 0, LV_PART_MAIN);
-    if (*buf) {
-        lv_canvas_set_buffer(*canvas, *buf, kProgressCanvasW, kProgressCanvasH, LV_IMG_CF_TRUE_COLOR);
-        lv_canvas_fill_bg(*canvas, lv_color_white(), LV_OPA_COVER);
-        for (int i = 0; i < kProgressSegmentCount; ++i) {
-            draw_progress_segment(*canvas, i, false);
-        }
-        lv_obj_invalidate(*canvas);
+    lv_canvas_set_buffer(*canvas, *buf, kProgressCanvasW, kProgressCanvasH, LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_fill_bg(*canvas, lv_color_white(), LV_OPA_COVER);
+    for (int i = 0; i < kProgressSegmentCount; ++i) {
+        draw_progress_segment(*canvas, i, false);
     }
+    lv_obj_invalidate(*canvas);
 }
 
 void update_progress_canvas(lv_obj_t *canvas, int filled, int *last_filled)
@@ -414,18 +423,13 @@ static void format_two_digit_second_text(char out[kSecondTextSize], int second)
     out[2] = '\0';
 }
 
-static bool ui_common_format_failed(int written, size_t out_len)
-{
-    return written < 0 || static_cast<size_t>(written) >= out_len;
-}
-
 static void format_hour_minute_text(char out[kHourMinuteTextSize], const struct tm &local)
 {
     if (!out) {
         return;
     }
     int written = snprintf(out, kHourMinuteTextSize, kHourMinuteFormat, local.tm_hour, local.tm_min);
-    if (ui_common_format_failed(written, kHourMinuteTextSize)) {
+    if (ui_text::format_failed(written, kHourMinuteTextSize)) {
         out[0] = '\0';
     }
 }
@@ -472,6 +476,9 @@ void draw_status_gif_frame(int frame)
         using_custom = true;
         prev_pixels = custom_prev_valid ? custom_prev_frame : nullptr;
     } else {
+        if (custom_prev_valid) {
+            prev_pixels = nullptr;
+        }
         custom_prev_valid = false;
     }
     uint32_t bit = 0;
@@ -513,17 +520,9 @@ static const char *label_text_or_empty(const char *text)
     return text ? text : "";
 }
 
-static bool text_output_available(const char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
-
 static void copy_invalid_time_text(char *out, size_t out_len)
 {
-    if (!text_output_available(out, out_len)) {
-        return;
-    }
-    strlcpy(out, kInvalidTimeText, out_len);
+    ui_text::copy(out, out_len, kInvalidTimeText);
 }
 
 static bool time_year_valid(int year)
@@ -541,11 +540,11 @@ static void format_full_datetime_text(char *out, size_t out_len, const struct tm
                            local.tm_hour,
                            local.tm_min,
                            local.tm_sec);
-    if (ui_common_format_failed(written, sizeof(formatted))) {
+    if (ui_text::format_failed(written, sizeof(formatted))) {
         copy_invalid_time_text(out, out_len);
         return;
     }
-    strlcpy(out, formatted, out_len);
+    ui_text::copy(out, out_len, formatted);
 }
 
 lv_obj_t *make_label_with_font(lv_obj_t *parent, int x, int y, int w, int h, const char *text, const lv_font_t *font)
@@ -579,6 +578,49 @@ lv_obj_t *make_label(lv_obj_t *parent, int x, int y, int w, int h, const char *t
     return make_label_with_font(parent, x, y, w, h, text, &zh_font_16);
 }
 
+bool center_align_label(lv_obj_t *label)
+{
+    if (!label) {
+        return false;
+    }
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    return true;
+}
+
+static void warn_if_center_align_failed(lv_obj_t *label, const char *warning)
+{
+    if (!center_align_label(label)) {
+        ESP_LOGW(TAG, "%s", warning && warning[0] ? warning : UI_LABEL_CREATE_FAILED_LOG);
+    }
+}
+
+lv_obj_t *make_centered_label(lv_obj_t *parent,
+                              int x,
+                              int y,
+                              int w,
+                              int h,
+                              const char *text,
+                              const char *warning)
+{
+    lv_obj_t *label = make_label(parent, x, y, w, h, text);
+    warn_if_center_align_failed(label, warning);
+    return label;
+}
+
+lv_obj_t *make_centered_label_with_font(lv_obj_t *parent,
+                                        int x,
+                                        int y,
+                                        int w,
+                                        int h,
+                                        const char *text,
+                                        const lv_font_t *font,
+                                        const char *warning)
+{
+    lv_obj_t *label = make_label_with_font(parent, x, y, w, h, text, font);
+    warn_if_center_align_failed(label, warning);
+    return label;
+}
+
 bool set_label_text_if_changed(lv_obj_t *label, const char *text)
 {
     if (!label) {
@@ -595,7 +637,7 @@ bool set_label_text_if_changed(lv_obj_t *label, const char *text)
 
 void format_time_or_dash(time_t value, char *out, size_t out_len)
 {
-    if (!text_output_available(out, out_len)) {
+    if (!ui_text::output_buffer_available(out, out_len)) {
         return;
     }
     if (value <= 0) {

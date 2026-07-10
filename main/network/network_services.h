@@ -1,6 +1,7 @@
 // 声明配网、Wi-Fi、HTTP、天气、NTP、OTA 调度等网络服务接口。
 #pragma once
 #include "app_state.h"
+#include "network_form.h"
 
 struct HttpBuffer {
     char *data;
@@ -34,9 +35,6 @@ bool save_hourly_chime_setting();
 bool save_work_page_settings();
 bool save_work_page_order();
 bool clear_saved_config();
-void url_decode(char *dst, size_t dst_len, const char *src);
-void form_value(const char *body, const char *key, char *out, size_t out_len);
-void form_value_fallback(const char *body, const char *primary_key, const char *fallback_key, char *out, size_t out_len);
 bool save_credentials_from_body(const char *body);
 bool save_offline_datetime_from_body(const char *body);
 void html_append(char *html, size_t html_len, const char *fmt, ...);
@@ -104,6 +102,10 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
 bool qweather_fetch_now(const char *city_id, WeatherData *weather);
 bool qweather_fetch_daily(const char *city_id, WeatherForecastData *forecast);
 bool qweather_fetch_air(const char *city_id, WeatherAirData *air);
+void get_weather_full_snapshot(WeatherData *weather,
+                               WeatherAlertData *alert,
+                               WeatherForecastData *forecast,
+                               WeatherAirData *air);
 void get_weather_snapshot(WeatherData *weather, WeatherAlertData *alert);
 void get_weather_forecast_snapshot(WeatherForecastData *forecast);
 void get_weather_air_snapshot(WeatherAirData *air);

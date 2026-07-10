@@ -31,7 +31,7 @@ private:
 	const uint16_t CRC_POLYNOMIAL = 0x131;
 	const uint8_t Shtc3Address = 0x70;
 	I2cMasterBus& i2cbus_;
-    i2c_master_dev_handle_t I2c_DevShtc3;
+    i2c_master_dev_handle_t I2c_DevShtc3 = nullptr;
 
 	etError Shtc3_GetId();
 	etError Shtc3_CheckCrc(uint8_t data[], uint8_t nbrOfBytes,uint8_t checksum);

@@ -4,8 +4,6 @@
 #include "sensor_services.h"
 #include "ui_text_format.h"
 
-#include <string.h>
-
 namespace {
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
@@ -68,7 +66,6 @@ constexpr float kHistoryTempFlatRangeExtraPad = 0.5f;
 constexpr float kHistoryHumiFlatRangeExtraPad = 2.0f;
 constexpr float kHistoryAxisMidRatio = 0.5f;
 constexpr size_t kHistoryAxisHourTextSize = 8;
-constexpr size_t kHistorySensorSummaryTextSize = 32;
 constexpr size_t kHistoryAxisValueTextSize = 16;
 constexpr const char *kHistoryAxisHourFormat = "%02d:00";
 constexpr const char *kHistoryTimePlaceholder = "--:--";
@@ -79,14 +76,11 @@ constexpr const char *kHistoryTempAxisFormat = "%.0f℃";
 constexpr const char *kHistoryHumiAxisFormat = "%.0f%%";
 constexpr const char *kHistoryTempBadgeFormat = "%.1f";
 constexpr const char *kHistoryHumiBadgeFormat = "%.0f";
-constexpr const char *kHistorySensorSummaryFormat = "%.0fC %.0f%%";
-constexpr const char *kHistorySensorSummaryPlaceholder = "--C --%%";
 static_assert(kHistoryWindowHours > 0, "History window must be positive");
 static_assert(kHoursPerDay > 0, "Hours per day must be positive");
 static_assert(kSecondsPerMinute > 0, "Seconds per minute must be positive");
 static_assert(kMinutesPerHour > 0, "Minutes per hour must be positive");
 static_assert(kSecondsPerHour == kSecondsPerMinute * kMinutesPerHour, "Seconds per hour mismatch");
-static_assert(kHistoryCanvasW > 0 && kHistoryCanvasH > 0, "History canvas size must be positive");
 static_assert(kHistoryTopLineW > 0 && kHistoryTopLineH > 0, "History top separator size must be positive");
 static_assert(kHistoryAxisTickCount > 0, "History axis tick count must be positive");
 static_assert(kHistoryAxisValueCount == kHistoryAxisMinIndex + 1, "History axis index count mismatch");
@@ -99,6 +93,12 @@ static_assert(kHistoryAxisMinIndex >= 0 && kHistoryAxisMinIndex < kHistoryAxisVa
 static_assert(kHistoryCanvasW > 0 && kHistoryCanvasH > 0, "History canvas dimensions must be positive");
 static_assert(kHistoryBadgeW > 0 && kHistoryBadgeH > 0, "History badge dimensions must be positive");
 static_assert(kHistoryPlotW > 0 && kHistoryPlotH > 0, "History plot dimensions must be positive");
+static_assert(kHistoryPlotX >= 0 && kHistoryPlotX + kHistoryPlotW <= kHistoryCanvasW,
+              "History plot width must fit canvas");
+static_assert(kHistoryTempPlotY >= 0 && kHistoryTempPlotY + kHistoryPlotH <= kHistoryCanvasH,
+              "History temperature plot must fit canvas");
+static_assert(kHistoryHumiPlotY >= 0 && kHistoryHumiPlotY + kHistoryPlotH <= kHistoryCanvasH,
+              "History humidity plot must fit canvas");
 static_assert(kHistoryGridLineCount > 1, "History grid needs at least two lines");
 static_assert(kHistoryGridIntervalCount == kHistoryGridLineCount - 1, "History grid interval count mismatch");
 static_assert(kHistoryMinValidSamplesForLine >= 2, "History line needs at least two samples");
@@ -106,6 +106,16 @@ static_assert(array_count(kHistoryTimeLabelCenterX) == kHistoryAxisTickCount,
               "History time label coordinate count mismatch");
 static_assert(array_count(kHistoryAxisTickHours) == kHistoryAxisTickCount,
               "History axis tick hour count mismatch");
+static_assert(array_count(g_history_time_labels) == kHistoryAxisTickCount,
+              "History time label storage must match axis ticks");
+static_assert(array_count(g_history_temp_axis_labels) == kHistoryAxisValueCount &&
+                  array_count(g_history_humi_axis_labels) == kHistoryAxisValueCount,
+              "History value label storage must match axis values");
+static_assert(kHistoryWindowHours <= kHourlyHistoryCount,
+              "History display window must fit persisted sample storage");
+static_assert(kHistoryAxisTickHours[0] == 0 &&
+                  kHistoryAxisTickHours[kHistoryAxisTickCount - 1] == kHistoryWindowHours,
+              "History axis ticks must span the full display window");
 #define HISTORY_WINDOW_INVALID_ARG_LOG "history window invalid arg"
 #define HISTORY_CHART_INVALID_ARG_LOG "history chart invalid arg"
 #define HISTORY_TEMP_TITLE_CREATE_FAILED_LOG "history temp title create failed"
@@ -227,9 +237,10 @@ void set_history_badge(lv_obj_t *label,
     lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
 }
 
-bool collect_history_window(time_t end_hour,
-                            HourlySensorSample *out,
-                            int *out_count)
+static bool collect_history_window_from_snapshot(time_t end_hour,
+                                                 const HourlySensorHistoryBlob &history,
+                                                 HourlySensorSample *out,
+                                                 int *out_count)
 {
     if (out_count) {
         *out_count = 0;
@@ -240,11 +251,12 @@ bool collect_history_window(time_t end_hour,
     }
     time_t start = end_hour - kHistoryWindowHours * kSecondsPerHour;
     int count = 0;
+    int slot_count = history.count <= kHourlyHistoryCount ? history.count : kHourlyHistoryCount;
     for (int hour = 1; hour <= kHistoryWindowHours; ++hour) {
         time_t expected = start + hour * kSecondsPerHour;
         bool found = false;
-        for (int i = 0; i < kHourlyHistoryCount; ++i) {
-            const HourlySensorSample &sample = g_hourly_history.samples[i];
+        for (int i = 0; i < slot_count; ++i) {
+            const HourlySensorSample &sample = history.samples[i];
             if (sample.valid && sample.timestamp == expected) {
                 out[count++] = sample;
                 found = true;
@@ -259,6 +271,20 @@ bool collect_history_window(time_t end_hour,
     }
     *out_count = count;
     return count > 0;
+}
+
+bool collect_history_window(time_t end_hour,
+                            HourlySensorSample *out,
+                            int *out_count)
+{
+    HourlySensorHistoryBlob history = {};
+    if (!get_hourly_sensor_history_snapshot(&history, nullptr)) {
+        if (out_count) {
+            *out_count = 0;
+        }
+        return false;
+    }
+    return collect_history_window_from_snapshot(end_hour, history, out, out_count);
 }
 
 void update_history_axis_labels(time_t start, time_t end)
@@ -284,38 +310,6 @@ void set_history_axis_placeholders(lv_obj_t **axis_labels)
     for (int i = 0; i < kHistoryAxisValueCount; ++i) {
         set_label_text_if_changed(axis_labels[i], kHistoryAxisPlaceholder);
     }
-}
-
-bool update_work_page_sensor_summary(lv_obj_t *label)
-{
-    if (!label) {
-        return false;
-    }
-    char text[kHistorySensorSummaryTextSize] = {};
-    if (g_sensor_ok) {
-        ui_text::format_or_fallback(text,
-                                           sizeof(text),
-                                           kHistorySensorSummaryPlaceholder,
-                                           kHistorySensorSummaryFormat,
-                                           g_temperature,
-                                           g_humidity);
-    } else {
-        strlcpy(text, kHistorySensorSummaryPlaceholder, sizeof(text));
-    }
-    return set_label_text_if_changed(label, text);
-}
-
-void style_work_page_sensor_summary(lv_obj_t *label)
-{
-    if (!label) {
-        return;
-    }
-    lv_obj_set_style_bg_opa(label, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_text_color(label, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, LV_PART_MAIN);
-    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-    lv_obj_set_style_border_width(label, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(label, 0, LV_PART_MAIN);
 }
 
 void align_history_label_or_log(lv_obj_t *label,
@@ -470,18 +464,23 @@ bool update_history_page(const struct tm &local)
     int hour_key = history_hour_key(local);
     bool changed = update_work_page_status_time(g_history_status_time_label, local);
     changed |= update_work_page_sensor_summary(g_history_summary_label);
-    if (g_last_history_drawn_version == g_hourly_history_version &&
+    HourlySensorHistoryBlob history = {};
+    uint32_t history_version = 0;
+    if (!get_hourly_sensor_history_snapshot(&history, &history_version)) {
+        return changed;
+    }
+    if (g_last_history_drawn_version == history_version &&
         g_last_history_drawn_hour == hour_key) {
         return changed;
     }
-    g_last_history_drawn_version = g_hourly_history_version;
+    g_last_history_drawn_version = history_version;
     g_last_history_drawn_hour = hour_key;
 
     lv_canvas_fill_bg(g_history_chart_canvas, lv_color_white(), LV_OPA_COVER);
 
-    HourlySensorSample samples[kHourlyHistoryCount] = {};
+    HourlySensorSample samples[kHistoryWindowHours] = {};
     int sample_count = 0;
-    collect_history_window(end_hour, samples, &sample_count);
+    collect_history_window_from_snapshot(end_hour, history, samples, &sample_count);
     time_t start = end_hour - kHistoryWindowHours * kSecondsPerHour;
     update_history_axis_labels(start, end_hour);
 
@@ -556,16 +555,16 @@ void build_history_page()
     if (!g_history_chart_canvas_buf) {
         g_history_chart_canvas_buf = alloc_canvas_buffer(kHistoryCanvasW, kHistoryCanvasH);
     }
-    g_history_chart_canvas = lv_canvas_create(screen);
-    if (!g_history_chart_canvas) {
-        ESP_LOGW(TAG, "%s", HISTORY_CHART_CANVAS_CREATE_FAILED_LOG);
-    } else {
-        lv_obj_clear_flag(g_history_chart_canvas, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_history_chart_canvas, kHistoryChartCanvasX, kHistoryChartCanvasY);
-        lv_obj_set_size(g_history_chart_canvas, kHistoryCanvasW, kHistoryCanvasH);
-        lv_obj_set_style_border_width(g_history_chart_canvas, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(g_history_chart_canvas, 0, LV_PART_MAIN);
-        if (g_history_chart_canvas_buf) {
+    if (g_history_chart_canvas_buf) {
+        g_history_chart_canvas = lv_canvas_create(screen);
+        if (!g_history_chart_canvas) {
+            ESP_LOGW(TAG, "%s", HISTORY_CHART_CANVAS_CREATE_FAILED_LOG);
+        } else {
+            lv_obj_clear_flag(g_history_chart_canvas, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_pos(g_history_chart_canvas, kHistoryChartCanvasX, kHistoryChartCanvasY);
+            lv_obj_set_size(g_history_chart_canvas, kHistoryCanvasW, kHistoryCanvasH);
+            lv_obj_set_style_border_width(g_history_chart_canvas, 0, LV_PART_MAIN);
+            lv_obj_set_style_pad_all(g_history_chart_canvas, 0, LV_PART_MAIN);
             lv_canvas_set_buffer(g_history_chart_canvas, g_history_chart_canvas_buf, kHistoryCanvasW, kHistoryCanvasH, LV_IMG_CF_TRUE_COLOR);
             lv_canvas_fill_bg(g_history_chart_canvas, lv_color_white(), LV_OPA_COVER);
         }

@@ -17,6 +17,7 @@ constexpr const char *kClockWeatherUnknownIconCode = "999";
 lv_color_t *alloc_canvas_buffer(int width, int height);
 void set_obj_black(lv_obj_t *obj, bool active);
 lv_obj_t *make_bar(lv_obj_t *parent, int x, int y, int w, int h);
+lv_obj_t *make_black_bar(lv_obj_t *parent, int x, int y, int w, int h);
 void draw_progress_segment(lv_obj_t *canvas, int index, bool filled);
 void invalidate_progress_segment(lv_obj_t *canvas, int index);
 void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf, int y);
@@ -37,6 +38,8 @@ void build_work_page_status_bar(lv_obj_t *screen,
                                 lv_obj_t **time_label,
                                 bool show_time);
 bool update_work_page_status_time(lv_obj_t *label, const struct tm &local);
+bool update_work_page_sensor_summary(lv_obj_t *label);
+void style_work_page_sensor_summary(lv_obj_t *label);
 bool update_work_page_status_icons(int page);
 const DsegGlyph *find_dseg_glyph(const DsegFont &font, char ch);
 int draw_dseg_text(lv_obj_t *canvas, const DsegFont &font, const char *text, int cursor_x, int baseline_y);
@@ -45,6 +48,22 @@ void draw_second_canvas(const struct tm &local);
 void draw_status_gif_frame(int frame);
 lv_obj_t *make_label_with_font(lv_obj_t *parent, int x, int y, int w, int h, const char *text, const lv_font_t *font);
 lv_obj_t *make_label(lv_obj_t *parent, int x, int y, int w, int h, const char *text);
+bool center_align_label(lv_obj_t *label);
+lv_obj_t *make_centered_label(lv_obj_t *parent,
+                              int x,
+                              int y,
+                              int w,
+                              int h,
+                              const char *text,
+                              const char *warning);
+lv_obj_t *make_centered_label_with_font(lv_obj_t *parent,
+                                        int x,
+                                        int y,
+                                        int w,
+                                        int h,
+                                        const char *text,
+                                        const lv_font_t *font,
+                                        const char *warning);
 bool set_label_text_if_changed(lv_obj_t *label, const char *text);
 lv_obj_t *create_page_root();
 void set_page_visible(lv_obj_t *page, bool visible);
@@ -120,8 +139,6 @@ void set_history_badge(lv_obj_t *label,
                        int plot_h);
 bool collect_history_window(time_t end_hour, HourlySensorSample *out, int *out_count);
 void update_history_axis_labels(time_t start, time_t end);
-bool update_work_page_sensor_summary(lv_obj_t *label);
-void style_work_page_sensor_summary(lv_obj_t *label);
 void draw_history_chart_panel(lv_obj_t *canvas,
                               int canvas_w,
                               int canvas_h,

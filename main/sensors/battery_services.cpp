@@ -6,6 +6,7 @@
 #define BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT "battery adc calibration release failed: %s"
 #define BATTERY_ADC_UNIT_RELEASE_FAILED_LOG_FORMAT "battery adc unit release failed: %s"
 #define BATTERY_ADC_READY_WITHOUT_HANDLE_LOG_FORMAT "battery adc marked ready without handle, resetting"
+#define BATTERY_ADC_CALIBRATION_READY_WITHOUT_HANDLE_LOG "battery adc calibration marked ready without handle, disabling calibration"
 #define BATTERY_ADC_INIT_FAILED_LOG_FORMAT "battery adc init failed: %s"
 #define BATTERY_ADC_CHANNEL_CONFIG_FAILED_LOG_FORMAT "battery adc channel config failed: %s"
 #define BATTERY_ADC_CALIBRATION_UNAVAILABLE_LOG_FORMAT "battery adc calibration unavailable: %s"
@@ -13,11 +14,15 @@
 #define BATTERY_ADC_READ_FAILED_LOG_FORMAT "battery adc read failed: %s"
 #define BATTERY_ADC_CALIBRATION_READ_FAILED_LOG_FORMAT "battery adc calibration read failed: %s"
 #define BATTERY_ADC_SAMPLE_LOG_FORMAT "battery adc raw=%d adc_mv=%d battery=%.3fV soc=%d%%"
+#define BATTERY_CHARGING_STARTED_LOG_FORMAT "battery charging detected voltage=%.3fV soc=%d%%"
+#define BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT "battery charging animation completed voltage=%.3fV soc=%d%%"
+#define BATTERY_CHARGING_STOPPED_LOG_FORMAT "battery charging cleared voltage=%.3fV soc=%d%%"
 
 static constexpr const char *const kBatteryLogTexts[] = {
     BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT,
     BATTERY_ADC_UNIT_RELEASE_FAILED_LOG_FORMAT,
     BATTERY_ADC_READY_WITHOUT_HANDLE_LOG_FORMAT,
+    BATTERY_ADC_CALIBRATION_READY_WITHOUT_HANDLE_LOG,
     BATTERY_ADC_INIT_FAILED_LOG_FORMAT,
     BATTERY_ADC_CHANNEL_CONFIG_FAILED_LOG_FORMAT,
     BATTERY_ADC_CALIBRATION_UNAVAILABLE_LOG_FORMAT,
@@ -25,15 +30,19 @@ static constexpr const char *const kBatteryLogTexts[] = {
     BATTERY_ADC_READ_FAILED_LOG_FORMAT,
     BATTERY_ADC_CALIBRATION_READ_FAILED_LOG_FORMAT,
     BATTERY_ADC_SAMPLE_LOG_FORMAT,
+    BATTERY_CHARGING_STARTED_LOG_FORMAT,
+    BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT,
+    BATTERY_CHARGING_STOPPED_LOG_FORMAT,
 };
 static constexpr float kBatteryVoltageDivider = 3.0f;
 static constexpr float kBatteryMillivoltsToVolts = 0.001f;
+static constexpr int kBatteryChargingStopAdcSteps = 2;
 static constexpr float kBatteryEmptyVoltage = 3.00f;
 static constexpr float kBatteryFullVoltage = 4.12f;
 static constexpr float kBatteryVoltageRange = kBatteryFullVoltage - kBatteryEmptyVoltage;
 static constexpr float kBatteryPercentScale = 100.0f;
 static constexpr float kBatteryPercentRoundOffset = 0.5f;
-static constexpr float kBatteryValidPreviousVoltageMin = 0.0f;
+static constexpr float kBatteryValidPreviousVoltageMin = kBatteryEmptyVoltage;
 static constexpr adc_unit_t kBatteryAdcUnit = ADC_UNIT_1;
 static constexpr adc_channel_t kBatteryAdcChannel = ADC_CHANNEL_3;
 static constexpr adc_bitwidth_t kBatteryAdcBitwidth = ADC_BITWIDTH_12;
@@ -76,8 +85,9 @@ static_assert(kBatteryVoltageRange > 0.0f, "battery voltage range must be positi
 static_assert(kBatteryPercentScale > 0.0f, "battery percent scale must be positive");
 static_assert(kBatteryPercentRoundOffset >= 0.0f && kBatteryPercentRoundOffset < 1.0f,
               "battery percent rounding offset must stay within one percent step");
-static_assert(kBatteryValidPreviousVoltageMin <= kBatteryEmptyVoltage,
-              "battery previous-voltage sentinel must not exceed empty voltage");
+static_assert(kBatteryValidPreviousVoltageMin >= kBatteryEmptyVoltage &&
+                  kBatteryValidPreviousVoltageMin < kBatteryFullVoltage,
+              "battery previous voltage must stay within plausible battery range");
 static_assert(kBatteryAdcReferenceMv > 0, "battery ADC reference voltage must be positive");
 static_assert(kBatteryAdcRawMax > 0, "battery ADC raw max must be positive");
 static_assert(kBatteryAdcRawMax == (1 << 12) - 1, "12-bit battery ADC raw max must stay 4095");
@@ -91,8 +101,16 @@ static_assert(kBatteryMinValidTmYear >= 0, "battery valid time year floor must b
 static_assert(kBatteryChargingRiseSamples > 0, "charging detection must require at least one rising sample");
 static_assert(kBatteryChargingStopSamples > 0,
               "charging stop detection must require at least one confirming sample");
+static_assert(kBatteryChargingAnimationStopPercent > kBatteryPercentMin &&
+                  kBatteryChargingAnimationStopPercent <= kBatteryPercentMax,
+              "charging animation stop percent must stay within the battery range");
+static_assert(kBatteryChargingAnimationIdleMs > 0,
+              "charging animation idle timeout must be positive");
 static_assert(kBatteryChargingRiseVoltage > kBatteryChargingStopVoltage,
               "charging rise threshold must stay above stop threshold");
+static_assert(kBatteryChargingStopVoltage >=
+                  kBatteryVoltageDivider * kBatteryMillivoltsToVolts * kBatteryChargingStopAdcSteps,
+              "charging stop threshold must cover at least two scaled ADC millivolt steps");
 static_assert(array_count(kBatteryLogTexts) > 0,
               "battery log guard must cover battery log texts");
 static_assert(cstr_array_nonempty(kBatteryLogTexts), "battery service log texts must be non-empty");
@@ -111,16 +129,6 @@ static int clamp_battery_percent(int percent)
 static bool previous_battery_voltage_valid(float voltage)
 {
     return voltage >= kBatteryValidPreviousVoltageMin;
-}
-
-static bool previous_battery_percent_valid(int percent)
-{
-    return percent >= kBatteryPercentMin;
-}
-
-static bool battery_percent_increased(int previous_percent, int current_percent)
-{
-    return previous_battery_percent_valid(previous_percent) && current_percent > previous_percent;
 }
 
 static bool battery_voltage_dropped_from_peak(float voltage, float peak_voltage)
@@ -181,6 +189,10 @@ bool init_battery_gauge()
             release_battery_gauge();
             return false;
         }
+        if (g_battery_adc_cali_ready && !g_battery_adc_cali) {
+            ESP_LOGW(TAG, "%s", BATTERY_ADC_CALIBRATION_READY_WITHOUT_HANDLE_LOG);
+            g_battery_adc_cali_ready = false;
+        }
         return true;
     }
 
@@ -209,10 +221,16 @@ bool init_battery_gauge()
     cali_config.atten = kBatteryAdcAtten;
     cali_config.bitwidth = kBatteryAdcBitwidth;
     err = adc_cali_create_scheme_curve_fitting(&cali_config, &g_battery_adc_cali);
-    if (err == ESP_OK) {
+    if (err == ESP_OK && g_battery_adc_cali) {
         g_battery_adc_cali_ready = true;
     } else {
-        ESP_LOGW(TAG, BATTERY_ADC_CALIBRATION_UNAVAILABLE_LOG_FORMAT, esp_err_to_name(err));
+        if (err == ESP_OK) {
+            ESP_LOGW(TAG, "%s", BATTERY_ADC_CALIBRATION_READY_WITHOUT_HANDLE_LOG);
+        } else {
+            ESP_LOGW(TAG, BATTERY_ADC_CALIBRATION_UNAVAILABLE_LOG_FORMAT, esp_err_to_name(err));
+        }
+        g_battery_adc_cali = nullptr;
+        g_battery_adc_cali_ready = false;
     }
 
     g_battery_adc_ready = true;
@@ -270,26 +288,28 @@ bool read_battery_percent(int *percent)
     return true;
 }
 
-static void update_battery_charging_state(int previous_percent,
-                                          float previous_voltage,
-                                          int current_percent,
+static void update_battery_charging_state(float previous_voltage,
                                           int *charging_rise_samples,
                                           int *charging_stop_samples,
-                                          float *charging_peak_voltage)
+                                          float *charging_peak_voltage,
+                                          TickType_t *charging_last_peak_tick)
 {
-    if (!charging_rise_samples || !charging_stop_samples || !charging_peak_voltage) {
+    if (!charging_rise_samples || !charging_stop_samples || !charging_peak_voltage ||
+        !charging_last_peak_tick) {
         return;
     }
     if (!previous_battery_voltage_valid(previous_voltage)) {
         *charging_rise_samples = 0;
         *charging_stop_samples = 0;
         *charging_peak_voltage = 0.0f;
+        *charging_last_peak_tick = 0;
+        g_battery_animation_complete = false;
         return;
     }
 
+    TickType_t now = xTaskGetTickCount();
     float delta = g_battery_voltage - previous_voltage;
-    bool charging_activity = delta >= kBatteryChargingRiseVoltage ||
-                             battery_percent_increased(previous_percent, current_percent);
+    bool charging_activity = delta >= kBatteryChargingRiseVoltage;
 
     if (charging_activity) {
         if (*charging_rise_samples < kBatteryChargingRiseSamples) {
@@ -302,6 +322,7 @@ static void update_battery_charging_state(int previous_percent,
     if (g_battery_charging) {
         if (g_battery_voltage > *charging_peak_voltage) {
             *charging_peak_voltage = g_battery_voltage;
+            *charging_last_peak_tick = now;
             *charging_stop_samples = 0;
         } else if (battery_voltage_dropped_from_peak(g_battery_voltage, *charging_peak_voltage)) {
             if (*charging_stop_samples < kBatteryChargingStopSamples) {
@@ -313,23 +334,40 @@ static void update_battery_charging_state(int previous_percent,
 
         if (charging_should_stop(g_battery_voltage, *charging_peak_voltage, *charging_stop_samples)) {
             g_battery_charging = false;
+            g_battery_animation_complete = false;
             *charging_rise_samples = 0;
             *charging_stop_samples = 0;
             *charging_peak_voltage = 0.0f;
+            *charging_last_peak_tick = 0;
         }
     } else if (*charging_rise_samples >= kBatteryChargingRiseSamples) {
         g_battery_charging = true;
+        g_battery_animation_complete = false;
         *charging_stop_samples = 0;
         *charging_peak_voltage = g_battery_voltage;
+        *charging_last_peak_tick = now;
+    }
+
+    bool charging_idle = g_battery_charging &&
+                         *charging_last_peak_tick != 0 &&
+                         now - *charging_last_peak_tick >=
+                             pdMS_TO_TICKS(kBatteryChargingAnimationIdleMs);
+    if (g_battery_charging &&
+        !g_battery_animation_complete &&
+        (g_battery_percent >= kBatteryChargingAnimationStopPercent || charging_idle)) {
+        g_battery_animation_complete = true;
     }
 }
 
 static void reset_battery_state_after_sample_failure(int *charging_rise_samples,
                                                       int *charging_stop_samples,
-                                                      float *charging_peak_voltage)
+                                                      float *charging_peak_voltage,
+                                                      TickType_t *charging_last_peak_tick)
 {
     g_battery_percent = kBatteryPercentUnknown;
+    g_battery_voltage = 0.0f;
     g_battery_charging = false;
+    g_battery_animation_complete = false;
     if (charging_rise_samples) {
         *charging_rise_samples = 0;
     }
@@ -338,6 +376,9 @@ static void reset_battery_state_after_sample_failure(int *charging_rise_samples,
     }
     if (charging_peak_voltage) {
         *charging_peak_voltage = 0.0f;
+    }
+    if (charging_last_peak_tick) {
+        *charging_last_peak_tick = 0;
     }
 }
 
@@ -355,28 +396,41 @@ void sample_battery()
     static int charging_rise_samples = 0;
     static int charging_stop_samples = 0;
     static float charging_peak_voltage = 0.0f;
+    static TickType_t charging_last_peak_tick = 0;
     int percent = kBatteryPercentUnknown;
     bool previous_charging = g_battery_charging;
+    bool previous_animation_complete = g_battery_animation_complete;
     int previous_percent = g_battery_percent;
     float previous_voltage = g_battery_voltage;
     if (read_battery_percent(&percent)) {
         g_battery_percent = percent;
-        update_battery_charging_state(previous_percent,
-                                      previous_voltage,
-                                      percent,
+        update_battery_charging_state(previous_voltage,
                                       &charging_rise_samples,
                                       &charging_stop_samples,
-                                      &charging_peak_voltage);
+                                      &charging_peak_voltage,
+                                      &charging_last_peak_tick);
+        if (!previous_charging && g_battery_charging) {
+            ESP_LOGI(TAG, BATTERY_CHARGING_STARTED_LOG_FORMAT, g_battery_voltage, g_battery_percent);
+        }
+        if (!previous_animation_complete && g_battery_animation_complete) {
+            ESP_LOGI(TAG,
+                     BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT,
+                     g_battery_voltage,
+                     g_battery_percent);
+        }
         if (previous_charging && !g_battery_charging) {
+            ESP_LOGI(TAG, BATTERY_CHARGING_STOPPED_LOG_FORMAT, g_battery_voltage, g_battery_percent);
             update_last_charge_time_if_needed();
         }
         release_battery_gauge();
     } else {
         reset_battery_state_after_sample_failure(&charging_rise_samples,
                                                  &charging_stop_samples,
-                                                 &charging_peak_voltage);
+                                                 &charging_peak_voltage,
+                                                 &charging_last_peak_tick);
     }
     bool sample_changed = previous_percent != g_battery_percent ||
-                          previous_charging != g_battery_charging;
+                          previous_charging != g_battery_charging ||
+                          previous_animation_complete != g_battery_animation_complete;
     publish_battery_sample_update(sample_changed);
 }

@@ -171,8 +171,42 @@ public:
         return locked_;
     }
 
+    HttpTransactionLock(const HttpTransactionLock &) = delete;
+    HttpTransactionLock &operator=(const HttpTransactionLock &) = delete;
+
 private:
     bool locked_ = false;
+};
+
+class HttpClientHandle {
+public:
+    explicit HttpClientHandle(const esp_http_client_config_t *config)
+        : client_(config ? esp_http_client_init(config) : nullptr)
+    {
+    }
+
+    ~HttpClientHandle()
+    {
+        if (client_) {
+            esp_http_client_cleanup(client_);
+        }
+    }
+
+    HttpClientHandle(const HttpClientHandle &) = delete;
+    HttpClientHandle &operator=(const HttpClientHandle &) = delete;
+
+    esp_http_client_handle_t get() const
+    {
+        return client_;
+    }
+
+    explicit operator bool() const
+    {
+        return client_ != nullptr;
+    }
+
+private:
+    esp_http_client_handle_t client_ = nullptr;
 };
 
 bool is_qweather_url(const char *url)
@@ -480,20 +514,24 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
     } else {
         config.crt_bundle_attach = esp_crt_bundle_attach;
     }
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (!client) {
-        ESP_LOGW(TAG, "%s", kHttpClientInitFailedLog);
-        return ESP_FAIL;
+    esp_err_t err = ESP_FAIL;
+    int status = 0;
+    int64_t content_length = 0;
+    {
+        HttpClientHandle client(&config);
+        if (!client) {
+            ESP_LOGW(TAG, "%s", kHttpClientInitFailedLog);
+            return ESP_FAIL;
+        }
+        esp_http_client_set_header(client.get(), kHttpAcceptHeaderName, kHttpAcceptHeader);
+        esp_http_client_set_header(client.get(), kHttpAcceptEncodingHeaderName, kHttpAcceptEncodingHeader);
+        if (api_key && api_key[0] != '\0') {
+            esp_http_client_set_header(client.get(), kQweatherApiKeyHeader, api_key);
+        }
+        err = esp_http_client_perform(client.get());
+        status = esp_http_client_get_status_code(client.get());
+        content_length = esp_http_client_get_content_length(client.get());
     }
-    esp_http_client_set_header(client, kHttpAcceptHeaderName, kHttpAcceptHeader);
-    esp_http_client_set_header(client, kHttpAcceptEncodingHeaderName, kHttpAcceptEncodingHeader);
-    if (api_key && api_key[0] != '\0') {
-        esp_http_client_set_header(client, kQweatherApiKeyHeader, api_key);
-    }
-    esp_err_t err = esp_http_client_perform(client);
-    int status = esp_http_client_get_status_code(client);
-    int64_t content_length = esp_http_client_get_content_length(client);
-    esp_http_client_cleanup(client);
     if (err != ESP_OK || !http_status_ok(status)) {
         if (buffer.len > 0) {
             char preview[kHttpPreviewBufferSize] = {};

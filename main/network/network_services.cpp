@@ -81,6 +81,45 @@ static constexpr const char *kNetworkDiagWifiOnLog = "wifi radio on for network 
 static constexpr const char *kNetworkSyncWifiStartFailedLog = "wifi start failed during sync window";
 static constexpr const char *kNetworkSyncWifiConnectTimeoutLog = "wifi connect timeout during sync window";
 
+namespace {
+class BootSyncDeadlineGuard {
+public:
+    BootSyncDeadlineGuard()
+    {
+        g_boot_sync_deadline_us = esp_timer_get_time() +
+                                  static_cast<int64_t>(kBootStartupBudgetMs) * kUsPerMs;
+    }
+
+    ~BootSyncDeadlineGuard()
+    {
+        g_boot_sync_deadline_us = 0;
+    }
+
+    BootSyncDeadlineGuard(const BootSyncDeadlineGuard &) = delete;
+    BootSyncDeadlineGuard &operator=(const BootSyncDeadlineGuard &) = delete;
+};
+
+class NetworkHttpTimeoutGuard {
+public:
+    explicit NetworkHttpTimeoutGuard(int timeout_ms)
+        : previous_timeout_ms_(g_http_timeout_ms)
+    {
+        g_http_timeout_ms = timeout_ms;
+    }
+
+    ~NetworkHttpTimeoutGuard()
+    {
+        g_http_timeout_ms = previous_timeout_ms_;
+    }
+
+    NetworkHttpTimeoutGuard(const NetworkHttpTimeoutGuard &) = delete;
+    NetworkHttpTimeoutGuard &operator=(const NetworkHttpTimeoutGuard &) = delete;
+
+private:
+    int previous_timeout_ms_ = 0;
+};
+} // namespace
+
 NetworkDisplayDmaGuard::NetworkDisplayDmaGuard(bool active) : active_(active)
 {
     if (active_) {
@@ -183,12 +222,11 @@ void run_boot_connectivity_sync()
 
     update_boot_screen(18, "Connecting Wi-Fi", g_wifi_ssid);
     acquire_network_awake_lock();
-    g_boot_sync_deadline_us = esp_timer_get_time() + (int64_t)kBootStartupBudgetMs * kUsPerMs;
+    BootSyncDeadlineGuard deadline_guard;
     if (!start_wifi_radio(false)) {
         update_boot_screen(kBootScreenCompletePercent, "Wi-Fi start failed", kBootDetailStartingClock);
         vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
         release_network_awake_lock();
-        g_boot_sync_deadline_us = 0;
         return;
     }
     int remaining_ms = boot_sync_remaining_ms();
@@ -200,7 +238,6 @@ void run_boot_connectivity_sync()
         vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
         stop_wifi_radio();
         release_network_awake_lock();
-        g_boot_sync_deadline_us = 0;
         return;
     }
 
@@ -210,14 +247,12 @@ void run_boot_connectivity_sync()
     remaining_ms = boot_sync_remaining_ms();
     if (boot_weather_page_visible && g_have_weather_key && !g_low_battery_mode && remaining_ms > kBootWeatherMinRemainingMs) {
         bool weather_ok = false;
-        int previous_timeout = g_http_timeout_ms;
-        g_http_timeout_ms = kHttpBootTimeoutMs;
         update_boot_screen(58, "Loading weather", "Fetching API data");
         {
+            NetworkHttpTimeoutGuard timeout_guard(kHttpBootTimeoutMs);
             NetworkDisplayDmaGuard display_guard(true);
             weather_ok = perform_weather_update();
         }
-        g_http_timeout_ms = previous_timeout;
         update_boot_screen(weather_ok ? 76 : 68,
                            weather_ok ? "Weather ready" : "Weather retry later",
                            weather_ok ? kBootDetailSynchronizingTime : "Will sync in background");
@@ -233,15 +268,13 @@ void run_boot_connectivity_sync()
 
     remaining_ms = boot_sync_remaining_ms();
     if (boot_gallery_page_visible && !g_low_battery_mode && remaining_ms > kBootSayingMinRemainingMs) {
-        int previous_timeout = g_http_timeout_ms;
-        g_http_timeout_ms = kHttpBootTimeoutMs;
         update_boot_screen(78, "Loading quote", "Fetching daily text");
         bool saying_ok = false;
         {
+            NetworkHttpTimeoutGuard timeout_guard(kHttpBootTimeoutMs);
             NetworkDisplayDmaGuard display_guard(true);
             saying_ok = perform_daily_saying_update();
         }
-        g_http_timeout_ms = previous_timeout;
         update_boot_screen(saying_ok ? 80 : 78,
                            saying_ok ? "Quote ready" : "Quote retry later",
                            kBootDetailSynchronizingTime);
@@ -262,7 +295,6 @@ void run_boot_connectivity_sync()
     vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
     stop_wifi_radio();
     release_network_awake_lock();
-    g_boot_sync_deadline_us = 0;
 }
 
 void boot_connectivity_task(void *)
@@ -340,6 +372,11 @@ static bool localtime_for_cache_check(time_t value, struct tm *out, const char *
     return true;
 }
 
+static bool cache_age_within(time_t now, time_t cached_at, time_t max_age)
+{
+    return cached_at > 0 && max_age > 0 && now >= cached_at && now - cached_at < max_age;
+}
+
 static bool weather_cache_current_hour(time_t now)
 {
     if (g_last_weather_sync_time <= 0) {
@@ -351,7 +388,7 @@ static bool weather_cache_current_hour(time_t now)
         !localtime_for_cache_check(g_last_weather_sync_time, &last_local, "weather last") ||
         !is_tm_plausible(now_local) ||
         !is_tm_plausible(last_local)) {
-        return now - g_last_weather_sync_time < kSecondsPerHour;
+        return cache_age_within(now, g_last_weather_sync_time, kSecondsPerHour);
     }
     return now_local.tm_year == last_local.tm_year &&
            now_local.tm_yday == last_local.tm_yday &&
@@ -369,7 +406,7 @@ static bool saying_cache_current_day(time_t now)
         !localtime_for_cache_check(g_last_saying_sync_time, &last_local, "saying last") ||
         !is_tm_plausible(now_local) ||
         !is_tm_plausible(last_local)) {
-        return now - g_last_saying_sync_time < kSecondsPerDay;
+        return cache_age_within(now, g_last_saying_sync_time, kSecondsPerDay);
     }
     return now_local.tm_year == last_local.tm_year &&
            now_local.tm_yday == last_local.tm_yday;

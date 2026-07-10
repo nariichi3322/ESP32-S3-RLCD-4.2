@@ -3,6 +3,7 @@
 
 #include "calendar_lunar.h"
 #include "flip_sensor_icons.h"
+#include "sensor_services.h"
 #include "ui_text_format.h"
 
 #include <algorithm>
@@ -111,7 +112,14 @@ static_assert(kFlipSensorPanelX == kCardX[kHourCardIndex] &&
                   kFlipSensorPanelX + kFlipSensorPanelW == kCardX[kMinuteCardIndex] + kCardW &&
                   kFlipDatePanelW == kCardW,
               "flip clock sensor panel must span hour and minute cards");
-static_assert(kFlipTrendIconX >= 0 && kFlipTrendIconY >= 0, "flip clock trend icon must fit canvas");
+static_assert(kCardRadius > 0 && kCardRadius * 2 <= kCardW && kCardRadius * 2 <= kCardH,
+              "flip clock card radius must fit card");
+static_assert(kDigitScaleNumerator > 0 && kDigitScaleDenominator > 0,
+              "flip clock digit scale must be positive");
+static_assert(kFlipTrendIconX >= 0 && kFlipTrendIconY >= 0 &&
+                  kFlipTrendIconX + TREND_ICON_WIDTH <= kFlipTrendCanvasW &&
+                  kFlipTrendIconY + TREND_ICON_HEIGHT <= kFlipTrendCanvasH,
+              "flip clock trend icon must fit canvas");
 
 struct SensorComfortBand {
     float comfort_min;
@@ -367,15 +375,23 @@ bool update_flip_sensor_text()
     }
     char temp_text[kFlipSensorTextSize] = {};
     char humi_text[kFlipSensorTextSize] = {};
-    if (g_sensor_ok) {
-        ui_text::format_or_fallback(temp_text, sizeof(temp_text), kFlipTempPlaceholder, kFlipTempFormat, g_temperature);
-        ui_text::format_or_fallback(humi_text, sizeof(humi_text), kFlipHumiPlaceholder, kFlipHumiFormat, g_humidity);
+    float temperature = 0.0f;
+    float humidity = 0.0f;
+    int temperature_trend = 0;
+    int humidity_trend = 0;
+    bool sensor_ok = get_local_sensor_snapshot(&temperature,
+                                               &humidity,
+                                               &temperature_trend,
+                                               &humidity_trend);
+    if (sensor_ok) {
+        ui_text::format_or_fallback(temp_text, sizeof(temp_text), kFlipTempPlaceholder, kFlipTempFormat, temperature);
+        ui_text::format_or_fallback(humi_text, sizeof(humi_text), kFlipHumiPlaceholder, kFlipHumiFormat, humidity);
     } else {
         strlcpy(temp_text, kFlipTempPlaceholder, sizeof(temp_text));
         strlcpy(humi_text, kFlipHumiPlaceholder, sizeof(humi_text));
     }
-    int temp_mood = g_sensor_ok ? temperature_mood(g_temperature) : kSensorMoodUnavailable;
-    int humi_mood = g_sensor_ok ? humidity_mood(g_humidity) : kSensorMoodUnavailable;
+    int temp_mood = sensor_ok ? temperature_mood(temperature) : kSensorMoodUnavailable;
+    int humi_mood = sensor_ok ? humidity_mood(humidity) : kSensorMoodUnavailable;
     bool changed = false;
     changed |= set_flip_text_on_labels(temp_text,
                                        g_flip_clock_sensor_label,
@@ -394,10 +410,10 @@ bool update_flip_sensor_text()
                                 &g_last_flip_humi_mood,
                                 humi_mood_icon_bits(humi_mood));
     changed |= update_flip_trend_icon(g_flip_clock_temp_trend_canvas,
-                                      g_sensor_ok ? g_temp_trend : 0,
+                                      sensor_ok ? temperature_trend : 0,
                                       &g_last_flip_temp_trend);
     changed |= update_flip_trend_icon(g_flip_clock_humi_trend_canvas,
-                                      g_sensor_ok ? g_humi_trend : 0,
+                                      sensor_ok ? humidity_trend : 0,
                                       &g_last_flip_humi_trend);
     return changed;
 }
@@ -467,6 +483,38 @@ lv_obj_t *make_flip_sensor_value_label(lv_obj_t *parent,
     return label;
 }
 
+void build_flip_sensor_value_labels(lv_obj_t *parent,
+                                    lv_obj_t **normal_label,
+                                    lv_obj_t **bold_x_label,
+                                    lv_obj_t **bold_y_label,
+                                    int y,
+                                    const char *placeholder,
+                                    const char *failure_log)
+{
+    if (!normal_label || !bold_x_label || !bold_y_label) {
+        return;
+    }
+    const int x = kFlipSensorPanelX + kFlipSensorTextPadX;
+    *normal_label = make_flip_sensor_value_label(parent,
+                                                  x,
+                                                  y,
+                                                  placeholder,
+                                                  LV_TEXT_ALIGN_LEFT);
+    *bold_x_label = make_flip_sensor_value_label(parent,
+                                                  x + kFlipSensorBoldOffset,
+                                                  y,
+                                                  placeholder,
+                                                  LV_TEXT_ALIGN_LEFT);
+    *bold_y_label = make_flip_sensor_value_label(parent,
+                                                  x,
+                                                  y + kFlipSensorBoldYOffset,
+                                                  placeholder,
+                                                  LV_TEXT_ALIGN_LEFT);
+    if (!*normal_label || !*bold_x_label || !*bold_y_label) {
+        ESP_LOGW(TAG, "%s", failure_log ? failure_log : FLIP_CLOCK_TEMP_LABEL_CREATE_FAILED_LOG);
+    }
+}
+
 lv_obj_t *make_flip_date_label(lv_obj_t *parent,
                                int x,
                                int y,
@@ -495,6 +543,9 @@ void build_flip_mood_canvas(lv_obj_t *screen,
     if (!*buffer) {
         *buffer = alloc_canvas_buffer(FLIP_SENSOR_ICON_WIDTH, FLIP_SENSOR_ICON_HEIGHT);
     }
+    if (!*buffer) {
+        return;
+    }
     *canvas = lv_canvas_create(screen);
     if (!*canvas) {
         ESP_LOGW(TAG, FLIP_CLOCK_MOOD_CANVAS_CREATE_FAILED_FORMAT, name);
@@ -505,14 +556,12 @@ void build_flip_mood_canvas(lv_obj_t *screen,
     lv_obj_set_size(*canvas, FLIP_SENSOR_ICON_WIDTH, FLIP_SENSOR_ICON_HEIGHT);
     lv_obj_set_style_border_width(*canvas, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(*canvas, 0, LV_PART_MAIN);
-    if (*buffer) {
-        lv_canvas_set_buffer(*canvas,
-                             *buffer,
-                             FLIP_SENSOR_ICON_WIDTH,
-                             FLIP_SENSOR_ICON_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        lv_canvas_fill_bg(*canvas, lv_color_black(), LV_OPA_COVER);
-    }
+    lv_canvas_set_buffer(*canvas,
+                         *buffer,
+                         FLIP_SENSOR_ICON_WIDTH,
+                         FLIP_SENSOR_ICON_HEIGHT,
+                         LV_IMG_CF_TRUE_COLOR);
+    lv_canvas_fill_bg(*canvas, lv_color_black(), LV_OPA_COVER);
 }
 
 void build_flip_trend_canvas(lv_obj_t *screen,
@@ -528,6 +577,9 @@ void build_flip_trend_canvas(lv_obj_t *screen,
     if (!*buffer) {
         *buffer = alloc_canvas_buffer(kFlipTrendCanvasW, kFlipTrendCanvasH);
     }
+    if (!*buffer) {
+        return;
+    }
     *canvas = lv_canvas_create(screen);
     if (!*canvas) {
         ESP_LOGW(TAG, FLIP_CLOCK_TREND_CANVAS_CREATE_FAILED_FORMAT, name);
@@ -538,10 +590,8 @@ void build_flip_trend_canvas(lv_obj_t *screen,
     lv_obj_set_size(*canvas, kFlipTrendCanvasW, kFlipTrendCanvasH);
     lv_obj_set_style_border_width(*canvas, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(*canvas, 0, LV_PART_MAIN);
-    if (*buffer) {
-        lv_canvas_set_buffer(*canvas, *buffer, kFlipTrendCanvasW, kFlipTrendCanvasH, LV_IMG_CF_TRUE_COLOR);
-        update_flip_trend_icon(*canvas, trend, nullptr);
-    }
+    lv_canvas_set_buffer(*canvas, *buffer, kFlipTrendCanvasW, kFlipTrendCanvasH, LV_IMG_CF_TRUE_COLOR);
+    update_flip_trend_icon(*canvas, trend, nullptr);
 }
 
 } // namespace
@@ -557,6 +607,9 @@ void build_inverted_clock_cards(lv_obj_t *parent,
         if (!card_canvas_buf[i]) {
             card_canvas_buf[i] = alloc_canvas_buffer(kCardW, kCardH);
         }
+        if (!card_canvas_buf[i]) {
+            continue;
+        }
         card_canvas[i] = lv_canvas_create(parent);
         if (!card_canvas[i]) {
             ESP_LOGW(TAG, FLIP_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT, i);
@@ -567,14 +620,12 @@ void build_inverted_clock_cards(lv_obj_t *parent,
         lv_obj_set_size(card_canvas[i], kCardW, kCardH);
         lv_obj_set_style_border_width(card_canvas[i], 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(card_canvas[i], 0, LV_PART_MAIN);
-        if (card_canvas_buf[i]) {
-            lv_canvas_set_buffer(card_canvas[i],
-                                 card_canvas_buf[i],
-                                 kCardW,
-                                 kCardH,
-                                 LV_IMG_CF_TRUE_COLOR);
-            lv_canvas_fill_bg(card_canvas[i], lv_color_black(), LV_OPA_COVER);
-        }
+        lv_canvas_set_buffer(card_canvas[i],
+                             card_canvas_buf[i],
+                             kCardW,
+                             kCardH,
+                             LV_IMG_CF_TRUE_COLOR);
+        lv_canvas_fill_bg(card_canvas[i], lv_color_black(), LV_OPA_COVER);
     }
 }
 
@@ -614,7 +665,7 @@ void build_flip_clock_page()
                                kWorkPageFlipClock,
                                &g_flip_clock_date_label,
                                nullptr,
-                               &g_flip_clock_status_time_label,
+                               nullptr,
                                false);
 
     lv_obj_t *top_line = make_bar(screen,
@@ -640,44 +691,20 @@ void build_flip_clock_page()
         lv_obj_set_style_clip_corner(sensor_panel, true, LV_PART_MAIN);
     }
 
-    int temp_x = kFlipSensorPanelX + kFlipSensorTextPadX;
-    g_flip_clock_sensor_label = make_flip_sensor_value_label(screen,
-                                                             temp_x,
-                                                             kFlipSensorTempTextY,
-                                                             kFlipTempPlaceholder,
-                                                             LV_TEXT_ALIGN_LEFT);
-    g_flip_clock_sensor_bold_label = make_flip_sensor_value_label(screen,
-                                                                  temp_x + kFlipSensorBoldOffset,
-                                                                  kFlipSensorTempTextY,
-                                                                  kFlipTempPlaceholder,
-                                                                  LV_TEXT_ALIGN_LEFT);
-    g_flip_clock_sensor_bold_y_label = make_flip_sensor_value_label(screen,
-                                                                    temp_x,
-                                                                    kFlipSensorTempTextY + kFlipSensorBoldYOffset,
-                                                                    kFlipTempPlaceholder,
-                                                                    LV_TEXT_ALIGN_LEFT);
-    if (!g_flip_clock_sensor_label || !g_flip_clock_sensor_bold_label || !g_flip_clock_sensor_bold_y_label) {
-        ESP_LOGW(TAG, "%s", FLIP_CLOCK_TEMP_LABEL_CREATE_FAILED_LOG);
-    }
-
-    g_flip_clock_humidity_label = make_flip_sensor_value_label(screen,
-                                                               temp_x,
-                                                               kFlipSensorHumiTextY,
-                                                               kFlipHumiPlaceholder,
-                                                               LV_TEXT_ALIGN_LEFT);
-    g_flip_clock_humidity_bold_label = make_flip_sensor_value_label(screen,
-                                                                    temp_x + kFlipSensorBoldOffset,
-                                                                    kFlipSensorHumiTextY,
-                                                                    kFlipHumiPlaceholder,
-                                                                    LV_TEXT_ALIGN_LEFT);
-    g_flip_clock_humidity_bold_y_label = make_flip_sensor_value_label(screen,
-                                                                      temp_x,
-                                                                      kFlipSensorHumiTextY + kFlipSensorBoldYOffset,
-                                                                      kFlipHumiPlaceholder,
-                                                                      LV_TEXT_ALIGN_LEFT);
-    if (!g_flip_clock_humidity_label || !g_flip_clock_humidity_bold_label || !g_flip_clock_humidity_bold_y_label) {
-        ESP_LOGW(TAG, "%s", FLIP_CLOCK_HUMIDITY_LABEL_CREATE_FAILED_LOG);
-    }
+    build_flip_sensor_value_labels(screen,
+                                   &g_flip_clock_sensor_label,
+                                   &g_flip_clock_sensor_bold_label,
+                                   &g_flip_clock_sensor_bold_y_label,
+                                   kFlipSensorTempTextY,
+                                   kFlipTempPlaceholder,
+                                   FLIP_CLOCK_TEMP_LABEL_CREATE_FAILED_LOG);
+    build_flip_sensor_value_labels(screen,
+                                   &g_flip_clock_humidity_label,
+                                   &g_flip_clock_humidity_bold_label,
+                                   &g_flip_clock_humidity_bold_y_label,
+                                   kFlipSensorHumiTextY,
+                                   kFlipHumiPlaceholder,
+                                   FLIP_CLOCK_HUMIDITY_LABEL_CREATE_FAILED_LOG);
     build_flip_mood_canvas(screen,
                            &g_flip_clock_temp_mood_canvas,
                            &g_flip_clock_temp_mood_canvas_buf,
@@ -688,17 +715,23 @@ void build_flip_clock_page()
                            &g_flip_clock_humi_mood_canvas_buf,
                            kFlipHumiMoodCanvasY,
                            "humidity");
+    int initial_temperature_trend = 0;
+    int initial_humidity_trend = 0;
+    bool initial_sensor_ok = get_local_sensor_snapshot(nullptr,
+                                                       nullptr,
+                                                       &initial_temperature_trend,
+                                                       &initial_humidity_trend);
     build_flip_trend_canvas(screen,
                             &g_flip_clock_temp_trend_canvas,
                             &g_flip_clock_temp_trend_canvas_buf,
                             kFlipTempTrendCanvasY,
-                            g_sensor_ok ? g_temp_trend : 0,
+                            initial_sensor_ok ? initial_temperature_trend : 0,
                             "temperature");
     build_flip_trend_canvas(screen,
                             &g_flip_clock_humi_trend_canvas,
                             &g_flip_clock_humi_trend_canvas_buf,
                             kFlipHumiTrendCanvasY,
-                            g_sensor_ok ? g_humi_trend : 0,
+                            initial_sensor_ok ? initial_humidity_trend : 0,
                             "humidity");
 
     lv_obj_t *date_panel = make_bar(screen,
@@ -766,7 +799,6 @@ void build_flip_clock_page()
     g_last_flip_clock_minute = -1;
     g_last_flip_clock_second = -1;
     g_last_flip_day_progress_filled = -1;
-    g_last_flip_second_progress_filled = -1;
     g_last_flip_sensor_minute = -1;
     g_last_flip_temp_mood = -1;
     g_last_flip_humi_mood = -1;

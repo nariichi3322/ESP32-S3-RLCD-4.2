@@ -123,6 +123,7 @@ constexpr unsigned char kUtf8ThreeByteMask = 0xF0;
 constexpr unsigned char kUtf8ThreeBytePrefix = 0xE0;
 constexpr unsigned char kUtf8FourByteMask = 0xF8;
 constexpr unsigned char kUtf8FourBytePrefix = 0xF0;
+constexpr unsigned char kUtf8ContinuationMask = 0xC0;
 constexpr uint32_t kUtf8OneByteMaxCodepoint = 0x7F;
 constexpr uint32_t kUtf8TwoByteMaxCodepoint = 0x7FF;
 constexpr uint32_t kUtf8ThreeByteMaxCodepoint = 0xFFFF;
@@ -144,6 +145,8 @@ static_assert(kUtf8OneByteLen < kUtf8TwoByteLen &&
 static_assert(kUtf8OneByteMaxCodepoint < kUtf8TwoByteMaxCodepoint &&
                   kUtf8TwoByteMaxCodepoint < kUtf8ThreeByteMaxCodepoint,
               "UTF-8 codepoint limits must stay ordered");
+static_assert((kUtf8ContinuationPrefix & kUtf8ContinuationMask) == kUtf8ContinuationPrefix,
+              "UTF-8 continuation prefix must fit its mask");
 static_assert(kIpRegionCityPartIndex < kIpRegionMaxParts,
               "IP region city index must fit region parts array");
 static_assert(kIpRegionCityPartMinCount <= kIpRegionMaxParts,
@@ -152,7 +155,6 @@ static_assert(kWeatherAlertCompactTitleChars > 0,
               "compact weather alert title length must be positive");
 constexpr int kQweatherDaily3DayEndpointDays = 3;
 constexpr int kQweatherDaily7DayEndpointDays = 7;
-static_assert(kQweatherDaily3DayEndpointDays > 0, "QWeather 3-day endpoint day count must be positive");
 static_assert(kQweatherDaily7DayEndpointDays > kQweatherDaily3DayEndpointDays,
               "QWeather 7-day endpoint must cover more days than 3-day endpoint");
 static_assert(kWeatherForecastDays <= kQweatherDaily7DayEndpointDays,
@@ -691,12 +693,13 @@ void copy_ip_region_city(char *out, size_t out_len, const char *region)
     strlcpy(region_copy, region, sizeof(region_copy));
     char *parts[kIpRegionMaxParts] = {};
     size_t count = 0;
-    char *token = strtok(region_copy, kIpRegionDelimiter);
+    char *save = nullptr;
+    char *token = strtok_r(region_copy, kIpRegionDelimiter, &save);
     while (token && count < kIpRegionMaxParts) {
         if (token[0] != '\0') {
             parts[count++] = token;
         }
-        token = strtok(nullptr, kIpRegionDelimiter);
+        token = strtok_r(nullptr, kIpRegionDelimiter, &save);
     }
 
     const char *city_part = count >= kIpRegionCityPartMinCount
@@ -1067,28 +1070,38 @@ int warning_color_rank(const char *code)
     return color ? color->rank : 0;
 }
 
-static size_t alert_utf8_char_len(unsigned char ch)
+static size_t alert_utf8_char_len(const unsigned char *text)
 {
+    if (!text || text[0] == '\0') {
+        return 0;
+    }
+    const unsigned char ch = text[0];
+    size_t expected_len = kUtf8OneByteLen;
     if ((ch & kUtf8AsciiMask) == 0) {
-        return kUtf8OneByteLen;
+        expected_len = kUtf8OneByteLen;
+    } else if ((ch & kUtf8TwoByteMask) == kUtf8TwoBytePrefix) {
+        expected_len = kUtf8TwoByteLen;
+    } else if ((ch & kUtf8ThreeByteMask) == kUtf8ThreeBytePrefix) {
+        expected_len = kUtf8ThreeByteLen;
+    } else if ((ch & kUtf8FourByteMask) == kUtf8FourBytePrefix) {
+        expected_len = kUtf8FourByteLen;
     }
-    if ((ch & kUtf8TwoByteMask) == kUtf8TwoBytePrefix) {
-        return kUtf8TwoByteLen;
+    for (size_t index = 1; index < expected_len; ++index) {
+        if (text[index] == '\0' ||
+            (text[index] & kUtf8ContinuationMask) != kUtf8ContinuationPrefix) {
+            // Malformed external text must advance safely without reading past
+            // its terminator or consuming following valid characters.
+            return kUtf8OneByteLen;
+        }
     }
-    if ((ch & kUtf8ThreeByteMask) == kUtf8ThreeBytePrefix) {
-        return kUtf8ThreeByteLen;
-    }
-    if ((ch & kUtf8FourByteMask) == kUtf8FourBytePrefix) {
-        return kUtf8FourByteLen;
-    }
-    return kUtf8OneByteLen;
+    return expected_len;
 }
 
 static size_t alert_utf8_char_count(const char *text)
 {
     size_t count = 0;
     for (const unsigned char *p = (const unsigned char *)text; p && *p;) {
-        size_t len = alert_utf8_char_len(*p);
+        size_t len = alert_utf8_char_len(p);
         if (len == 0) {
             break;
         }
@@ -1111,7 +1124,7 @@ static void alert_utf8_copy_chars(char *out, size_t out_len, const char *in, siz
     size_t chars = 0;
     const unsigned char *p = (const unsigned char *)in;
     while (*p && chars < max_chars) {
-        size_t len = alert_utf8_char_len(*p);
+        size_t len = alert_utf8_char_len(p);
         if (used + len >= out_len) {
             break;
         }
@@ -1145,7 +1158,7 @@ static void replace_all(char *text, size_t text_len, const char *from, const cha
             used += to_len;
             read += from_len;
         } else {
-            size_t len = alert_utf8_char_len((unsigned char)*read);
+            size_t len = alert_utf8_char_len((const unsigned char *)read);
             if (used + len >= sizeof(buffer)) {
                 break;
             }
@@ -1603,7 +1616,10 @@ bool qweather_fetch_air(const char *city_id, WeatherAirData *air)
     return ok;
 }
 
-void get_weather_snapshot(WeatherData *weather, WeatherAlertData *alert)
+void get_weather_full_snapshot(WeatherData *weather,
+                               WeatherAlertData *alert,
+                               WeatherForecastData *forecast,
+                               WeatherAirData *air)
 {
     portENTER_CRITICAL(&g_weather_state_mux);
     if (weather) {
@@ -1612,7 +1628,18 @@ void get_weather_snapshot(WeatherData *weather, WeatherAlertData *alert)
     if (alert) {
         *alert = g_weather_alert;
     }
+    if (forecast) {
+        *forecast = g_weather_forecast;
+    }
+    if (air) {
+        *air = g_weather_air;
+    }
     portEXIT_CRITICAL(&g_weather_state_mux);
+}
+
+void get_weather_snapshot(WeatherData *weather, WeatherAlertData *alert)
+{
+    get_weather_full_snapshot(weather, alert, nullptr, nullptr);
 }
 
 void get_weather_forecast_snapshot(WeatherForecastData *forecast)
@@ -1620,9 +1647,7 @@ void get_weather_forecast_snapshot(WeatherForecastData *forecast)
     if (!forecast) {
         return;
     }
-    portENTER_CRITICAL(&g_weather_state_mux);
-    *forecast = g_weather_forecast;
-    portEXIT_CRITICAL(&g_weather_state_mux);
+    get_weather_full_snapshot(nullptr, nullptr, forecast, nullptr);
 }
 
 void get_weather_air_snapshot(WeatherAirData *air)
@@ -1630,9 +1655,7 @@ void get_weather_air_snapshot(WeatherAirData *air)
     if (!air) {
         return;
     }
-    portENTER_CRITICAL(&g_weather_state_mux);
-    *air = g_weather_air;
-    portEXIT_CRITICAL(&g_weather_state_mux);
+    get_weather_full_snapshot(nullptr, nullptr, nullptr, air);
 }
 
 static void publish_weather_ready_event()

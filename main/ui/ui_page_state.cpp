@@ -5,6 +5,7 @@
 
 namespace {
 #define PAGE_ROOT_CREATE_FAILED_LOG "page root create failed"
+#define LOWER_PANEL_OBJECT_LIST_FULL_LOG "lower panel object list full"
 constexpr int kFirstWorkPage = kWorkPageWeatherClock;
 constexpr int kFallbackWorkPage = kWorkPageWeatherClock;
 constexpr int kInvalidWorkPage = -1;
@@ -418,7 +419,6 @@ static void clear_work_page_root_refs()
 static void clear_work_status_refs()
 {
     g_date_label = nullptr;
-    g_clock_summary_label = nullptr;
     g_history_date_label = nullptr;
     g_gallery_date_label = nullptr;
     g_calendar_date_label = nullptr;
@@ -429,13 +429,10 @@ static void clear_work_status_refs()
     g_gallery_summary_label = nullptr;
     g_calendar_summary_label = nullptr;
     g_weather_board_summary_label = nullptr;
-    g_flip_clock_summary_label = nullptr;
     g_xiaozhi_summary_label = nullptr;
     g_history_status_time_label = nullptr;
-    g_gallery_status_time_label = nullptr;
     g_calendar_status_time_label = nullptr;
     g_weather_board_status_time_label = nullptr;
-    g_flip_clock_status_time_label = nullptr;
     g_xiaozhi_status_time_label = nullptr;
     clear_pointer_array(g_work_status_chime_icon_canvas);
     clear_pointer_array(g_work_status_wifi_icon_canvas);
@@ -443,13 +440,9 @@ static void clear_work_status_refs()
 
 static void clear_gallery_calendar_refs()
 {
-    g_gallery_time_label = nullptr;
-    g_gallery_hour_label = nullptr;
-    g_gallery_minute_label = nullptr;
     g_gallery_image_canvas = nullptr;
     g_gallery_time_canvas = nullptr;
     g_gallery_saying_label = nullptr;
-    g_calendar_month_label = nullptr;
     g_calendar_canvas = nullptr;
 }
 
@@ -502,12 +495,10 @@ static void clear_flip_clock_refs()
     g_flip_clock_lunar_bold_y_label = nullptr;
     g_flip_clock_lunar_bold_xy_label = nullptr;
     g_flip_clock_day_progress_canvas = nullptr;
-    g_flip_clock_second_progress_canvas = nullptr;
 }
 
 static void clear_xiaozhi_refs()
 {
-    g_xiaozhi_title_label = nullptr;
     g_xiaozhi_state_label = nullptr;
     g_xiaozhi_detail_label = nullptr;
     g_xiaozhi_wave_canvas = nullptr;
@@ -556,7 +547,6 @@ static void clear_ui_draw_cache_state()
     g_last_flip_humi_trend = 99;
     g_last_flip_date_key = -1;
     g_last_flip_day_progress_filled = -1;
-    g_last_flip_second_progress_filled = -1;
     g_last_flip_sensor_minute = -1;
     g_last_temp_trend_drawn = 99;
     g_last_humi_trend_drawn = 99;
@@ -631,6 +621,7 @@ void remember_lower_panel_object(lv_obj_t *obj)
             return;
         }
     }
+    ESP_LOGW(TAG, "%s", LOWER_PANEL_OBJECT_LIST_FULL_LOG);
 }
 
 void set_obj_visible(lv_obj_t *obj, bool visible)

@@ -60,6 +60,7 @@ XiaozhiAiState s_animation_state = kXiaozhiAiInactive;
 char s_subtitle_target[192] = {};
 char s_subtitle_visible[192] = {};
 char s_subtitle_window[192] = {};
+char s_subtitle_window_source[192] = {};
 size_t s_subtitle_visible_bytes = 0;
 size_t s_subtitle_visible_characters = 0;
 uint32_t s_subtitle_last_tick = 0;
@@ -129,6 +130,9 @@ const char *progressive_subtitle(const XiaozhiAiSnapshot &snapshot, const char *
 const char *latest_visible_subtitle(const char *text)
 {
     text = text ? text : "";
+    if (strcmp(s_subtitle_window_source, text) == 0) {
+        return s_subtitle_window;
+    }
     const char *window_start = text;
     lv_point_t text_size = {};
     lv_txt_get_size(&text_size,
@@ -160,6 +164,7 @@ const char *latest_visible_subtitle(const char *text)
                         kDetailW,
                         LV_TEXT_FLAG_NONE);
     }
+    strlcpy(s_subtitle_window_source, text, sizeof(s_subtitle_window_source));
     strlcpy(s_subtitle_window, window_start, sizeof(s_subtitle_window));
     return s_subtitle_window;
 }
@@ -363,7 +368,6 @@ void build_xiaozhi_page()
         }
     }
 
-    g_xiaozhi_title_label = nullptr;
     g_xiaozhi_state_label = make_label_with_font(g_xiaozhi_root,
                                                   kStateX,
                                                   kStateY,

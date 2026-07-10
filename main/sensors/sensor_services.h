@@ -24,9 +24,14 @@ time_t hour_start_from_time(time_t value);
 void reset_hourly_sensor_history();
 void load_hourly_sensor_history();
 void record_hourly_sensor_sample(float temp, float humi);
+bool get_hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history, uint32_t *version);
 time_t next_weather_sync_time(time_t from);
 void update_sensor_history(float temp, float humi);
 void sample_sensor();
+bool get_local_sensor_snapshot(float *temperature,
+                               float *humidity,
+                               int *temperature_trend,
+                               int *humidity_trend);
 TickType_t next_sensor_sample_tick(TickType_t now);
 TickType_t next_battery_sample_tick(TickType_t now);
 void housekeeping_task(void *);

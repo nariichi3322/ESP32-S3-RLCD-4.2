@@ -1,6 +1,9 @@
 // 统一构建和刷新非天气时钟工作页顶部状态栏。
 #include "ui_views.h"
 
+#include "sensor_services.h"
+#include "ui_text_format.h"
+
 namespace {
 
 static constexpr int kStatusDateX = 198;
@@ -21,6 +24,9 @@ static constexpr int kStatusIconY = 15;
 static constexpr int kStatusFirstWorkPage = kWorkPageWeatherClock;
 static constexpr const char *kStatusDatePlaceholder = "----/--/-- / 星期-";
 static constexpr const char *kStatusSummaryPlaceholder = "--C --%";
+static constexpr size_t kStatusSensorSummaryTextSize = 32;
+static constexpr const char *kStatusSensorSummaryFormat = "%.0fC %.0f%%";
+static constexpr const char *kStatusSensorSummaryFallback = "--C --%%";
 static constexpr const char *kStatusTimePlaceholder = "--:--";
 static constexpr size_t kStatusTimeTextSize = 8;
 static constexpr const char *kStatusTimeFormat = "%02d:%02d";
@@ -30,6 +36,28 @@ static constexpr const char *kStatusTimeFormat = "%02d:%02d";
 #define WORK_STATUS_DATE_LABEL_CREATE_FAILED_FORMAT "work status date label create failed page=%d"
 #define WORK_STATUS_SUMMARY_LABEL_CREATE_FAILED_FORMAT "work status summary label create failed page=%d"
 #define WORK_STATUS_TIME_LABEL_CREATE_FAILED_FORMAT "work status time label create failed page=%d"
+
+static_assert(kStatusDateX >= 0 && kStatusDateY >= 0 &&
+                  kStatusDateX + kStatusDateW <= kDisplayWidth &&
+                  kStatusDateY + kStatusDateH <= kDisplayHeight,
+              "work status date label must fit display bounds");
+static_assert(kStatusSummaryX >= 0 && kStatusSummaryY >= 0 &&
+                  kStatusSummaryX + kStatusSummaryW <= kDisplayWidth &&
+                  kStatusSummaryY + kStatusSummaryH <= kDisplayHeight,
+              "work status summary label must fit display bounds");
+static_assert(kStatusTimeX >= 0 && kStatusTimeY >= 0 &&
+                  kStatusTimeX + kStatusTimeW <= kDisplayWidth &&
+                  kStatusTimeY + kStatusTimeH <= kDisplayHeight,
+              "work status time label must fit display bounds");
+static_assert(kStatusChimeX >= 0 && kStatusWifiX >= 0 && kStatusIconY >= 0,
+              "work status icon positions must be non-negative");
+static_assert(kStatusChimeX + CHIME_STATUS_ICON_WIDTH <= kDisplayWidth &&
+                  kStatusWifiX + WIFI_STATUS_ICON_WIDTH <= kDisplayWidth &&
+                  kStatusIconY + CHIME_STATUS_ICON_HEIGHT <= kDisplayHeight &&
+                  kStatusIconY + WIFI_STATUS_ICON_HEIGHT <= kDisplayHeight,
+              "work status icons must fit display bounds");
+static_assert(kStatusTimeTextSize >= sizeof("00:00"),
+              "work status time buffer must fit HH:MM text");
 
 enum class StatusLabelKind {
     kDate,
@@ -63,6 +91,9 @@ void build_status_icon(lv_obj_t *screen,
     if (!*buffer) {
         *buffer = alloc_canvas_buffer(width, height);
     }
+    if (!*buffer) {
+        return;
+    }
     *canvas = lv_canvas_create(screen);
     if (!*canvas) {
         ESP_LOGW(TAG, "%s", WORK_STATUS_ICON_CANVAS_CREATE_FAILED_LOG);
@@ -73,10 +104,8 @@ void build_status_icon(lv_obj_t *screen,
     lv_obj_set_size(*canvas, width, height);
     lv_obj_set_style_border_width(*canvas, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(*canvas, 0, LV_PART_MAIN);
-    if (*buffer) {
-        lv_canvas_set_buffer(*canvas, *buffer, width, height, LV_IMG_CF_TRUE_COLOR);
-        draw_1bit_icon(*canvas, width, height, bytes_per_row, bits, lv_color_black(), lv_color_white());
-    }
+    lv_canvas_set_buffer(*canvas, *buffer, width, height, LV_IMG_CF_TRUE_COLOR);
+    draw_1bit_icon(*canvas, width, height, bytes_per_row, bits, lv_color_black(), lv_color_white());
     lv_obj_add_flag(*canvas, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -91,11 +120,6 @@ bool set_status_icon_visible_if_changed(lv_obj_t *icon, bool visible)
     }
     set_obj_visible(icon, visible);
     return true;
-}
-
-bool work_status_format_failed(int written, size_t out_len)
-{
-    return written < 0 || (size_t)written >= out_len;
 }
 
 void log_status_label_create_failed(StatusLabelKind kind, int page)
@@ -139,6 +163,15 @@ void build_work_page_status_bar(lv_obj_t *screen,
                                 lv_obj_t **time_label,
                                 bool show_time)
 {
+    if (date_label) {
+        *date_label = nullptr;
+    }
+    if (summary_label) {
+        *summary_label = nullptr;
+    }
+    if (time_label) {
+        *time_label = nullptr;
+    }
     if (!screen) {
         return;
     }
@@ -169,9 +202,6 @@ void build_work_page_status_bar(lv_obj_t *screen,
         if (*summary_label) {
             style_work_page_sensor_summary(*summary_label);
         }
-    }
-    if (time_label) {
-        *time_label = nullptr;
     }
     if (show_time && time_label) {
         *time_label = make_status_label(screen,
@@ -216,11 +246,47 @@ bool update_work_page_status_time(lv_obj_t *label, const struct tm &local)
         return false;
     }
     char text[kStatusTimeTextSize] = {};
-    int written = snprintf(text, sizeof(text), kStatusTimeFormat, local.tm_hour, local.tm_min);
-    if (work_status_format_failed(written, sizeof(text))) {
-        strlcpy(text, kStatusTimePlaceholder, sizeof(text));
+    ui_text::format_or_fallback(text,
+                                sizeof(text),
+                                kStatusTimePlaceholder,
+                                kStatusTimeFormat,
+                                local.tm_hour,
+                                local.tm_min);
+    return set_label_text_if_changed(label, text);
+}
+
+bool update_work_page_sensor_summary(lv_obj_t *label)
+{
+    if (!label) {
+        return false;
+    }
+    char text[kStatusSensorSummaryTextSize] = {};
+    float temperature = 0.0f;
+    float humidity = 0.0f;
+    if (get_local_sensor_snapshot(&temperature, &humidity, nullptr, nullptr)) {
+        ui_text::format_or_fallback(text,
+                                    sizeof(text),
+                                    kStatusSensorSummaryFallback,
+                                    kStatusSensorSummaryFormat,
+                                    temperature,
+                                    humidity);
+    } else {
+        ui_text::copy(text, sizeof(text), kStatusSensorSummaryFallback);
     }
     return set_label_text_if_changed(label, text);
+}
+
+void style_work_page_sensor_summary(lv_obj_t *label)
+{
+    if (!label) {
+        return;
+    }
+    lv_obj_set_style_bg_opa(label, LV_OPA_TRANSP, LV_PART_MAIN);
+    lv_obj_set_style_text_color(label, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_text_font(label, &lv_font_montserrat_16, LV_PART_MAIN);
+    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
+    lv_obj_set_style_border_width(label, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(label, 0, LV_PART_MAIN);
 }
 
 bool update_work_page_status_icons(int page)
