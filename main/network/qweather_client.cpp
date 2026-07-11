@@ -774,7 +774,7 @@ public:
     QweatherJsonRoot(const QweatherJsonRoot &) = delete;
     QweatherJsonRoot &operator=(const QweatherJsonRoot &) = delete;
 
-    cJSON *get() const
+    const cJSON *get() const
     {
         return root_;
     }
@@ -810,25 +810,25 @@ bool ip_geo_coordinates_available(const cJSON *lat, const cJSON *lon)
     return cJSON_IsNumber(lat) && cJSON_IsNumber(lon);
 }
 
-cJSON *qweather_success_item(const cJSON *root, const char *field, cJSON **code_out)
+const cJSON *qweather_success_item(const cJSON *root, const char *field, const cJSON **code_out)
 {
-    cJSON *code = root ? cJSON_GetObjectItem(root, kQweatherJsonCodeField) : nullptr;
+    const cJSON *code = root ? cJSON_GetObjectItem(root, kQweatherJsonCodeField) : nullptr;
     if (code_out) {
         *code_out = code;
     }
-    cJSON *item = root && field ? cJSON_GetObjectItem(root, field) : nullptr;
+    const cJSON *item = root && field ? cJSON_GetObjectItem(root, field) : nullptr;
     return qweather_code_ok(code) ? item : nullptr;
 }
 
-cJSON *qweather_success_object(const cJSON *root, const char *field, cJSON **code_out)
+const cJSON *qweather_success_object(const cJSON *root, const char *field, const cJSON **code_out)
 {
-    cJSON *item = qweather_success_item(root, field, code_out);
+    const cJSON *item = qweather_success_item(root, field, code_out);
     return cJSON_IsObject(item) ? item : nullptr;
 }
 
-cJSON *qweather_success_array(const cJSON *root, const char *field, cJSON **code_out)
+const cJSON *qweather_success_array(const cJSON *root, const char *field, const cJSON **code_out)
 {
-    cJSON *item = qweather_success_item(root, field, code_out);
+    const cJSON *item = qweather_success_item(root, field, code_out);
     return cJSON_IsArray(item) ? item : nullptr;
 }
 
@@ -926,9 +926,9 @@ bool ip_geolocation_lookup(char *location, size_t location_len, char *city, size
         return false;
     }
     bool ok = false;
-    cJSON *lat = cJSON_GetObjectItem(root.get(), kIpGeoJsonLatitudeField);
-    cJSON *lon = cJSON_GetObjectItem(root.get(), kIpGeoJsonLongitudeField);
-    cJSON *region = cJSON_GetObjectItem(root.get(), kIpGeoJsonRegionField);
+    const cJSON *lat = cJSON_GetObjectItem(root.get(), kIpGeoJsonLatitudeField);
+    const cJSON *lon = cJSON_GetObjectItem(root.get(), kIpGeoJsonLongitudeField);
+    const cJSON *region = cJSON_GetObjectItem(root.get(), kIpGeoJsonRegionField);
     if (ip_geo_coordinates_available(lat, lon)) {
         if (!format_ip_coordinates(location, location_len, lon->valuedouble, lat->valuedouble)) {
             return false;
@@ -996,9 +996,9 @@ QweatherCityLookupStatus qweather_lookup_city_status(const char *location,
     }
     bool ok = false;
     QweatherCityLookupStatus status = kQweatherCityLookupNotFound;
-    cJSON *code = nullptr;
-    cJSON *locations = qweather_success_array(root.get(), kQweatherJsonLocationField, &code);
-    cJSON *first = cJSON_IsArray(locations) ? cJSON_GetArrayItem(locations, 0) : nullptr;
+    const cJSON *code = nullptr;
+    const cJSON *locations = qweather_success_array(root.get(), kQweatherJsonLocationField, &code);
+    const cJSON *first = cJSON_IsArray(locations) ? cJSON_GetArrayItem(locations, 0) : nullptr;
     if (cJSON_IsObject(first)) {
         ok = json_copy_string(first, kQweatherJsonIdField, city_id, city_id_len) &&
              json_copy_string(first, kQweatherJsonNameField, city_name, city_name_len);
@@ -1273,7 +1273,7 @@ static void build_weather_alert_title(char *title,
     }
 }
 
-static void parse_weather_alert_item(cJSON *item, WeatherAlertData *alert)
+static void parse_weather_alert_item(const cJSON *item, WeatherAlertData *alert)
 {
     if (!cJSON_IsObject(item) || !alert) {
         return;
@@ -1281,8 +1281,8 @@ static void parse_weather_alert_item(cJSON *item, WeatherAlertData *alert)
     char event_name[kWeatherAlertEventNameSize] = {};
     char color_code[kWeatherAlertColorCodeSize] = {};
     char headline[kWeatherAlertHeadlineSize] = {};
-    cJSON *event = cJSON_GetObjectItem(item, kQweatherAlertJsonEventTypeField);
-    cJSON *color = cJSON_GetObjectItem(item, kQweatherAlertJsonColorField);
+    const cJSON *event = cJSON_GetObjectItem(item, kQweatherAlertJsonEventTypeField);
+    const cJSON *color = cJSON_GetObjectItem(item, kQweatherAlertJsonColorField);
     if (event) {
         json_copy_string(event, kQweatherAlertJsonEventNameField, event_name, sizeof(event_name));
     }
@@ -1335,10 +1335,10 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
     }
 
     WeatherAlertData next = {};
-    cJSON *alerts = cJSON_GetObjectItem(root.get(), kQweatherAlertJsonAlertsField);
+    const cJSON *alerts = cJSON_GetObjectItem(root.get(), kQweatherAlertJsonAlertsField);
     int alert_count = cJSON_IsArray(alerts) ? cJSON_GetArraySize(alerts) : 0;
     for (int i = 0; i < alert_count; ++i) {
-        cJSON *item = cJSON_GetArrayItem(alerts, i);
+        const cJSON *item = cJSON_GetArrayItem(alerts, i);
         if (!cJSON_IsObject(item)) {
             continue;
         }
@@ -1351,7 +1351,7 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
     return true;
 }
 
-static bool parse_weather_now(cJSON *now, WeatherData *weather)
+static bool parse_weather_now(const cJSON *now, WeatherData *weather)
 {
     if (!cJSON_IsObject(now) || !weather) {
         return false;
@@ -1393,8 +1393,8 @@ bool qweather_fetch_now(const char *city_id, WeatherData *weather)
         return false;
     }
     bool ok = false;
-    cJSON *code = nullptr;
-    cJSON *now = qweather_success_object(root.get(), kQweatherJsonNowField, &code);
+    const cJSON *code = nullptr;
+    const cJSON *now = qweather_success_object(root.get(), kQweatherJsonNowField, &code);
     if (now) {
         ok = parse_weather_now(now, weather);
     } else {
@@ -1436,7 +1436,7 @@ static void build_weather_advice(WeatherForecastData *forecast)
     strlcpy(forecast->advice, weather_advice_for_day(forecast->days[0]), sizeof(forecast->advice));
 }
 
-static void copy_weather_forecast_day_fields(cJSON *item, WeatherForecastDay *day)
+static void copy_weather_forecast_day_fields(const cJSON *item, WeatherForecastDay *day)
 {
     if (!item || !day) {
         return;
@@ -1453,7 +1453,7 @@ static void copy_weather_forecast_day_fields(cJSON *item, WeatherForecastDay *da
     json_copy_string(item, kQweatherDailyJsonSunsetField, day->sunset, sizeof(day->sunset));
 }
 
-static bool parse_weather_forecast_day(cJSON *item, WeatherForecastDay *day)
+static bool parse_weather_forecast_day(const cJSON *item, WeatherForecastDay *day)
 {
     if (!cJSON_IsObject(item) || !day) {
         return false;
@@ -1464,20 +1464,20 @@ static bool parse_weather_forecast_day(cJSON *item, WeatherForecastDay *day)
     return day->valid;
 }
 
-static int weather_forecast_parse_count(cJSON *daily)
+static int weather_forecast_parse_count(const cJSON *daily)
 {
     int count = cJSON_GetArraySize(daily);
     return count > kWeatherForecastDays ? kWeatherForecastDays : count;
 }
 
-static bool parse_weather_forecast_days(cJSON *daily, WeatherForecastData *forecast)
+static bool parse_weather_forecast_days(const cJSON *daily, WeatherForecastData *forecast)
 {
     if (!daily || !forecast) {
         return false;
     }
     int count = weather_forecast_parse_count(daily);
     for (int i = 0; i < count; ++i) {
-        cJSON *item = cJSON_GetArrayItem(daily, i);
+        const cJSON *item = cJSON_GetArrayItem(daily, i);
         if (!cJSON_IsObject(item)) {
             continue;
         }
@@ -1524,8 +1524,8 @@ static bool qweather_fetch_daily_days(const char *city_id, int days, WeatherFore
 
     WeatherForecastData next = {};
     bool ok = false;
-    cJSON *code = nullptr;
-    cJSON *daily = qweather_success_array(root.get(), kQweatherDailyJsonDailyField, &code);
+    const cJSON *code = nullptr;
+    const cJSON *daily = qweather_success_array(root.get(), kQweatherDailyJsonDailyField, &code);
     if (daily) {
         if (parse_weather_forecast_days(daily, &next)) {
             *forecast = next;
@@ -1545,19 +1545,19 @@ bool qweather_fetch_daily(const char *city_id, WeatherForecastData *forecast)
     return qweather_fetch_daily_days(city_id, kQweatherDaily3DayEndpointDays, forecast);
 }
 
-static bool copy_weather_air_required_fields(cJSON *now, WeatherAirData *air)
+static bool copy_weather_air_required_fields(const cJSON *now, WeatherAirData *air)
 {
     return json_copy_string(now, kQweatherAirJsonAqiField, air->aqi, sizeof(air->aqi)) &&
            json_copy_string(now, kQweatherAirJsonCategoryField, air->category, sizeof(air->category));
 }
 
-static void copy_weather_air_optional_fields(cJSON *now, WeatherAirData *air)
+static void copy_weather_air_optional_fields(const cJSON *now, WeatherAirData *air)
 {
     json_copy_string(now, kQweatherAirJsonPrimaryField, air->primary, sizeof(air->primary));
     json_copy_string(now, kQweatherAirJsonPm25Field, air->pm2p5, sizeof(air->pm2p5));
 }
 
-static bool parse_weather_air(cJSON *now, WeatherAirData *air)
+static bool parse_weather_air(const cJSON *now, WeatherAirData *air)
 {
     if (!cJSON_IsObject(now) || !air) {
         return false;
@@ -1601,8 +1601,8 @@ bool qweather_fetch_air(const char *city_id, WeatherAirData *air)
     }
     WeatherAirData next = {};
     bool ok = false;
-    cJSON *code = nullptr;
-    cJSON *now = qweather_success_object(root.get(), kQweatherJsonNowField, &code);
+    const cJSON *code = nullptr;
+    const cJSON *now = qweather_success_object(root.get(), kQweatherJsonNowField, &code);
     if (now) {
         ok = parse_weather_air(now, &next);
         next.ready = ok;

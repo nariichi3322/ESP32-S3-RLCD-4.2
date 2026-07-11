@@ -4,6 +4,7 @@
 #include "clock_gallery_images.h"
 #include "custom_assets.h"
 #include "network_services.h"
+#include "ui_battery.h"
 
 #define GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG "gallery image canvas create failed"
 #define GALLERY_TIME_CANVAS_CREATE_FAILED_LOG "gallery time canvas create failed"

@@ -573,12 +573,12 @@ void trim_ascii(char *text)
     }
 }
 
-bool json_copy_string(cJSON *obj, const char *name, char *out, size_t out_len)
+bool json_copy_string(const cJSON *obj, const char *name, char *out, size_t out_len)
 {
     if (!obj || !name || !output_buffer_available(out, out_len)) {
         return false;
     }
-    cJSON *item = cJSON_GetObjectItem(obj, name);
+    const cJSON *item = cJSON_GetObjectItem(obj, name);
     if (!cJSON_IsString(item) || !item->valuestring) {
         return false;
     }

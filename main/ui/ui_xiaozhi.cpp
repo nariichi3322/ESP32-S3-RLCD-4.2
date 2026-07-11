@@ -1,6 +1,7 @@
 // 构建并刷新小智 AI 工作页，复用反显时钟并以单色表情呈现官方情绪。
 #include "ui_views.h"
 
+#include "ui_battery.h"
 #include "xiaozhi_ai.h"
 
 namespace {

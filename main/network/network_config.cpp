@@ -517,6 +517,11 @@ esp_err_t commit_nvs_if_ok(nvs_handle_t nvs, esp_err_t err)
     return err == ESP_OK ? nvs_commit(nvs) : err;
 }
 
+esp_err_t commit_nvs_if_changed(nvs_handle_t nvs, esp_err_t err, bool changed)
+{
+    return changed ? commit_nvs_if_ok(nvs, err) : err;
+}
+
 esp_err_t set_nvs_str_if_ok(nvs_handle_t nvs, esp_err_t err, const char *key, const char *value)
 {
     if (err != ESP_OK) {
@@ -802,7 +807,7 @@ esp_err_t erase_saved_config_keys(nvs_handle_t nvs)
         }
         erased = erased || key_erased;
     }
-    return err == ESP_OK && erased ? commit_nvs_if_ok(nvs, err) : err;
+    return commit_nvs_if_changed(nvs, err, erased);
 }
 
 bool clear_saved_config_nvs()
@@ -912,9 +917,7 @@ bool set_offline_mode_enabled(bool enabled)
     uint8_t next_value = bool_to_nvs_u8(enabled);
     bool changed = false;
     err = write_changed_nvs_u8(nvs, err, kOfflineModeKey, next_value, &changed);
-    if (changed) {
-        err = commit_nvs_if_ok(nvs, err);
-    }
+    err = commit_nvs_if_changed(nvs, err, changed);
     if (!close_nvs_save_ok(nvs, err)) {
         ESP_LOGW(TAG, NVS_SAVE_OFFLINE_MODE_FAILED_FORMAT, esp_err_to_name(err));
         return false;
@@ -980,9 +983,7 @@ bool finish_manual_weather_city_save(nvs_handle_t nvs,
                                      const char *city,
                                      bool changed)
 {
-    if (changed) {
-        err = commit_nvs_if_ok(nvs, err);
-    }
+    err = commit_nvs_if_changed(nvs, err, changed);
     nvs_close(nvs);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, NVS_SAVE_WEATHER_CITY_FAILED_FORMAT, esp_err_to_name(err));
@@ -1150,9 +1151,7 @@ bool clear_manual_weather_city()
     }
     bool changed = false;
     err = clear_manual_weather_city_nvs(nvs, &changed);
-    if (err == ESP_OK && changed) {
-        err = commit_nvs_if_ok(nvs, err);
-    }
+    err = commit_nvs_if_changed(nvs, err, changed);
     nvs_close(nvs);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, NVS_CLEAR_WEATHER_CITY_FAILED_FORMAT, esp_err_to_name(err));
@@ -1175,11 +1174,7 @@ bool save_hourly_chime_setting()
     uint8_t next_sound = (uint8_t)g_chime_sound_index;
     bool changed = false;
     err = write_hourly_chime_settings_nvs(nvs, err, next_chime, next_all_day, next_volume, next_sound, &changed);
-    if (err == ESP_OK && !changed) {
-        nvs_close(nvs);
-        return true;
-    }
-    err = commit_nvs_if_ok(nvs, err);
+    err = commit_nvs_if_changed(nvs, err, changed);
     if (!close_nvs_save_ok(nvs, err)) {
         ESP_LOGW(TAG, NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT, esp_err_to_name(err));
         return false;
@@ -1197,9 +1192,7 @@ bool save_work_page_settings()
     uint8_t mask = normalize_work_page_mask(g_work_page_enabled_mask);
     bool changed = false;
     err = write_changed_nvs_u8(nvs, err, kPageMaskV5Key, mask, &changed);
-    if (changed) {
-        err = commit_nvs_if_ok(nvs, err);
-    }
+    err = commit_nvs_if_changed(nvs, err, changed);
     if (!close_nvs_save_ok(nvs, err)) {
         ESP_LOGW(TAG, NVS_SAVE_PAGE_SETTINGS_FAILED_FORMAT, esp_err_to_name(err));
         return false;
@@ -1218,11 +1211,7 @@ bool save_work_page_order()
     }
     bool changed = false;
     err = write_work_page_order_nvs(nvs, err, g_work_page_order, sizeof(g_work_page_order), &changed);
-    if (err == ESP_OK && !changed) {
-        nvs_close(nvs);
-        return true;
-    }
-    err = commit_nvs_if_ok(nvs, err);
+    err = commit_nvs_if_changed(nvs, err, changed);
     if (!close_nvs_save_ok(nvs, err)) {
         ESP_LOGW(TAG, NVS_SAVE_PAGE_ORDER_FAILED_FORMAT, esp_err_to_name(err));
         return false;

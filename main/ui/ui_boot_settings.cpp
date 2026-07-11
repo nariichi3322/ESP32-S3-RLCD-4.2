@@ -199,60 +199,10 @@ constexpr const char *kSettingsSecondaryTexts[] = {
 };
 #define SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT "settings secondary text index out of range: %d"
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
-#define SETUP_STATUS_LINE_INDEX_OUT_OF_RANGE_FORMAT "setup status line index out of range: %u"
-#define BATTERY_ICON_INVALID_ARG_LOG "battery icon invalid arg"
-#define BATTERY_FRAME_CREATE_FAILED_LOG "battery frame create failed"
-#define BATTERY_INNER_CREATE_FAILED_LOG "battery inner create failed"
-#define BATTERY_TIP_CREATE_FAILED_LOG "battery tip create failed"
-#define BATTERY_SEGMENT_CREATE_FAILED_FORMAT "battery segment %d create failed"
 constexpr const char *kLabelCreateFailedLog = "label create failed";
-constexpr int kBatteryFrameX = 20;
-constexpr int kBatteryFrameY = 17;
-constexpr int kBatteryFrameW = 34;
-constexpr int kBatteryFrameH = 16;
-constexpr int kBatteryInnerX = 2;
-constexpr int kBatteryInnerY = 2;
-constexpr int kBatteryInnerW = 30;
-constexpr int kBatteryInnerH = 12;
-constexpr int kBatteryTipX = 55;
-constexpr int kBatteryTipY = 22;
-constexpr int kBatteryTipW = 3;
-constexpr int kBatteryTipH = 6;
-constexpr int kBatterySegmentCount = 5;
-constexpr int kBatteryPercentPerSegment = 20;
-constexpr int kBatterySegmentX = 3;
-constexpr int kBatterySegmentY = 4;
-constexpr int kBatterySegmentW = 4;
-constexpr int kBatterySegmentH = 8;
-constexpr int kBatterySegmentGap = 6;
-constexpr size_t kSetupStatusLineSize = 96;
-constexpr const char *kSetupStatusTitle = "Setup Mode";
-constexpr const char *kSetupStatusPlaceholder = "--";
-constexpr const char *kSetupApSsidFormat = "AP SSID: %s";
-constexpr const char *kSetupApPasswordFormat = "AP Password: %s";
-constexpr const char *kSetupPortalIpFormat = "Portal IP: %s";
-constexpr const char *kSetupStaSsidFormat = "STA SSID: %s";
-constexpr const char *kSetupStaIpFormat = "STA IP: %s";
-constexpr const char *kSetupStaIpReasonFormat = "STA IP: --  reason %d";
-constexpr const char *kSetupStaIpPlaceholder = "STA IP: --";
-constexpr size_t kSetupStatusTitleIndex = 0;
-constexpr size_t kSetupStatusApSsidIndex = 1;
-constexpr size_t kSetupStatusApPasswordIndex = 2;
-constexpr size_t kSetupStatusPortalIpIndex = 3;
-constexpr size_t kSetupStatusStaSsidIndex = 4;
-constexpr size_t kSetupStatusStaIpIndex = 5;
 constexpr const char *kSettingsLabelPlaceholder = "--";
-constexpr const char *kSetupInfoTexts[] = {
+constexpr const char *kSettingsFixedTexts[] = {
     kLabelCreateFailedLog,
-    kSetupStatusTitle,
-    kSetupStatusPlaceholder,
-    kSetupApSsidFormat,
-    kSetupApPasswordFormat,
-    kSetupPortalIpFormat,
-    kSetupStaSsidFormat,
-    kSetupStaIpFormat,
-    kSetupStaIpReasonFormat,
-    kSetupStaIpPlaceholder,
     kSettingsLabelPlaceholder,
 };
 constexpr const char *kBootSettingsLogTexts[] = {
@@ -265,12 +215,6 @@ constexpr const char *kBootSettingsLogTexts[] = {
     SETTINGS_OTA_BAR_FILL_CREATE_FAILED_LOG,
     SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT,
     SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT,
-    SETUP_STATUS_LINE_INDEX_OUT_OF_RANGE_FORMAT,
-    BATTERY_ICON_INVALID_ARG_LOG,
-    BATTERY_FRAME_CREATE_FAILED_LOG,
-    BATTERY_INNER_CREATE_FAILED_LOG,
-    BATTERY_TIP_CREATE_FAILED_LOG,
-    BATTERY_SEGMENT_CREATE_FAILED_FORMAT,
 };
 
 constexpr bool settings_secondary_texts_nonempty()
@@ -278,9 +222,9 @@ constexpr bool settings_secondary_texts_nonempty()
     return cstr_array_nonempty(kSettingsSecondaryTexts);
 }
 
-constexpr bool setup_info_texts_nonempty()
+constexpr bool settings_fixed_texts_nonempty()
 {
-    return cstr_array_nonempty(kSetupInfoTexts);
+    return cstr_array_nonempty(kSettingsFixedTexts);
 }
 
 constexpr bool boot_settings_log_texts_nonempty()
@@ -338,12 +282,12 @@ static_assert(array_count(g_settings_switch_texts) == kSettingsSecondaryMaxCount
               "settings switch text storage must match secondary slot count");
 static_assert(array_count(kSettingsOtaHintTexts) > 0, "settings OTA hint text registry must not be empty");
 static_assert(array_count(kSettingsSecondaryTexts) > 0, "settings secondary text registry must not be empty");
-static_assert(array_count(kSetupInfoTexts) > 0, "setup and info text registry must not be empty");
+static_assert(array_count(kSettingsFixedTexts) > 0, "settings fixed text registry must not be empty");
 static_assert(array_count(kBootSettingsLogTexts) > 0, "boot/settings log registry must not be empty");
 static_assert(settings_primary_items_nonempty(), "settings primary menu texts must be non-empty");
 static_assert(settings_ota_hint_texts_nonempty(), "settings OTA status and hint texts must be non-empty");
 static_assert(settings_secondary_texts_nonempty(), "settings secondary menu texts must be non-empty");
-static_assert(setup_info_texts_nonempty(), "setup and info fixed texts must be non-empty");
+static_assert(settings_fixed_texts_nonempty(), "settings fixed texts must be non-empty");
 static_assert(boot_settings_log_texts_nonempty(), "boot/settings log texts must be non-empty");
 static_assert(kSettingsPrimaryExitBlockMs > 0, "settings primary exit block duration must be positive");
 static_assert(kSettingsOtaLineTextSize > 1 && kSettingsOtaHintTextSize > 1,
@@ -360,19 +304,6 @@ static_assert(kSettingsSystemLongItemY >= 0 && kSettingsDisplayLongItemY >= 0,
               "settings long item y positions must be non-negative");
 static_assert(kSettingsListRowCount >= kSettingsPrimaryCount,
               "settings list rows must fit primary menu items");
-static_assert(kBatteryFrameW > 0 && kBatteryFrameH > 0,
-              "battery frame size must be positive");
-static_assert(kBatteryInnerW > 0 && kBatteryInnerH > 0,
-              "battery inner size must be positive");
-static_assert(kBatteryTipW > 0 && kBatteryTipH > 0,
-              "battery tip size must be positive");
-static_assert(kBatterySegmentCount > 0, "battery segment count must be positive");
-static_assert(kBatterySegmentW > 0 && kBatterySegmentH > 0,
-              "battery segment size must be positive");
-static_assert(kBatterySegmentCount * kBatteryPercentPerSegment == 100,
-              "battery segments must cover exactly 100 percent");
-static_assert(kSetupStatusStaIpIndex < array_count(g_setup_status_labels),
-              "setup status semantic indices must fit label storage");
 
 bool settings_secondary_index_valid(int index)
 {
@@ -426,87 +357,6 @@ void warn_if_center_align_failed(lv_obj_t *label, const char *message)
     }
 }
 
-}
-
-void style_battery_part(lv_obj_t *obj, bool filled)
-{
-    if (!obj) {
-        return;
-    }
-    lv_obj_set_style_bg_color(obj, filled ? lv_color_black() : lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_color(obj, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_border_width(obj, 1, LV_PART_MAIN);
-    lv_obj_set_style_radius(obj, 2, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
-}
-
-void style_battery_frame(lv_obj_t *obj)
-{
-    if (!obj) {
-        return;
-    }
-    lv_obj_set_style_bg_color(obj, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_color(obj, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(obj, 3, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
-}
-
-void build_battery_icon(lv_obj_t *parent, lv_obj_t **segments)
-{
-    if (!parent || !segments) {
-        ESP_LOGW(TAG, BATTERY_ICON_INVALID_ARG_LOG);
-        return;
-    }
-    lv_obj_t *frame = lv_obj_create(parent);
-    if (!frame) {
-        ESP_LOGW(TAG, BATTERY_FRAME_CREATE_FAILED_LOG);
-        return;
-    }
-    lv_obj_clear_flag(frame, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(frame, kBatteryFrameX, kBatteryFrameY);
-    lv_obj_set_size(frame, kBatteryFrameW, kBatteryFrameH);
-    style_battery_frame(frame);
-
-    lv_obj_t *inner = lv_obj_create(frame);
-    if (!inner) {
-        ESP_LOGW(TAG, BATTERY_INNER_CREATE_FAILED_LOG);
-        return;
-    }
-    lv_obj_clear_flag(inner, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(inner, kBatteryInnerX, kBatteryInnerY);
-    lv_obj_set_size(inner, kBatteryInnerW, kBatteryInnerH);
-    style_battery_part(inner, false);
-    lv_obj_set_style_border_width(inner, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(inner, 2, LV_PART_MAIN);
-
-    lv_obj_t *tip = lv_obj_create(parent);
-    if (!tip) {
-        ESP_LOGW(TAG, BATTERY_TIP_CREATE_FAILED_LOG);
-        return;
-    }
-    lv_obj_clear_flag(tip, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(tip, kBatteryTipX, kBatteryTipY);
-    lv_obj_set_size(tip, kBatteryTipW, kBatteryTipH);
-    style_battery_part(tip, true);
-    lv_obj_set_style_border_width(tip, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(tip, 1, LV_PART_MAIN);
-
-    for (int i = 0; i < kBatterySegmentCount; ++i) {
-        segments[i] = lv_obj_create(frame);
-        if (!segments[i]) {
-            ESP_LOGW(TAG, BATTERY_SEGMENT_CREATE_FAILED_FORMAT, i);
-            continue;
-        }
-        lv_obj_clear_flag(segments[i], LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(segments[i], kBatterySegmentX + i * kBatterySegmentGap, kBatterySegmentY);
-        lv_obj_set_size(segments[i], kBatterySegmentW, kBatterySegmentH);
-        style_battery_part(segments[i], false);
-        lv_obj_set_style_border_width(segments[i], 0, LV_PART_MAIN);
-        lv_obj_set_style_radius(segments[i], 1, LV_PART_MAIN);
-    }
 }
 
 void style_settings_item(lv_obj_t *label, bool selected)
@@ -1098,91 +948,4 @@ void finish_settings_sync(SettingsSyncOp op, const char *text)
     g_settings_sync_deadline_tick = 0;
     g_settings_last_activity_tick = now;
     set_settings_feedback(text, 3500);
-}
-
-template <typename... Args>
-bool set_setup_status_line(size_t index, const char *fallback, const char *format, Args... args)
-{
-    if (index >= array_count(g_setup_status_labels)) {
-        ESP_LOGW(TAG, SETUP_STATUS_LINE_INDEX_OUT_OF_RANGE_FORMAT, (unsigned)index);
-        return false;
-    }
-    char line[kSetupStatusLineSize] = {};
-    ui_text::format_or_fallback(line, sizeof(line), fallback, format, args...);
-    return set_label_text_if_changed(g_setup_status_labels[index], line);
-}
-
-bool update_setup_status_panel()
-{
-    bool changed = false;
-    if (!g_setup_status_labels[kSetupStatusTitleIndex]) {
-        return false;
-    }
-    changed |= set_label_text_if_changed(g_setup_status_labels[kSetupStatusTitleIndex], kSetupStatusTitle);
-    changed |= set_setup_status_line(kSetupStatusApSsidIndex,
-                                     kSetupStatusPlaceholder,
-                                     kSetupApSsidFormat,
-                                     g_ap_ssid[0] ? g_ap_ssid : kSetupStatusPlaceholder);
-    changed |= set_setup_status_line(kSetupStatusApPasswordIndex,
-                                     kSetupStatusPlaceholder,
-                                     kSetupApPasswordFormat,
-                                     kSetupApPassword);
-    changed |= set_setup_status_line(kSetupStatusPortalIpIndex,
-                                     kSetupStatusPlaceholder,
-                                     kSetupPortalIpFormat,
-                                     kSetupPortalIp);
-    changed |= set_setup_status_line(kSetupStatusStaSsidIndex,
-                                     kSetupStatusPlaceholder,
-                                     kSetupStaSsidFormat,
-                                     g_wifi_ssid[0] ? g_wifi_ssid : kSetupStatusPlaceholder);
-    if (g_sta_ip[0]) {
-        changed |= set_setup_status_line(kSetupStatusStaIpIndex, kSetupStaIpPlaceholder, kSetupStaIpFormat, g_sta_ip);
-    } else if (g_last_wifi_disconnect_reason) {
-        changed |= set_setup_status_line(kSetupStatusStaIpIndex,
-                                         kSetupStaIpPlaceholder,
-                                         kSetupStaIpReasonFormat,
-                                         g_last_wifi_disconnect_reason);
-    } else {
-        char line[kSetupStatusLineSize] = {};
-        ui_text::copy(line, sizeof(line), kSetupStaIpPlaceholder);
-        changed |= set_label_text_if_changed(g_setup_status_labels[kSetupStatusStaIpIndex], line);
-    }
-    return changed;
-}
-
-void update_battery_segments(lv_obj_t **segments, int percent, bool charging, bool blink_on)
-{
-    int filled = 0;
-    int blink_index = -1;
-    if (percent >= 0) {
-        if (percent > 100) {
-            percent = 100;
-        }
-        filled = (percent + kBatteryPercentPerSegment - 1) / kBatteryPercentPerSegment;
-        if (charging && percent < kBatteryChargingAnimationStopPercent) {
-            blink_index = percent / kBatteryPercentPerSegment;
-            if (blink_index >= kBatterySegmentCount) {
-                blink_index = kBatterySegmentCount - 1;
-            }
-        }
-    }
-    for (int i = 0; i < kBatterySegmentCount; ++i) {
-        if (segments[i]) {
-            bool active = i < filled;
-            if (i == blink_index) {
-                active = blink_on;
-            }
-            style_battery_part(segments[i], active);
-            lv_obj_set_style_border_width(segments[i], 0, LV_PART_MAIN);
-            lv_obj_set_style_radius(segments[i], 1, LV_PART_MAIN);
-        }
-    }
-}
-
-void update_battery_icon(int percent, bool charging, bool blink_on)
-{
-    update_battery_segments(g_battery_segments, percent, charging, blink_on);
-    update_battery_segments(g_history_battery_segments, percent, charging, blink_on);
-    update_battery_segments(g_gallery_battery_segments, percent, charging, blink_on);
-    update_battery_segments(g_calendar_battery_segments, percent, charging, blink_on);
 }

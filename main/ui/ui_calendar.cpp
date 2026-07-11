@@ -3,6 +3,7 @@
 
 #include "calendar_lunar.h"
 #include "sensor_services.h"
+#include "ui_battery.h"
 
 #define CALENDAR_CANVAS_CREATE_FAILED_LOG "calendar canvas create failed"
 

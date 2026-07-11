@@ -4,6 +4,7 @@
 #include "calendar_lunar.h"
 #include "flip_sensor_icons.h"
 #include "sensor_services.h"
+#include "ui_battery.h"
 #include "ui_text_format.h"
 
 #include <algorithm>

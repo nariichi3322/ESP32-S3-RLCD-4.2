@@ -6,6 +6,7 @@
 #include "network_services.h"
 #include "ota_services.h"
 #include "sensor_services.h"
+#include "ui_display_flush.h"
 #include "ui_views.h"
 #include "xiaozhi_ai.h"
 

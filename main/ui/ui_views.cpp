@@ -5,6 +5,8 @@
 #include "network_services.h"
 #include "ota_services.h"
 #include "sensor_services.h"
+#include "ui_battery.h"
+#include "ui_setup_status.h"
 #include "ui_text_format.h"
 #include "xiaozhi_ai.h"
 
@@ -40,16 +42,10 @@ constexpr const char *kUiWeatherTempFormat = "%s℃";
 constexpr const char *kUiWeatherHumidityFormat = "%s%%";
 constexpr const char *kUiDatePlaceholder = "----/--/-- / 星期-";
 constexpr const char *kUiTimePlaceholder = "--:--";
-constexpr uint32_t kDisplayFullReasonSingleWide = 1U << 0;
-constexpr uint32_t kDisplayFullReasonTooManyRanges = 1U << 1;
-constexpr uint32_t kDisplayFullReasonCoveredWide = 1U << 2;
-constexpr uint16_t kRlcdBlackThreshold = 0xC618;
 #define UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT "weather clock visible with %s weather, requesting sync"
 #define UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT "settings manual sync timeout: op=%d"
 #define UI_SETTINGS_TIMEOUT_RETURN_LOG "settings timeout, returning to clock"
 #define UI_GALLERY_SAYING_SYNC_REQUEST_LOG "gallery visible with missing/stale daily saying, requesting sync"
-#define DISPLAY_FLUSH_DIAG_LOG_FORMAT "display flush diag: page=%d partial=%lu ranges=%lu full=%lu reason_single=%lu reason_covered=%lu reason_ranges=%lu"
-#define DISPLAY_FULL_REASON_OVERLAP_ASSERT "display full-refresh reason bits must not overlap"
 
 constexpr const char *kUiFormatTexts[] = {
     kUiSensorTempFormat,
@@ -66,12 +62,6 @@ constexpr const char *kUiLogTexts[] = {
     UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT,
     UI_SETTINGS_TIMEOUT_RETURN_LOG,
     UI_GALLERY_SAYING_SYNC_REQUEST_LOG,
-    DISPLAY_FLUSH_DIAG_LOG_FORMAT,
-};
-
-struct FlushRange {
-    int x1;
-    int x2;
 };
 
 constexpr bool cstr_nonempty(const char *text)
@@ -118,51 +108,6 @@ constexpr bool cstr_array_nonempty(const T (&items)[N])
     return true;
 }
 
-constexpr bool flush_ranges_touch(const FlushRange &range, int x1, int x2)
-{
-    return x1 <= range.x2 + kFlushRangeMergeGap &&
-           x2 >= range.x1 - kFlushRangeMergeGap;
-}
-
-constexpr bool add_merged_flush_range(FlushRange *ranges, int *range_count, int x1, int x2)
-{
-    if (!ranges || !range_count || *range_count < 0 || *range_count > kMaxFlushRanges || x1 > x2) {
-        return false;
-    }
-    int merged_x1 = x1;
-    int merged_x2 = x2;
-    for (int i = 0; i < *range_count;) {
-        if (!flush_ranges_touch(ranges[i], merged_x1, merged_x2)) {
-            ++i;
-            continue;
-        }
-        if (ranges[i].x1 < merged_x1) {
-            merged_x1 = ranges[i].x1;
-        }
-        if (ranges[i].x2 > merged_x2) {
-            merged_x2 = ranges[i].x2;
-        }
-        --(*range_count);
-        ranges[i] = ranges[*range_count];
-        i = 0;
-    }
-    if (*range_count >= kMaxFlushRanges) {
-        return false;
-    }
-    ranges[(*range_count)++] = {merged_x1, merged_x2};
-    return true;
-}
-
-constexpr bool bridged_flush_ranges_merge_once()
-{
-    FlushRange ranges[kMaxFlushRanges] = {{0, 10}, {20, 30}};
-    int range_count = 2;
-    return add_merged_flush_range(ranges, &range_count, 8, 22) &&
-           range_count == 1 &&
-           ranges[0].x1 == 0 &&
-           ranges[0].x2 == 30;
-}
-
 static_assert(kUiStatusRefreshMs > 0, "UI status refresh interval must be positive");
 static_assert(kUiInfoPagePollMs > 0, "UI info page poll interval must be positive");
 static_assert(kUiNetworkDiagRunningPollMs > 0, "network diagnostics running poll interval must be positive");
@@ -196,21 +141,6 @@ static_assert(array_count(kUiFormatTexts) > 0, "UI format text registry must not
 static_assert(array_count(kUiLogTexts) > 0, "UI log text registry must not be empty");
 static_assert(cstr_array_nonempty(kUiFormatTexts), "UI status format and placeholder texts must be non-empty");
 static_assert(cstr_array_nonempty(kUiLogTexts), "UI main-loop log texts must be non-empty");
-static_assert(kDisplayFullReasonSingleWide != 0, "display full-refresh single-wide reason bit must be nonzero");
-static_assert(kDisplayFullReasonTooManyRanges != 0, "display full-refresh range-count reason bit must be nonzero");
-static_assert(kDisplayFullReasonCoveredWide != 0, "display full-refresh covered-width reason bit must be nonzero");
-static_assert((kDisplayFullReasonSingleWide & kDisplayFullReasonTooManyRanges) == 0,
-              DISPLAY_FULL_REASON_OVERLAP_ASSERT);
-static_assert((kDisplayFullReasonSingleWide & kDisplayFullReasonCoveredWide) == 0,
-              DISPLAY_FULL_REASON_OVERLAP_ASSERT);
-static_assert((kDisplayFullReasonTooManyRanges & kDisplayFullReasonCoveredWide) == 0,
-              DISPLAY_FULL_REASON_OVERLAP_ASSERT);
-static_assert(kRlcdBlackThreshold > 0, "RLCD black threshold must be nonzero");
-static_assert(kMaxFlushRanges > 0, "display flush range capacity must be positive");
-static_assert(kFlushRangeMergeGap >= 0, "display flush range merge gap must be non-negative");
-static_assert(bridged_flush_ranges_merge_once(),
-              "bridging flush ranges must collapse into one covered interval");
-
 bool format_sensor_status_text(char *temp,
                                size_t temp_len,
                                char *humi,
@@ -397,15 +327,20 @@ void update_visible_work_page_battery_segments(bool history_page_active,
     }
 }
 
+bool auxiliary_page_requested()
+{
+    return g_settings_requested ||
+           g_boot_info_requested ||
+           g_network_diag_page_requested;
+}
+
 bool low_refresh_work_page_idle(int page, const struct tm &local)
 {
     return g_active_work_page == page &&
            !g_low_battery_mode &&
            !g_battery_charging &&
            !g_setup_portal_active &&
-           !g_settings_requested &&
-           !g_boot_info_requested &&
-           !g_network_diag_page_requested &&
+           !auxiliary_page_requested() &&
            is_tm_plausible(local);
 }
 
@@ -421,9 +356,7 @@ bool flip_clock_fast_poll_active(const struct tm &local)
     return g_active_work_page == kWorkPageFlipClock &&
            !g_low_battery_mode &&
            !g_setup_portal_active &&
-           !g_settings_requested &&
-           !g_boot_info_requested &&
-           !g_network_diag_page_requested &&
+           !auxiliary_page_requested() &&
            is_tm_plausible(local);
 }
 
@@ -433,9 +366,7 @@ TickType_t next_ui_loop_delay_ticks(const struct tm &local,
 {
     bool low_idle = g_low_battery_mode &&
                     !g_battery_charging &&
-                    !g_settings_requested &&
-                    !g_boot_info_requested &&
-                    !g_network_diag_page_requested &&
+                    !auxiliary_page_requested() &&
                     is_tm_plausible(local);
     bool gallery_idle = low_refresh_work_page_idle(kWorkPageGallery, local);
     bool history_idle = low_refresh_work_page_idle(kWorkPageHistory, local);
@@ -570,9 +501,7 @@ void ui_task(void *)
         xiaozhi_ai_set_page_active(g_active_work_page == kWorkPageXiaozhiAI &&
                                    !g_low_battery_mode &&
                                    !g_setup_portal_active &&
-                                   !g_settings_requested &&
-                                   !g_boot_info_requested &&
-                                   !g_network_diag_page_requested);
+                                   !auxiliary_page_requested());
 
         TickType_t tick_now = xTaskGetTickCount();
         bool status_due = tick_now - last_status_update >= pdMS_TO_TICKS(kUiStatusRefreshMs);
@@ -584,9 +513,7 @@ void ui_task(void *)
                                      g_active_work_page >= 0 &&
                                      g_active_work_page < kWorkPageCount &&
                                      !g_setup_portal_active &&
-                                     !g_settings_requested &&
-                                     !g_boot_info_requested &&
-                                     !g_network_diag_page_requested;
+                                     !auxiliary_page_requested();
         bool battery_blink_second_even = is_tm_plausible(local)
                                              ? (local.tm_sec % 2 == 0)
                                              : (((xTaskGetTickCount() / pdMS_TO_TICKS(kAppMsPerSecond)) % 2) == 0);
@@ -1107,120 +1034,4 @@ void ui_task(void *)
                                                           battery_blink_visible);
         ulTaskNotifyTake(pdTRUE, delay_ticks);
     }
-}
-
-void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_map)
-{
-    static FlushRange ranges[kMaxFlushRanges];
-    static int range_count = 0;
-    static bool force_full_refresh = false;
-    static uint32_t full_reason_mask = 0;
-    static uint32_t partial_cycles = 0;
-    static uint32_t partial_ranges = 0;
-    static uint32_t full_cycles = 0;
-    static uint32_t full_single_wide = 0;
-    static uint32_t full_covered_wide = 0;
-    static uint32_t full_too_many_ranges = 0;
-    static TickType_t last_diag_tick = 0;
-    static int last_diag_page = -1;
-
-    if (g_ota_reboot_pending) {
-        range_count = 0;
-        force_full_refresh = false;
-        full_reason_mask = 0;
-        lv_disp_flush_ready(drv);
-        return;
-    }
-
-    int clipped_x1 = area->x1 < 0 ? 0 : area->x1;
-    int clipped_x2 = area->x2 >= kDisplayWidth ? kDisplayWidth - 1 : area->x2;
-    int clipped_y1 = area->y1 < 0 ? 0 : area->y1;
-    int clipped_y2 = area->y2 >= kDisplayHeight ? kDisplayHeight - 1 : area->y2;
-    bool touches_visible_area = clipped_x1 <= clipped_x2 && clipped_y1 <= clipped_y2;
-    if (touches_visible_area) {
-        int area_x1 = clipped_x1;
-        int area_x2 = clipped_x2;
-        area_x1 &= ~1;
-        area_x2 |= 1;
-        if (area_x2 >= kDisplayWidth) {
-            area_x2 = kDisplayWidth - 1;
-        }
-        if (area_x2 - area_x1 + 1 >= kDisplayPartialMaxWidth) {
-            force_full_refresh = true;
-            full_reason_mask |= kDisplayFullReasonSingleWide;
-        } else if (!add_merged_flush_range(ranges, &range_count, area_x1, area_x2)) {
-            force_full_refresh = true;
-            full_reason_mask |= kDisplayFullReasonTooManyRanges;
-        }
-    }
-
-    if (touches_visible_area) {
-        int area_width = area->x2 - area->x1 + 1;
-        uint16_t *buffer = (uint16_t *)color_map;
-        for (int y = clipped_y1; y <= clipped_y2; ++y) {
-            uint16_t *row = buffer + (y - area->y1) * area_width + (clipped_x1 - area->x1);
-            for (int x = clipped_x1; x <= clipped_x2; ++x) {
-                uint8_t color = (*row < kRlcdBlackThreshold) ? ColorBlack : ColorWhite;
-                g_display.RLCD_SetPixel(x, y, color);
-                ++row;
-            }
-        }
-    }
-    if (lv_disp_flush_is_last(drv)) {
-        int covered_width = 0;
-        for (int i = 0; i < range_count; ++i) {
-            covered_width += ranges[i].x2 - ranges[i].x1 + 1;
-        }
-        bool covered_wide = covered_width >= kDisplayPartialMaxWidth;
-        if (covered_wide) {
-            full_reason_mask |= kDisplayFullReasonCoveredWide;
-        }
-        if (force_full_refresh || covered_wide) {
-            ++full_cycles;
-            if (full_reason_mask & kDisplayFullReasonSingleWide) {
-                ++full_single_wide;
-            }
-            if (full_reason_mask & kDisplayFullReasonTooManyRanges) {
-                ++full_too_many_ranges;
-            }
-            if (full_reason_mask & kDisplayFullReasonCoveredWide) {
-                ++full_covered_wide;
-            }
-            g_display.RLCD_Display();
-        } else if (range_count > 0) {
-            ++partial_cycles;
-            partial_ranges += range_count;
-            for (int i = 0; i < range_count; ++i) {
-                g_display.RLCD_DisplayXRange(ranges[i].x1, ranges[i].x2);
-            }
-        }
-        TickType_t now_tick = xTaskGetTickCount();
-        bool page_changed = last_diag_page != g_active_work_page;
-        bool diag_due = last_diag_tick == 0 ||
-                        now_tick - last_diag_tick >= pdMS_TO_TICKS(kDisplayFlushDiagIntervalMs) ||
-                        page_changed;
-        if (diag_due && g_ota_state != kOtaUpdating && !g_ota_reboot_pending) {
-            ESP_LOGI(TAG,
-                     DISPLAY_FLUSH_DIAG_LOG_FORMAT,
-                     g_active_work_page,
-                     (unsigned long)partial_cycles,
-                     (unsigned long)partial_ranges,
-                     (unsigned long)full_cycles,
-                     (unsigned long)full_single_wide,
-                     (unsigned long)full_covered_wide,
-                     (unsigned long)full_too_many_ranges);
-            partial_cycles = 0;
-            partial_ranges = 0;
-            full_cycles = 0;
-            full_single_wide = 0;
-            full_covered_wide = 0;
-            full_too_many_ranges = 0;
-            last_diag_tick = now_tick;
-            last_diag_page = g_active_work_page;
-        }
-        range_count = 0;
-        force_full_refresh = false;
-        full_reason_mask = 0;
-    }
-    lv_disp_flush_ready(drv);
 }

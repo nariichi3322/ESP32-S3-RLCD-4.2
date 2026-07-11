@@ -3,6 +3,8 @@
 
 #include "audio_services.h"
 #include "sensor_services.h"
+#include "ui_battery.h"
+#include "ui_setup_status.h"
 #include "ui_text_format.h"
 
 namespace {
@@ -24,7 +26,6 @@ constexpr const char *kClockDatePlaceholder = "--";
 #define CLOCK_ICON_CANVAS_CREATE_FAILED_FORMAT "clock icon canvas create failed name=%s"
 #define CLOCK_TREND_CANVAS_CREATE_FAILED_FORMAT "clock trend canvas create failed name=%s"
 #define CLOCK_FILL_CANVAS_CREATE_FAILED_FORMAT "clock fill canvas create failed name=%s"
-#define SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT "setup status label create failed index=%d"
 constexpr const char *kClockComponentFallbackName = "component";
 constexpr const char *kClockComponentWeatherCity = "weather_city";
 constexpr const char *kClockComponentWeatherIcon = "weather_icon";
@@ -51,7 +52,6 @@ constexpr const char *kClockLogTexts[] = {
     CLOCK_ICON_CANVAS_CREATE_FAILED_FORMAT,
     CLOCK_TREND_CANVAS_CREATE_FAILED_FORMAT,
     CLOCK_FILL_CANVAS_CREATE_FAILED_FORMAT,
-    SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT,
     kClockComponentFallbackName,
     kClockComponentWeatherCity,
     kClockComponentWeatherIcon,
@@ -167,23 +167,6 @@ constexpr int kClockTempTrendCanvasY = 215;
 constexpr int kClockHumiTrendCanvasY = 248;
 constexpr int kClockLowBatteryIconX = 156;
 constexpr int kClockLowBatteryIconY = 214;
-constexpr int kSetupStatusLabelX = 26;
-constexpr int kSetupStatusLabelWidth = 348;
-constexpr int kSetupStatusLabelHeight = 18;
-static constexpr int kSetupStatusLabelY[] = {194, 212, 230, 248, 266, 284};
-static constexpr const char *kSetupStatusText[] = {
-    "Setup Mode",
-    "AP SSID: --",
-    "AP Password: --",
-    "Portal IP: --",
-    "STA SSID: --",
-    "STA IP: --",
-};
-constexpr size_t kSetupStatusLabelCount = array_count(kSetupStatusLabelY);
-static_assert(kSetupStatusLabelCount == array_count(kSetupStatusText),
-              "setup status coordinates and text must stay in sync");
-static_assert(kSetupStatusLabelCount == array_count(g_setup_status_labels),
-              "setup status label storage must match the rendered row count");
 
 const char *clock_component_name(const char *name)
 {
@@ -619,20 +602,7 @@ void build_clock_ui()
         lv_obj_add_flag(g_low_battery_icon_canvas, LV_OBJ_FLAG_HIDDEN);
     }
 
-    for (size_t i = 0; i < kSetupStatusLabelCount; ++i) {
-        g_setup_status_labels[i] = make_label_with_font(screen,
-                                                        kSetupStatusLabelX,
-                                                        kSetupStatusLabelY[i],
-                                                        kSetupStatusLabelWidth,
-                                                        kSetupStatusLabelHeight,
-                                                        kSetupStatusText[i],
-                                                        &lv_font_montserrat_14);
-        if (g_setup_status_labels[i]) {
-            lv_obj_add_flag(g_setup_status_labels[i], LV_OBJ_FLAG_HIDDEN);
-        } else {
-            ESP_LOGW(TAG, SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT, static_cast<int>(i));
-        }
-    }
+    build_setup_status_panel(screen);
 }
 
 void format_clock_date_text(char *out, size_t out_len, const struct tm &local, const char *weekday)
