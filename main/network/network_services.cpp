@@ -397,16 +397,19 @@ static bool weather_cache_current_hour(time_t now)
 
 static bool saying_cache_current_day(time_t now)
 {
-    if (g_daily_saying[0] == '\0' || g_last_saying_sync_time <= 0) {
+    char saying[kDailySayingLen] = {};
+    time_t last_sync_time = 0;
+    if (!get_daily_saying_snapshot(saying, sizeof(saying), &last_sync_time) ||
+        last_sync_time <= 0) {
         return false;
     }
     struct tm now_local = {};
     struct tm last_local = {};
     if (!localtime_for_cache_check(now, &now_local, "saying now") ||
-        !localtime_for_cache_check(g_last_saying_sync_time, &last_local, "saying last") ||
+        !localtime_for_cache_check(last_sync_time, &last_local, "saying last") ||
         !is_tm_plausible(now_local) ||
         !is_tm_plausible(last_local)) {
-        return cache_age_within(now, g_last_saying_sync_time, kSecondsPerDay);
+        return cache_age_within(now, last_sync_time, kSecondsPerDay);
     }
     return now_local.tm_year == last_local.tm_year &&
            now_local.tm_yday == last_local.tm_yday;

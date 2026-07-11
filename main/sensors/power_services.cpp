@@ -212,6 +212,30 @@ void release_pm_lock(esp_pm_lock_handle_t lock, int *depth, const char *name)
     }
     give_pm_lock_mutex();
 }
+
+void set_pm_lock_active(esp_pm_lock_handle_t lock, int *depth, const char *name, bool enabled)
+{
+    if (!lock || !depth || !take_pm_lock_mutex(name)) {
+        return;
+    }
+    bool active = *depth > 0;
+    if (enabled && !active) {
+        esp_err_t err = esp_pm_lock_acquire(lock);
+        if (err == ESP_OK) {
+            *depth = 1;
+        } else {
+            ESP_LOGW(TAG, POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT, name, esp_err_to_name(err));
+        }
+    } else if (!enabled && active) {
+        esp_err_t err = esp_pm_lock_release(lock);
+        if (err == ESP_OK) {
+            *depth = 0;
+        } else {
+            ESP_LOGW(TAG, POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT, name, esp_err_to_name(err));
+        }
+    }
+    give_pm_lock_mutex();
+}
 } // namespace
 #endif
 
@@ -308,16 +332,10 @@ void release_audio_awake_lock()
 void set_audio_performance_mode(bool enabled)
 {
 #if CONFIG_PM_ENABLE
-    if (!take_pm_lock_mutex(kAudioCpuPmLogName)) {
-        return;
-    }
-    bool active = g_audio_cpu_pm_lock_depth > 0;
-    give_pm_lock_mutex();
-    if (enabled && !active) {
-        acquire_pm_lock(g_audio_cpu_pm_lock, &g_audio_cpu_pm_lock_depth, kAudioCpuPmLogName);
-    } else if (!enabled && active) {
-        release_pm_lock(g_audio_cpu_pm_lock, &g_audio_cpu_pm_lock_depth, kAudioCpuPmLogName);
-    }
+    set_pm_lock_active(g_audio_cpu_pm_lock,
+                       &g_audio_cpu_pm_lock_depth,
+                       kAudioCpuPmLogName,
+                       enabled);
 #else
     (void)enabled;
 #endif

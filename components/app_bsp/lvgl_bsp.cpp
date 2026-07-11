@@ -1,6 +1,4 @@
 // 封装 LVGL 初始化、锁和显示驱动对接逻辑。
-#include <stdio.h>
-#include <string.h>
 #include <freertos/FreeRTOS.h>
 #include <esp_log.h>
 #include <esp_heap_caps.h>

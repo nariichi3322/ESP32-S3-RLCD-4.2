@@ -3,6 +3,7 @@
 
 #include "clock_gallery_images.h"
 #include "custom_assets.h"
+#include "network_services.h"
 
 #define GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG "gallery image canvas create failed"
 #define GALLERY_TIME_CANVAS_CREATE_FAILED_LOG "gallery time canvas create failed"
@@ -129,8 +130,9 @@ static bool update_gallery_saying_label()
     if (!g_gallery_saying_label) {
         return false;
     }
-    const char *text = g_daily_saying[0] ? g_daily_saying : "";
-    return set_label_text_if_changed(g_gallery_saying_label, text);
+    char saying[kDailySayingLen] = {};
+    get_daily_saying_snapshot(saying, sizeof(saying));
+    return set_label_text_if_changed(g_gallery_saying_label, saying);
 }
 
 static void style_gallery_saying_label(lv_obj_t *label)

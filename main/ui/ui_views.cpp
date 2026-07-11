@@ -302,13 +302,16 @@ bool weather_cache_stale(time_t now_value)
 
 bool saying_cache_stale(const struct tm &local_value, time_t now_value)
 {
-    if (g_daily_saying[0] == '\0' || g_last_saying_sync_time <= 0) {
+    char saying[kDailySayingLen] = {};
+    time_t last_sync_time = 0;
+    if (!get_daily_saying_snapshot(saying, sizeof(saying), &last_sync_time) ||
+        last_sync_time <= 0) {
         return true;
     }
     struct tm saying_local = {};
-    localtime_r(&g_last_saying_sync_time, &saying_local);
+    localtime_r(&last_sync_time, &saying_local);
     if (!is_tm_plausible(saying_local) || !is_tm_plausible(local_value)) {
-        return now_value - g_last_saying_sync_time >= kUiSecondsPerDay;
+        return now_value - last_sync_time >= kUiSecondsPerDay;
     }
     return saying_local.tm_year != local_value.tm_year ||
            saying_local.tm_yday != local_value.tm_yday;

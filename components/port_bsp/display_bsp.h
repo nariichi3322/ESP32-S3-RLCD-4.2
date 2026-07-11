@@ -22,8 +22,6 @@ void Display_ReleaseDmaConservativeMode();
 class DisplayPort {
   private:
     esp_lcd_panel_io_handle_t io_handle = NULL;
-    uint32_t            i2c_data_pdMS_TICKS = 0;
-    uint32_t            i2c_done_pdMS_TICKS = 0;
     const char         *TAG                 = "Display";
     int                 mosi_;
     int                 scl_;

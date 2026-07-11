@@ -1,5 +1,4 @@
 // 封装 RLCD 显示屏初始化、像素写入和整屏/局部刷新接口。
-#include <stdio.h>
 #include <string.h>
 #include <freertos/FreeRTOS.h>
 #include <esp_log.h>

@@ -245,6 +245,7 @@ static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must b
 #define PORTAL_HTML_APPEND_FAILED_LOG "setup html append failed"
 #define PORTAL_HTML_TRUNCATED_FORMAT "setup html truncated buffer=%u"
 #define PORTAL_POST_BODY_TRUNCATED_FORMAT "setup POST body truncated content_len=%d buffer=%u"
+#define PORTAL_POST_BODY_RECEIVE_FAILED_FORMAT "setup POST body receive failed ret=%d received=%d expected=%d"
 #define WIFI_START_SKIPPED_OFFLINE_LOG "wifi start skipped in offline mode"
 #define WIFI_STA_ONLY_MODE_FAILED_FORMAT "wifi sta-only mode failed: %s"
 #define WIFI_POWER_SAVE_SETUP_FAILED_FORMAT "wifi power save setup failed: %s"
@@ -300,6 +301,7 @@ constexpr const char *kPortalLogTexts[] = {
     PORTAL_HTML_APPEND_FAILED_LOG,
     PORTAL_HTML_TRUNCATED_FORMAT,
     PORTAL_POST_BODY_TRUNCATED_FORMAT,
+    PORTAL_POST_BODY_RECEIVE_FAILED_FORMAT,
     WIFI_START_SKIPPED_OFFLINE_LOG,
     WIFI_STA_ONLY_MODE_FAILED_FORMAT,
     WIFI_POWER_SAVE_SETUP_FAILED_FORMAT,
@@ -1034,25 +1036,35 @@ static esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
     return err;
 }
 
-esp_err_t save_post_handler(httpd_req_t *req)
+esp_err_t receive_portal_post_body(httpd_req_t *req, char *body, size_t body_size)
 {
-    if (!req) {
+    if (!req || !body || body_size < 2) {
         return ESP_ERR_INVALID_ARG;
     }
-    char body[kPortalRequestBufferSize] = {};
     int total = 0;
-    while (total < req->content_len && total < (int)sizeof(body) - 1) {
-        int ret = httpd_req_recv(req, body + total, sizeof(body) - 1 - total);
+    const int capacity = (int)body_size - 1;
+    while (total < req->content_len && total < capacity) {
+        int ret = httpd_req_recv(req, body + total, capacity - total);
         if (ret <= 0) {
+            ESP_LOGW(TAG, PORTAL_POST_BODY_RECEIVE_FAILED_FORMAT, ret, total, req->content_len);
             return ESP_FAIL;
         }
         total += ret;
     }
     body[total] = '\0';
     if (total < req->content_len) {
-        ESP_LOGW(TAG, PORTAL_POST_BODY_TRUNCATED_FORMAT, req->content_len, (unsigned)sizeof(body));
+        ESP_LOGW(TAG, PORTAL_POST_BODY_TRUNCATED_FORMAT, req->content_len, (unsigned)body_size);
     }
+    return ESP_OK;
+}
 
+esp_err_t save_post_handler(httpd_req_t *req)
+{
+    char body[kPortalRequestBufferSize] = {};
+    esp_err_t err = receive_portal_post_body(req, body, sizeof(body));
+    if (err != ESP_OK) {
+        return err;
+    }
     return handle_setup_save(req, body);
 }
 

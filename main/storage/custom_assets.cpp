@@ -15,7 +15,6 @@
 #define CUSTOM_ASSETS_ENTRY_LENGTH_INVALID_LOG_FORMAT "custom asset entry length invalid type=%u index=%u"
 #define CUSTOM_ASSETS_ENTRY_SHAPE_INVALID_LOG_FORMAT "custom asset entry shape invalid type=%u index=%u size=%ux%u frames=%u row=%u length=%lu"
 #define CUSTOM_ASSETS_ENTRY_CRC_MISMATCH_LOG_FORMAT "custom asset entry crc mismatch type=%u index=%u"
-#define CUSTOM_ASSETS_HEADER_CRC_ALLOC_FAILED_LOG_FORMAT "custom assets header crc alloc failed"
 #define CUSTOM_ASSETS_HEADER_CRC_MISMATCH_LOG_FORMAT "custom assets header crc mismatch"
 #define CUSTOM_ASSETS_PAYLOAD_RANGE_INVALID_LOG_FORMAT "custom assets payload range invalid header=%u total=%lu"
 #define CUSTOM_ASSETS_PAYLOAD_CRC_MISMATCH_LOG_FORMAT "custom assets payload crc mismatch"
@@ -44,7 +43,6 @@ constexpr const char *const kCustomAssetLogTexts[] = {
     CUSTOM_ASSETS_ENTRY_LENGTH_INVALID_LOG_FORMAT,
     CUSTOM_ASSETS_ENTRY_SHAPE_INVALID_LOG_FORMAT,
     CUSTOM_ASSETS_ENTRY_CRC_MISMATCH_LOG_FORMAT,
-    CUSTOM_ASSETS_HEADER_CRC_ALLOC_FAILED_LOG_FORMAT,
     CUSTOM_ASSETS_HEADER_CRC_MISMATCH_LOG_FORMAT,
     CUSTOM_ASSETS_PAYLOAD_RANGE_INVALID_LOG_FORMAT,
     CUSTOM_ASSETS_PAYLOAD_CRC_MISMATCH_LOG_FORMAT,
@@ -180,6 +178,12 @@ static_assert(kCustomAssetMaxEntries > 0, "custom asset entry limit must be posi
 static_assert(kCustomAssetMaxGalleryImages > 0, "custom gallery image limit must be positive");
 static_assert(kCustomAssetMaxGalleryImages <= kCustomAssetMaxEntries,
               "custom gallery image limit must fit entry table");
+static_assert(1 + kCustomAssetMaxGalleryImages + 2 <= kCustomAssetMaxEntries,
+              "custom entry table must fit GIF, gallery and configuration entries");
+static_assert(sizeof(CustomAssetsHeader) +
+                      kCustomAssetMaxEntries * sizeof(CustomAssetEntry) <=
+                  UINT16_MAX,
+              "custom asset header must fit its 16-bit wire size");
 static_assert(kCustomAssetCrcChunkSize > 0, "custom asset CRC chunk size must be positive");
 static_assert(kBitsPerByte == 8, "custom assets expect 8-bit bytes");
 static_assert(kCustomAssetCrc32Initial == 0xFFFFFFFFU, "custom asset CRC32 initial value must stay stable");
@@ -187,37 +191,6 @@ static_assert(kCustomAssetCrc32Polynomial == 0xEDB88320U, "custom asset CRC32 po
 static_assert(array_count(kCustomAssetLogTexts) > 0,
               "custom assets log guard must cover log texts");
 static_assert(cstr_array_nonempty(kCustomAssetLogTexts), "custom assets log texts must be non-empty");
-
-class CustomAssetTempBuffer {
-public:
-    explicit CustomAssetTempBuffer(size_t size)
-        : data_((uint8_t *)malloc(size)),
-          size_(size)
-    {
-    }
-
-    ~CustomAssetTempBuffer()
-    {
-        free(data_);
-    }
-
-    CustomAssetTempBuffer(const CustomAssetTempBuffer &) = delete;
-    CustomAssetTempBuffer &operator=(const CustomAssetTempBuffer &) = delete;
-
-    uint8_t *data() const
-    {
-        return data_;
-    }
-
-    size_t size() const
-    {
-        return size_;
-    }
-
-private:
-    uint8_t *data_ = nullptr;
-    size_t size_ = 0;
-};
 
 static uint32_t crc32_update_raw(uint32_t crc, const uint8_t *data, size_t len)
 {
@@ -232,14 +205,6 @@ static uint32_t crc32_update_raw(uint32_t crc, const uint8_t *data, size_t len)
         }
     }
     return crc;
-}
-
-static uint32_t crc32_bytes(const uint8_t *data, size_t len)
-{
-    if (!data && len > 0) {
-        return 0;
-    }
-    return ~crc32_update_raw(kCustomAssetCrc32Initial, data, len);
 }
 
 static bool partition_range_valid(uint32_t offset, size_t length)
@@ -423,17 +388,14 @@ static bool validate_entry_crc(const CustomAssetEntry &entry)
 
 static bool validate_header_crc()
 {
-    size_t header_bytes = custom_asset_header_bytes();
-    CustomAssetTempBuffer buffer(header_bytes);
-    if (!buffer.data()) {
-        ESP_LOGW(TAG, CUSTOM_ASSETS_HEADER_CRC_ALLOC_FAILED_LOG_FORMAT);
-        return false;
-    }
-    memcpy(buffer.data(), &s_assets_header, sizeof(CustomAssetsHeader));
-    memcpy(buffer.data() + sizeof(CustomAssetsHeader), s_entries, custom_asset_entry_table_bytes());
-    CustomAssetsHeader *header = (CustomAssetsHeader *)buffer.data();
-    header->header_crc = 0;
-    uint32_t crc = crc32_bytes(buffer.data(), buffer.size());
+    CustomAssetsHeader header = s_assets_header;
+    header.header_crc = 0;
+    uint32_t crc = kCustomAssetCrc32Initial;
+    crc = crc32_update_raw(crc, reinterpret_cast<const uint8_t *>(&header), sizeof(header));
+    crc = crc32_update_raw(crc,
+                           reinterpret_cast<const uint8_t *>(s_entries),
+                           custom_asset_entry_table_bytes());
+    crc = ~crc;
     if (crc != s_assets_header.header_crc) {
         ESP_LOGW(TAG, CUSTOM_ASSETS_HEADER_CRC_MISMATCH_LOG_FORMAT);
         return false;

@@ -36,6 +36,7 @@ constexpr const char *const kDailySayingLogTexts[] = {
     DAILY_SAYING_UPDATE_FAILED_LOG_FORMAT,
     DAILY_SAYING_UPDATED_LOG_FORMAT,
 };
+portMUX_TYPE s_daily_saying_mux = portMUX_INITIALIZER_UNLOCKED;
 
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
@@ -324,8 +325,33 @@ bool parse_daily_saying_attempt(const char *response,
 
 void load_daily_saying_cache()
 {
+    portENTER_CRITICAL(&s_daily_saying_mux);
     g_daily_saying[0] = '\0';
     g_last_saying_sync_time = 0;
+    portEXIT_CRITICAL(&s_daily_saying_mux);
+}
+
+bool get_daily_saying_snapshot(char *out, size_t out_len, time_t *last_sync_time)
+{
+    if (!output_buffer_available(out, out_len)) {
+        return false;
+    }
+    portENTER_CRITICAL(&s_daily_saying_mux);
+    strlcpy(out, g_daily_saying, out_len);
+    if (last_sync_time) {
+        *last_sync_time = g_last_saying_sync_time;
+    }
+    bool available = out[0] != '\0';
+    portEXIT_CRITICAL(&s_daily_saying_mux);
+    return available;
+}
+
+static void publish_daily_saying(const char *text, time_t synced_at)
+{
+    portENTER_CRITICAL(&s_daily_saying_mux);
+    strlcpy(g_daily_saying, text, sizeof(g_daily_saying));
+    g_last_saying_sync_time = synced_at;
+    portEXIT_CRITICAL(&s_daily_saying_mux);
 }
 
 bool perform_daily_saying_update()
@@ -355,8 +381,9 @@ bool perform_daily_saying_update()
         log_daily_saying_update_failed(stats);
         return false;
     }
-    strlcpy(g_daily_saying, next, sizeof(g_daily_saying));
-    time(&g_last_saying_sync_time);
+    time_t synced_at = 0;
+    time(&synced_at);
+    publish_daily_saying(next, synced_at);
     notify_ui_task();
     ESP_LOGI(TAG, DAILY_SAYING_UPDATED_LOG_FORMAT);
     return true;

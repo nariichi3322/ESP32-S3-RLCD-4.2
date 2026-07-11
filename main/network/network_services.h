@@ -111,6 +111,7 @@ void get_weather_forecast_snapshot(WeatherForecastData *forecast);
 void get_weather_air_snapshot(WeatherAirData *air);
 bool perform_weather_update();
 void load_daily_saying_cache();
+bool get_daily_saying_snapshot(char *out, size_t out_len, time_t *last_sync_time = nullptr);
 bool perform_daily_saying_update();
 uint32_t weather_icon_codepoint(const char *code);
 const char *weather_icon_text(const char *code);
