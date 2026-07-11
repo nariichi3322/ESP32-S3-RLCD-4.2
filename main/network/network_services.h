@@ -2,6 +2,9 @@
 #pragma once
 #include "app_state.h"
 #include "network_form.h"
+#include "qweather_alert_text.h"
+#include "qweather_icons.h"
+#include "wifi_portal_pages.h"
 
 struct HttpBuffer {
     char *data;
@@ -28,22 +31,19 @@ bool save_config(const char *ssid, const char *pass, const char *api_key, const 
 bool save_manual_weather_city(const char *city);
 bool clear_manual_weather_city();
 bool is_weather_city_input_valid(const char *city);
+bool normalize_weather_city_input(const char *city, char *out, size_t out_len);
 bool set_offline_mode_enabled(bool enabled);
 bool can_leave_offline_mode_without_setup();
 void clear_network_request_bits();
 bool save_hourly_chime_setting();
 bool save_work_page_settings();
 bool save_work_page_order();
+bool save_xiaozhi_auto_return_setting();
 bool clear_saved_config();
 bool save_credentials_from_body(const char *body);
 bool save_offline_datetime_from_body(const char *body);
-void html_append(char *html, size_t html_len, const char *fmt, ...);
-void html_escape(const char *src, char *dst, size_t dst_len);
-void append_wifi_scan_list(char *html, size_t html_len);
 bool apply_station_config(bool reconnect);
 void stop_http_server();
-esp_err_t root_get_handler(httpd_req_t *req);
-esp_err_t send_save_result_page(httpd_req_t *req, bool saved, bool connected, const char *extra_message = nullptr);
 esp_err_t save_post_handler(httpd_req_t *req);
 esp_err_t save_get_handler(httpd_req_t *req);
 esp_err_t empty_asset_handler(httpd_req_t *req);
@@ -95,9 +95,6 @@ bool qweather_lookup_city(const char *location,
                           size_t lat_len = 0,
                           char *lon_out = nullptr,
                           size_t lon_len = 0);
-const char *warning_color_name(const char *code);
-int warning_color_rank(const char *code);
-void add_weather_alert_title(WeatherAlertData *alert, const char *title, int rank);
 bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *alert);
 bool qweather_fetch_now(const char *city_id, WeatherData *weather);
 bool qweather_fetch_daily(const char *city_id, WeatherForecastData *forecast);
@@ -113,8 +110,6 @@ bool perform_weather_update();
 void load_daily_saying_cache();
 bool get_daily_saying_snapshot(char *out, size_t out_len, time_t *last_sync_time = nullptr);
 bool perform_daily_saying_update();
-uint32_t weather_icon_codepoint(const char *code);
-const char *weather_icon_text(const char *code);
 bool wait_for_wifi_connected(uint32_t timeout_ms);
 bool is_time_valid(struct tm *local_out = nullptr);
 void run_boot_connectivity_sync();

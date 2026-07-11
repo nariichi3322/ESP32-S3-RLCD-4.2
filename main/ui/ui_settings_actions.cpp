@@ -1,9 +1,11 @@
 // 处理设置页网络、声音、显示和系统操作，不承担页面绘制。
 #include "ui_views.h"
 
+#include "alarm_services.h"
 #include "audio_services.h"
 #include "network_services.h"
 #include "ota_services.h"
+#include "pomodoro_services.h"
 #include "ui_text_format.h"
 
 #include <cstdarg>
@@ -44,6 +46,13 @@ constexpr const char *kAllDayChimeDisabledFeedback = "全天提醒已关闭";
 constexpr const char *kPageOrderInstructionFeedback = "BOOT交换并保存";
 constexpr const char *kPageSwitchInstructionFeedback = "页面开关：BOOT切换";
 constexpr const char *kLastWorkPageFeedback = "至少保留一个页面";
+constexpr const char *kXiaozhiNeedsHomeFeedback = "请至少保留一个非小智页面";
+constexpr const char *kXiaozhiHomeBlockedFeedback = "小智AI不能设为主页";
+constexpr const char *kPomodoroRunningFeedback = "请先取消番茄钟";
+constexpr const char *kXiaozhiAutoReturnEnabledFeedback = "小智AI自动返回已开启";
+constexpr const char *kXiaozhiAutoReturnDisabledFeedback = "小智AI自动返回已关闭";
+constexpr const char *kAlarmDisabledFeedback = "闹钟已关闭";
+constexpr const char *kAlarmSetByXiaozhiFeedback = "请通过小智AI设置";
 constexpr const char *kWorkPageFeedbackFormat = "%s%s";
 constexpr const char *kWorkPageEnabledSuffix = "已开启";
 constexpr const char *kWorkPageDisabledSuffix = "已关闭";
@@ -88,6 +97,13 @@ constexpr const char *kSettingsActionTexts[] = {
     kPageOrderInstructionFeedback,
     kPageSwitchInstructionFeedback,
     kLastWorkPageFeedback,
+    kXiaozhiNeedsHomeFeedback,
+    kXiaozhiHomeBlockedFeedback,
+    kPomodoroRunningFeedback,
+    kXiaozhiAutoReturnEnabledFeedback,
+    kXiaozhiAutoReturnDisabledFeedback,
+    kAlarmDisabledFeedback,
+    kAlarmSetByXiaozhiFeedback,
     kWorkPageFeedbackFormat,
     kWorkPageEnabledSuffix,
     kWorkPageDisabledSuffix,
@@ -215,6 +231,13 @@ void handle_settings_action()
         uint8_t tmp = g_work_page_order[current];
         g_work_page_order[current] = g_work_page_order[next];
         g_work_page_order[next] = tmp;
+        if (!work_page_order_has_valid_home()) {
+            tmp = g_work_page_order[current];
+            g_work_page_order[current] = g_work_page_order[next];
+            g_work_page_order[next] = tmp;
+            set_settings_feedback(kXiaozhiHomeBlockedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
         g_settings_page_order_selection = next;
         if (save_work_page_order()) {
             g_active_work_page = first_enabled_work_page();
@@ -285,6 +308,10 @@ void handle_settings_action()
             int previous = g_chime_volume_percent;
             int next = kDefaultChimeVolumePercent;
             for (int i = 0; i < kChimeVolumeLevelCount; ++i) {
+                if (g_chime_volume_percent < kChimeVolumeLevels[i]) {
+                    next = kChimeVolumeLevels[i];
+                    break;
+                }
                 if (g_chime_volume_percent == kChimeVolumeLevels[i]) {
                     next = kChimeVolumeLevels[(i + 1) % kChimeVolumeLevelCount];
                     break;
@@ -354,6 +381,16 @@ void handle_settings_action()
                 set_settings_feedback(kLastWorkPageFeedback, kSettingsFeedbackDefaultMs);
                 return;
             }
+            if (!work_page_mask_has_valid_home(next_mask)) {
+                set_settings_feedback(kXiaozhiNeedsHomeFeedback, kSettingsFeedbackInstructionMs);
+                return;
+            }
+            if (page == kWorkPageXiaozhiAI &&
+                is_work_page_enabled(page) &&
+                pomodoro_is_running()) {
+                set_settings_feedback(kPomodoroRunningFeedback, kSettingsFeedbackInstructionMs);
+                return;
+            }
             uint8_t previous = g_work_page_enabled_mask;
             g_work_page_enabled_mask = next_mask;
             if (!save_work_page_settings()) {
@@ -361,6 +398,7 @@ void handle_settings_action()
                 set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
                 return;
             }
+            normalize_work_page_order();
             ensure_active_work_page_enabled();
             set_formatted_settings_feedback(kWorkPageFeedbackFormat,
                                             work_page_name(page),
@@ -380,6 +418,32 @@ void handle_settings_action()
             normalize_work_page_order();
             g_settings_page_order_selection = first_enabled_work_page_order_index();
             set_settings_feedback(kPageOrderInstructionFeedback, kSettingsFeedbackInstructionMs);
+            return;
+        }
+        if (selected == kDisplaySettingsAlarmItem) {
+            if (!alarm_is_enabled()) {
+                set_settings_feedback(kAlarmSetByXiaozhiFeedback, kSettingsFeedbackInstructionMs);
+                return;
+            }
+            if (!alarm_disable()) {
+                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+                return;
+            }
+            set_settings_feedback(kAlarmDisabledFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        if (selected == kDisplaySettingsXiaozhiAutoReturnItem) {
+            bool previous = g_xiaozhi_auto_return_enabled;
+            g_xiaozhi_auto_return_enabled = !g_xiaozhi_auto_return_enabled;
+            if (!save_xiaozhi_auto_return_setting()) {
+                g_xiaozhi_auto_return_enabled = previous;
+                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+                return;
+            }
+            set_settings_feedback(g_xiaozhi_auto_return_enabled
+                                      ? kXiaozhiAutoReturnEnabledFeedback
+                                      : kXiaozhiAutoReturnDisabledFeedback,
+                                  kSettingsFeedbackDefaultMs);
             return;
         }
         set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);

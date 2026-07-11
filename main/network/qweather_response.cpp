@@ -1,0 +1,121 @@
+// 管理 QWeather 动态响应内存、JSON 根对象和业务成功字段读取。
+#include "qweather_response.h"
+
+#include <stdlib.h>
+#include <string.h>
+
+namespace {
+constexpr const char *kQweatherDefaultStage = "request";
+constexpr const char *kQweatherJsonCodeField = "code";
+constexpr const char *kQweatherSuccessCode = "200";
+constexpr const char *kQweatherMissingCodeText = "missing";
+constexpr const char *kQweatherResponseTexts[] = {
+    kQweatherDefaultStage,
+    kQweatherJsonCodeField,
+    kQweatherSuccessCode,
+    kQweatherMissingCodeText,
+};
+#define QWEATHER_RESPONSE_SIZE_INVALID_FORMAT "qweather %s response size invalid"
+#define QWEATHER_RESPONSE_ALLOC_FAILED_FORMAT "qweather %s response alloc failed"
+
+template <typename T, size_t N>
+constexpr size_t array_count(const T (&)[N])
+{
+    return N;
+}
+
+constexpr bool response_texts_nonempty()
+{
+    for (const char *text : kQweatherResponseTexts) {
+        if (!text || text[0] == '\0') {
+            return false;
+        }
+    }
+    return true;
+}
+
+char *alloc_qweather_response(const char *stage, size_t buffer_size)
+{
+    if (buffer_size == 0) {
+        ESP_LOGW(TAG, QWEATHER_RESPONSE_SIZE_INVALID_FORMAT, qweather_stage_text(stage));
+        return nullptr;
+    }
+    char *response = static_cast<char *>(malloc(buffer_size));
+    if (!response) {
+        ESP_LOGW(TAG, QWEATHER_RESPONSE_ALLOC_FAILED_FORMAT, qweather_stage_text(stage));
+        return nullptr;
+    }
+    response[0] = '\0';
+    return response;
+}
+
+static_assert(array_count(kQweatherResponseTexts) > 0,
+              "QWeather response text registry must not be empty");
+static_assert(response_texts_nonempty(),
+              "QWeather response stage, field and business code texts must be non-empty");
+} // namespace
+
+const char *qweather_stage_text(const char *stage)
+{
+    return stage && stage[0] != '\0' ? stage : kQweatherDefaultStage;
+}
+
+QweatherResponseBuffer::QweatherResponseBuffer(const char *stage, size_t buffer_size)
+    : data_(alloc_qweather_response(stage, buffer_size)),
+      size_(buffer_size)
+{
+}
+
+QweatherResponseBuffer::~QweatherResponseBuffer()
+{
+    free(data_);
+}
+
+QweatherJsonRoot::QweatherJsonRoot(char *response)
+    : root_(cJSON_Parse(response))
+{
+}
+
+QweatherJsonRoot::~QweatherJsonRoot()
+{
+    cJSON_Delete(root_);
+}
+
+const char *qweather_json_string_value(const cJSON *item)
+{
+    return cJSON_IsString(item) ? item->valuestring : nullptr;
+}
+
+bool qweather_code_ok(const cJSON *code)
+{
+    const char *text = qweather_json_string_value(code);
+    return text && strcmp(text, kQweatherSuccessCode) == 0;
+}
+
+const char *qweather_code_text(const cJSON *code)
+{
+    const char *text = qweather_json_string_value(code);
+    return text ? text : kQweatherMissingCodeText;
+}
+
+const cJSON *qweather_success_item(const cJSON *root, const char *field, const cJSON **code_out)
+{
+    const cJSON *code = root ? cJSON_GetObjectItem(root, kQweatherJsonCodeField) : nullptr;
+    if (code_out) {
+        *code_out = code;
+    }
+    const cJSON *item = root && field ? cJSON_GetObjectItem(root, field) : nullptr;
+    return qweather_code_ok(code) ? item : nullptr;
+}
+
+const cJSON *qweather_success_object(const cJSON *root, const char *field, const cJSON **code_out)
+{
+    const cJSON *item = qweather_success_item(root, field, code_out);
+    return cJSON_IsObject(item) ? item : nullptr;
+}
+
+const cJSON *qweather_success_array(const cJSON *root, const char *field, const cJSON **code_out)
+{
+    const cJSON *item = qweather_success_item(root, field, code_out);
+    return cJSON_IsArray(item) ? item : nullptr;
+}

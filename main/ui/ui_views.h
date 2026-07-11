@@ -1,6 +1,16 @@
 // 声明 UI 构建、刷新、绘图和设置页交互的公共接口。
 #pragma once
 #include "app_state.h"
+#include "ui_bitmap.h"
+#include "ui_dseg_clock.h"
+#include "ui_object_refs.h"
+#include "ui_progress.h"
+#include "ui_settings_feedback.h"
+#include "ui_settings_navigation.h"
+#include "ui_status_gif.h"
+#include "ui_time_format.h"
+#include "ui_widgets.h"
+#include "ui_work_page_catalog.h"
 
 void notify_ui_task();
 inline bool wifi_connected_for_status_icon()
@@ -15,22 +25,6 @@ constexpr const char *kClockWeatherTempPlaceholder = "--℃";
 constexpr const char *kClockWeatherHumidityPlaceholder = "--%";
 constexpr const char *kClockWeatherUnknownIconCode = "999";
 lv_color_t *alloc_canvas_buffer(int width, int height);
-void set_obj_black(lv_obj_t *obj, bool active);
-lv_obj_t *make_bar(lv_obj_t *parent, int x, int y, int w, int h);
-lv_obj_t *make_black_bar(lv_obj_t *parent, int x, int y, int w, int h);
-void draw_progress_segment(lv_obj_t *canvas, int index, bool filled);
-void invalidate_progress_segment(lv_obj_t *canvas, int index);
-void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf, int y);
-void update_progress_canvas(lv_obj_t *canvas, int filled, int *last_filled);
-bool packed_1bit_bit_is_set(const uint8_t *bits, uint32_t bit_index);
-void draw_1bit_icon(lv_obj_t *canvas,
-                    int width,
-                    int height,
-                    int bytes_per_row,
-                    const uint8_t *bits,
-                    lv_color_t fg,
-                    lv_color_t bg);
-bool update_trend_icon(lv_obj_t *canvas, int trend, int *last_trend);
 void build_work_page_status_bar(lv_obj_t *screen,
                                 int page,
                                 lv_obj_t **date_label,
@@ -41,49 +35,11 @@ bool update_work_page_status_time(lv_obj_t *label, const struct tm &local);
 bool update_work_page_sensor_summary(lv_obj_t *label);
 void style_work_page_sensor_summary(lv_obj_t *label);
 bool update_work_page_status_icons(int page);
-const DsegGlyph *find_dseg_glyph(const DsegFont &font, char ch);
-int draw_dseg_text(lv_obj_t *canvas, const DsegFont &font, const char *text, int cursor_x, int baseline_y);
-void draw_time_canvas(const struct tm &local);
-void draw_second_canvas(const struct tm &local);
-void draw_status_gif_frame(int frame);
-lv_obj_t *make_label_with_font(lv_obj_t *parent, int x, int y, int w, int h, const char *text, const lv_font_t *font);
-lv_obj_t *make_label(lv_obj_t *parent, int x, int y, int w, int h, const char *text);
-bool center_align_label(lv_obj_t *label);
-lv_obj_t *make_centered_label(lv_obj_t *parent,
-                              int x,
-                              int y,
-                              int w,
-                              int h,
-                              const char *text,
-                              const char *warning);
-lv_obj_t *make_centered_label_with_font(lv_obj_t *parent,
-                                        int x,
-                                        int y,
-                                        int w,
-                                        int h,
-                                        const char *text,
-                                        const lv_font_t *font,
-                                        const char *warning);
-bool set_label_text_if_changed(lv_obj_t *label, const char *text);
 lv_obj_t *create_page_root();
 void set_page_visible(lv_obj_t *page, bool visible);
 void show_page(lv_obj_t *page);
 lv_obj_t *active_work_page_root();
 void show_active_work_page();
-bool is_work_page_enabled(int page);
-const char *work_page_name(int page);
-int display_settings_item_work_page(int item);
-int first_enabled_work_page();
-int next_enabled_work_page(int current_page);
-int first_enabled_work_page_order_index();
-int next_enabled_work_page_order_index(int current_order_index);
-int valid_enabled_work_page_order_index(int current_order_index);
-void ensure_active_work_page_enabled();
-void reset_work_page_order();
-void normalize_work_page_order();
-void format_time_or_dash(time_t value, char *out, size_t out_len);
-void clear_clock_object_refs();
-void clear_info_object_refs();
 void remember_lower_panel_object(lv_obj_t *obj);
 void set_lower_panel_visible(bool visible);
 void set_setup_panel_visible(bool visible);
@@ -105,15 +61,8 @@ bool update_network_diag_page();
 void style_settings_item(lv_obj_t *label, bool selected);
 void build_settings_page();
 bool update_settings_page();
-void set_settings_feedback(const char *text, uint32_t duration_ms);
-bool is_settings_sync_busy();
-int settings_secondary_count(int primary);
-void reset_settings_confirmation();
-void handle_settings_key_short();
-void handle_settings_key_long();
-void begin_settings_sync(SettingsSyncOp op, const char *text);
-void finish_settings_sync(SettingsSyncOp op, const char *text);
 int clamp_int(int value, int min_value, int max_value);
+void invalidate_canvas_rect(lv_obj_t *canvas, int x1, int y1, int x2, int y2);
 void canvas_set_px_safe(lv_obj_t *canvas, int x, int y, int w, int h, lv_color_t color);
 void canvas_draw_line(lv_obj_t *canvas, int w, int h, int x0, int y0, int x1, int y1, lv_color_t color);
 void canvas_draw_dashed_hline(lv_obj_t *canvas, int w, int h, int x1, int x2, int y, lv_color_t color);
@@ -160,6 +109,10 @@ void build_inverted_clock_cards(lv_obj_t *parent,
 bool update_inverted_clock_cards(const struct tm &local,
                                  lv_obj_t *card_canvas[3],
                                  int last_values[3]);
+void clear_inverted_clock_card(lv_obj_t *card_canvas);
+bool update_inverted_clock_card_value(lv_obj_t *card_canvas,
+                                      int value,
+                                      int *last_value);
 bool update_flip_clock_page(const struct tm &local);
 void build_flip_clock_page();
 bool update_xiaozhi_page(const struct tm &local);

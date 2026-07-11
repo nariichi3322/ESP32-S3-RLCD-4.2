@@ -1,0 +1,221 @@
+// 集中清理工作页、辅助页对象引用和对应绘制缓存。
+#include "ui_object_refs.h"
+
+#include "app_state.h"
+
+namespace {
+template <typename T, size_t N>
+void clear_pointer_array(T *(&items)[N])
+{
+    for (T *&item : items) {
+        item = nullptr;
+    }
+}
+
+void clear_work_page_root_refs()
+{
+    g_clock_root = nullptr;
+    g_history_root = nullptr;
+    g_gallery_root = nullptr;
+    g_calendar_root = nullptr;
+    g_weather_board_root = nullptr;
+    g_flip_clock_root = nullptr;
+    g_xiaozhi_root = nullptr;
+}
+
+void clear_work_status_refs()
+{
+    g_date_label = nullptr;
+    g_history_date_label = nullptr;
+    g_gallery_date_label = nullptr;
+    g_calendar_date_label = nullptr;
+    g_weather_board_date_label = nullptr;
+    g_flip_clock_date_label = nullptr;
+    g_xiaozhi_date_label = nullptr;
+    g_history_summary_label = nullptr;
+    g_gallery_summary_label = nullptr;
+    g_calendar_summary_label = nullptr;
+    g_weather_board_summary_label = nullptr;
+    g_xiaozhi_summary_label = nullptr;
+    g_history_status_time_label = nullptr;
+    g_calendar_status_time_label = nullptr;
+    g_weather_board_status_time_label = nullptr;
+    g_xiaozhi_status_time_label = nullptr;
+    clear_pointer_array(g_work_status_chime_icon_canvas);
+    clear_pointer_array(g_work_status_wifi_icon_canvas);
+    clear_pointer_array(g_work_status_alarm_icon_canvas);
+}
+
+void clear_gallery_calendar_refs()
+{
+    g_gallery_image_canvas = nullptr;
+    g_gallery_time_canvas = nullptr;
+    g_gallery_saying_label = nullptr;
+    g_calendar_canvas = nullptr;
+}
+
+void clear_weather_clock_refs()
+{
+    g_temp_icon_canvas = nullptr;
+    g_humi_icon_canvas = nullptr;
+    g_temp_label = nullptr;
+    g_humi_label = nullptr;
+    g_temp_trend_canvas = nullptr;
+    g_humi_trend_canvas = nullptr;
+    g_weather_city_label = nullptr;
+    g_weather_info_label = nullptr;
+    g_weather_icon_label = nullptr;
+    g_weather_temp_label = nullptr;
+    g_weather_humi_label = nullptr;
+    g_alert_pill = nullptr;
+    g_alert_icon_canvas = nullptr;
+    g_alert_label = nullptr;
+    g_chime_status_icon_canvas = nullptr;
+    g_wifi_status_icon_canvas = nullptr;
+    g_alarm_status_icon_canvas = nullptr;
+    g_low_battery_icon_canvas = nullptr;
+    g_panel_sep_a = nullptr;
+    g_panel_sep_b = nullptr;
+    g_time_canvas = nullptr;
+    g_second_canvas = nullptr;
+    g_status_gif_canvas = nullptr;
+    g_day_progress_canvas = nullptr;
+    g_second_progress_canvas = nullptr;
+}
+
+void clear_flip_clock_refs()
+{
+    clear_pointer_array(g_flip_clock_card_canvas);
+    g_flip_clock_sensor_label = nullptr;
+    g_flip_clock_sensor_bold_label = nullptr;
+    g_flip_clock_sensor_bold_y_label = nullptr;
+    g_flip_clock_humidity_label = nullptr;
+    g_flip_clock_humidity_bold_label = nullptr;
+    g_flip_clock_humidity_bold_y_label = nullptr;
+    g_flip_clock_temp_mood_canvas = nullptr;
+    g_flip_clock_humi_mood_canvas = nullptr;
+    g_flip_clock_temp_trend_canvas = nullptr;
+    g_flip_clock_humi_trend_canvas = nullptr;
+    g_flip_clock_day_label = nullptr;
+    g_flip_clock_day_bold_label = nullptr;
+    g_flip_clock_day_bold_y_label = nullptr;
+    g_flip_clock_lunar_label = nullptr;
+    g_flip_clock_lunar_bold_x_label = nullptr;
+    g_flip_clock_lunar_bold_y_label = nullptr;
+    g_flip_clock_lunar_bold_xy_label = nullptr;
+    g_flip_clock_day_progress_canvas = nullptr;
+}
+
+void clear_xiaozhi_refs()
+{
+    g_xiaozhi_state_label = nullptr;
+    g_xiaozhi_detail_label = nullptr;
+    g_xiaozhi_wave_canvas = nullptr;
+}
+
+void clear_battery_segment_refs()
+{
+    clear_pointer_array(g_battery_segments);
+    clear_pointer_array(g_history_battery_segments);
+    clear_pointer_array(g_gallery_battery_segments);
+    clear_pointer_array(g_calendar_battery_segments);
+    clear_pointer_array(g_weather_board_battery_segments);
+    clear_pointer_array(g_flip_clock_battery_segments);
+    clear_pointer_array(g_xiaozhi_battery_segments);
+}
+
+void clear_history_page_refs()
+{
+    g_history_chart_canvas = nullptr;
+    g_history_temp_max_label = nullptr;
+    g_history_temp_min_label = nullptr;
+    g_history_humi_max_label = nullptr;
+    g_history_humi_min_label = nullptr;
+    clear_pointer_array(g_history_time_labels);
+    clear_pointer_array(g_history_temp_axis_labels);
+    clear_pointer_array(g_history_humi_axis_labels);
+    clear_pointer_array(g_lower_panel_objects);
+    clear_pointer_array(g_setup_status_labels);
+}
+
+void clear_ui_draw_cache_state()
+{
+    g_last_ui_second = -1;
+    g_last_ui_minute = -1;
+    g_last_ui_date_key = -1;
+    g_last_ui_date_page = -1;
+    g_last_day_progress_filled = -1;
+    g_last_second_progress_filled = -1;
+    g_last_status_gif_frame = -1;
+    g_last_flip_clock_hour = -1;
+    g_last_flip_clock_minute = -1;
+    g_last_flip_clock_second = -1;
+    g_last_flip_temp_mood = -1;
+    g_last_flip_humi_mood = -1;
+    g_last_flip_temp_trend = 99;
+    g_last_flip_humi_trend = 99;
+    g_last_flip_date_key = -1;
+    g_last_flip_day_progress_filled = -1;
+    g_last_flip_sensor_minute = -1;
+    g_last_temp_trend_drawn = 99;
+    g_last_humi_trend_drawn = 99;
+    g_last_history_drawn_version = (uint32_t)-1;
+    g_last_history_drawn_hour = -1;
+}
+
+void clear_aux_page_root_refs()
+{
+    g_info_root = nullptr;
+    g_network_diag_root = nullptr;
+    g_settings_root = nullptr;
+}
+
+void clear_system_info_refs()
+{
+    clear_pointer_array(g_info_labels);
+    g_info_ota_label = nullptr;
+    g_info_ota_hint_label = nullptr;
+    g_info_ota_bar_frame = nullptr;
+    g_info_ota_bar_fill = nullptr;
+}
+
+void clear_network_diag_refs()
+{
+    clear_pointer_array(g_network_diag_labels);
+    g_network_diag_summary_label = nullptr;
+    g_network_diag_hint_label = nullptr;
+}
+
+void clear_settings_page_refs()
+{
+    clear_pointer_array(g_settings_labels);
+    clear_pointer_array(g_settings_switch_dots);
+    clear_pointer_array(g_settings_switch_texts);
+    g_settings_feedback_label = nullptr;
+    g_settings_ota_status_label = nullptr;
+    g_settings_ota_hint_label = nullptr;
+    g_settings_ota_bar_frame = nullptr;
+    g_settings_ota_bar_fill = nullptr;
+}
+}
+
+void clear_clock_object_refs()
+{
+    clear_work_page_root_refs();
+    clear_work_status_refs();
+    clear_gallery_calendar_refs();
+    clear_weather_clock_refs();
+    clear_flip_clock_refs();
+    clear_xiaozhi_refs();
+    clear_battery_segment_refs();
+    clear_history_page_refs();
+    clear_ui_draw_cache_state();
+}
+
+void clear_info_object_refs()
+{
+    clear_aux_page_root_refs();
+    clear_system_info_refs();
+    clear_network_diag_refs();
+    clear_settings_page_refs();
+}

@@ -124,6 +124,8 @@ constexpr int kClockChimeStatusIconX = 64;
 constexpr int kClockChimeStatusIconY = 15;
 constexpr int kClockWifiStatusIconX = 90;
 constexpr int kClockWifiStatusIconY = 15;
+constexpr int kClockAlarmStatusIconX = 116;
+constexpr int kClockAlarmStatusIconY = 15;
 constexpr int kClockDividerX = 18;
 constexpr int kClockTopDividerY = 54;
 constexpr int kClockBottomDividerY = 184;
@@ -428,6 +430,16 @@ void build_clock_ui()
                             WIFI_STATUS_ICON_HEIGHT,
                             WIFI_STATUS_ICON_BYTES_PER_ROW,
                             wifi_status_icon_bits);
+
+    build_clock_status_icon(screen,
+                            &g_alarm_status_icon_canvas,
+                            &g_alarm_status_icon_canvas_buf,
+                            kClockAlarmStatusIconX,
+                            kClockAlarmStatusIconY,
+                            ALARM_STATUS_ICON_WIDTH,
+                            ALARM_STATUS_ICON_HEIGHT,
+                            ALARM_STATUS_ICON_BYTES_PER_ROW,
+                            alarm_status_icon_bits);
 
     g_weather_city_label = make_clock_lower_center_label(screen,
                                                          kClockWeatherCityLabelX,

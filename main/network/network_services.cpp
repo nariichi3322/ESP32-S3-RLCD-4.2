@@ -118,6 +118,33 @@ public:
 private:
     int previous_timeout_ms_ = 0;
 };
+
+class NetworkAwakeLockGuard {
+public:
+    NetworkAwakeLockGuard()
+    {
+        acquire_network_awake_lock();
+    }
+
+    ~NetworkAwakeLockGuard()
+    {
+        release();
+    }
+
+    NetworkAwakeLockGuard(const NetworkAwakeLockGuard &) = delete;
+    NetworkAwakeLockGuard &operator=(const NetworkAwakeLockGuard &) = delete;
+
+    void release()
+    {
+        if (active_) {
+            release_network_awake_lock();
+            active_ = false;
+        }
+    }
+
+private:
+    bool active_ = true;
+};
 } // namespace
 
 NetworkDisplayDmaGuard::NetworkDisplayDmaGuard(bool active) : active_(active)
@@ -221,12 +248,12 @@ void run_boot_connectivity_sync()
     }
 
     update_boot_screen(18, "Connecting Wi-Fi", g_wifi_ssid);
-    acquire_network_awake_lock();
+    NetworkAwakeLockGuard awake_lock;
     BootSyncDeadlineGuard deadline_guard;
     if (!start_wifi_radio(false)) {
         update_boot_screen(kBootScreenCompletePercent, "Wi-Fi start failed", kBootDetailStartingClock);
         vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
-        release_network_awake_lock();
+        awake_lock.release();
         return;
     }
     int remaining_ms = boot_sync_remaining_ms();
@@ -237,7 +264,7 @@ void run_boot_connectivity_sync()
         update_boot_screen(kBootScreenCompletePercent, "Wi-Fi timeout", "Check SSID or password");
         vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
         stop_wifi_radio();
-        release_network_awake_lock();
+        awake_lock.release();
         return;
     }
 
@@ -294,7 +321,7 @@ void run_boot_connectivity_sync()
 
     vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
     stop_wifi_radio();
-    release_network_awake_lock();
+    awake_lock.release();
 }
 
 void boot_connectivity_task(void *)
@@ -563,7 +590,7 @@ void network_sync_task(void *)
 
         if (network_diag_due) {
             ESP_LOGI(TAG, "%s", kNetworkDiagWifiOnLog);
-            acquire_network_awake_lock();
+            NetworkAwakeLockGuard awake_lock;
             network_diag_begin();
             if (!start_wifi_radio(false)) {
                 set_network_diag_unavailable(kNetworkDiagIpLocationWifiStartFailed);
@@ -573,7 +600,7 @@ void network_sync_task(void *)
                 run_network_diagnostics();
             }
             stop_wifi_radio();
-            release_network_awake_lock();
+            awake_lock.release();
             network_diag_finish();
             finish_settings_sync_and_clear_bit(kSettingsSyncNetworkDiag, kNetworkSyncNetworkDiagComplete, kNetworkDiagBit);
             wait_for_network_sync_event(kNetworkShortRetryWaitMs);
@@ -633,7 +660,7 @@ void network_sync_task(void *)
                  saying_due,
                  boot_weather_ready,
                  boot_saying_ready);
-        acquire_network_awake_lock();
+        NetworkAwakeLockGuard awake_lock;
         if (!start_wifi_radio(false)) {
             ESP_LOGW(TAG, "%s", kNetworkSyncWifiStartFailedLog);
             clear_ready_boot_sync_flags(boot_weather_ready, boot_saying_ready, &boot_weather_due, &boot_saying_due);
@@ -645,7 +672,7 @@ void network_sync_task(void *)
                 schedule_ntp_retry(&next_ntp_retry_at);
             }
             stop_wifi_radio(provisioning_sync_due);
-            release_network_awake_lock();
+            awake_lock.release();
             wait_for_network_sync_event(kNetworkShortRetryWaitMs);
             continue;
         }
@@ -705,6 +732,6 @@ void network_sync_task(void *)
             }
         }
         stop_wifi_radio(provisioning_sync_due);
-        release_network_awake_lock();
+        awake_lock.release();
     }
 }

@@ -1,8 +1,10 @@
 // 处理 BOOT 和 KEY 按键输入、页面切换和设置页操作请求。
 #include "input_tasks.h"
 
+#include "alarm_services.h"
 #include "audio_services.h"
 #include "ota_services.h"
+#include "pomodoro_services.h"
 #include "ui_views.h"
 
 #define BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT "button gpio config failed: %s"
@@ -195,6 +197,8 @@ void button_task(void *)
     TickType_t key_pressed_since = 0;
     bool key_press_opened_settings = false;
     bool key_long_handled = false;
+    bool boot_press_stopped_alert = false;
+    bool key_press_stopped_alert = false;
 
     for (;;) {
         TickType_t now = xTaskGetTickCount();
@@ -204,12 +208,16 @@ void button_task(void *)
         if (boot_pressed) {
             if (boot_pressed_since == 0) {
                 boot_pressed_since = now;
+                boot_press_stopped_alert = alarm_stop_ringing_from_button() ||
+                                           pomodoro_stop_alert_from_button();
                 if (g_settings_requested) {
                     g_settings_last_activity_tick = now;
                 }
             }
         } else {
-            if (boot_pressed_since != 0 && g_settings_requested) {
+            if (boot_pressed_since != 0 && boot_press_stopped_alert) {
+                // 提醒音播放期间任意按键只负责停止音频，不继续执行原按键动作。
+            } else if (boot_pressed_since != 0 && g_settings_requested) {
                 TickType_t held = now - boot_pressed_since;
                 if (button_press_is_short(held)) {
                     g_settings_action_seq = g_settings_action_seq + 1;
@@ -229,6 +237,7 @@ void button_task(void *)
                 }
             }
             boot_pressed_since = 0;
+            boot_press_stopped_alert = false;
         }
 
         if (key_pressed) {
@@ -236,16 +245,20 @@ void button_task(void *)
                 key_pressed_since = now;
                 key_press_opened_settings = false;
                 key_long_handled = false;
+                key_press_stopped_alert = alarm_stop_ringing_from_button() ||
+                                          pomodoro_stop_alert_from_button();
                 if (g_settings_requested) {
                     g_settings_last_activity_tick = now;
                 }
-                if (!g_settings_requested && !g_boot_info_requested && !g_network_diag_page_requested) {
+                if (!key_press_stopped_alert &&
+                    !g_settings_requested && !g_boot_info_requested && !g_network_diag_page_requested) {
                     ESP_LOGI(TAG, BUTTON_SHOW_SETTINGS_LOG_FORMAT);
                     enter_settings_primary_menu(now);
                     key_press_opened_settings = true;
                     notify_ui_task();
                 }
-            } else if (!key_press_opened_settings &&
+            } else if (!key_press_stopped_alert &&
+                       !key_press_opened_settings &&
                        !key_long_handled &&
                        g_settings_requested &&
                        button_press_is_long(now - key_pressed_since)) {
@@ -272,7 +285,9 @@ void button_task(void *)
                 notify_ui_task();
             }
         } else {
-            if (key_pressed_since != 0 && !key_press_opened_settings && !key_long_handled && g_settings_requested) {
+            if (key_pressed_since != 0 &&
+                !key_press_stopped_alert &&
+                !key_press_opened_settings && !key_long_handled && g_settings_requested) {
                 TickType_t held = now - key_pressed_since;
                 if (button_press_is_long(held)) {
                     g_settings_last_activity_tick = now;
@@ -294,6 +309,7 @@ void button_task(void *)
             key_pressed_since = 0;
             key_press_opened_settings = false;
             key_long_handled = false;
+            key_press_stopped_alert = false;
         }
         int delay_ms = low_refresh_button_idle_context() ? kButtonLowRefreshIdlePollMs : kButtonIdlePollMs;
         if (boot_pressed || key_pressed) {

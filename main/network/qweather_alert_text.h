@@ -1,0 +1,10 @@
+// 声明 QWeather 预警颜色、标题压缩和排序写入接口。
+#pragma once
+
+#include "app_state.h"
+
+inline constexpr char kWeatherAlertSuffix[] = "预警";
+
+const char *warning_color_name(const char *code);
+int warning_color_rank(const char *code);
+void add_weather_alert_title(WeatherAlertData *alert, const char *title, int rank);

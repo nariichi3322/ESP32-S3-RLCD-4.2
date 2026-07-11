@@ -63,8 +63,6 @@ extern const uint8_t chime_2_pcm_start[] asm("_binary_chime_2_pcm_start");
 extern const uint8_t chime_2_pcm_end[] asm("_binary_chime_2_pcm_end");
 extern const uint8_t chime_3_pcm_start[] asm("_binary_chime_3_pcm_start");
 extern const uint8_t chime_3_pcm_end[] asm("_binary_chime_3_pcm_end");
-extern const uint8_t chime_4_pcm_start[] asm("_binary_chime_4_pcm_start");
-extern const uint8_t chime_4_pcm_end[] asm("_binary_chime_4_pcm_end");
 extern const uint8_t wifi_prompt_pcm_start[] asm("_binary_wifi_prompt_pcm_start");
 extern const uint8_t wifi_prompt_pcm_end[] asm("_binary_wifi_prompt_pcm_end");
 
@@ -297,7 +295,12 @@ bool CodecPort::CodecPort_IsReady(void) const {
     return initialized && playback != NULL;
 }
 
-static bool play_pcm_to_slot0(CodecPort *codec, const uint8_t *pcm_start, const uint8_t *pcm_end, int source_slot, int volume)
+static bool play_pcm_to_slot0(CodecPort *codec,
+                              const uint8_t *pcm_start,
+                              const uint8_t *pcm_end,
+                              int source_slot,
+                              int volume,
+                              bool (*stop_requested)() = nullptr)
 {
     static int16_t mono_buffer[kCodecPcmPlaybackSlotBufferSize / sizeof(int16_t)];
     constexpr int kSampleRate = kCodecPcmPlaybackSampleRateHz;
@@ -332,6 +335,10 @@ static bool play_pcm_to_slot0(CodecPort *codec, const uint8_t *pcm_start, const 
     memset(mono_buffer, 0, sizeof(mono_buffer));
     size_t warmup_written = 0;
     while (warmup_written < warmup_frames) {
+        if (stop_requested && stop_requested()) {
+            codec->CodecPort_CloseSpeaker();
+            return true;
+        }
         size_t frames = warmup_frames - warmup_written;
         if (frames > sizeof(mono_buffer) / sizeof(mono_buffer[0])) {
             frames = sizeof(mono_buffer) / sizeof(mono_buffer[0]);
@@ -354,6 +361,11 @@ static bool play_pcm_to_slot0(CodecPort *codec, const uint8_t *pcm_start, const 
     const int16_t *source = reinterpret_cast<const int16_t *>(pcm_start);
     size_t frames_written = 0;
     while (frames_written < total_frames) {
+        if (stop_requested && stop_requested()) {
+            codec->CodecPort_SetSpeakerVol(0);
+            codec->CodecPort_CloseSpeaker();
+            return true;
+        }
         size_t frames = total_frames - frames_written;
         if (frames > sizeof(mono_buffer) / sizeof(mono_buffer[0])) {
             frames = sizeof(mono_buffer) / sizeof(mono_buffer[0]);
@@ -382,6 +394,10 @@ static bool play_pcm_to_slot0(CodecPort *codec, const uint8_t *pcm_start, const 
     size_t tail_written = 0;
     memset(mono_buffer, 0, sizeof(mono_buffer));
     while (tail_written < tail_frames) {
+        if (stop_requested && stop_requested()) {
+            codec->CodecPort_CloseSpeaker();
+            return true;
+        }
         size_t frames = tail_frames - tail_written;
         if (frames > sizeof(mono_buffer) / sizeof(mono_buffer[0])) {
             frames = sizeof(mono_buffer) / sizeof(mono_buffer[0]);
@@ -405,7 +421,9 @@ bool CodecPort::CodecPort_PlayHourlyChimeSlot(int source_slot) {
     return play_pcm_to_slot0(this, hourly_chime_pcm_start, hourly_chime_pcm_end, source_slot, 90);
 }
 
-bool CodecPort::CodecPort_PlayChimeSound(int sound_index, int volume_percent) {
+bool CodecPort::CodecPort_PlayChimeSound(int sound_index,
+                                         int volume_percent,
+                                         bool (*stop_requested)()) {
     const uint8_t *start = hourly_chime_pcm_start;
     const uint8_t *end = hourly_chime_pcm_end;
     int source_slot = 3;
@@ -425,15 +443,15 @@ bool CodecPort::CodecPort_PlayChimeSound(int sound_index, int volume_percent) {
         end = chime_3_pcm_end;
         source_slot = 0;
         break;
-    case 4:
-        start = chime_4_pcm_start;
-        end = chime_4_pcm_end;
-        source_slot = 0;
-        break;
     default:
         break;
     }
-    return play_pcm_to_slot0(this, start, end, source_slot, volume_percent);
+    return play_pcm_to_slot0(this,
+                             start,
+                             end,
+                             source_slot,
+                             volume_percent,
+                             stop_requested);
 }
 
 bool CodecPort::CodecPort_PlayWifiPrompt(void) {

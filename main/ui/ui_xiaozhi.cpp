@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "ui_battery.h"
+#include "pomodoro_services.h"
 #include "xiaozhi_ai.h"
 
 namespace {
@@ -25,6 +26,13 @@ constexpr int kStateX = 118;
 constexpr int kStateY = 196;
 constexpr int kStateW = 248;
 constexpr int kStateH = 28;
+constexpr int kPreparingDotsX = 218;
+constexpr int kPreparingDotsY = 201;
+constexpr int kPreparingDotsW = 48;
+constexpr int kPreparingDotsH = 16;
+constexpr int kPreparingDotRadius = 4;
+constexpr int kPreparingDotCenterY = kPreparingDotsH / 2;
+constexpr int kPreparingDotCenterX[] = {6, 22, 38};
 constexpr int kDetailX = 118;
 constexpr int kDetailY = 224;
 constexpr int kDetailW = 248;
@@ -34,7 +42,19 @@ constexpr int kProgressSegmentCount = 60;
 constexpr int kSecondsPerDay = 24 * 60 * 60;
 constexpr uint32_t kSubtitleCharacterIntervalMs = 80;
 constexpr uint32_t kExpressionFrameIntervalMs = 250;
+constexpr uint32_t kPreparingDotsIntervalMs = 400;
 constexpr const char *kBindingPrefix = "绑定 ID: ";
+constexpr const char *kPreparingStatus = "小智准备中";
+constexpr int kPomodoroTitleY = 8;
+constexpr int kPomodoroStateY = 44;
+constexpr int kPomodoroModeY = 76;
+constexpr int kPomodoroTextW = 112;
+constexpr int kPomodoroTextH = 24;
+constexpr int kPomodoroTitleH = 30;
+constexpr const char *kPomodoroTitle = "番茄钟";
+constexpr const char *kPomodoroRunningText = "专注中";
+constexpr const char *kPomodoroCompletedText = "已完成";
+constexpr const char *kPomodoroMinuteSecondMode = "分 / 秒";
 
 enum FaceEmotion {
     kFaceNeutral,
@@ -65,6 +85,139 @@ char s_subtitle_window_source[192] = {};
 size_t s_subtitle_visible_bytes = 0;
 size_t s_subtitle_visible_characters = 0;
 uint32_t s_subtitle_last_tick = 0;
+lv_obj_t *s_pomodoro_title_label = nullptr;
+lv_obj_t *s_pomodoro_title_bold_label = nullptr;
+lv_obj_t *s_pomodoro_state_label = nullptr;
+lv_obj_t *s_pomodoro_mode_label = nullptr;
+lv_obj_t *s_preparing_dots_canvas = nullptr;
+lv_color_t *s_preparing_dots_buffer = nullptr;
+PomodoroState s_last_pomodoro_state = kPomodoroIdle;
+bool s_preparing_dots_visible = false;
+int s_last_preparing_dot_count = -1;
+
+struct PomodoroDisplayValues {
+    int second_card;
+    int third_card;
+};
+
+constexpr PomodoroDisplayValues pomodoro_display_values(uint32_t remaining_ms)
+{
+    uint32_t remaining_seconds = remaining_ms / 1000U;
+    return {static_cast<int>(remaining_seconds / 60U),
+            static_cast<int>(remaining_seconds % 60U)};
+}
+
+constexpr PomodoroDisplayValues kPomodoroAtSixtySeconds = pomodoro_display_values(60000U);
+constexpr PomodoroDisplayValues kPomodoroBelowSixtySeconds = pomodoro_display_values(59990U);
+static_assert(kPomodoroAtSixtySeconds.second_card == 1 &&
+                  kPomodoroAtSixtySeconds.third_card == 0,
+              "60 seconds must remain one minute and zero seconds");
+static_assert(kPomodoroBelowSixtySeconds.second_card == 0 &&
+                  kPomodoroBelowSixtySeconds.third_card == 59,
+              "below one minute must show zero minutes and whole seconds");
+
+lv_obj_t *make_pomodoro_card_label(lv_obj_t *parent,
+                                    int y,
+                                    int height,
+                                    const char *text,
+                                    const lv_font_t *font)
+{
+    lv_obj_t *label = make_label_with_font(parent,
+                                           0,
+                                           y,
+                                           kPomodoroTextW,
+                                           height,
+                                           text,
+                                           font);
+    if (label) {
+        lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+        lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    }
+    return label;
+}
+
+void set_pomodoro_labels_visible(bool visible)
+{
+    set_obj_visible(s_pomodoro_title_label, visible);
+    set_obj_visible(s_pomodoro_title_bold_label, visible);
+    set_obj_visible(s_pomodoro_state_label, visible);
+    set_obj_visible(s_pomodoro_mode_label, visible);
+}
+
+void draw_preparing_dots(int count)
+{
+    if (!s_preparing_dots_canvas || count == s_last_preparing_dot_count) {
+        return;
+    }
+    lv_canvas_fill_bg(s_preparing_dots_canvas, lv_color_black(), LV_OPA_COVER);
+    for (int i = 0; i < count && i < 3; ++i) {
+        canvas_draw_filled_circle(s_preparing_dots_canvas,
+                                  kPreparingDotsW,
+                                  kPreparingDotsH,
+                                  kPreparingDotCenterX[i],
+                                  kPreparingDotCenterY,
+                                  kPreparingDotRadius,
+                                  lv_color_white());
+    }
+    s_last_preparing_dot_count = count;
+    lv_obj_invalidate(s_preparing_dots_canvas);
+}
+
+bool update_xiaozhi_clock_or_pomodoro(const struct tm &local)
+{
+    PomodoroSnapshot pomodoro = {};
+    pomodoro_get_snapshot(&pomodoro);
+    if (pomodoro.state == kPomodoroIdle) {
+        if (s_last_pomodoro_state != kPomodoroIdle) {
+            set_pomodoro_labels_visible(false);
+            for (int &value : s_last_clock_values) {
+                value = -1;
+            }
+        }
+        s_last_pomodoro_state = kPomodoroIdle;
+        return update_inverted_clock_cards(local, s_clock_cards, s_last_clock_values);
+    }
+
+    bool state_changed = pomodoro.state != s_last_pomodoro_state;
+    PomodoroDisplayValues display = pomodoro_display_values(pomodoro.remaining_ms);
+    bool changed = false;
+    if (state_changed) {
+        clear_inverted_clock_card(s_clock_cards[0]);
+        set_pomodoro_labels_visible(true);
+        s_last_clock_values[0] = -1;
+        s_last_clock_values[1] = -1;
+        s_last_clock_values[2] = -1;
+        changed = true;
+    }
+    if (state_changed) {
+        changed |= set_label_text_if_changed(s_pomodoro_title_label, kPomodoroTitle);
+        changed |= set_label_text_if_changed(s_pomodoro_title_bold_label, kPomodoroTitle);
+        changed |= set_label_text_if_changed(
+            s_pomodoro_state_label,
+            pomodoro.state == kPomodoroCompleted ? kPomodoroCompletedText : kPomodoroRunningText);
+        changed |= set_label_text_if_changed(
+            s_pomodoro_mode_label,
+            pomodoro.state == kPomodoroCompleted
+                ? ""
+                : kPomodoroMinuteSecondMode);
+    }
+
+    int second_card_value = 0;
+    int third_card_value = 0;
+    if (pomodoro.state == kPomodoroRunning) {
+        second_card_value = display.second_card;
+        third_card_value = display.third_card;
+    }
+    changed |= update_inverted_clock_card_value(s_clock_cards[1],
+                                                second_card_value,
+                                                &s_last_clock_values[1]);
+    changed |= update_inverted_clock_card_value(s_clock_cards[2],
+                                                third_card_value,
+                                                &s_last_clock_values[2]);
+    s_last_pomodoro_state = pomodoro.state;
+    return changed;
+}
 
 size_t utf8_codepoint_size(const char *text)
 {
@@ -334,6 +487,30 @@ void build_xiaozhi_page()
                           &s_day_progress_buffer,
                           kDayProgressY);
     build_inverted_clock_cards(g_xiaozhi_root, s_clock_cards, s_clock_card_buffers);
+    s_pomodoro_title_label = make_pomodoro_card_label(s_clock_cards[0],
+                                                       kPomodoroTitleY,
+                                                       kPomodoroTitleH,
+                                                       kPomodoroTitle,
+                                                       &zh_pomodoro_title_24);
+    s_pomodoro_title_bold_label = make_pomodoro_card_label(s_clock_cards[0],
+                                                            kPomodoroTitleY,
+                                                            kPomodoroTitleH,
+                                                            kPomodoroTitle,
+                                                            &zh_pomodoro_title_24);
+    if (s_pomodoro_title_bold_label) {
+        lv_obj_set_x(s_pomodoro_title_bold_label, 1);
+    }
+    s_pomodoro_state_label = make_pomodoro_card_label(s_clock_cards[0],
+                                                       kPomodoroStateY,
+                                                       kPomodoroTextH,
+                                                       kPomodoroRunningText,
+                                                       &zh_font_16);
+    s_pomodoro_mode_label = make_pomodoro_card_label(s_clock_cards[0],
+                                                      kPomodoroModeY,
+                                                      kPomodoroTextH,
+                                                      kPomodoroMinuteSecondMode,
+                                                      &zh_font_16);
+    set_pomodoro_labels_visible(false);
     s_last_clock_values[0] = -1;
     s_last_clock_values[1] = -1;
     s_last_clock_values[2] = -1;
@@ -385,6 +562,27 @@ void build_xiaozhi_page()
                                                    &zh_font_16);
     style_panel_label(g_xiaozhi_state_label, LV_TEXT_ALIGN_LEFT);
     style_panel_label(g_xiaozhi_detail_label, LV_TEXT_ALIGN_LEFT);
+    if (!s_preparing_dots_buffer) {
+        s_preparing_dots_buffer = alloc_canvas_buffer(kPreparingDotsW, kPreparingDotsH);
+    }
+    if (s_preparing_dots_buffer) {
+        s_preparing_dots_canvas = lv_canvas_create(g_xiaozhi_root);
+        if (s_preparing_dots_canvas) {
+            lv_obj_clear_flag(s_preparing_dots_canvas, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_pos(s_preparing_dots_canvas, kPreparingDotsX, kPreparingDotsY);
+            lv_obj_set_size(s_preparing_dots_canvas, kPreparingDotsW, kPreparingDotsH);
+            lv_obj_set_style_border_width(s_preparing_dots_canvas, 0, LV_PART_MAIN);
+            lv_obj_set_style_pad_all(s_preparing_dots_canvas, 0, LV_PART_MAIN);
+            lv_canvas_set_buffer(s_preparing_dots_canvas,
+                                 s_preparing_dots_buffer,
+                                 kPreparingDotsW,
+                                 kPreparingDotsH,
+                                 LV_IMG_CF_TRUE_COLOR);
+            set_obj_visible(s_preparing_dots_canvas, false);
+        }
+    }
+    s_preparing_dots_visible = false;
+    s_last_preparing_dot_count = -1;
     if (g_xiaozhi_detail_label) {
         lv_label_set_long_mode(g_xiaozhi_detail_label, LV_LABEL_LONG_WRAP);
     }
@@ -408,12 +606,31 @@ bool update_xiaozhi_page(const struct tm &local)
     }
     const char *display_detail = latest_visible_subtitle(
         progressive_subtitle(snapshot, detail));
-    bool changed = set_label_text_if_changed(g_xiaozhi_state_label, snapshot.status);
+    bool changed = false;
+    const char *display_status = snapshot.status;
+    if (snapshot.state == kXiaozhiAiInactive) {
+        display_status = kPreparingStatus;
+        int dots = 1 + static_cast<int>((lv_tick_get() / kPreparingDotsIntervalMs) % 3U);
+        if (dots != s_last_preparing_dot_count) {
+            draw_preparing_dots(dots);
+            changed = true;
+        }
+        if (!s_preparing_dots_visible) {
+            set_obj_visible(s_preparing_dots_canvas, true);
+            s_preparing_dots_visible = true;
+            changed = true;
+        }
+    } else if (s_preparing_dots_visible) {
+        set_obj_visible(s_preparing_dots_canvas, false);
+        s_preparing_dots_visible = false;
+        changed = true;
+    }
+    changed |= set_label_text_if_changed(g_xiaozhi_state_label, display_status);
     changed |= set_label_text_if_changed(g_xiaozhi_detail_label, display_detail);
     changed |= update_work_page_status_time(g_xiaozhi_status_time_label, local);
     changed |= update_work_page_sensor_summary(g_xiaozhi_summary_label);
     changed |= update_work_page_status_icons(kWorkPageXiaozhiAI);
-    changed |= update_inverted_clock_cards(local, s_clock_cards, s_last_clock_values);
+    changed |= update_xiaozhi_clock_or_pomodoro(local);
     int seconds_of_day = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
     int day_filled = (seconds_of_day * kProgressSegmentCount) / kSecondsPerDay;
     if (day_filled != s_last_day_progress) {
@@ -447,6 +664,13 @@ uint32_t xiaozhi_subtitle_animation_delay_ms()
                                s_animation_state == kXiaozhiAiSpeaking;
     if (expression_animated && (delay_ms == 0 || delay_ms > kExpressionFrameIntervalMs)) {
         delay_ms = kExpressionFrameIntervalMs;
+    }
+    if (s_animation_state == kXiaozhiAiInactive) {
+        uint32_t preparing_delay = kPreparingDotsIntervalMs -
+                                   (lv_tick_get() % kPreparingDotsIntervalMs);
+        if (delay_ms == 0 || preparing_delay < delay_ms) {
+            delay_ms = preparing_delay;
+        }
     }
     return delay_ms;
 }

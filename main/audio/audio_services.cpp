@@ -135,8 +135,10 @@ extern const uint8_t xiaozhi_popup_pcm_start[] asm("_binary_popup_pcm_start");
 extern const uint8_t xiaozhi_popup_pcm_end[] asm("_binary_popup_pcm_end");
 
 static bool s_xiaozhi_speaker_stream_active = false;
+static bool s_xiaozhi_speaker_open = false;
 static size_t s_xiaozhi_speaker_fade_progress = 0;
 static int16_t s_xiaozhi_last_speaker_sample = 0;
+static int s_xiaozhi_applied_volume = -1;
 static void finish_xiaozhi_speaker_stream();
 
 static void configure_audio_idle_gpio(gpio_num_t pin, gpio_mode_t mode, gpio_pulldown_t pull_down)
@@ -249,8 +251,10 @@ bool start_xiaozhi_audio_session()
     }
     codec->CodecPort_SetMicGain(kXiaozhiMicGainDb);
     s_xiaozhi_speaker_stream_active = false;
+    s_xiaozhi_speaker_open = false;
     s_xiaozhi_speaker_fade_progress = 0;
     s_xiaozhi_last_speaker_sample = 0;
+    s_xiaozhi_applied_volume = -1;
     return true;
 }
 
@@ -264,6 +268,8 @@ void stop_xiaozhi_audio_session()
         g_codec->CodecPort_CloseSpeaker();
         g_codec->CodecPort_CloseMic();
     }
+    s_xiaozhi_speaker_open = false;
+    s_xiaozhi_applied_volume = -1;
     finish_audio_playback();
 }
 
@@ -287,6 +293,8 @@ int write_xiaozhi_speaker(const int16_t *mono_samples, size_t sample_count, int 
     if (!g_codec || !mono_samples || sample_count == 0 || !g_codec->CodecPort_OpenXiaozhiSpeaker(sample_rate)) {
         return ESP_FAIL;
     }
+    s_xiaozhi_speaker_open = true;
+    apply_xiaozhi_speaker_volume(g_chime_volume_percent);
     // 官方同板卡使用标准单声道 TX；RX 的四时隙 TDM 麦克风/参考声道
     // 与播放并行运行，因此这里直接写入服务器提供的 mono PCM。
     constexpr size_t kFramesPerChunk = 160;
@@ -317,6 +325,20 @@ int write_xiaozhi_speaker(const int16_t *mono_samples, size_t sample_count, int 
         offset += frames;
     }
     return ESP_CODEC_DEV_OK;
+}
+
+void apply_xiaozhi_speaker_volume(int volume_percent)
+{
+    if (volume_percent < 0) {
+        volume_percent = 0;
+    } else if (volume_percent > 100) {
+        volume_percent = 100;
+    }
+    if (!g_codec || !s_xiaozhi_speaker_open || s_xiaozhi_applied_volume == volume_percent) {
+        return;
+    }
+    g_codec->CodecPort_SetSpeakerVol(volume_percent);
+    s_xiaozhi_applied_volume = volume_percent;
 }
 
 static void finish_xiaozhi_speaker_stream()
@@ -350,6 +372,8 @@ bool resume_xiaozhi_microphone_after_playback()
     // 扬声器，麦克风/AEC 流保持连续，避免丢失用户插话的开头。
     finish_xiaozhi_speaker_stream();
     g_codec->CodecPort_CloseSpeaker();
+    s_xiaozhi_speaker_open = false;
+    s_xiaozhi_applied_volume = -1;
     ESP_LOGI(TAG, "xiaozhi duplex microphone kept active");
     return true;
 }
@@ -386,6 +410,8 @@ void abort_xiaozhi_speaker_playback()
     }
     finish_xiaozhi_speaker_stream();
     g_codec->CodecPort_CloseSpeaker();
+    s_xiaozhi_speaker_open = false;
+    s_xiaozhi_applied_volume = -1;
     ESP_LOGI(TAG, "xiaozhi speaker playback aborted");
 }
 
@@ -476,6 +502,33 @@ void hourly_chime_task(void *arg)
         (void)start_setup_prompt_playback();
     }
     vTaskDelete(nullptr);
+}
+
+bool play_chime_sound_blocking(int source_slot, bool (*stop_requested)())
+{
+    return play_chime_sound_repeated_blocking(source_slot, 1, stop_requested);
+}
+
+bool play_chime_sound_repeated_blocking(int source_slot,
+                                        int repeat_count,
+                                        bool (*stop_requested)())
+{
+    if (repeat_count <= 0 || !try_mark_audio_playing()) {
+        return false;
+    }
+    CodecPort *codec = prepare_audio_codec_for_playback();
+    bool played = codec != nullptr;
+    for (int repeat = 0; played && repeat < repeat_count; ++repeat) {
+        if (stop_requested && stop_requested()) {
+            played = false;
+            break;
+        }
+        played = codec->CodecPort_PlayChimeSound(source_slot,
+                                                 g_chime_volume_percent,
+                                                 stop_requested);
+    }
+    finish_audio_playback();
+    return played;
 }
 
 void setup_prompt_task(void *)

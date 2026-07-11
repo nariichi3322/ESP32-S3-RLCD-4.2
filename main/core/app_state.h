@@ -49,6 +49,7 @@
 LV_FONT_DECLARE(qweather_icons_36);
 LV_FONT_DECLARE(zh_font_16);
 LV_FONT_DECLARE(zh_flip_lunar_22);
+LV_FONT_DECLARE(zh_pomodoro_title_24);
 
 extern const char *const TAG;
 extern const char *const APP_VERSION;
@@ -77,11 +78,11 @@ inline constexpr int kAppMsPerSecond = 1000;
 inline constexpr int kAppSecondsPerMinute = 60;
 inline constexpr int kAppMsPerMinute = kAppSecondsPerMinute * kAppMsPerSecond;
 inline constexpr int kSettingsTimeoutMs = 30 * kAppMsPerSecond;
-inline constexpr int kHistoryPageTimeoutMs = 5 * kAppMsPerMinute;
+inline constexpr int kXiaozhiAutoReturnTimeoutMs = 5 * kAppMsPerMinute;
 inline constexpr int kSettingsPrimaryCount = 4;
 inline constexpr int kSettingsSecondaryMaxCount = 7;
 inline constexpr int kSettingsLabelCount = kSettingsPrimaryCount + kSettingsSecondaryMaxCount;
-inline constexpr int kChimeSoundCount = 5;
+inline constexpr int kChimeSoundCount = 4;
 inline constexpr int kNetworkSettingsNtpItem = 0;
 inline constexpr int kNetworkSettingsWeatherItem = 1;
 inline constexpr int kNetworkSettingsSayingItem = 2;
@@ -104,7 +105,9 @@ inline constexpr int kWorkPageCount = 7;
 inline constexpr int kDisplaySettingsPageItemCount = kWorkPageCount;
 inline constexpr int kDisplaySettingsPageSwitchItem = 0;
 inline constexpr int kDisplaySettingsOrderItem = 1;
-inline constexpr int kDisplaySettingsSecondaryCount = kDisplaySettingsOrderItem + 1;
+inline constexpr int kDisplaySettingsAlarmItem = 2;
+inline constexpr int kDisplaySettingsXiaozhiAutoReturnItem = 3;
+inline constexpr int kDisplaySettingsSecondaryCount = kDisplaySettingsXiaozhiAutoReturnItem + 1;
 inline constexpr int kSystemSettingsOfflineItem = 0;
 inline constexpr int kSystemSettingsNetworkDiagItem = 1;
 inline constexpr int kSystemSettingsFactoryResetItem = 2;
@@ -185,9 +188,12 @@ inline constexpr int kBatterySampleDayMinutes = 10;
 inline constexpr int kBatterySampleNightMinutes = 20;
 
 static_assert(kWorkPageCount == kWorkPageXiaozhiAI + 1, "work page count must match the last work page id");
+static_assert(kXiaozhiAutoReturnTimeoutMs > 0, "Xiaozhi auto-return timeout must be positive");
 static_assert(kDisplaySettingsPageItemCount == kWorkPageCount, "display page setting count must match work page count");
-static_assert(kDisplaySettingsSecondaryCount == kDisplaySettingsOrderItem + 1,
-              "display settings count must include the page order item");
+static_assert(kDisplaySettingsAlarmItem + 1 == kDisplaySettingsXiaozhiAutoReturnItem,
+              "alarm item must remain immediately above Xiaozhi auto return");
+static_assert(kDisplaySettingsSecondaryCount == kDisplaySettingsXiaozhiAutoReturnItem + 1,
+              "display settings count must include the Xiaozhi auto-return item");
 
 enum SettingsSyncOp {
     kSettingsSyncNone = 0,
@@ -258,6 +264,7 @@ extern bool g_has_manual_weather_city;
 extern bool g_hourly_chime_enabled;
 extern bool g_hourly_chime_all_day;
 extern bool g_offline_mode_ui_enabled;
+extern bool g_xiaozhi_auto_return_enabled;
 extern int g_chime_volume_percent;
 extern int g_chime_sound_index;
 extern bool g_ntp_started;
@@ -440,6 +447,8 @@ extern lv_obj_t *g_work_status_chime_icon_canvas[kWorkPageCount];
 extern lv_color_t *g_work_status_chime_icon_canvas_buf[kWorkPageCount];
 extern lv_obj_t *g_work_status_wifi_icon_canvas[kWorkPageCount];
 extern lv_color_t *g_work_status_wifi_icon_canvas_buf[kWorkPageCount];
+extern lv_obj_t *g_work_status_alarm_icon_canvas[kWorkPageCount];
+extern lv_color_t *g_work_status_alarm_icon_canvas_buf[kWorkPageCount];
 extern lv_obj_t *g_gallery_image_canvas;
 extern lv_color_t *g_gallery_image_canvas_buf;
 extern lv_obj_t *g_gallery_time_canvas;
@@ -468,6 +477,8 @@ extern lv_obj_t *g_chime_status_icon_canvas;
 extern lv_color_t *g_chime_status_icon_canvas_buf;
 extern lv_obj_t *g_wifi_status_icon_canvas;
 extern lv_color_t *g_wifi_status_icon_canvas_buf;
+extern lv_obj_t *g_alarm_status_icon_canvas;
+extern lv_color_t *g_alarm_status_icon_canvas_buf;
 extern lv_obj_t *g_low_battery_icon_canvas;
 extern lv_color_t *g_low_battery_icon_canvas_buf;
 extern lv_obj_t *g_panel_sep_a;

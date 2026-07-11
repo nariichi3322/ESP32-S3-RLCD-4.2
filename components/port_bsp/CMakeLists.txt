@@ -18,7 +18,6 @@ idf_component_register(
     "pcm/chime_1.pcm"
     "pcm/chime_2.pcm"
     "pcm/chime_3.pcm"
-    "pcm/chime_4.pcm"
     "pcm/wifi_prompt.pcm"
     "pcm/xiaozhi_binding/popup.pcm"
     "pcm/xiaozhi_binding/prompt.pcm"

@@ -9,6 +9,7 @@ void xiaozhi_voice_stop();
 bool xiaozhi_voice_take_wake_word();
 bool xiaozhi_voice_is_listening();
 void xiaozhi_voice_set_streaming(bool enabled);
+void xiaozhi_voice_pause_streaming();
 bool xiaozhi_voice_read_processed(int16_t *mono_samples,
                                   size_t sample_count,
                                   uint32_t timeout_ms);

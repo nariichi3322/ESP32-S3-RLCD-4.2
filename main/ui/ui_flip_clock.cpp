@@ -640,13 +640,33 @@ bool update_inverted_clock_cards(const struct tm &local,
     const int values[kCardCount] = {local.tm_hour, local.tm_min, local.tm_sec};
     bool changed = false;
     for (int i = 0; i < kCardCount; ++i) {
-        if (values[i] != last_values[i]) {
-            last_values[i] = values[i];
-            draw_flip_card(card_canvas[i], values[i]);
-            changed = true;
-        }
+        changed |= update_inverted_clock_card_value(card_canvas[i],
+                                                     values[i],
+                                                     &last_values[i]);
     }
     return changed;
+}
+
+void clear_inverted_clock_card(lv_obj_t *card_canvas)
+{
+    if (!card_canvas) {
+        return;
+    }
+    draw_card_shell(card_canvas);
+    apply_card_rounding(card_canvas);
+    lv_obj_invalidate(card_canvas);
+}
+
+bool update_inverted_clock_card_value(lv_obj_t *card_canvas,
+                                      int value,
+                                      int *last_value)
+{
+    if (!card_canvas || !last_value || value < 0 || value > 99 || value == *last_value) {
+        return false;
+    }
+    *last_value = value;
+    draw_flip_card(card_canvas, value);
+    return true;
 }
 
 void build_flip_clock_page()

@@ -1,5 +1,9 @@
-// 提供 LVGL canvas 安全打点、线段、虚线和圆点等基础绘图工具。
+// 提供 LVGL canvas 缓冲分配、安全打点、线段、虚线和圆点等基础工具。
 #include "ui_views.h"
+
+#define UI_CANVAS_BUFFER_INVALID_SIZE_FORMAT "canvas buffer invalid size %dx%d"
+#define UI_CANVAS_BUFFER_SIZE_OVERFLOW_FORMAT "canvas buffer size overflow %dx%d"
+#define UI_CANVAS_BUFFER_ALLOC_FAILED_FORMAT "canvas buffer alloc failed %dx%d"
 
 namespace {
 constexpr int kDashedLineRunPixels = 5;
@@ -50,7 +54,44 @@ int square_int(int value)
 {
     return value * value;
 }
+
+bool canvas_pixel_count(int width, int height, size_t *pixel_count)
+{
+    if (!pixel_count) {
+        return false;
+    }
+    *pixel_count = 0;
+    if (width <= 0 || height <= 0) {
+        ESP_LOGW(TAG, UI_CANVAS_BUFFER_INVALID_SIZE_FORMAT, width, height);
+        return false;
+    }
+    size_t count = static_cast<size_t>(width) * static_cast<size_t>(height);
+    if (count > SIZE_MAX / sizeof(lv_color_t)) {
+        ESP_LOGW(TAG, UI_CANVAS_BUFFER_SIZE_OVERFLOW_FORMAT, width, height);
+        return false;
+    }
+    *pixel_count = count;
+    return true;
+}
 } // namespace
+
+lv_color_t *alloc_canvas_buffer(int width, int height)
+{
+    size_t pixel_count = 0;
+    if (!canvas_pixel_count(width, height, &pixel_count)) {
+        return nullptr;
+    }
+    lv_color_t *buf = (lv_color_t *)heap_caps_calloc(pixel_count,
+                                                     sizeof(lv_color_t),
+                                                     MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!buf) {
+        buf = (lv_color_t *)calloc(pixel_count, sizeof(lv_color_t));
+    }
+    if (!buf) {
+        ESP_LOGW(TAG, UI_CANVAS_BUFFER_ALLOC_FAILED_FORMAT, width, height);
+    }
+    return buf;
+}
 
 int clamp_int(int value, int min_value, int max_value)
 {
@@ -62,6 +103,19 @@ int clamp_int(int value, int min_value, int max_value)
         return max_value;
     }
     return value;
+}
+
+void invalidate_canvas_rect(lv_obj_t *canvas, int x1, int y1, int x2, int y2)
+{
+    if (!canvas) {
+        return;
+    }
+    lv_area_t area = {};
+    area.x1 = static_cast<lv_coord_t>(x1);
+    area.y1 = static_cast<lv_coord_t>(y1);
+    area.x2 = static_cast<lv_coord_t>(x2);
+    area.y2 = static_cast<lv_coord_t>(y2);
+    lv_obj_invalidate_area(canvas, &area);
 }
 
 void canvas_set_px_safe(lv_obj_t *canvas, int x, int y, int w, int h, lv_color_t color)

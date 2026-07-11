@@ -19,11 +19,12 @@
 LV_FONT_DECLARE(qweather_icons_36);
 LV_FONT_DECLARE(zh_font_16);
 LV_FONT_DECLARE(zh_flip_lunar_22);
+LV_FONT_DECLARE(zh_pomodoro_title_24);
 
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.5.3";
+static const char *APP_VERSION = "v1.5.4";
 static const char *const kPreviewWeekDaysFull[] = {
     "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六",
 };
@@ -57,6 +58,7 @@ static lv_obj_t *g_alert_icon_canvas;
 static lv_obj_t *g_alert_label;
 static lv_obj_t *g_chime_status_icon_canvas;
 static lv_obj_t *g_wifi_status_icon_canvas;
+static lv_obj_t *g_alarm_status_icon_canvas;
 static lv_obj_t *g_low_battery_icon_canvas;
 static lv_obj_t *g_panel_sep_a;
 static lv_obj_t *g_panel_sep_b;
@@ -81,6 +83,7 @@ static std::vector<lv_color_t> g_boot_anim_canvas_pixels(BOOT_ANIM_WIDTH * BOOT_
 static std::vector<lv_color_t> g_alert_icon_canvas_pixels(WARNING_ICON_WIDTH * WARNING_ICON_HEIGHT);
 static std::vector<lv_color_t> g_chime_status_icon_canvas_pixels(CHIME_STATUS_ICON_WIDTH * CHIME_STATUS_ICON_HEIGHT);
 static std::vector<lv_color_t> g_wifi_status_icon_canvas_pixels(WIFI_STATUS_ICON_WIDTH * WIFI_STATUS_ICON_HEIGHT);
+static std::vector<lv_color_t> g_alarm_status_icon_canvas_pixels(ALARM_STATUS_ICON_WIDTH * ALARM_STATUS_ICON_HEIGHT);
 static std::vector<lv_color_t> g_low_battery_icon_canvas_pixels(LOW_BATTERY_ICON_WIDTH * LOW_BATTERY_ICON_HEIGHT);
 static std::vector<lv_color_t> g_temp_trend_canvas_pixels(TREND_ICON_WIDTH * TREND_ICON_HEIGHT);
 static std::vector<lv_color_t> g_humi_trend_canvas_pixels(TREND_ICON_WIDTH * TREND_ICON_HEIGHT);
@@ -117,6 +120,7 @@ static std::vector<lv_color_t> g_flip_second_progress_pixels(kProgressCanvasW * 
 static std::vector<lv_color_t> g_flip_temp_mood_pixels(FLIP_SENSOR_ICON_WIDTH * FLIP_SENSOR_ICON_HEIGHT);
 static std::vector<lv_color_t> g_flip_humi_mood_pixels(FLIP_SENSOR_ICON_WIDTH * FLIP_SENSOR_ICON_HEIGHT);
 static std::vector<lv_color_t> g_xiaozhi_face_pixels(76 * 76);
+static std::vector<lv_color_t> g_xiaozhi_preparing_pixels(48 * 16);
 
 struct PreviewHistorySample {
     float temp;
@@ -562,6 +566,15 @@ static void build_preview_work_status_bar(lv_obj_t *screen,
                               WIFI_STATUS_ICON_HEIGHT,
                               WIFI_STATUS_ICON_BYTES_PER_ROW,
                               wifi_status_icon_bits);
+    build_preview_status_icon(screen,
+                              &g_alarm_status_icon_canvas,
+                              g_alarm_status_icon_canvas_pixels.data(),
+                              116,
+                              15,
+                              ALARM_STATUS_ICON_WIDTH,
+                              ALARM_STATUS_ICON_HEIGHT,
+                              ALARM_STATUS_ICON_BYTES_PER_ROW,
+                              alarm_status_icon_bits);
 }
 
 static void remember_lower_panel_object(lv_obj_t *obj)
@@ -1446,7 +1459,7 @@ static const char *latest_xiaozhi_preview_subtitle(const char *text)
     return visible;
 }
 
-static void build_xiaozhi_preview_ui()
+static void build_xiaozhi_preview_ui(const char *preview_mode)
 {
     lv_obj_t *screen = lv_scr_act();
     lv_obj_clean(screen);
@@ -1466,8 +1479,17 @@ static void build_xiaozhi_preview_ui()
     int seconds_of_day = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
     update_progress_canvas(day_progress, (seconds_of_day * 60) / (24 * 3600), &last_day);
 
+    bool pomodoro_running = preview_mode_is(preview_mode, "xiaozhi_pomodoro");
+    bool pomodoro_final = preview_mode_is(preview_mode, "xiaozhi_pomodoro_final");
+    bool pomodoro_completed = preview_mode_is(preview_mode, "xiaozhi_pomodoro_done");
+    bool preparing = preview_mode_is(preview_mode, "xiaozhi_preparing");
+    bool pomodoro_visible = pomodoro_running || pomodoro_final || pomodoro_completed;
     static const int card_x[3] = {18, 144, 270};
-    int values[3] = {local.tm_hour, local.tm_min, local.tm_sec};
+    int values[3] = {
+        local.tm_hour,
+        pomodoro_running ? 24 : (pomodoro_final || pomodoro_completed ? 0 : local.tm_min),
+        pomodoro_running ? 59 : (pomodoro_final ? 37 : (pomodoro_completed ? 0 : local.tm_sec)),
+    };
     for (int i = 0; i < 3; ++i) {
         lv_obj_t *card = lv_canvas_create(screen);
         lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
@@ -1476,7 +1498,27 @@ static void build_xiaozhi_preview_ui()
         lv_obj_set_style_border_width(card, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(card, 0, LV_PART_MAIN);
         lv_canvas_set_buffer(card, g_flip_card_pixels[i].data(), kFlipCardW, kFlipCardH, LV_IMG_CF_TRUE_COLOR);
-        draw_preview_flip_card(card, values[i]);
+        if (i == 0 && pomodoro_visible) {
+            lv_canvas_fill_bg(card, lv_color_black(), LV_OPA_COVER);
+            apply_preview_card_rounding(card);
+            const char *state_text = pomodoro_completed ? "已完成" : "专注中";
+            const char *mode_text = pomodoro_completed
+                                        ? ""
+                                        : "分 / 秒";
+            lv_obj_t *title = make_label_with_font(card, 0, 8, kFlipCardW, 30, "番茄钟", &zh_pomodoro_title_24);
+            lv_obj_t *title_bold = make_label_with_font(card, 1, 8, kFlipCardW, 30, "番茄钟", &zh_pomodoro_title_24);
+            lv_obj_t *state = make_label_with_font(card, 0, 44, kFlipCardW, 24, state_text, &zh_font_16);
+            lv_obj_t *mode = make_label_with_font(card, 0, 76, kFlipCardW, 24, mode_text, &zh_font_16);
+            for (lv_obj_t *label : {title, title_bold, state, mode}) {
+                if (label) {
+                    lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+                    lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
+                    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+                }
+            }
+        } else {
+            draw_preview_flip_card(card, values[i]);
+        }
     }
 
     lv_obj_t *panel = make_bar(screen, 18, 188, 364, 102);
@@ -1501,14 +1543,40 @@ static void build_xiaozhi_preview_ui()
     canvas_draw_filled_circle(face, 76, 76, 38, 51, 8, lv_color_white());
     canvas_draw_filled_circle(face, 76, 76, 38, 51, 5, lv_color_black());
 
-    lv_obj_t *state = make_label_with_font(screen, 118, 196, 248, 28, "小智正在说话", &zh_font_16);
+    lv_obj_t *state = make_label_with_font(screen,
+                                           118,
+                                           196,
+                                           248,
+                                           28,
+                                           preparing ? "小智准备中" : "小智正在说话",
+                                           &zh_font_16);
+    lv_obj_t *preparing_dots = nullptr;
+    if (preparing) {
+        preparing_dots = lv_canvas_create(screen);
+        lv_obj_clear_flag(preparing_dots, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_pos(preparing_dots, 218, 201);
+        lv_obj_set_size(preparing_dots, 48, 16);
+        lv_obj_set_style_border_width(preparing_dots, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(preparing_dots, 0, LV_PART_MAIN);
+        lv_canvas_set_buffer(preparing_dots,
+                             g_xiaozhi_preparing_pixels.data(),
+                             48,
+                             16,
+                             LV_IMG_CF_TRUE_COLOR);
+        lv_canvas_fill_bg(preparing_dots, lv_color_black(), LV_OPA_COVER);
+        for (int x : {6, 22, 38}) {
+            canvas_draw_filled_circle(preparing_dots, 48, 16, x, 8, 4, lv_color_white());
+        }
+    }
     lv_obj_t *detail = make_label_with_font(screen,
                                             118,
                                             224,
                                             248,
                                             58,
-                                            latest_xiaozhi_preview_subtitle(
-                                                "杭州今天白天多云，气温会逐渐升高，午后体感偏热。外出时建议带好饮用水并注意防晒，如果傍晚出门散步，最新预报显示风力会减弱，体感会更舒适。"),
+                                            preparing
+                                                ? "正在初始化网络和语音服务"
+                                                : latest_xiaozhi_preview_subtitle(
+                                                      "杭州今天白天多云，气温会逐渐升高，午后体感偏热。外出时建议带好饮用水并注意防晒，如果傍晚出门散步，最新预报显示风力会减弱，体感会更舒适。"),
                                             &zh_font_16);
     lv_obj_set_style_text_color(state, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_color(detail, lv_color_white(), LV_PART_MAIN);
@@ -1672,6 +1740,25 @@ static void build_clock_ui()
                    WIFI_STATUS_ICON_HEIGHT,
                    WIFI_STATUS_ICON_BYTES_PER_ROW,
                    wifi_status_icon_bits,
+                   lv_color_black(),
+                   lv_color_white());
+
+    g_alarm_status_icon_canvas = lv_canvas_create(screen);
+    lv_obj_clear_flag(g_alarm_status_icon_canvas, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(g_alarm_status_icon_canvas, 116, 15);
+    lv_obj_set_size(g_alarm_status_icon_canvas, ALARM_STATUS_ICON_WIDTH, ALARM_STATUS_ICON_HEIGHT);
+    lv_obj_set_style_border_width(g_alarm_status_icon_canvas, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(g_alarm_status_icon_canvas, 0, LV_PART_MAIN);
+    lv_canvas_set_buffer(g_alarm_status_icon_canvas,
+                         g_alarm_status_icon_canvas_pixels.data(),
+                         ALARM_STATUS_ICON_WIDTH,
+                         ALARM_STATUS_ICON_HEIGHT,
+                         LV_IMG_CF_TRUE_COLOR);
+    draw_1bit_icon(g_alarm_status_icon_canvas,
+                   ALARM_STATUS_ICON_WIDTH,
+                   ALARM_STATUS_ICON_HEIGHT,
+                   ALARM_STATUS_ICON_BYTES_PER_ROW,
+                   alarm_status_icon_bits,
                    lv_color_black(),
                    lv_color_white());
 
@@ -1859,6 +1946,7 @@ static void apply_low_battery_preview(bool low)
     set_obj_visible(g_alert_pill, false);
     set_obj_visible(g_chime_status_icon_canvas, !low);
     set_obj_visible(g_wifi_status_icon_canvas, !low);
+    set_obj_visible(g_alarm_status_icon_canvas, !low);
 }
 
 static void apply_alert_preview(bool visible)
@@ -1866,6 +1954,7 @@ static void apply_alert_preview(bool visible)
     set_obj_visible(g_alert_pill, visible);
     set_obj_visible(g_chime_status_icon_canvas, !visible);
     set_obj_visible(g_wifi_status_icon_canvas, !visible);
+    set_obj_visible(g_alarm_status_icon_canvas, !visible);
     if (visible) {
         set_label_text_if_changed(g_alert_label, "大风蓝色预警");
     }
@@ -1912,6 +2001,25 @@ static void make_settings_switch_text(lv_obj_t *screen, int x, int y, const char
     lv_obj_set_style_text_color(label, selected ? lv_color_white() : lv_color_black(), LV_PART_MAIN);
 }
 
+static void make_settings_switch_dot(lv_obj_t *screen, int x, int y, bool on, bool selected)
+{
+    lv_obj_t *dot = lv_obj_create(screen);
+    if (!dot) {
+        return;
+    }
+    lv_color_t foreground = selected ? lv_color_white() : lv_color_black();
+    lv_color_t background = selected ? lv_color_black() : lv_color_white();
+    lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(dot, x, y);
+    lv_obj_set_size(dot, 12, 12);
+    lv_obj_set_style_bg_color(dot, on ? foreground : background, LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(dot, foreground, LV_PART_MAIN);
+    lv_obj_set_style_border_width(dot, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(dot, 0, LV_PART_MAIN);
+}
+
 static void make_settings_grid_item(lv_obj_t *screen,
                                     int x,
                                     int y,
@@ -1944,6 +2052,7 @@ static void build_settings_page()
     if (settings_preview_mode_is(mode, "settings_sound")) {
         primary = 1;
     } else if (settings_preview_mode_is(mode, "settings_display") ||
+               settings_preview_mode_is(mode, "settings_pages") ||
                settings_preview_mode_is(mode, "settings_order")) {
         primary = 2;
     } else if (settings_preview_mode_is(mode, "settings_system")) {
@@ -1959,9 +2068,9 @@ static void build_settings_page()
     if (settings_preview_mode_is(mode, "settings_order")) {
         static const char *order_items[] = {
             "1 天气时钟", "2 图片时钟", "3 天气看板",
-            "4 温湿时钟", "5 日历", "6 温湿历史",
+            "4 温湿时钟", "5 日历", "6 温湿历史", "7 小智AI",
         };
-        for (int i = 0; i < 6; ++i) {
+        for (int i = 0; i < 7; ++i) {
             int col = i & 1;
             int row = i >> 1;
             make_settings_grid_item(screen, col == 0 ? 150 : 267, row_y[row], order_items[i], i == 3);
@@ -1982,18 +2091,25 @@ static void build_settings_page()
             }
         }
         g_settings_feedback_label = make_label(screen, 24, 246, 352, 20, "BOOT 调整并试听");
-    } else if (primary == 2) {
+    } else if (settings_preview_mode_is(mode, "settings_pages")) {
         static const char *display_items[] = {
             "天气时钟", "图片时钟", "天气看板",
-            "温湿时钟", "日历", "温湿历史",
+            "温湿时钟", "日历", "温湿历史", "小智AI",
         };
-        for (int i = 0; i < 6; ++i) {
+        for (int i = 0; i < 7; ++i) {
             int col = i & 1;
             int row = i >> 1;
             make_settings_grid_item(screen, col == 0 ? 150 : 267, row_y[row], display_items[i], i == 2, "开");
         }
-        make_settings_item(screen, 150, 183, 228, 30, "页面顺序", false);
         g_settings_feedback_label = make_label(screen, 24, 246, 352, 20, "页面可开关，也可排序");
+    } else if (primary == 2) {
+        make_settings_item(screen, 150, 66, 228, 30, "页面开关", false);
+        make_settings_item(screen, 150, 105, 228, 30, "页面顺序", false);
+        make_settings_item(screen, 150, 144, 228, 30, "闹钟 07:30", false);
+        make_settings_item(screen, 150, 183, 228, 30, "小智AI自动返回", true);
+        make_settings_switch_dot(screen, 362, 153, true, false);
+        make_settings_switch_dot(screen, 362, 192, false, true);
+        g_settings_feedback_label = make_label(screen, 24, 246, 352, 20, "小智AI空闲5分钟返回主页");
     } else {
         make_settings_grid_item(screen, 150, 66, "离线模式", false, "关");
         make_settings_grid_item(screen, 267, 66, "网络检测", false);
@@ -2188,7 +2304,7 @@ int main(int, char **)
     bool history_preview = preview_mode_is(preview_mode, "history");
     bool gallery_preview = preview_mode_is(preview_mode, "gallery");
     bool flip_clock_preview = preview_mode_is(preview_mode, "flip_clock");
-    bool xiaozhi_preview = preview_mode_is(preview_mode, "xiaozhi");
+    bool xiaozhi_preview = preview_mode_has_prefix(preview_mode, "xiaozhi");
     bool calendar_preview = preview_mode_is(preview_mode, "calendar");
     bool weather_board_preview = preview_mode_is(preview_mode, "weather_board");
     bool info_preview = preview_mode_is(preview_mode, "info");
@@ -2199,7 +2315,7 @@ int main(int, char **)
     } else if (flip_clock_preview) {
         build_flip_clock_preview_ui();
     } else if (xiaozhi_preview) {
-        build_xiaozhi_preview_ui();
+        build_xiaozhi_preview_ui(preview_mode);
     } else if (calendar_preview) {
         build_calendar_preview_ui();
     } else if (weather_board_preview) {
@@ -2228,6 +2344,7 @@ int main(int, char **)
             set_setup_panel_visible(true);
             set_obj_visible(g_chime_status_icon_canvas, false);
             set_obj_visible(g_wifi_status_icon_canvas, false);
+            set_obj_visible(g_alarm_status_icon_canvas, false);
         } else if (preview_mode_is(preview_mode, "alert")) {
             apply_alert_preview(true);
         } else if (preview_mode_is(preview_mode, "low")) {

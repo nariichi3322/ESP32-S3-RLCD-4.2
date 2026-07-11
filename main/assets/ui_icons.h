@@ -102,6 +102,23 @@ static const uint8_t wifi_status_icon_bits[] = {
 static_assert(sizeof(wifi_status_icon_bits) == WIFI_STATUS_ICON_BYTES_PER_ROW * WIFI_STATUS_ICON_HEIGHT,
               "wifi_status icon payload size mismatch");
 
+static constexpr int ALARM_STATUS_ICON_WIDTH = 19;
+static constexpr int ALARM_STATUS_ICON_HEIGHT = 19;
+static constexpr int ALARM_STATUS_ICON_BYTES_PER_ROW = 3;
+static_assert(ALARM_STATUS_ICON_WIDTH > 0, "alarm_status icon width must be positive");
+static_assert(ALARM_STATUS_ICON_HEIGHT > 0, "alarm_status icon height must be positive");
+static_assert(ALARM_STATUS_ICON_BYTES_PER_ROW == (ALARM_STATUS_ICON_WIDTH + 7) / 8,
+              "alarm_status icon row byte count mismatch");
+static const uint8_t alarm_status_icon_bits[] = {
+    0x00, 0xF0, 0x00, 0x00, 0xF0, 0x00, 0x03, 0xFC, 0x00, 0x0E, 0x07, 0x00,
+    0x1C, 0x03, 0x80, 0x18, 0x01, 0x80, 0x30, 0x0C, 0xC0, 0x20, 0x1C, 0x40,
+    0x60, 0x38, 0x60, 0x60, 0x70, 0x60, 0x60, 0x20, 0x60, 0x60, 0x00, 0x60,
+    0x20, 0x00, 0x40, 0x30, 0x00, 0xC0, 0x18, 0x01, 0x80, 0x1C, 0x03, 0x80,
+    0x0E, 0x07, 0x00, 0x03, 0xFC, 0x00, 0x00, 0xF0, 0x00,
+};
+static_assert(sizeof(alarm_status_icon_bits) == ALARM_STATUS_ICON_BYTES_PER_ROW * ALARM_STATUS_ICON_HEIGHT,
+              "alarm_status icon payload size mismatch");
+
 static constexpr int TREND_ICON_WIDTH = 14;
 static constexpr int TREND_ICON_HEIGHT = 14;
 static constexpr int TREND_ICON_BYTES_PER_ROW = 2;

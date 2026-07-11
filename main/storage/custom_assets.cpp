@@ -472,6 +472,115 @@ static void log_custom_gif_frame_density(int frame)
              STATUS_GIF_WIDTH * STATUS_GIF_HEIGHT);
 }
 
+static bool custom_assets_header_identity_valid()
+{
+    return s_assets_header.magic == kCustomAssetsMagic &&
+           s_assets_header.version == kCustomAssetsVersion &&
+           s_assets_header.entry_count > 0 &&
+           s_assets_header.entry_count <= kCustomAssetMaxEntries;
+}
+
+static bool read_and_validate_custom_asset_entry_table()
+{
+    s_entry_count = s_assets_header.entry_count;
+    size_t min_header_size = custom_asset_header_bytes();
+    if (s_assets_header.header_size != min_header_size ||
+        s_assets_header.total_size <= s_assets_header.header_size ||
+        s_assets_header.total_size > s_assets_partition->size) {
+        ESP_LOGW(TAG, CUSTOM_ASSETS_HEADER_SIZE_INVALID_LOG_FORMAT);
+        return false;
+    }
+    if (!read_checked(sizeof(CustomAssetsHeader), s_entries, custom_asset_entry_table_bytes())) {
+        ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_ENTRIES_READ_FAILED_LOG_FORMAT);
+        return false;
+    }
+    return validate_header_crc() && validate_payload_crc();
+}
+
+static bool register_custom_asset_entry(int entry_index)
+{
+    CustomAssetEntry &entry = s_entries[entry_index];
+    ESP_LOGI(TAG,
+             CUSTOM_ASSETS_DIAG_ENTRY_LOG_FORMAT,
+             entry_index,
+             (unsigned)entry.type,
+             (unsigned)entry.index,
+             (unsigned)entry.width,
+             (unsigned)entry.height,
+             (unsigned)entry.frame_count,
+             (unsigned)entry.bytes_per_row,
+             (unsigned long)entry.offset,
+             (unsigned long)entry.length,
+             (unsigned long)entry.crc32);
+    if (!validate_entry_bounds(entry) ||
+        !validate_entry_shape(entry) ||
+        !validate_entry_crc(entry)) {
+        ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_ENTRY_REJECTED_LOG_FORMAT, entry_index);
+        return false;
+    }
+    if (entry.type == kCustomAssetTypeMainGif) {
+        if (s_main_gif_entry) {
+            ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_DUPLICATE_MAIN_GIF_LOG_FORMAT);
+            return false;
+        }
+        s_main_gif_entry = &entry;
+    } else if (entry.type == kCustomAssetTypeGalleryImage &&
+               s_gallery_count < kCustomAssetMaxGalleryImages) {
+        for (int i = 0; i < s_gallery_count; ++i) {
+            if (s_gallery_entries[i] && s_gallery_entries[i]->index == entry.index) {
+                ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_DUPLICATE_GALLERY_LOG_FORMAT, entry.index);
+                return false;
+            }
+        }
+        s_gallery_entries[s_gallery_count++] = &entry;
+    } else if (entry.type == kCustomAssetTypeWeatherCity) {
+        if (s_weather_city_entry) {
+            ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_DUPLICATE_CONFIG_LOG_FORMAT, entry.type);
+            return false;
+        }
+        s_weather_city_entry = &entry;
+    } else if (entry.type == kCustomAssetTypeOtaManifestUrl) {
+        if (s_ota_manifest_url_entry) {
+            ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_DUPLICATE_CONFIG_LOG_FORMAT, entry.type);
+            return false;
+        }
+        s_ota_manifest_url_entry = &entry;
+    }
+    return true;
+}
+
+static void sort_custom_gallery_entries()
+{
+    for (int i = 0; i < s_gallery_count - 1; ++i) {
+        for (int j = i + 1; j < s_gallery_count; ++j) {
+            if (s_gallery_entries[j]->index < s_gallery_entries[i]->index) {
+                const CustomAssetEntry *tmp = s_gallery_entries[i];
+                s_gallery_entries[i] = s_gallery_entries[j];
+                s_gallery_entries[j] = tmp;
+            }
+        }
+    }
+}
+
+static void publish_custom_assets_ready_state()
+{
+    s_assets_ready = s_main_gif_entry ||
+                     s_gallery_count > 0 ||
+                     s_weather_city_entry ||
+                     s_ota_manifest_url_entry;
+    ESP_LOGI(TAG,
+             CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT,
+             s_main_gif_entry ? 1 : 0,
+             s_gallery_count,
+             s_weather_city_entry ? 1 : 0,
+             s_ota_manifest_url_entry ? 1 : 0);
+    if (s_main_gif_entry) {
+        for (int frame : kCustomAssetDiagGifFrames) {
+            log_custom_gif_frame_density(frame);
+        }
+    }
+}
+
 void custom_assets_init()
 {
     ESP_LOGI(TAG, CUSTOM_ASSETS_DIAG_INIT_ENTER_LOG_FORMAT);
@@ -500,107 +609,23 @@ void custom_assets_init()
              (unsigned long)s_assets_header.total_size,
              (unsigned long)s_assets_header.header_crc,
              (unsigned long)s_assets_header.payload_crc);
-    if (s_assets_header.magic != kCustomAssetsMagic ||
-        s_assets_header.version != kCustomAssetsVersion ||
-        s_assets_header.entry_count == 0 ||
-        s_assets_header.entry_count > kCustomAssetMaxEntries) {
+    if (!custom_assets_header_identity_valid()) {
         ESP_LOGI(TAG, CUSTOM_ASSETS_DIAG_NO_VALID_PACKAGE_LOG_FORMAT);
         return;
     }
-    s_entry_count = s_assets_header.entry_count;
-    size_t min_header_size = custom_asset_header_bytes();
-    if (s_assets_header.header_size != min_header_size ||
-        s_assets_header.total_size <= s_assets_header.header_size ||
-        s_assets_header.total_size > s_assets_partition->size) {
-        ESP_LOGW(TAG, CUSTOM_ASSETS_HEADER_SIZE_INVALID_LOG_FORMAT);
-        reset_custom_assets();
-        return;
-    }
-    if (!read_checked(sizeof(CustomAssetsHeader), s_entries, custom_asset_entry_table_bytes())) {
-        ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_ENTRIES_READ_FAILED_LOG_FORMAT);
-        reset_custom_assets();
-        return;
-    }
-    if (!validate_header_crc() || !validate_payload_crc()) {
+    if (!read_and_validate_custom_asset_entry_table()) {
         reset_custom_assets();
         return;
     }
 
     for (int i = 0; i < s_entry_count; ++i) {
-        CustomAssetEntry &entry = s_entries[i];
-        ESP_LOGI(TAG,
-                 CUSTOM_ASSETS_DIAG_ENTRY_LOG_FORMAT,
-                 i,
-                 (unsigned)entry.type,
-                 (unsigned)entry.index,
-                 (unsigned)entry.width,
-                 (unsigned)entry.height,
-                 (unsigned)entry.frame_count,
-                 (unsigned)entry.bytes_per_row,
-                 (unsigned long)entry.offset,
-                 (unsigned long)entry.length,
-                 (unsigned long)entry.crc32);
-        if (!validate_entry_bounds(entry) ||
-            !validate_entry_shape(entry) ||
-            !validate_entry_crc(entry)) {
-            ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_ENTRY_REJECTED_LOG_FORMAT, i);
+        if (!register_custom_asset_entry(i)) {
             reset_custom_assets();
             return;
         }
-        if (entry.type == kCustomAssetTypeMainGif) {
-            if (s_main_gif_entry) {
-                ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_DUPLICATE_MAIN_GIF_LOG_FORMAT);
-                reset_custom_assets();
-                return;
-            }
-            s_main_gif_entry = &entry;
-        } else if (entry.type == kCustomAssetTypeGalleryImage &&
-                   s_gallery_count < kCustomAssetMaxGalleryImages) {
-            for (int j = 0; j < s_gallery_count; ++j) {
-                if (s_gallery_entries[j] && s_gallery_entries[j]->index == entry.index) {
-                    ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_DUPLICATE_GALLERY_LOG_FORMAT, entry.index);
-                    reset_custom_assets();
-                    return;
-                }
-            }
-            s_gallery_entries[s_gallery_count++] = &entry;
-        } else if (entry.type == kCustomAssetTypeWeatherCity) {
-            if (s_weather_city_entry) {
-                ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_DUPLICATE_CONFIG_LOG_FORMAT, entry.type);
-                reset_custom_assets();
-                return;
-            }
-            s_weather_city_entry = &entry;
-        } else if (entry.type == kCustomAssetTypeOtaManifestUrl) {
-            if (s_ota_manifest_url_entry) {
-                ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_DUPLICATE_CONFIG_LOG_FORMAT, entry.type);
-                reset_custom_assets();
-                return;
-            }
-            s_ota_manifest_url_entry = &entry;
-        }
     }
-    for (int i = 0; i < s_gallery_count - 1; ++i) {
-        for (int j = i + 1; j < s_gallery_count; ++j) {
-            if (s_gallery_entries[j]->index < s_gallery_entries[i]->index) {
-                const CustomAssetEntry *tmp = s_gallery_entries[i];
-                s_gallery_entries[i] = s_gallery_entries[j];
-                s_gallery_entries[j] = tmp;
-            }
-        }
-    }
-    s_assets_ready = s_main_gif_entry || s_gallery_count > 0 || s_weather_city_entry || s_ota_manifest_url_entry;
-    ESP_LOGI(TAG,
-             CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT,
-             s_main_gif_entry ? 1 : 0,
-             s_gallery_count,
-             s_weather_city_entry ? 1 : 0,
-             s_ota_manifest_url_entry ? 1 : 0);
-    if (s_main_gif_entry) {
-        for (int frame : kCustomAssetDiagGifFrames) {
-            log_custom_gif_frame_density(frame);
-        }
-    }
+    sort_custom_gallery_entries();
+    publish_custom_assets_ready_state();
 }
 
 bool custom_assets_available()

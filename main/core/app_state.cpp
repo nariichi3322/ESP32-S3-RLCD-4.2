@@ -2,7 +2,7 @@
 #include "app_state.h"
 
 const char *const TAG = "WeatherClock";
-const char *const APP_VERSION = "v1.5.3";
+const char *const APP_VERSION = "v1.5.4";
 #ifndef WEATHER_CLOCK_BUILD_DATE
 #define WEATHER_CLOCK_BUILD_DATE "unknown"
 #endif
@@ -44,6 +44,7 @@ bool g_has_manual_weather_city = false;
 bool g_hourly_chime_enabled = false;
 bool g_hourly_chime_all_day = false;
 bool g_offline_mode_ui_enabled = false;
+bool g_xiaozhi_auto_return_enabled = false;
 int g_chime_volume_percent = 80;
 int g_chime_sound_index = 0;
 bool g_ntp_started = false;
@@ -162,6 +163,8 @@ lv_obj_t *g_work_status_chime_icon_canvas[kWorkPageCount];
 lv_color_t *g_work_status_chime_icon_canvas_buf[kWorkPageCount];
 lv_obj_t *g_work_status_wifi_icon_canvas[kWorkPageCount];
 lv_color_t *g_work_status_wifi_icon_canvas_buf[kWorkPageCount];
+lv_obj_t *g_work_status_alarm_icon_canvas[kWorkPageCount];
+lv_color_t *g_work_status_alarm_icon_canvas_buf[kWorkPageCount];
 lv_obj_t *g_gallery_image_canvas;
 lv_color_t *g_gallery_image_canvas_buf;
 lv_obj_t *g_gallery_time_canvas;
@@ -190,6 +193,8 @@ lv_obj_t *g_chime_status_icon_canvas;
 lv_color_t *g_chime_status_icon_canvas_buf;
 lv_obj_t *g_wifi_status_icon_canvas;
 lv_color_t *g_wifi_status_icon_canvas_buf;
+lv_obj_t *g_alarm_status_icon_canvas;
+lv_color_t *g_alarm_status_icon_canvas_buf;
 lv_obj_t *g_low_battery_icon_canvas;
 lv_color_t *g_low_battery_icon_canvas_buf;
 lv_obj_t *g_panel_sep_a;

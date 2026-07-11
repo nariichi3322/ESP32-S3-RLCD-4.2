@@ -1,5 +1,6 @@
 // 处理固件更新检查、下载、校验、写入和重启提示流程。
 #include "ota_services.h"
+#include "ota_validation.h"
 
 #include "network_services.h"
 #include "sensor_services.h"
@@ -43,9 +44,6 @@ static constexpr size_t kOtaRedirectUrlLen = 1024;
 static constexpr int kOtaHttpTxBufferSize = 2048;
 static constexpr size_t kOtaManifestResponseBufferSize = 2048;
 static constexpr int kOtaManifestSourceNameLen = 16;
-static constexpr int kSemverComponentCount = 3;
-static constexpr size_t kSha256ByteCount = 32;
-static constexpr size_t kSha256HexLen = kSha256ByteCount * 2;
 static constexpr size_t kOtaDownloadStatusTextLen = 48;
 static constexpr int64_t kOtaUsPerMs = 1000;
 static constexpr int64_t kOtaUsPerSecond = 1000000;
@@ -68,9 +66,8 @@ static_assert(kOtaRedirectUrlLen > kOtaUrlLen, "OTA redirect URL buffer must exc
 static_assert(kOtaHttpTxBufferSize > 0, "OTA HTTP tx buffer must be positive");
 static_assert(kOtaManifestResponseBufferSize > 1, "OTA manifest response buffer must fit text and NUL");
 static_assert(kOtaManifestSourceNameLen > 1, "OTA manifest source name must fit text and NUL");
-static_assert(kSemverComponentCount == 3, "OTA semantic version comparison expects three components");
-static_assert(kSha256ByteCount == 32, "OTA SHA256 byte count must remain 32");
-static_assert(kSha256HexLen + 1 == kOtaSha256Len, "OTA SHA256 hex length must match manifest storage");
+static_assert(kOtaSha256HexLen + 1 == kOtaSha256Len,
+              "OTA SHA256 hex length must match manifest storage");
 static_assert(kOtaDownloadStatusTextLen <= kOtaStatusLen,
               "OTA download status scratch text must fit global OTA status storage");
 static_assert(kOtaUsPerSecond == kOtaUsPerMs * 1000, "OTA microsecond constants must stay consistent");
@@ -143,6 +140,7 @@ static constexpr const char *kOtaManifestResponseAllocFailedLog = "OTA manifest 
 #define OTA_BACKUP_MANIFEST_MISMATCH_FORMAT "OTA backup manifest mismatch current=%s backup=%s"
 static constexpr const char *kOtaManifestInvalidForInstallLog = "OTA manifest invalid for install";
 #define OTA_DOWNLOAD_START_FORMAT "OTA start: reset=%d battery=%d%% %.3fV rssi=%d size=%d url=%s"
+#define OTA_HTTP_HEADER_FAILED_FORMAT "OTA http header failed: %s"
 #define OTA_HTTP_OPEN_FAILED_FORMAT "OTA http open failed: %s"
 #define OTA_REDIRECT_STATUS_FORMAT "OTA redirect status=%d location=%s"
 #define OTA_HTTP_STATUS_FAILED_FORMAT "OTA http status=%d content_len=%d"
@@ -215,6 +213,7 @@ static constexpr const char *kOtaLogTexts[] = {
     OTA_BACKUP_MANIFEST_MISMATCH_FORMAT,
     kOtaManifestInvalidForInstallLog,
     OTA_DOWNLOAD_START_FORMAT,
+    OTA_HTTP_HEADER_FAILED_FORMAT,
     OTA_HTTP_OPEN_FAILED_FORMAT,
     OTA_REDIRECT_STATUS_FORMAT,
     OTA_HTTP_STATUS_FAILED_FORMAT,
@@ -726,78 +725,6 @@ void ota_mark_running_app_valid()
     }
 }
 
-static int parse_semver_component(const char **cursor)
-{
-    if (!cursor || !*cursor) {
-        return 0;
-    }
-    int value = 0;
-    while (**cursor >= '0' && **cursor <= '9') {
-        value = value * 10 + (**cursor - '0');
-        ++(*cursor);
-    }
-    if (**cursor == '.') {
-        ++(*cursor);
-    }
-    return value;
-}
-
-static int compare_versions(const char *remote, const char *current)
-{
-    if (!remote || !current) {
-        return 0;
-    }
-    if (*remote == 'v' || *remote == 'V') ++remote;
-    if (*current == 'v' || *current == 'V') ++current;
-    for (int i = 0; i < kSemverComponentCount; ++i) {
-        int r = parse_semver_component(&remote);
-        int c = parse_semver_component(&current);
-        if (r != c) {
-            return r > c ? 1 : -1;
-        }
-    }
-    return strcmp(remote, current);
-}
-
-static bool valid_sha256_string(const char *text)
-{
-    if (!text) {
-        return false;
-    }
-    if (strlen(text) != kSha256HexLen) {
-        return false;
-    }
-    for (const char *p = text; *p; ++p) {
-        if (!((*p >= '0' && *p <= '9') ||
-              (*p >= 'a' && *p <= 'f') ||
-              (*p >= 'A' && *p <= 'F'))) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static void sha256_to_hex(const uint8_t *hash, char *out, size_t out_len)
-{
-    static const char kHex[] = "0123456789abcdef";
-    if (!out) {
-        return;
-    }
-    if (out_len <= kSha256HexLen) {
-        if (out_len > 0) out[0] = '\0';
-        return;
-    }
-    if (!hash) {
-        out[0] = '\0';
-        return;
-    }
-    for (size_t i = 0; i < kSha256ByteCount; ++i) {
-        out[i * 2] = kHex[hash[i] >> 4];
-        out[i * 2 + 1] = kHex[hash[i] & 0x0F];
-    }
-    out[kSha256HexLen] = '\0';
-}
-
 static bool parse_ota_manifest(const char *json, OtaManifest *manifest)
 {
     if (!json || !manifest) {
@@ -838,7 +765,7 @@ static bool parse_ota_manifest(const char *json, OtaManifest *manifest)
                  have_sha);
         return false;
     }
-    if (!valid_sha256_string(manifest->sha256)) {
+    if (!ota_valid_sha256_string(manifest->sha256)) {
         ESP_LOGW(TAG, OTA_MANIFEST_SHA_INVALID_FORMAT, (unsigned)strlen(manifest->sha256));
         return false;
     }
@@ -937,7 +864,7 @@ static bool ota_backup_manifest_matches_current(const OtaManifest &current,
 
 static bool fetch_backup_manifest_for_install(const OtaManifest &current, OtaManifest *backup)
 {
-    if (!backup || current.version[0] == '\0' || !valid_sha256_string(current.sha256)) {
+    if (!backup || current.version[0] == '\0' || !ota_valid_sha256_string(current.sha256)) {
         return false;
     }
     OtaManifest candidate;
@@ -959,7 +886,7 @@ static bool fetch_backup_manifest_for_install(const OtaManifest &current, OtaMan
 
 static bool download_and_apply_ota(const OtaManifest &manifest)
 {
-    if (manifest.url[0] == '\0' || !valid_sha256_string(manifest.sha256)) {
+    if (manifest.url[0] == '\0' || !ota_valid_sha256_string(manifest.sha256)) {
         ESP_LOGW(TAG, "%s", kOtaManifestInvalidForInstallLog);
         ota_set_failed_status(kOtaStatusDownloadFailed);
         return false;
@@ -1011,7 +938,13 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
             ota_set_failed_status(kOtaStatusDownloadFailed);
             return false;
         }
-        esp_http_client_set_header(client, "Accept", "application/octet-stream,*/*");
+        err = esp_http_client_set_header(client, "Accept", "application/octet-stream,*/*");
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, OTA_HTTP_HEADER_FAILED_FORMAT, esp_err_to_name(err));
+            cleanup_ota_http_client(&client);
+            ota_set_failed_status(kOtaStatusDownloadFailed);
+            return false;
+        }
         err = esp_http_client_open(client, 0);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, OTA_HTTP_OPEN_FAILED_FORMAT, esp_err_to_name(err));
@@ -1154,7 +1087,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         }
     }
 
-    uint8_t hash[kSha256ByteCount];
+    uint8_t hash[kOtaSha256ByteCount];
     wdt.reset();
     mbedtls_sha256_finish(&sha_ctx, hash);
     mbedtls_sha256_free(&sha_ctx);
@@ -1168,7 +1101,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
     }
 
     char actual_sha[kOtaSha256Len] = {};
-    sha256_to_hex(hash, actual_sha, sizeof(actual_sha));
+    ota_sha256_to_hex(hash, actual_sha, sizeof(actual_sha));
     ota_note_phase(4, total, 100);
     if (strcasecmp(actual_sha, manifest.sha256) != 0) {
         ESP_LOGW(TAG, OTA_SHA_MISMATCH_FORMAT, manifest.sha256, actual_sha);
@@ -1279,7 +1212,7 @@ void ota_task(void *)
                      ota_manifest_source_name_or_unknown(manifest_source),
                      manifest.version,
                      APP_VERSION);
-            if (compare_versions(manifest.version, APP_VERSION) <= 0) {
+            if (ota_compare_versions(manifest.version, APP_VERSION) <= 0) {
                 ota_set_status(kOtaNoUpdate, kOtaStatusAlreadyLatest, -1, kOtaFailureHoldMs);
                 finish_ota_wifi();
                 g_info_page_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(kOtaFailureHoldMs);

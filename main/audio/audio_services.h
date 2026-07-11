@@ -5,6 +5,10 @@
 void hourly_chime_task(void *arg);
 void setup_prompt_task(void *);
 bool start_chime_playback(int source_slot);
+bool play_chime_sound_blocking(int source_slot, bool (*stop_requested)());
+bool play_chime_sound_repeated_blocking(int source_slot,
+                                        int repeat_count,
+                                        bool (*stop_requested)());
 bool start_setup_prompt_playback();
 bool is_audio_playing();
 void park_unused_audio_peripherals();
@@ -19,6 +23,7 @@ void stop_xiaozhi_audio_session();
 void set_xiaozhi_audio_high_performance(bool enabled);
 int read_xiaozhi_microphone(void *buffer, size_t bytes);
 int write_xiaozhi_speaker(const int16_t *mono_samples, size_t sample_count, int sample_rate);
+void apply_xiaozhi_speaker_volume(int volume_percent);
 bool resume_xiaozhi_microphone_after_playback();
 bool play_xiaozhi_wake_feedback();
 void smooth_xiaozhi_speaker_segment_transition();

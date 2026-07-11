@@ -41,7 +41,9 @@ public:
     bool CodecPort_IsReady(void) const;
     bool CodecPort_PlayHourlyChime(void);
     bool CodecPort_PlayHourlyChimeSlot(int source_slot);
-    bool CodecPort_PlayChimeSound(int sound_index, int volume_percent);
+    bool CodecPort_PlayChimeSound(int sound_index,
+                                  int volume_percent,
+                                  bool (*stop_requested)() = nullptr);
     bool CodecPort_PlayWifiPrompt(void);
 
     void CodecPort_CreateMusicTask(void);

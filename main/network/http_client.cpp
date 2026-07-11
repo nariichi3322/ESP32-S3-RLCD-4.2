@@ -37,6 +37,7 @@ constexpr const char *kHttpDecodeInvalidArgLog = "decode http body invalid arg";
 constexpr const char *kHttpGetInvalidArgLog = "http get invalid arg";
 constexpr const char *kHttpBootBudgetExhaustedLog = "http get skipped: boot sync time budget exhausted";
 constexpr const char *kHttpClientInitFailedLog = "http client init failed";
+constexpr const char *kHttpTransactionMutexCreateFailedLog = "http transaction mutex create failed";
 constexpr const char *kHttpTransactionLockTimeoutLog = "http transaction deferred: TLS session is busy";
 SemaphoreHandle_t s_http_transaction_mutex = nullptr;
 constexpr bool gzip_flag_bits_valid()
@@ -86,6 +87,7 @@ static_assert(kUrlEncodedEscapedCharSize == 1 + 2 * kUrlEncodedPlainCharSize,
 #define HTTP_GET_FAILED_FORMAT "http get failed status=%d err=%s"
 #define HTTP_RESPONSE_TRUNCATED_FORMAT "http response may be truncated status=%d content_len=%lld buffer=%u"
 #define HTTP_GET_OK_FORMAT "http get ok status=%d len=%u gzip=%d"
+#define HTTP_SET_HEADER_FAILED_FORMAT "http set header failed name=%s err=%s"
 
 constexpr const char *const kHttpLogTexts[] = {
     HTTP_TEMP_BUFFER_ALLOC_FAILED_FORMAT,
@@ -98,6 +100,7 @@ constexpr const char *const kHttpLogTexts[] = {
     HTTP_GET_FAILED_FORMAT,
     HTTP_RESPONSE_TRUNCATED_FORMAT,
     HTTP_GET_OK_FORMAT,
+    HTTP_SET_HEADER_FAILED_FORMAT,
 };
 
 constexpr bool cstr_nonempty(const char *text)
@@ -149,6 +152,10 @@ static_assert(cstr_nonempty(kHttpDecodeInvalidArgLog), "HTTP decode invalid-argu
 static_assert(cstr_nonempty(kHttpGetInvalidArgLog), "HTTP get invalid-argument log must be non-empty");
 static_assert(cstr_nonempty(kHttpBootBudgetExhaustedLog), "HTTP boot-budget log must be non-empty");
 static_assert(cstr_nonempty(kHttpClientInitFailedLog), "HTTP client init-failed log must be non-empty");
+static_assert(cstr_nonempty(kHttpTransactionMutexCreateFailedLog),
+              "HTTP transaction mutex creation log must be non-empty");
+static_assert(cstr_nonempty(kHttpTransactionLockTimeoutLog),
+              "HTTP transaction lock timeout log must be non-empty");
 static_assert(array_count(kHttpLogTexts) > 0,
               "HTTP log format guard must cover HTTP log formats");
 static_assert(cstr_array_nonempty(kHttpLogTexts), "HTTP log format texts must be non-empty");
@@ -356,6 +363,35 @@ private:
     uint8_t *data_;
     size_t size_;
 };
+
+esp_err_t set_http_header_checked(esp_http_client_handle_t client,
+                                  const char *name,
+                                  const char *value)
+{
+    if (!client || !cstr_nonempty(name) || !value) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    esp_err_t err = esp_http_client_set_header(client, name, value);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, HTTP_SET_HEADER_FAILED_FORMAT, name, esp_err_to_name(err));
+    }
+    return err;
+}
+
+esp_err_t configure_http_request_headers(esp_http_client_handle_t client,
+                                         const char *api_key)
+{
+    esp_err_t err = set_http_header_checked(client, kHttpAcceptHeaderName, kHttpAcceptHeader);
+    if (err == ESP_OK) {
+        err = set_http_header_checked(client,
+                                      kHttpAcceptEncodingHeaderName,
+                                      kHttpAcceptEncodingHeader);
+    }
+    if (err == ESP_OK && cstr_nonempty(api_key)) {
+        err = set_http_header_checked(client, kQweatherApiKeyHeader, api_key);
+    }
+    return err;
+}
 } // namespace
 
 esp_err_t http_event_handler(esp_http_client_event_t *evt)
@@ -469,7 +505,7 @@ bool init_network_http_transaction_lock()
     }
     s_http_transaction_mutex = xSemaphoreCreateMutex();
     if (!s_http_transaction_mutex) {
-        ESP_LOGE(TAG, "http transaction mutex create failed");
+        ESP_LOGE(TAG, "%s", kHttpTransactionMutexCreateFailedLog);
         return false;
     }
     return true;
@@ -523,10 +559,9 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
             ESP_LOGW(TAG, "%s", kHttpClientInitFailedLog);
             return ESP_FAIL;
         }
-        esp_http_client_set_header(client.get(), kHttpAcceptHeaderName, kHttpAcceptHeader);
-        esp_http_client_set_header(client.get(), kHttpAcceptEncodingHeaderName, kHttpAcceptEncodingHeader);
-        if (api_key && api_key[0] != '\0') {
-            esp_http_client_set_header(client.get(), kQweatherApiKeyHeader, api_key);
+        esp_err_t header_err = configure_http_request_headers(client.get(), api_key);
+        if (header_err != ESP_OK) {
+            return header_err;
         }
         err = esp_http_client_perform(client.get());
         status = esp_http_client_get_status_code(client.get());

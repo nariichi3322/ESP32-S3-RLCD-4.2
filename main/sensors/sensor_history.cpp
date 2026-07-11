@@ -10,8 +10,11 @@
 #define HOURLY_SLOT_KEY_TRUNCATED_LOG_FORMAT "hourly sensor slot key truncated index=%d"
 #define SENSOR_HISTORY_NVS_OPEN_FAILED_LOG_FORMAT "open sensor history nvs failed: %s"
 #define HOURLY_SLOT_READ_FAILED_LOG_FORMAT "read hourly sensor slot %s failed: %s"
+#define HOURLY_SLOT_INVALID_LOG_FORMAT "hourly sensor slot %s blob invalid"
 #define HOURLY_META_READ_FAILED_LOG_FORMAT "read hourly sensor meta failed: %s"
+constexpr const char *kHourlyMetaInvalidLog = "hourly sensor meta blob invalid";
 #define LEGACY_HOURLY_HISTORY_READ_FAILED_LOG_FORMAT "read legacy hourly sensor history failed: %s"
+constexpr const char *kLegacyHourlyHistoryInvalidLog = "legacy hourly sensor history blob invalid";
 #define HOURLY_SLOT_INDEX_INVALID_LOG_FORMAT "hourly sensor slot index invalid: %d"
 #define SENSOR_NVS_OPEN_FAILED_LOG_FORMAT "open sensor nvs failed: %s"
 #define HOURLY_SLOT_SAVE_FAILED_LOG_FORMAT "save hourly sensor slot failed: %s"
@@ -75,8 +78,11 @@ constexpr const char *kSensorHistoryTexts[] = {
     HOURLY_SLOT_KEY_TRUNCATED_LOG_FORMAT,
     SENSOR_HISTORY_NVS_OPEN_FAILED_LOG_FORMAT,
     HOURLY_SLOT_READ_FAILED_LOG_FORMAT,
+    HOURLY_SLOT_INVALID_LOG_FORMAT,
     HOURLY_META_READ_FAILED_LOG_FORMAT,
+    kHourlyMetaInvalidLog,
     LEGACY_HOURLY_HISTORY_READ_FAILED_LOG_FORMAT,
+    kLegacyHourlyHistoryInvalidLog,
     HOURLY_SLOT_INDEX_INVALID_LOG_FORMAT,
     SENSOR_NVS_OPEN_FAILED_LOG_FORMAT,
     HOURLY_SLOT_SAVE_FAILED_LOG_FORMAT,
@@ -329,10 +335,55 @@ static bool load_hourly_sensor_slot(nvs_handle_t nvs, int index, int64_t *newest
         store_loaded_hourly_sample(index, sample, newest_slot);
         return true;
     }
+    if (err == ESP_OK) {
+        ESP_LOGW(TAG, HOURLY_SLOT_INVALID_LOG_FORMAT, key);
+        return false;
+    }
     if (should_log_nvs_read_error(err)) {
         ESP_LOGW(TAG, HOURLY_SLOT_READ_FAILED_LOG_FORMAT, key, esp_err_to_name(err));
     }
     return false;
+}
+
+inline bool load_current_hourly_sensor_slots(nvs_handle_t nvs,
+                                             const HourlySensorHistoryMeta &meta)
+{
+    int loaded = 0;
+    int64_t newest_slot = 0;
+    for (int i = 0; i < kHourlyHistoryCount; ++i) {
+        if (load_hourly_sensor_slot(nvs, i, &newest_slot)) {
+            ++loaded;
+        }
+    }
+    if (loaded <= 0) {
+        return false;
+    }
+    g_last_hourly_saved_at = newest_slot;
+    if (meta.last_saved_at > g_last_hourly_saved_at) {
+        g_last_hourly_saved_at = meta.last_saved_at;
+    }
+    return true;
+}
+
+inline bool read_legacy_hourly_sensor_history(nvs_handle_t nvs,
+                                              LegacyHourlySensorHistoryBlob *legacy)
+{
+    if (!legacy) {
+        return false;
+    }
+    size_t legacy_len = sizeof(*legacy);
+    esp_err_t err = nvs_get_blob(nvs, kLegacyHourlyHistoryKey, legacy, &legacy_len);
+    if (err != ESP_OK) {
+        if (should_log_nvs_read_error(err)) {
+            ESP_LOGW(TAG, LEGACY_HOURLY_HISTORY_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
+        }
+        return false;
+    }
+    if (!is_legacy_hourly_history_valid(*legacy, legacy_len)) {
+        ESP_LOGW(TAG, "%s", kLegacyHourlyHistoryInvalidLog);
+        return false;
+    }
+    return true;
 }
 
 static esp_err_t save_hourly_sensor_meta_and_slot(nvs_handle_t nvs,
@@ -431,35 +482,22 @@ void load_hourly_sensor_history()
     HourlySensorHistoryMeta meta = {};
     size_t meta_len = sizeof(meta);
     err = nvs_get_blob(nvs, kHourlyHistoryMetaKey, &meta, &meta_len);
-    if (err == ESP_OK && is_hourly_meta_valid(meta, meta_len)) {
-        int loaded = 0;
-        int64_t newest_slot = 0;
-        for (int i = 0; i < kHourlyHistoryCount; ++i) {
-            if (load_hourly_sensor_slot(nvs, i, &newest_slot)) {
-                ++loaded;
-            }
-        }
-        if (loaded > 0) {
-            g_last_hourly_saved_at = newest_slot;
-            if (meta.last_saved_at > g_last_hourly_saved_at) {
-                g_last_hourly_saved_at = meta.last_saved_at;
-            }
-            nvs_close(nvs);
-            ++g_hourly_history_version;
-            return;
-        }
+    bool meta_valid = err == ESP_OK && is_hourly_meta_valid(meta, meta_len);
+    if (meta_valid && load_current_hourly_sensor_slots(nvs, meta)) {
+        nvs_close(nvs);
+        ++g_hourly_history_version;
+        return;
+    }
+    if (err == ESP_OK && !meta_valid) {
+        ESP_LOGW(TAG, "%s", kHourlyMetaInvalidLog);
     } else if (should_log_nvs_read_error(err)) {
         ESP_LOGW(TAG, HOURLY_META_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
     }
 
     LegacyHourlySensorHistoryBlob legacy = {};
-    size_t legacy_len = sizeof(legacy);
-    err = nvs_get_blob(nvs, kLegacyHourlyHistoryKey, &legacy, &legacy_len);
+    bool legacy_loaded = read_legacy_hourly_sensor_history(nvs, &legacy);
     nvs_close(nvs);
-    if (err != ESP_OK || !is_legacy_hourly_history_valid(legacy, legacy_len)) {
-        if (should_log_nvs_read_error(err)) {
-            ESP_LOGW(TAG, LEGACY_HOURLY_HISTORY_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
-        }
+    if (!legacy_loaded) {
         return;
     }
     store_legacy_hourly_history_samples(legacy);

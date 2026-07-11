@@ -46,6 +46,45 @@ srmodel_list_t *s_models = nullptr;
 const esp_afe_sr_iface_t *s_afe_iface = nullptr;
 esp_afe_sr_data_t *s_afe_data = nullptr;
 StreamBufferHandle_t s_processed_stream = nullptr;
+uint8_t *s_processed_stream_storage = nullptr;
+StaticStreamBuffer_t *s_processed_stream_control = nullptr;
+
+bool ensure_processed_stream()
+{
+    if (s_processed_stream) {
+        xStreamBufferReset(s_processed_stream);
+        return true;
+    }
+    s_processed_stream_storage = static_cast<uint8_t *>(heap_caps_calloc(
+        1, kProcessedStreamBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    s_processed_stream_control = static_cast<StaticStreamBuffer_t *>(heap_caps_calloc(
+        1, sizeof(StaticStreamBuffer_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    if (s_processed_stream_storage && s_processed_stream_control) {
+        s_processed_stream = xStreamBufferCreateStatic(kProcessedStreamBytes,
+                                                        1,
+                                                        s_processed_stream_storage,
+                                                        s_processed_stream_control);
+    }
+    if (!s_processed_stream) {
+        ESP_LOGW(kTag,
+                 "AEC output stream allocation failed: storage=%p control=%p "
+                 "internal_largest=%u psram_largest=%u",
+                 s_processed_stream_storage,
+                 s_processed_stream_control,
+                 static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+                 static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)));
+        free(s_processed_stream_storage);
+        free(s_processed_stream_control);
+        s_processed_stream_storage = nullptr;
+        s_processed_stream_control = nullptr;
+        return false;
+    }
+    ESP_LOGI(kTag,
+             "AEC output stream ready: psram=%u control_internal=%u",
+             static_cast<unsigned>(kProcessedStreamBytes),
+             static_cast<unsigned>(sizeof(StaticStreamBuffer_t)));
+    return true;
+}
 
 static_assert(kTaskStopRetries > 0, "voice task stop retries must be positive");
 static_assert(kTaskStopWaitMs > 0, "voice task stop wait must be positive");
@@ -213,6 +252,8 @@ void feed_task(void *)
 void detect_task(void *)
 {
     TickType_t next_fetch_warning = 0;
+    TickType_t next_stream_full_warning = 0;
+    uint32_t dropped_stream_frames = 0;
     while (s_running.load()) {
         afe_fetch_result_t *result = s_afe_iface->fetch_with_delay(s_afe_data, kFetchWaitTicks);
         if (!result) {
@@ -235,9 +276,18 @@ void detect_task(void *)
                                             result->data_size,
                                             0);
             if (sent != result->data_size) {
-                ESP_LOGW(kTag, "AEC output stream full: sent=%u expected=%u",
-                         static_cast<unsigned>(sent),
-                         static_cast<unsigned>(result->data_size));
+                ++dropped_stream_frames;
+                TickType_t now = xTaskGetTickCount();
+                if (now >= next_stream_full_warning) {
+                    ESP_LOGW(kTag,
+                             "AEC output stream full: dropped=%u sent=%u expected=%u available=%u",
+                             static_cast<unsigned>(dropped_stream_frames),
+                             static_cast<unsigned>(sent),
+                             static_cast<unsigned>(result->data_size),
+                             static_cast<unsigned>(xStreamBufferBytesAvailable(s_processed_stream)));
+                    dropped_stream_frames = 0;
+                    next_stream_full_warning = now + pdMS_TO_TICKS(1000);
+                }
             }
         }
         if (result->wakeup_state == WAKENET_DETECTED) {
@@ -303,17 +353,11 @@ bool xiaozhi_voice_start()
     }
     s_detected.store(false);
     s_streaming.store(false);
-    if (!s_processed_stream) {
-        s_processed_stream = xStreamBufferCreate(kProcessedStreamBytes, 1);
-    }
-    if (!s_processed_stream) {
-        ESP_LOGW(kTag, "AEC output stream allocation failed");
+    if (!ensure_processed_stream()) {
         return false;
     }
-    xStreamBufferReset(s_processed_stream);
     if (!is_audio_playing() && !start_xiaozhi_audio_session()) {
-        vStreamBufferDelete(s_processed_stream);
-        s_processed_stream = nullptr;
+        xStreamBufferReset(s_processed_stream);
         return false;
     }
     // A completed detection leaves the model allocated until the AI task has
@@ -321,15 +365,13 @@ bool xiaozhi_voice_start()
     release_model();
     if (!create_model()) {
         stop_xiaozhi_audio_session();
-        vStreamBufferDelete(s_processed_stream);
-        s_processed_stream = nullptr;
+        xStreamBufferReset(s_processed_stream);
         return false;
     }
     if (!allocate_task_storage()) {
         release_model();
         stop_xiaozhi_audio_session();
-        vStreamBufferDelete(s_processed_stream);
-        s_processed_stream = nullptr;
+        xStreamBufferReset(s_processed_stream);
         return false;
     }
     s_running.store(true);
@@ -369,8 +411,7 @@ bool xiaozhi_voice_start()
         release_task_storage();
         release_model();
         stop_xiaozhi_audio_session();
-        vStreamBufferDelete(s_processed_stream);
-        s_processed_stream = nullptr;
+        xStreamBufferReset(s_processed_stream);
         return false;
     }
     return true;
@@ -385,8 +426,7 @@ void xiaozhi_voice_stop()
     release_task_storage();
     release_model();
     if (s_processed_stream) {
-        vStreamBufferDelete(s_processed_stream);
-        s_processed_stream = nullptr;
+        xStreamBufferReset(s_processed_stream);
     }
     stop_xiaozhi_audio_session();
 }
@@ -418,6 +458,18 @@ void xiaozhi_voice_set_streaming(bool enabled)
         s_afe_iface->enable_wakenet(s_afe_data);
     }
     ESP_LOGI(kTag, "Xiaozhi AEC stream %s", enabled ? "realtime" : "wake-word");
+}
+
+void xiaozhi_voice_pause_streaming()
+{
+    if (!s_running.load() || !s_afe_iface || !s_afe_data || !s_processed_stream) {
+        return;
+    }
+    s_streaming.store(false);
+    xStreamBufferReset(s_processed_stream);
+    s_detected.store(false);
+    s_afe_iface->disable_wakenet(s_afe_data);
+    ESP_LOGI(kTag, "Xiaozhi AEC stream paused for blocking operation");
 }
 
 bool xiaozhi_voice_read_processed(int16_t *mono_samples,

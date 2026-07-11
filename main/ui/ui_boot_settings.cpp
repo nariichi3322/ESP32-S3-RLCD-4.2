@@ -1,17 +1,18 @@
-// 构建设置页、配网状态页面和电池图标。
+// 构建并刷新设置页及其菜单交互。
 #include "ui_views.h"
+
+#include "alarm_services.h"
 
 #include "audio_services.h"
 #include "network_services.h"
 #include "ota_services.h"
 #include "sensor_services.h"
+#include "ui_settings_ota_panel.h"
 #include "ui_text_format.h"
 
 #include <stdarg.h>
 
 namespace {
-TickType_t s_settings_primary_exit_block_until = 0;
-
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
@@ -32,46 +33,11 @@ int collect_visible_work_page_order_indices(int *indices, size_t capacity)
     return count;
 }
 
-constexpr uint32_t kSettingsPrimaryExitBlockMs = 800;
-constexpr int kSettingsOtaBarFrameX = 164;
-constexpr int kSettingsOtaBarFrameY = 203;
-constexpr int kSettingsOtaBarFrameW = 200;
-constexpr int kSettingsOtaBarFrameH = 9;
-constexpr int kSettingsOtaBarInset = 2;
-constexpr int kSettingsOtaBarFillW = kSettingsOtaBarFrameW - kSettingsOtaBarInset * 2;
-constexpr int kSettingsOtaBarFillH = kSettingsOtaBarFrameH - kSettingsOtaBarInset * 2;
-constexpr int kSettingsOtaProgressMax = 100;
-constexpr size_t kSettingsOtaLineTextSize = 96;
-constexpr size_t kSettingsOtaHintTextSize = 48;
 #define SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT "settings primary label create failed index=%d"
 #define SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT "settings secondary label create failed index=%d"
 #define SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT "settings secondary text format failed index=%d"
 #define SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT "settings switch dot create failed index=%d"
 #define SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT "settings switch text create failed index=%d"
-#define SETTINGS_OTA_BAR_FRAME_CREATE_FAILED_LOG "settings ota bar frame create failed"
-#define SETTINGS_OTA_BAR_FILL_CREATE_FAILED_LOG "settings ota bar fill create failed"
-constexpr const char *kSettingsOtaUpdatingWithSpeedFormat = "OTA %d%%  %d KB/s";
-constexpr const char *kSettingsOtaUpdatingFormat = "OTA %d%%";
-constexpr const char *kSettingsOtaCurrentVersionFormat = "当前版本 %s";
-constexpr const char *kSettingsOtaLinePlaceholder = "OTA --";
-constexpr const char *kSettingsOtaHintDownloading = "下载中，请等待";
-constexpr const char *kSettingsOtaHintInstall = "BOOT安装更新";
-constexpr const char *kSettingsOtaHintChecking = "正在检查，请等待";
-constexpr const char *kSettingsOtaHintRebooting = "即将重启";
-constexpr const char *kSettingsOtaHintRetry = "BOOT重新检查";
-constexpr const char *kSettingsOtaHintCheck = "BOOT开始检查";
-constexpr const char *kSettingsOtaHintTexts[] = {
-    kSettingsOtaUpdatingWithSpeedFormat,
-    kSettingsOtaUpdatingFormat,
-    kSettingsOtaCurrentVersionFormat,
-    kSettingsOtaLinePlaceholder,
-    kSettingsOtaHintDownloading,
-    kSettingsOtaHintInstall,
-    kSettingsOtaHintChecking,
-    kSettingsOtaHintRebooting,
-    kSettingsOtaHintRetry,
-    kSettingsOtaHintCheck,
-};
 
 constexpr bool cstr_nonempty(const char *text)
 {
@@ -87,26 +53,6 @@ constexpr bool cstr_array_nonempty(const T (&items)[N])
         }
     }
     return true;
-}
-
-constexpr bool settings_ota_hint_texts_nonempty()
-{
-    return cstr_array_nonempty(kSettingsOtaHintTexts);
-}
-
-int settings_ota_progress_fill_width(int progress)
-{
-    int clamped = progress;
-    if (clamped < 0) {
-        clamped = 0;
-    } else if (clamped > kSettingsOtaProgressMax) {
-        clamped = kSettingsOtaProgressMax;
-    }
-    int fill_w = (kSettingsOtaBarFillW * clamped) / kSettingsOtaProgressMax;
-    if (fill_w < 1) {
-        fill_w = 1;
-    }
-    return fill_w;
 }
 
 constexpr int kSettingsPrimaryX = 12;
@@ -161,6 +107,9 @@ constexpr const char *kSettingsHourlyText = "整点提醒 7:00 - 22:00";
 constexpr const char *kSettingsAllDayText = "全天提醒 0:00 - 24:00";
 constexpr const char *kSettingsPageSwitchText = "页面开关";
 constexpr const char *kSettingsPageOrderText = "页面顺序";
+constexpr const char *kSettingsAlarmOffText = "闹钟 --:--";
+constexpr const char *kSettingsAlarmOnFormat = "闹钟 %02d:%02d";
+constexpr const char *kSettingsXiaozhiAutoReturnText = "小智AI自动返回";
 constexpr const char *kSettingsPageOrderEntryFormat = "%d %s";
 constexpr const char *kSettingsOfflineFormat = "离线模式 %s";
 constexpr const char *kSettingsOfflineOnText = "开";
@@ -170,9 +119,6 @@ constexpr const char *kSettingsFactoryResetConfirmText = "确认恢复";
 constexpr const char *kSettingsFactoryResetText = "恢复出厂设置";
 constexpr const char *kSettingsSystemInfoText = "关于本机";
 constexpr const char *kSettingsCheckUpdateText = "检查更新";
-constexpr uint32_t kSettingsOrderExitFeedbackMs = 2500;
-constexpr const char *kSettingsOrderExitSavedFeedback = "页面顺序已保存";
-constexpr const char *kSettingsOrderExitSaveFailedFeedback = "保存失败";
 constexpr const char *kSettingsSecondaryTexts[] = {
     kSettingsNetworkSyncTimeText,
     kSettingsNetworkSyncWeatherText,
@@ -185,6 +131,9 @@ constexpr const char *kSettingsSecondaryTexts[] = {
     kSettingsAllDayText,
     kSettingsPageSwitchText,
     kSettingsPageOrderText,
+    kSettingsAlarmOffText,
+    kSettingsAlarmOnFormat,
+    kSettingsXiaozhiAutoReturnText,
     kSettingsPageOrderEntryFormat,
     kSettingsOfflineFormat,
     kSettingsOfflineOnText,
@@ -194,8 +143,6 @@ constexpr const char *kSettingsSecondaryTexts[] = {
     kSettingsFactoryResetText,
     kSettingsSystemInfoText,
     kSettingsCheckUpdateText,
-    kSettingsOrderExitSavedFeedback,
-    kSettingsOrderExitSaveFailedFeedback,
 };
 #define SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT "settings secondary text index out of range: %d"
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
@@ -211,8 +158,6 @@ constexpr const char *kBootSettingsLogTexts[] = {
     SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT,
     SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT,
     SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT,
-    SETTINGS_OTA_BAR_FRAME_CREATE_FAILED_LOG,
-    SETTINGS_OTA_BAR_FILL_CREATE_FAILED_LOG,
     SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT,
     SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT,
 };
@@ -280,22 +225,13 @@ static_assert(array_count(g_settings_switch_dots) == kSettingsSecondaryMaxCount,
               "settings switch dot storage must match secondary slot count");
 static_assert(array_count(g_settings_switch_texts) == kSettingsSecondaryMaxCount,
               "settings switch text storage must match secondary slot count");
-static_assert(array_count(kSettingsOtaHintTexts) > 0, "settings OTA hint text registry must not be empty");
 static_assert(array_count(kSettingsSecondaryTexts) > 0, "settings secondary text registry must not be empty");
 static_assert(array_count(kSettingsFixedTexts) > 0, "settings fixed text registry must not be empty");
 static_assert(array_count(kBootSettingsLogTexts) > 0, "boot/settings log registry must not be empty");
 static_assert(settings_primary_items_nonempty(), "settings primary menu texts must be non-empty");
-static_assert(settings_ota_hint_texts_nonempty(), "settings OTA status and hint texts must be non-empty");
 static_assert(settings_secondary_texts_nonempty(), "settings secondary menu texts must be non-empty");
 static_assert(settings_fixed_texts_nonempty(), "settings fixed texts must be non-empty");
 static_assert(boot_settings_log_texts_nonempty(), "boot/settings log texts must be non-empty");
-static_assert(kSettingsPrimaryExitBlockMs > 0, "settings primary exit block duration must be positive");
-static_assert(kSettingsOtaLineTextSize > 1 && kSettingsOtaHintTextSize > 1,
-              "settings OTA text buffers must fit text and NUL");
-static_assert(kSettingsOtaBarInset >= 0, "settings OTA progress inset must be non-negative");
-static_assert(kSettingsOtaBarFillW > 0, "settings OTA progress fill width must be positive");
-static_assert(kSettingsOtaBarFillH > 0, "settings OTA progress fill height must be positive");
-static_assert(kSettingsOtaProgressMax > 0, "settings OTA progress maximum must be positive");
 static_assert(kSettingsSecondaryTextSize > 1, "settings secondary text buffer must fit text and NUL");
 static_assert(kSettingsGridColumns > 0, "settings grid must have columns");
 static_assert(kSettingsGridColW > 0 && kSettingsSecondaryH > 0,
@@ -388,123 +324,6 @@ static void style_settings_switch_dot(lv_obj_t *dot, bool on, bool selected)
     lv_obj_set_style_pad_all(dot, 0, LV_PART_MAIN);
 }
 
-int settings_secondary_count(int primary)
-{
-    switch (primary) {
-    case kSettingsPrimaryNetwork:
-        return kNetworkSettingsSecondaryCount;
-    case kSettingsPrimarySound:
-        return kSoundSettingsSecondaryCount;
-    case kSettingsPrimaryDisplay:
-        return kDisplaySettingsSecondaryCount;
-    case kSettingsPrimarySystem:
-        return kSystemSettingsSecondaryCount;
-    default:
-        return 0;
-    }
-}
-
-void reset_settings_confirmation()
-{
-    g_factory_reset_confirm_pending = false;
-    g_offline_disable_confirm_pending = false;
-    g_weather_city_clear_confirm_pending = false;
-}
-
-static int clamp_settings_primary(int primary)
-{
-    if (primary < 0 || primary >= kSettingsPrimaryCount) {
-        return kSettingsPrimaryNetwork;
-    }
-    return primary;
-}
-
-static int clamp_settings_secondary(int primary, int selected)
-{
-    int count = settings_secondary_count(primary);
-    if (count <= 0) {
-        return 0;
-    }
-    if (selected < 0 || selected >= count) {
-        return 0;
-    }
-    return selected;
-}
-
-void handle_settings_key_short()
-{
-    g_settings_last_activity_tick = xTaskGetTickCount();
-    int primary = clamp_settings_primary(g_settings_primary_selection);
-    if (g_settings_page_order_mode) {
-        g_settings_page_order_selection = next_enabled_work_page_order_index(g_settings_page_order_selection);
-    } else if (g_settings_page_toggle_mode) {
-        g_settings_selection = (g_settings_selection + 1) % kWorkPageCount;
-    } else if (g_settings_focus_secondary) {
-        int count = settings_secondary_count(primary);
-        if (count > 0) {
-            g_settings_selection = (clamp_settings_secondary(primary, g_settings_selection) + 1) % count;
-        }
-    } else {
-        g_settings_primary_selection = (primary + 1) % kSettingsPrimaryCount;
-        g_settings_selection = 0;
-    }
-    reset_settings_confirmation();
-    g_settings_feedback[0] = '\0';
-    notify_ui_task();
-}
-
-void handle_settings_key_long()
-{
-    g_settings_last_activity_tick = xTaskGetTickCount();
-    if (g_settings_page_order_mode) {
-        g_settings_page_order_mode = false;
-        g_settings_focus_secondary = true;
-        g_settings_primary_selection = kSettingsPrimaryDisplay;
-        g_settings_selection = kDisplaySettingsOrderItem;
-        if (save_work_page_order()) {
-            g_active_work_page = first_enabled_work_page();
-            set_settings_feedback(kSettingsOrderExitSavedFeedback, kSettingsOrderExitFeedbackMs);
-        } else {
-            set_settings_feedback(kSettingsOrderExitSaveFailedFeedback, kSettingsOrderExitFeedbackMs);
-        }
-        reset_settings_confirmation();
-        notify_ui_task();
-        return;
-    } else if (g_settings_page_toggle_mode) {
-        g_settings_page_toggle_mode = false;
-        g_settings_focus_secondary = true;
-        g_settings_primary_selection = kSettingsPrimaryDisplay;
-        g_settings_selection = kDisplaySettingsPageSwitchItem;
-        reset_settings_confirmation();
-        g_settings_feedback[0] = '\0';
-        notify_ui_task();
-        return;
-    } else if (g_settings_focus_secondary) {
-        g_settings_focus_secondary = false;
-        g_settings_selection = 0;
-        s_settings_primary_exit_block_until = xTaskGetTickCount() + pdMS_TO_TICKS(kSettingsPrimaryExitBlockMs);
-    } else {
-        TickType_t now = xTaskGetTickCount();
-        if (s_settings_primary_exit_block_until != 0 && now < s_settings_primary_exit_block_until) {
-            g_settings_last_activity_tick = now;
-            notify_ui_task();
-            return;
-        }
-        s_settings_primary_exit_block_until = 0;
-        g_settings_requested = false;
-        g_settings_page_toggle_mode = false;
-        g_settings_page_order_mode = false;
-        g_settings_focus_secondary = false;
-        reset_settings_confirmation();
-        g_settings_feedback[0] = '\0';
-        notify_ui_task();
-        return;
-    }
-    reset_settings_confirmation();
-    g_settings_feedback[0] = '\0';
-    notify_ui_task();
-}
-
 void build_settings_page()
 {
     if (g_settings_root) {
@@ -571,36 +390,7 @@ void build_settings_page()
             ESP_LOGW(TAG, SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT, i);
         }
     }
-    g_settings_ota_status_label = make_label(screen, kSettingsSecondaryX, 176, kSettingsSecondaryW, 22, "");
-    warn_if_center_align_failed(g_settings_ota_status_label, "settings ota status label create failed");
-    g_settings_ota_bar_frame = lv_obj_create(screen);
-    if (g_settings_ota_bar_frame) {
-        lv_obj_clear_flag(g_settings_ota_bar_frame, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_settings_ota_bar_frame, kSettingsOtaBarFrameX, kSettingsOtaBarFrameY);
-        lv_obj_set_size(g_settings_ota_bar_frame, kSettingsOtaBarFrameW, kSettingsOtaBarFrameH);
-        lv_obj_set_style_bg_color(g_settings_ota_bar_frame, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(g_settings_ota_bar_frame, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_color(g_settings_ota_bar_frame, lv_color_black(), LV_PART_MAIN);
-        lv_obj_set_style_border_width(g_settings_ota_bar_frame, 1, LV_PART_MAIN);
-        lv_obj_set_style_radius(g_settings_ota_bar_frame, 3, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(g_settings_ota_bar_frame, 0, LV_PART_MAIN);
-        lv_obj_add_flag(g_settings_ota_bar_frame, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        ESP_LOGW(TAG, SETTINGS_OTA_BAR_FRAME_CREATE_FAILED_LOG);
-    }
-    g_settings_ota_bar_fill = make_black_bar(screen,
-                                             kSettingsOtaBarFrameX + kSettingsOtaBarInset,
-                                             kSettingsOtaBarFrameY + kSettingsOtaBarInset,
-                                             1,
-                                             kSettingsOtaBarFillH);
-    if (g_settings_ota_bar_fill) {
-        lv_obj_set_style_radius(g_settings_ota_bar_fill, 2, LV_PART_MAIN);
-        lv_obj_add_flag(g_settings_ota_bar_fill, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        ESP_LOGW(TAG, SETTINGS_OTA_BAR_FILL_CREATE_FAILED_LOG);
-    }
-    g_settings_ota_hint_label = make_label(screen, kSettingsSecondaryX, 218, kSettingsSecondaryW, 20, "");
-    warn_if_center_align_failed(g_settings_ota_hint_label, "settings ota hint label create failed");
+    build_settings_ota_panel(screen, kSettingsSecondaryX, kSettingsSecondaryW);
 
     g_settings_feedback_label = make_label(screen, 24, 246, 352, 20, "");
     warn_if_center_align_failed(g_settings_feedback_label, "settings feedback label create failed");
@@ -665,6 +455,20 @@ bool update_settings_page()
     } else if (primary == kSettingsPrimaryDisplay) {
         set_secondary_text(secondary_items, kDisplaySettingsPageSwitchItem, kSettingsPageSwitchText);
         set_secondary_text(secondary_items, kDisplaySettingsOrderItem, kSettingsPageOrderText);
+        AlarmSnapshot alarm = {};
+        alarm_get_snapshot(&alarm);
+        if (alarm.enabled) {
+            format_secondary_text(secondary_items,
+                                  kDisplaySettingsAlarmItem,
+                                  kSettingsAlarmOnFormat,
+                                  alarm.hour,
+                                  alarm.minute);
+        } else {
+            set_secondary_text(secondary_items, kDisplaySettingsAlarmItem, kSettingsAlarmOffText);
+        }
+        set_secondary_text(secondary_items,
+                           kDisplaySettingsXiaozhiAutoReturnItem,
+                           kSettingsXiaozhiAutoReturnText);
     } else {
         format_secondary_text(secondary_items,
                               kSystemSettingsOfflineItem,
@@ -824,6 +628,16 @@ bool update_settings_page()
                    g_settings_page_toggle_mode) {
             dot_visible = true;
             dot_on = is_work_page_enabled(i);
+        } else if (visible &&
+                   primary == kSettingsPrimaryDisplay &&
+                   !g_settings_page_toggle_mode &&
+                   !g_settings_page_order_mode &&
+                   (i == kDisplaySettingsAlarmItem ||
+                    i == kDisplaySettingsXiaozhiAutoReturnItem)) {
+            dot_visible = true;
+            dot_on = i == kDisplaySettingsAlarmItem
+                         ? alarm_is_enabled()
+                         : g_xiaozhi_auto_return_enabled;
         }
         if (g_settings_switch_dots[i]) {
             set_obj_visible(g_settings_switch_dots[i], dot_visible);
@@ -843,64 +657,7 @@ bool update_settings_page()
         }
     }
     bool ota_panel_visible = primary == kSettingsPrimarySystem && selected == kSystemSettingsOtaItem;
-    if (g_settings_ota_status_label) {
-        char ota_line[kSettingsOtaLineTextSize] = "";
-        char ota_hint[kSettingsOtaHintTextSize] = "";
-        bool progress_visible = false;
-        int progress = g_ota_progress;
-        if (ota_panel_visible) {
-            if (g_ota_state == kOtaUpdating && progress >= 0) {
-                progress_visible = true;
-                if (g_ota_speed_kbps > 0) {
-                    ui_text::format_or_fallback(ota_line,
-                                            sizeof(ota_line),
-                                            kSettingsOtaLinePlaceholder,
-                                            kSettingsOtaUpdatingWithSpeedFormat,
-                                            progress,
-                                            g_ota_speed_kbps);
-                } else {
-                    ui_text::format_or_fallback(ota_line,
-                                            sizeof(ota_line),
-                                            kSettingsOtaLinePlaceholder,
-                                            kSettingsOtaUpdatingFormat,
-                                            progress);
-                }
-                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintDownloading);
-            } else if (g_ota_state == kOtaAvailable) {
-                ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
-                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintInstall);
-            } else if (g_ota_state == kOtaChecking) {
-                ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
-                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintChecking);
-            } else if (g_ota_state == kOtaSucceeded) {
-                progress_visible = true;
-                progress = kSettingsOtaProgressMax;
-                ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
-                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintRebooting);
-            } else if (g_ota_state == kOtaFailed || g_ota_state == kOtaNoUpdate) {
-                ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
-                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintRetry);
-            } else {
-                ui_text::format_or_fallback(ota_line,
-                                        sizeof(ota_line),
-                                        kSettingsOtaLinePlaceholder,
-                                        kSettingsOtaCurrentVersionFormat,
-                                        APP_VERSION);
-                ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintCheck);
-            }
-        }
-        changed |= set_label_text_if_changed(g_settings_ota_status_label, ota_line);
-        if (g_settings_ota_hint_label) {
-            changed |= set_label_text_if_changed(g_settings_ota_hint_label, ota_hint);
-        }
-        if (g_settings_ota_bar_frame) {
-            set_obj_visible(g_settings_ota_bar_frame, ota_panel_visible && progress_visible);
-        }
-        if (g_settings_ota_bar_fill) {
-            lv_obj_set_width(g_settings_ota_bar_fill, settings_ota_progress_fill_width(progress));
-            set_obj_visible(g_settings_ota_bar_fill, ota_panel_visible && progress_visible);
-        }
-    }
+    changed |= update_settings_ota_panel(ota_panel_visible);
     if (g_settings_feedback_label) {
         TickType_t now = xTaskGetTickCount();
         if (g_settings_feedback[0] && now < g_settings_feedback_until_tick) {
@@ -911,41 +668,4 @@ bool update_settings_page()
         }
     }
     return changed;
-}
-
-void set_settings_feedback(const char *text, uint32_t duration_ms)
-{
-    ui_text::copy(g_settings_feedback, sizeof(g_settings_feedback), text);
-    TickType_t now = xTaskGetTickCount();
-    g_settings_feedback_until_tick = now + pdMS_TO_TICKS(duration_ms);
-    if (g_settings_requested) {
-        g_settings_last_activity_tick = now;
-    }
-    notify_ui_task();
-}
-
-bool is_settings_sync_busy()
-{
-    return g_settings_sync_op != kSettingsSyncNone || g_network_diag_state == kNetworkDiagRunning;
-}
-
-void begin_settings_sync(SettingsSyncOp op, const char *text)
-{
-    TickType_t now = xTaskGetTickCount();
-    g_settings_sync_op = op;
-    g_settings_sync_deadline_tick = now + pdMS_TO_TICKS(kSettingsManualSyncTimeoutMs);
-    g_settings_last_activity_tick = now;
-    set_settings_feedback(text, kSettingsManualSyncTimeoutMs);
-}
-
-void finish_settings_sync(SettingsSyncOp op, const char *text)
-{
-    if (g_settings_sync_op != op) {
-        return;
-    }
-    TickType_t now = xTaskGetTickCount();
-    g_settings_sync_op = kSettingsSyncNone;
-    g_settings_sync_deadline_tick = 0;
-    g_settings_last_activity_tick = now;
-    set_settings_feedback(text, 3500);
 }

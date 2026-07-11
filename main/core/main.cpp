@@ -1,5 +1,8 @@
 // 初始化硬件、系统服务和常驻任务，是固件应用入口。
 #include "app_state.h"
+#include "alarm_services.h"
+#include "pomodoro_services.h"
+#include "weather_city_mcp.h"
 #include "audio_services.h"
 #include "custom_assets.h"
 #include "input_tasks.h"
@@ -33,6 +36,8 @@ constexpr uint32_t kOtaTaskStack = 16384;
 constexpr uint32_t kHousekeepingTaskStack = 5120;
 constexpr uint32_t kUiTaskStack = 8192;
 constexpr uint32_t kButtonTaskStack = 3072;
+constexpr uint32_t kAlarmTaskStack = 4096;
+constexpr uint32_t kPomodoroTaskStack = 4096;
 constexpr uint32_t kBootSyncWaitMarginMs = 500;
 constexpr uint32_t kBootAnimStopWaitMs = 1500;
 constexpr uint32_t kSetupPromptStartDelayMs = 350;
@@ -50,6 +55,8 @@ constexpr const char *kOtaTaskName = "ota_task";
 constexpr const char *kHousekeepingTaskName = "housekeeping";
 constexpr const char *kUiTaskName = "ui_task";
 constexpr const char *kButtonTaskName = "button_task";
+constexpr const char *kAlarmTaskName = "alarm_task";
+constexpr const char *kPomodoroTaskName = "pomodoro_task";
 constexpr const char *kBootAnimTaskCreateFailed = "boot animation task create failed";
 constexpr const char *kBootConnectivityTaskCreateFailed = "boot connectivity task create failed";
 constexpr const char *kBootReadyStatus = "Ready";
@@ -98,6 +105,8 @@ static_assert(kOtaTaskStack > 0, "OTA task stack must be positive");
 static_assert(kHousekeepingTaskStack > 0, "housekeeping task stack must be positive");
 static_assert(kUiTaskStack > 0, "UI task stack must be positive");
 static_assert(kButtonTaskStack > 0, "button task stack must be positive");
+static_assert(kAlarmTaskStack > 0, "alarm task stack must be positive");
+static_assert(kPomodoroTaskStack > 0, "pomodoro task stack must be positive");
 static_assert(kBootAnimStopWaitMs > 0, "boot animation stop wait must be positive");
 static_assert(array_count(kMainLogTexts) > 0,
               "main startup log guard must cover startup log texts");
@@ -141,6 +150,8 @@ static void create_regular_app_tasks()
         {housekeeping_task, kHousekeepingTaskName, kHousekeepingTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
         {ui_task, kUiTaskName, kUiTaskStack, kNormalServiceTaskPriority, &g_ui_task_handle, kUiTaskCore},
         {button_task, kButtonTaskName, kButtonTaskStack, kInputTaskPriority, nullptr, kUiTaskCore},
+        {alarm_task, kAlarmTaskName, kAlarmTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
+        {pomodoro_task, kPomodoroTaskName, kPomodoroTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
     };
     for (const AppTaskSpec &task : tasks) {
         create_app_task(task.task,
@@ -254,6 +265,9 @@ extern "C" void app_main(void)
     init_wifi();
     park_unused_audio_peripherals();
     xiaozhi_ai_init();
+    alarm_services_init();
+    pomodoro_services_init();
+    weather_city_mcp_init();
 
     g_display.RLCD_Init();
     g_display.RLCD_ColorClear(ColorWhite);

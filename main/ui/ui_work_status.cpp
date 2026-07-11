@@ -1,6 +1,7 @@
 // 统一构建和刷新非天气时钟工作页顶部状态栏。
 #include "ui_views.h"
 
+#include "alarm_services.h"
 #include "sensor_services.h"
 #include "ui_text_format.h"
 
@@ -20,6 +21,7 @@ static constexpr int kStatusTimeW = 60;
 static constexpr int kStatusTimeH = 18;
 static constexpr int kStatusChimeX = 64;
 static constexpr int kStatusWifiX = 90;
+static constexpr int kStatusAlarmX = 116;
 static constexpr int kStatusIconY = 15;
 static constexpr int kStatusFirstWorkPage = kWorkPageWeatherClock;
 static constexpr const char *kStatusDatePlaceholder = "----/--/-- / 星期-";
@@ -49,12 +51,14 @@ static_assert(kStatusTimeX >= 0 && kStatusTimeY >= 0 &&
                   kStatusTimeX + kStatusTimeW <= kDisplayWidth &&
                   kStatusTimeY + kStatusTimeH <= kDisplayHeight,
               "work status time label must fit display bounds");
-static_assert(kStatusChimeX >= 0 && kStatusWifiX >= 0 && kStatusIconY >= 0,
+static_assert(kStatusChimeX >= 0 && kStatusWifiX >= 0 && kStatusAlarmX >= 0 && kStatusIconY >= 0,
               "work status icon positions must be non-negative");
 static_assert(kStatusChimeX + CHIME_STATUS_ICON_WIDTH <= kDisplayWidth &&
                   kStatusWifiX + WIFI_STATUS_ICON_WIDTH <= kDisplayWidth &&
+                  kStatusAlarmX + ALARM_STATUS_ICON_WIDTH <= kDisplayWidth &&
                   kStatusIconY + CHIME_STATUS_ICON_HEIGHT <= kDisplayHeight &&
-                  kStatusIconY + WIFI_STATUS_ICON_HEIGHT <= kDisplayHeight,
+                  kStatusIconY + WIFI_STATUS_ICON_HEIGHT <= kDisplayHeight &&
+                  kStatusIconY + ALARM_STATUS_ICON_HEIGHT <= kDisplayHeight,
               "work status icons must fit display bounds");
 static_assert(kStatusTimeTextSize >= sizeof("00:00"),
               "work status time buffer must fit HH:MM text");
@@ -237,6 +241,15 @@ void build_work_page_status_bar(lv_obj_t *screen,
                           WIFI_STATUS_ICON_HEIGHT,
                           WIFI_STATUS_ICON_BYTES_PER_ROW,
                           wifi_status_icon_bits);
+        build_status_icon(screen,
+                          &g_work_status_alarm_icon_canvas[page],
+                          &g_work_status_alarm_icon_canvas_buf[page],
+                          kStatusAlarmX,
+                          kStatusIconY,
+                          ALARM_STATUS_ICON_WIDTH,
+                          ALARM_STATUS_ICON_HEIGHT,
+                          ALARM_STATUS_ICON_BYTES_PER_ROW,
+                          alarm_status_icon_bits);
     }
 }
 
@@ -299,8 +312,10 @@ bool update_work_page_status_icons(int page)
     bool wifi_visible = allow && wifi_connected_for_status_icon();
     lv_obj_t *chime = g_work_status_chime_icon_canvas[page];
     lv_obj_t *wifi = g_work_status_wifi_icon_canvas[page];
+    lv_obj_t *alarm = g_work_status_alarm_icon_canvas[page];
     bool changed = false;
     changed |= set_status_icon_visible_if_changed(chime, chime_visible);
     changed |= set_status_icon_visible_if_changed(wifi, wifi_visible);
+    changed |= set_status_icon_visible_if_changed(alarm, allow && alarm_is_enabled());
     return changed;
 }

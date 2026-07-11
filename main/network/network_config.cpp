@@ -1,7 +1,10 @@
 // 负责 Wi-Fi、API Key、页面设置和声音设置的 NVS 配置读写。
 #include "network_services.h"
-#include "network_form.h"
+
+#include "alarm_services.h"
 #include "manual_time_parser.h"
+#include "provisioning_form_fields.h"
+#include "weather_city_text.h"
 #include "xiaozhi_ai.h"
 
 #include "custom_assets.h"
@@ -11,11 +14,6 @@
 #include <errno.h>
 
 namespace {
-constexpr size_t max_size(size_t a, size_t b)
-{
-    return a > b ? a : b;
-}
-
 constexpr const char *kWifiNvsNamespace = "wifi";
 constexpr const char *kWifiSsidKey = "ssid";
 constexpr const char *kWifiPassKey = "pass";
@@ -38,15 +36,7 @@ constexpr const char *kPageOrderV2Key = "page_order_v2";
 constexpr const char *kPageOrderV3Key = "page_order_v3";
 constexpr const char *kPageOrderV4Key = "page_order_v4";
 constexpr const char *kPageOrderV5Key = "page_order_v5";
-constexpr size_t kManualTimeFieldSize = 32;
-constexpr size_t kSetupSsidFieldSize = 33;
-constexpr size_t kSetupPasswordFieldSize = 65;
-constexpr size_t kSetupApiKeyFieldSize = 96;
-constexpr size_t kSetupWeatherCityFieldSize = kManualWeatherCityLen;
-constexpr size_t kMaxSetupFormFieldSize =
-    max_size(max_size(max_size(kManualTimeFieldSize, kSetupSsidFieldSize),
-                      max_size(kSetupPasswordFieldSize, kSetupApiKeyFieldSize)),
-             kSetupWeatherCityFieldSize);
+constexpr const char *kXiaozhiAutoReturnKey = "xz_auto_ret_v1";
 constexpr uint8_t kNvsUnsetU8 = 0xFF;
 constexpr uint8_t kDefaultChimeVolumePercent = 80;
 constexpr uint8_t kValidChimeVolumePercent[] = {20, 40, 60, 80, 100};
@@ -99,6 +89,7 @@ constexpr const char *kNvsActionClearingWeatherCity = "clearing weather city";
 constexpr const char *kNvsActionSavingHourlyReminder = "saving hourly reminder";
 constexpr const char *kNvsActionSavingPageSettings = "saving page settings";
 constexpr const char *kNvsActionSavingPageOrder = "saving page order";
+constexpr const char *kNvsActionSavingXiaozhiAutoReturn = "saving Xiaozhi auto return";
 constexpr const char *kNvsActionClearingConfig = "clearing config";
 constexpr const char *kEmptyWifiSsidSaveLog = "skip saving empty wifi ssid";
 constexpr const char *kInvalidWeatherCitySaveLog = "skip saving invalid weather city";
@@ -114,6 +105,7 @@ constexpr const char *kInvalidWeatherCityLoadLog = "ignore invalid weather city 
 #define NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT "nvs save hourly reminder failed: %s"
 #define NVS_SAVE_PAGE_SETTINGS_FAILED_FORMAT "nvs save page settings failed: %s"
 #define NVS_SAVE_PAGE_ORDER_FAILED_FORMAT "nvs save page order failed: %s"
+#define NVS_SAVE_XIAOZHI_AUTO_RETURN_FAILED_FORMAT "nvs save Xiaozhi auto return failed: %s"
 #define NVS_ERASE_KEY_CLEARING_CONFIG_FAILED_FORMAT "nvs erase key %s failed while clearing config: %s"
 #define NVS_CLEAR_CONFIG_FAILED_FORMAT "nvs clear config failed: %s"
 #define OFFLINE_SETUP_EMPTY_BODY_LOG "offline setup ignored empty request body"
@@ -126,27 +118,6 @@ constexpr const char *kInvalidWeatherCityLoadLog = "ignore invalid weather city 
 #define PROVISIONING_EMPTY_API_KEY_LOG "provisioning ignored empty api key for online setup"
 #define PROVISIONING_INVALID_WEATHER_CITY_LOG "provisioning ignored invalid weather city"
 #define PROVISIONING_SAVED_FORMAT "provisioning saved ssid=%s pass_len=%u api_key=%s len=%u weather_city=%s city_len=%u"
-constexpr const char *kFormManualTimeKey = "manual_time";
-constexpr const char *kFormManualTimeFallbackKey = "datetime";
-constexpr const char *kFormSsidKey = "ssid";
-constexpr const char *kFormPasswordKey = "pass";
-constexpr const char *kFormPasswordFallbackKey = "password";
-constexpr const char *kFormApiKeyKey = "api_key";
-constexpr const char *kFormApiKeyFallbackKey = "weather";
-constexpr const char *kFormWeatherCityKey = "weather_city";
-constexpr const char *kFormWeatherCityFallbackKey = "city";
-constexpr const char *kInvalidWeatherCityChars = "&=?#%/\\<>\"'";
-constexpr const char *kFormConfigTexts[] = {
-    kFormManualTimeKey,
-    kFormManualTimeFallbackKey,
-    kFormSsidKey,
-    kFormPasswordKey,
-    kFormPasswordFallbackKey,
-    kFormApiKeyKey,
-    kFormApiKeyFallbackKey,
-    kFormWeatherCityKey,
-    kFormWeatherCityFallbackKey,
-};
 constexpr const char *kNvsConfigTexts[] = {
     kWifiNvsNamespace,
     kWifiSsidKey,
@@ -170,6 +141,7 @@ constexpr const char *kNvsConfigTexts[] = {
     kPageOrderV3Key,
     kPageOrderV4Key,
     kPageOrderV5Key,
+    kXiaozhiAutoReturnKey,
 };
 constexpr const char *kClearConfigKeys[] = {
     kWifiSsidKey,
@@ -189,6 +161,7 @@ constexpr const char *kClearConfigKeys[] = {
     kPageOrderV3Key,
     kPageOrderV4Key,
     kPageOrderV5Key,
+    kXiaozhiAutoReturnKey,
 };
 constexpr const char *kConfigEventTexts[] = {
     kConfigEventReasonFallback,
@@ -210,6 +183,7 @@ constexpr const char *kNvsActionTexts[] = {
     kNvsActionSavingHourlyReminder,
     kNvsActionSavingPageSettings,
     kNvsActionSavingPageOrder,
+    kNvsActionSavingXiaozhiAutoReturn,
     kNvsActionClearingConfig,
 };
 constexpr const char *kConfigWarningTexts[] = {
@@ -217,13 +191,6 @@ constexpr const char *kConfigWarningTexts[] = {
     kInvalidWeatherCitySaveLog,
     kInvalidWeatherCityLoadLog,
     NVS_READ_U8_FAILED_FORMAT,
-};
-
-struct ProvisioningFormFields {
-    char ssid[kSetupSsidFieldSize] = {};
-    char pass[kSetupPasswordFieldSize] = {};
-    char api_key[kSetupApiKeyFieldSize] = {};
-    char weather_city[kSetupWeatherCityFieldSize] = {};
 };
 
 struct LoadedNetworkConfig {
@@ -236,6 +203,7 @@ struct LoadedNetworkConfig {
     uint8_t sound = 0;
     uint8_t page_mask = kPageMaskV5KnownBits;
     uint8_t offline = 0;
+    uint8_t xiaozhi_auto_return = 0;
     uint8_t page_order[kWorkPageCount] = {};
     bool have_page_order = false;
 };
@@ -298,6 +266,19 @@ constexpr bool cstr_array_contains(const T (&items)[N], const char *needle)
     return false;
 }
 
+template <typename T, size_t N>
+constexpr bool cstr_array_unique(const T (&items)[N])
+{
+    for (size_t i = 0; i < N; ++i) {
+        for (size_t j = i + 1; j < N; ++j) {
+            if (cstr_equal(items[i], items[j])) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
 constexpr bool valid_chime_volumes_include_default()
 {
     for (uint8_t volume : kValidChimeVolumePercent) {
@@ -330,11 +311,6 @@ constexpr bool nvs_config_texts_nonempty()
     return cstr_array_nonempty(kNvsConfigTexts);
 }
 
-constexpr bool form_config_texts_nonempty()
-{
-    return cstr_array_nonempty(kFormConfigTexts);
-}
-
 constexpr bool config_event_texts_nonempty()
 {
     return cstr_array_nonempty(kConfigEventTexts);
@@ -350,27 +326,6 @@ constexpr bool config_warning_texts_nonempty()
     return cstr_array_nonempty(kConfigWarningTexts);
 }
 
-constexpr bool cstr_contains_char(const char *text, char needle)
-{
-    if (!text) {
-        return false;
-    }
-    for (const char *cursor = text; *cursor; ++cursor) {
-        if (*cursor == needle) {
-            return true;
-        }
-    }
-    return false;
-}
-
-static_assert(kNetworkFormEncodedBufferSize >= kMaxSetupFormFieldSize,
-              "form encoded scratch buffer must fit the largest setup field");
-static_assert(kManualTimeFieldSize > 1, "manual time field must fit text and NUL");
-static_assert(kSetupSsidFieldSize > 1, "setup SSID field must fit text and NUL");
-static_assert(kSetupPasswordFieldSize > 1, "setup password field must fit text and NUL");
-static_assert(kSetupApiKeyFieldSize > 1, "setup API key field must fit text and NUL");
-static_assert(kSetupWeatherCityFieldSize == kManualWeatherCityLen,
-              "setup weather city field must match runtime city buffer");
 static_assert(array_count(kNvsConfigTexts) > 0, "NVS config text registry must not be empty");
 static_assert(nvs_config_texts_nonempty(), "NVS namespace and config keys must be non-empty");
 static_assert(array_count(kValidChimeVolumePercent) > 0, "valid chime volume list must not be empty");
@@ -379,6 +334,7 @@ static_assert(valid_chime_volumes_ordered_and_bounded(),
 static_assert(valid_chime_volumes_include_default(), "default chime volume must be selectable");
 static_assert(array_count(kClearConfigKeys) > 0, "clear config key list must not be empty");
 static_assert(clear_config_keys_nonempty(), "clear config keys must be non-empty");
+static_assert(cstr_array_unique(kClearConfigKeys), "factory reset config keys must be unique");
 static_assert(cstr_array_contains(kClearConfigKeys, kWifiSsidKey), "factory reset must clear Wi-Fi SSID");
 static_assert(cstr_array_contains(kClearConfigKeys, kWifiPassKey), "factory reset must clear Wi-Fi password");
 static_assert(cstr_array_contains(kClearConfigKeys, kWeatherApiKeyKey), "factory reset must clear weather API key");
@@ -388,18 +344,8 @@ static_assert(cstr_array_contains(kClearConfigKeys, kIgnoredAssetWeatherCityKey)
               "factory reset must clear ignored asset weather city");
 static_assert(cstr_array_contains(kClearConfigKeys, kLegacyApiHostKey), "factory reset must clear legacy API host");
 static_assert(cstr_array_contains(kClearConfigKeys, kOfflineModeKey), "factory reset must clear offline mode");
-static_assert(array_count(kFormConfigTexts) > 0, "form config text registry must not be empty");
-static_assert(form_config_texts_nonempty(), "setup form keys must be non-empty");
-static_assert(cstr_nonempty(kInvalidWeatherCityChars), "invalid weather city character list must be non-empty");
-static_assert(cstr_contains_char(kInvalidWeatherCityChars, '&') &&
-                  cstr_contains_char(kInvalidWeatherCityChars, '=') &&
-                  cstr_contains_char(kInvalidWeatherCityChars, '%') &&
-                  cstr_contains_char(kInvalidWeatherCityChars, '/') &&
-                  cstr_contains_char(kInvalidWeatherCityChars, '<') &&
-                  cstr_contains_char(kInvalidWeatherCityChars, '>') &&
-                  cstr_contains_char(kInvalidWeatherCityChars, '"') &&
-                  cstr_contains_char(kInvalidWeatherCityChars, '\''),
-              "manual weather city reject list must keep form, URL and HTML control characters");
+static_assert(cstr_array_contains(kClearConfigKeys, kXiaozhiAutoReturnKey),
+              "factory reset must clear Xiaozhi auto-return setting");
 static_assert(cstr_nonempty(kConfigEventReasonFallback), "config event fallback reason must be non-empty");
 static_assert(cstr_nonempty(kConfigEventActionFallback), "config event fallback action must be non-empty");
 static_assert(cstr_nonempty(kConfigEventActionClear), "config event clear action must be non-empty");
@@ -465,12 +411,7 @@ void set_app_event_bits(EventBits_t bits, const char *reason)
 
 uint8_t normalize_chime_volume(uint8_t volume)
 {
-    for (uint8_t valid : kValidChimeVolumePercent) {
-        if (volume == valid) {
-            return volume;
-        }
-    }
-    return kDefaultChimeVolumePercent;
+    return volume <= 100 ? volume : kDefaultChimeVolumePercent;
 }
 
 uint8_t normalize_chime_sound_index(uint8_t sound)
@@ -595,7 +536,16 @@ bool read_valid_asset_weather_city(char *out, size_t out_len)
         return false;
     }
     out[0] = '\0';
-    return custom_assets_read_weather_city(out, out_len) && is_weather_city_input_valid(out);
+    if (!custom_assets_read_weather_city(out, out_len)) {
+        return false;
+    }
+    char normalized[kManualWeatherCityLen] = {};
+    if (!normalize_weather_city_input(out, normalized, sizeof(normalized)) ||
+        normalized[0] == '\0' || strlen(normalized) >= out_len) {
+        return false;
+    }
+    strlcpy(out, normalized, out_len);
+    return true;
 }
 
 bool read_unignored_asset_weather_city(nvs_handle_t nvs, char *out, size_t out_len)
@@ -728,7 +678,13 @@ bool manual_weather_city_matches_nvs(nvs_handle_t nvs, const char *city)
 uint8_t normalize_work_page_mask(uint8_t page_mask)
 {
     page_mask &= kPageMaskV5KnownBits;
-    return work_page_mask_has_enabled_page(page_mask) ? page_mask : kDefaultWorkPageMask;
+    if (!work_page_mask_has_enabled_page(page_mask)) {
+        return kDefaultWorkPageMask;
+    }
+    if (!work_page_mask_has_valid_home(page_mask)) {
+        page_mask |= work_page_mask_bit(kWorkPageWeatherClock);
+    }
+    return page_mask;
 }
 
 uint8_t read_saved_page_mask(nvs_handle_t nvs)
@@ -833,10 +789,14 @@ void load_saved_manual_weather_city(nvs_handle_t nvs)
                                          g_manual_weather_city,
                                          sizeof(g_manual_weather_city));
     if (city_err == ESP_OK) {
-        trim_ascii(g_manual_weather_city);
-        if (!is_weather_city_input_valid(g_manual_weather_city)) {
+        char normalized[kManualWeatherCityLen] = {};
+        if (!normalize_weather_city_input(g_manual_weather_city,
+                                          normalized,
+                                          sizeof(normalized))) {
             ESP_LOGW(TAG, "%s", kInvalidWeatherCityLoadLog);
             g_manual_weather_city[0] = '\0';
+        } else {
+            strlcpy(g_manual_weather_city, normalized, sizeof(g_manual_weather_city));
         }
     } else {
         g_manual_weather_city[0] = '\0';
@@ -871,6 +831,7 @@ LoadedNetworkConfig read_loaded_network_config(nvs_handle_t nvs)
     loaded.sound = read_nvs_u8_or_default(nvs, kChimeSoundKey, 0);
     loaded.page_mask = read_saved_page_mask(nvs);
     loaded.offline = read_nvs_u8_or_default(nvs, kOfflineModeKey, 0);
+    loaded.xiaozhi_auto_return = read_nvs_u8_or_default(nvs, kXiaozhiAutoReturnKey, 0);
     load_saved_manual_weather_city(nvs);
     loaded.have_page_order = read_saved_page_order(nvs, loaded.page_order, sizeof(loaded.page_order));
     return loaded;
@@ -883,6 +844,7 @@ void apply_loaded_network_config(const LoadedNetworkConfig &loaded)
     g_hourly_chime_enabled = nvs_u8_to_bool(loaded.chime);
     g_hourly_chime_all_day = nvs_u8_to_bool(loaded.all_day);
     g_offline_mode_ui_enabled = nvs_u8_to_bool(loaded.offline);
+    g_xiaozhi_auto_return_enabled = nvs_u8_to_bool(loaded.xiaozhi_auto_return);
     g_chime_volume_percent = normalize_chime_volume(loaded.volume);
     g_chime_sound_index = normalize_chime_sound_index(loaded.sound);
     apply_loaded_page_config(loaded.page_mask, loaded.page_order, loaded.have_page_order);
@@ -937,39 +899,21 @@ bool can_leave_offline_mode_without_setup()
     return g_have_wifi_creds && g_have_weather_key;
 }
 
-bool weather_city_char_invalid(unsigned char ch)
-{
-    return ch < 0x20 || strchr(kInvalidWeatherCityChars, ch) != nullptr;
-}
-
 bool is_weather_city_input_valid(const char *city)
 {
-    if (!city || city[0] == '\0') {
-        return true;
-    }
-    size_t len = strlen(city);
-    if (len >= kManualWeatherCityLen) {
-        return false;
-    }
-    for (size_t i = 0; i < len; ++i) {
-        if (weather_city_char_invalid((unsigned char)city[i])) {
-            return false;
-        }
-    }
-    return true;
+    return weather_city_text::input_valid(city, kManualWeatherCityLen);
+}
+
+bool normalize_weather_city_input(const char *city, char *out, size_t out_len)
+{
+    return weather_city_text::normalize(city, out, out_len);
 }
 
 void copy_trimmed_weather_city(char *out, size_t out_len, const char *city)
 {
-    if (!output_buffer_available(out, out_len)) {
-        return;
+    if (!normalize_weather_city_input(city, out, out_len) && output_buffer_available(out, out_len)) {
+        out[0] = '\0';
     }
-    out[0] = '\0';
-    if (!city) {
-        return;
-    }
-    strlcpy(out, city, out_len);
-    trim_ascii(out);
 }
 
 void set_manual_weather_city_state(const char *city)
@@ -1041,6 +985,7 @@ void reset_saved_config_runtime_state()
     g_have_wifi_creds = false;
     g_have_weather_key = false;
     g_offline_mode_ui_enabled = false;
+    g_xiaozhi_auto_return_enabled = false;
     clear_app_event_bits(kWifiConnectedBit | kWeatherReadyBit, kConfigEventReasonFactoryReset);
     clear_network_request_bits();
 }
@@ -1219,39 +1164,38 @@ bool save_work_page_order()
     return true;
 }
 
+bool save_xiaozhi_auto_return_setting()
+{
+    nvs_handle_t nvs;
+    esp_err_t err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionSavingXiaozhiAutoReturn);
+    if (err != ESP_OK) {
+        return false;
+    }
+    bool changed = false;
+    err = write_changed_nvs_u8(nvs,
+                               err,
+                               kXiaozhiAutoReturnKey,
+                               bool_to_nvs_u8(g_xiaozhi_auto_return_enabled),
+                               &changed);
+    err = commit_nvs_if_changed(nvs, err, changed);
+    if (!close_nvs_save_ok(nvs, err)) {
+        ESP_LOGW(TAG, NVS_SAVE_XIAOZHI_AUTO_RETURN_FAILED_FORMAT, esp_err_to_name(err));
+        return false;
+    }
+    return true;
+}
+
 bool clear_saved_config()
 {
     if (!clear_saved_config_nvs()) {
         return false;
     }
+    if (!alarm_clear_saved_state()) {
+        return false;
+    }
     xiaozhi_ai_clear_activation();
     reset_saved_config_runtime_state();
     return true;
-}
-
-void form_value_fallback_trimmed(const char *body, const char *primary_key, const char *fallback_key, char *out, size_t out_len)
-{
-    form_value_fallback(body, primary_key, fallback_key, out, out_len);
-    trim_ascii(out);
-}
-
-void read_provisioning_form_fields(const char *body, ProvisioningFormFields *fields)
-{
-    if (!fields) {
-        return;
-    }
-    form_value(body, kFormSsidKey, fields->ssid, sizeof(fields->ssid));
-    form_value_fallback(body, kFormPasswordKey, kFormPasswordFallbackKey, fields->pass, sizeof(fields->pass));
-    form_value_fallback_trimmed(body,
-                                kFormApiKeyKey,
-                                kFormApiKeyFallbackKey,
-                                fields->api_key,
-                                sizeof(fields->api_key));
-    form_value_fallback_trimmed(body,
-                                kFormWeatherCityKey,
-                                kFormWeatherCityFallbackKey,
-                                fields->weather_city,
-                                sizeof(fields->weather_city));
 }
 
 bool save_offline_datetime_from_body(const char *body)
@@ -1260,8 +1204,8 @@ bool save_offline_datetime_from_body(const char *body)
         ESP_LOGW(TAG, "%s", OFFLINE_SETUP_EMPTY_BODY_LOG);
         return false;
     }
-    char manual_time[kManualTimeFieldSize] = {};
-    form_value_fallback_trimmed(body, kFormManualTimeKey, kFormManualTimeFallbackKey, manual_time, sizeof(manual_time));
+    char manual_time[kProvisioningManualTimeFieldSize] = {};
+    read_provisioning_manual_time(body, manual_time, sizeof(manual_time));
     struct tm local = {};
     if (!parse_manual_datetime_text(manual_time, &local)) {
         ESP_LOGW(TAG, "%s", OFFLINE_SETUP_INVALID_MANUAL_TIME_LOG);

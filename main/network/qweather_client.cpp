@@ -1,5 +1,8 @@
 // 对接 IP 定位、QWeather 城市查询、实时天气和天气预警接口。
 #include "network_services.h"
+#include "qweather_forecast_parser.h"
+#include "qweather_location_text.h"
+#include "qweather_response.h"
 
 #include <stdarg.h>
 
@@ -14,7 +17,6 @@ const char *qweather_api_host()
 }
 
 namespace {
-constexpr size_t kIpGeoResponseBufferSize = 2048;
 constexpr size_t kQweatherCityResponseBufferSize = 8192;
 constexpr size_t kQweatherNowResponseBufferSize = 8192;
 constexpr size_t kQweatherAlertResponseBufferSize = 16384;
@@ -26,12 +28,8 @@ constexpr size_t kQweatherAlertUrlSize = 256;
 constexpr size_t kWeatherAlertEventNameSize = 24;
 constexpr size_t kWeatherAlertColorCodeSize = 16;
 constexpr size_t kWeatherAlertHeadlineSize = 64;
-constexpr size_t kIpRegionCopySize = 96;
-constexpr size_t kWeatherLocationTextSize = 32;
 constexpr size_t kQweatherCityIdSize = 24;
 constexpr size_t kWeatherCityNameSize = 32;
-constexpr size_t kWeatherIconUtf8TextSize = 5;
-static_assert(kIpGeoResponseBufferSize > 1, "IP geolocation response buffer must fit text and NUL");
 static_assert(kQweatherCityResponseBufferSize > 1, "QWeather city response buffer must fit text and NUL");
 static_assert(kQweatherNowResponseBufferSize > 1, "QWeather now response buffer must fit text and NUL");
 static_assert(kQweatherAlertResponseBufferSize > kQweatherNowResponseBufferSize,
@@ -49,128 +47,15 @@ static_assert(kWeatherAlertEventNameSize > 1, "weather alert event name buffer m
 static_assert(kWeatherAlertColorCodeSize > 1, "weather alert color code buffer must fit text and NUL");
 static_assert(kWeatherAlertHeadlineSize <= kWeatherAlertTitleLen,
               "temporary alert headline must fit final alert title storage");
-static_assert(kIpRegionCopySize > kWeatherLocationTextSize,
-              "IP region scratch buffer must be larger than displayed location text");
-static_assert(kWeatherLocationTextSize <= kManualWeatherCityLen,
-              "weather location text must fit manual weather city storage");
 static_assert(kQweatherCityIdSize > 1, "QWeather city id buffer must fit text and NUL");
 static_assert(kWeatherCityNameSize <= kManualWeatherCityLen,
               "QWeather city name must fit manual weather city storage");
-constexpr uint32_t kWeatherIconDefaultCodepoint = 0xF146;
-constexpr int kWeatherIconSunnyStart = 100;
-constexpr int kWeatherIconSunnyEnd = 104;
-constexpr uint32_t kWeatherIconSunnyBaseCodepoint = 0xF101;
-constexpr int kWeatherIconNightSunnyStart = 150;
-constexpr int kWeatherIconNightSunnyEnd = 153;
-constexpr uint32_t kWeatherIconNightSunnyBaseCodepoint = 0xF106;
-constexpr int kWeatherIconRainStart = 300;
-constexpr int kWeatherIconRainEnd = 318;
-constexpr uint32_t kWeatherIconRainBaseCodepoint = 0xF10A;
-constexpr int kWeatherIconNightRainStart = 350;
-constexpr int kWeatherIconNightRainEnd = 351;
-constexpr uint32_t kWeatherIconNightRainBaseCodepoint = 0xF11D;
-constexpr int kWeatherIconRainUnknownCode = 399;
-constexpr uint32_t kWeatherIconRainUnknownCodepoint = 0xF11F;
-constexpr int kWeatherIconSnowStart = 400;
-constexpr int kWeatherIconSnowEnd = 410;
-constexpr uint32_t kWeatherIconSnowBaseCodepoint = 0xF120;
-constexpr int kWeatherIconNightSnowStart = 456;
-constexpr int kWeatherIconNightSnowEnd = 457;
-constexpr uint32_t kWeatherIconNightSnowBaseCodepoint = 0xF12B;
-constexpr int kWeatherIconSnowUnknownCode = 499;
-constexpr uint32_t kWeatherIconSnowUnknownCodepoint = 0xF12D;
-constexpr int kWeatherIconFogStart = 500;
-constexpr int kWeatherIconFogEnd = 504;
-constexpr uint32_t kWeatherIconFogBaseCodepoint = 0xF12E;
-constexpr int kWeatherIconDustStart = 507;
-constexpr int kWeatherIconDustEnd = 515;
-constexpr uint32_t kWeatherIconDustBaseCodepoint = 0xF133;
-constexpr int kWeatherIconCloudStart = 800;
-constexpr int kWeatherIconCloudEnd = 807;
-constexpr uint32_t kWeatherIconCloudBaseCodepoint = 0xF13C;
-constexpr int kWeatherIconHotCode = 900;
-constexpr uint32_t kWeatherIconHotCodepoint = 0xF144;
-constexpr int kWeatherIconColdCode = 901;
-constexpr uint32_t kWeatherIconColdCodepoint = 0xF145;
-constexpr int kWeatherIconUnknownCode = 9999;
-constexpr uint32_t kWeatherIconUnknownCodepoint = 0xF1CB;
-static_assert(kWeatherIconSunnyStart <= kWeatherIconSunnyEnd,
-              "sunny weather icon range must be ordered");
-static_assert(kWeatherIconNightSunnyStart <= kWeatherIconNightSunnyEnd,
-              "night sunny weather icon range must be ordered");
-static_assert(kWeatherIconRainStart <= kWeatherIconRainEnd,
-              "rain weather icon range must be ordered");
-static_assert(kWeatherIconNightRainStart <= kWeatherIconNightRainEnd,
-              "night rain weather icon range must be ordered");
-static_assert(kWeatherIconSnowStart <= kWeatherIconSnowEnd,
-              "snow weather icon range must be ordered");
-static_assert(kWeatherIconNightSnowStart <= kWeatherIconNightSnowEnd,
-              "night snow weather icon range must be ordered");
-static_assert(kWeatherIconFogStart <= kWeatherIconFogEnd,
-              "fog weather icon range must be ordered");
-static_assert(kWeatherIconDustStart <= kWeatherIconDustEnd,
-              "dust weather icon range must be ordered");
-static_assert(kWeatherIconCloudStart <= kWeatherIconCloudEnd,
-              "cloud weather icon range must be ordered");
-constexpr size_t kIpRegionMaxParts = 5;
-constexpr size_t kIpRegionCityPartIndex = 2;
-constexpr size_t kIpRegionCityPartMinCount = kIpRegionCityPartIndex + 1;
-constexpr size_t kWeatherAlertCompactTitleChars = 6;
-constexpr unsigned char kUtf8AsciiMask = 0x80;
-constexpr unsigned char kUtf8TwoByteMask = 0xE0;
-constexpr unsigned char kUtf8TwoBytePrefix = 0xC0;
-constexpr unsigned char kUtf8ThreeByteMask = 0xF0;
-constexpr unsigned char kUtf8ThreeBytePrefix = 0xE0;
-constexpr unsigned char kUtf8FourByteMask = 0xF8;
-constexpr unsigned char kUtf8FourBytePrefix = 0xF0;
-constexpr unsigned char kUtf8ContinuationMask = 0xC0;
-constexpr uint32_t kUtf8OneByteMaxCodepoint = 0x7F;
-constexpr uint32_t kUtf8TwoByteMaxCodepoint = 0x7FF;
-constexpr uint32_t kUtf8ThreeByteMaxCodepoint = 0xFFFF;
-constexpr unsigned char kUtf8ContinuationPrefix = 0x80;
-constexpr uint32_t kUtf8ContinuationPayloadMask = 0x3F;
-constexpr int kUtf8Shift6 = 6;
-constexpr int kUtf8Shift12 = 12;
-constexpr int kUtf8Shift18 = 18;
-constexpr size_t kUtf8OneByteLen = 1;
-constexpr size_t kUtf8TwoByteLen = 2;
-constexpr size_t kUtf8ThreeByteLen = 3;
-constexpr size_t kUtf8FourByteLen = 4;
-static_assert(kWeatherIconUtf8TextSize > kUtf8FourByteLen,
-              "weather icon UTF-8 text buffer must fit a four-byte codepoint and NUL");
-static_assert(kUtf8OneByteLen < kUtf8TwoByteLen &&
-                  kUtf8TwoByteLen < kUtf8ThreeByteLen &&
-                  kUtf8ThreeByteLen < kUtf8FourByteLen,
-              "UTF-8 byte length constants must stay ordered");
-static_assert(kUtf8OneByteMaxCodepoint < kUtf8TwoByteMaxCodepoint &&
-                  kUtf8TwoByteMaxCodepoint < kUtf8ThreeByteMaxCodepoint,
-              "UTF-8 codepoint limits must stay ordered");
-static_assert((kUtf8ContinuationPrefix & kUtf8ContinuationMask) == kUtf8ContinuationPrefix,
-              "UTF-8 continuation prefix must fit its mask");
-static_assert(kIpRegionCityPartIndex < kIpRegionMaxParts,
-              "IP region city index must fit region parts array");
-static_assert(kIpRegionCityPartMinCount <= kIpRegionMaxParts,
-              "IP region city part minimum count must fit region parts array");
-static_assert(kWeatherAlertCompactTitleChars > 0,
-              "compact weather alert title length must be positive");
 constexpr int kQweatherDaily3DayEndpointDays = 3;
 constexpr int kQweatherDaily7DayEndpointDays = 7;
 static_assert(kQweatherDaily7DayEndpointDays > kQweatherDaily3DayEndpointDays,
               "QWeather 7-day endpoint must cover more days than 3-day endpoint");
 static_assert(kWeatherForecastDays <= kQweatherDaily7DayEndpointDays,
               "stored forecast day count must fit the preferred QWeather endpoint");
-constexpr int kWeatherAdviceHotTempC = 30;
-constexpr int kWeatherAdviceColdTempC = 8;
-constexpr int kWeatherAdviceLargeTempGapC = 10;
-static_assert(kWeatherAdviceColdTempC < kWeatherAdviceHotTempC,
-              "weather advice cold threshold must be below hot threshold");
-static_assert(kWeatherAdviceLargeTempGapC > 0, "weather advice temperature gap must be positive");
-constexpr const char *kWeatherAdviceRainOrSnow = "有雨雪，出门记得带伞。";
-constexpr const char *kWeatherAdviceHot = "天气较热，注意防晒补水。";
-constexpr const char *kWeatherAdviceCold = "气温偏低，注意保暖。";
-constexpr const char *kWeatherAdviceLargeTempGap = "早晚温差大，建议备外套。";
-constexpr const char *kWeatherAdviceCalm = "天气平稳，适合轻装出行。";
-constexpr const char *kIpGeolocationUrl = "https://uapis.cn/api/v1/network/myip";
 constexpr const char *kQweatherCityLookupUrlFormat =
     "https://geoapi.qweather.com/v2/city/lookup?location=%s&number=1&range=cn&lang=zh";
 constexpr const char *kQweatherAlertUrlFormat =
@@ -181,35 +66,20 @@ constexpr const char *kQweatherDailyUrlFormat =
     "https://%s/v7/weather/%dd?location=%s&lang=zh&unit=m";
 constexpr const char *kQweatherAirUrlFormat =
     "https://%s/v7/air/now?location=%s&lang=zh";
-constexpr const char *kIpGeoCoordinateFormat = "%.4f,%.4f";
-constexpr const char *kIpRegionDelimiter = " ";
-constexpr const char *kIpGeoCitySuffix = "市";
-constexpr const char *kWeatherAlertSuffix = "预警";
 constexpr const char *kWeatherAlertEventColorFormat = "%s%s%s";
 constexpr const char *kWeatherAlertEventOnlyFormat = "%s%s";
-constexpr const char *kQweatherEndpointAndAdviceTexts[] = {
+constexpr const char *kQweatherEndpointTexts[] = {
     kQweatherApiHost,
     kQweatherGeoApiHost,
-    kIpGeolocationUrl,
     kQweatherCityLookupUrlFormat,
     kQweatherAlertUrlFormat,
     kQweatherNowUrlFormat,
     kQweatherDailyUrlFormat,
     kQweatherAirUrlFormat,
-    kIpGeoCoordinateFormat,
-    kIpRegionDelimiter,
-    kIpGeoCitySuffix,
     kWeatherAlertSuffix,
     kWeatherAlertEventColorFormat,
     kWeatherAlertEventOnlyFormat,
-    kWeatherAdviceRainOrSnow,
-    kWeatherAdviceHot,
-    kWeatherAdviceCold,
-    kWeatherAdviceLargeTempGap,
-    kWeatherAdviceCalm,
 };
-constexpr const char *kQweatherDefaultStage = "request";
-constexpr const char *kQweatherStageIpLocation = "ip location";
 constexpr const char *kQweatherStageCity = "city";
 constexpr const char *kQweatherStageAlert = "alert";
 constexpr const char *kQweatherStageNow = "now";
@@ -221,12 +91,6 @@ constexpr const char *kQweatherPreviewNowLabel = "qweather now";
 constexpr const char *kQweatherPreviewDailyLabel = "qweather daily";
 constexpr const char *kQweatherPreviewAirLabel = "qweather air";
 constexpr const char *kQweatherUnknownStage = "unknown";
-constexpr const char *kIpGeoJsonLatitudeField = "latitude";
-constexpr const char *kIpGeoJsonLongitudeField = "longitude";
-constexpr const char *kIpGeoJsonRegionField = "region";
-constexpr const char *kQweatherJsonCodeField = "code";
-constexpr const char *kQweatherSuccessCode = "200";
-constexpr const char *kQweatherMissingCodeText = "missing";
 constexpr const char *kQweatherJsonLocationField = "location";
 constexpr const char *kQweatherJsonIdField = "id";
 constexpr const char *kQweatherJsonNameField = "name";
@@ -244,27 +108,11 @@ constexpr const char *kQweatherAlertJsonEventNameField = "name";
 constexpr const char *kQweatherAlertJsonColorCodeField = "code";
 constexpr const char *kQweatherAlertJsonHeadlineField = "headline";
 constexpr const char *kQweatherDailyJsonDailyField = "daily";
-constexpr const char *kQweatherDailyJsonDateField = "fxDate";
-constexpr const char *kQweatherDailyJsonTextDayField = "textDay";
-constexpr const char *kQweatherDailyJsonIconDayField = "iconDay";
-constexpr const char *kQweatherDailyJsonTempMaxField = "tempMax";
-constexpr const char *kQweatherDailyJsonTempMinField = "tempMin";
-constexpr const char *kQweatherDailyJsonHumidityField = "humidity";
-constexpr const char *kQweatherDailyJsonWindDirDayField = "windDirDay";
-constexpr const char *kQweatherDailyJsonWindScaleDayField = "windScaleDay";
-constexpr const char *kQweatherDailyJsonSunriseField = "sunrise";
-constexpr const char *kQweatherDailyJsonSunsetField = "sunset";
 constexpr const char *kQweatherAirJsonAqiField = "aqi";
 constexpr const char *kQweatherAirJsonCategoryField = "category";
 constexpr const char *kQweatherAirJsonPrimaryField = "primary";
 constexpr const char *kQweatherAirJsonPm25Field = "pm2p5";
 constexpr const char *kQweatherJsonFieldTexts[] = {
-    kIpGeoJsonLatitudeField,
-    kIpGeoJsonLongitudeField,
-    kIpGeoJsonRegionField,
-    kQweatherJsonCodeField,
-    kQweatherSuccessCode,
-    kQweatherMissingCodeText,
     kQweatherJsonLocationField,
     kQweatherJsonIdField,
     kQweatherJsonNameField,
@@ -282,16 +130,6 @@ constexpr const char *kQweatherJsonFieldTexts[] = {
     kQweatherAlertJsonColorCodeField,
     kQweatherAlertJsonHeadlineField,
     kQweatherDailyJsonDailyField,
-    kQweatherDailyJsonDateField,
-    kQweatherDailyJsonTextDayField,
-    kQweatherDailyJsonIconDayField,
-    kQweatherDailyJsonTempMaxField,
-    kQweatherDailyJsonTempMinField,
-    kQweatherDailyJsonHumidityField,
-    kQweatherDailyJsonWindDirDayField,
-    kQweatherDailyJsonWindScaleDayField,
-    kQweatherDailyJsonSunriseField,
-    kQweatherDailyJsonSunsetField,
     kQweatherAirJsonAqiField,
     kQweatherAirJsonCategoryField,
     kQweatherAirJsonPrimaryField,
@@ -299,12 +137,6 @@ constexpr const char *kQweatherJsonFieldTexts[] = {
 };
 #define QWEATHER_URL_INVALID_ARG_FORMAT "qweather url invalid arg stage=%s"
 #define QWEATHER_URL_TOO_LONG_FORMAT "qweather %s url too long"
-#define QWEATHER_RESPONSE_SIZE_INVALID_FORMAT "qweather %s response size invalid"
-#define QWEATHER_RESPONSE_ALLOC_FAILED_FORMAT "qweather %s response alloc failed"
-constexpr const char *kIpLocationInvalidArgLog = "ip location invalid arg";
-constexpr const char *kIpLocationCoordinateTooLongLog = "ip location coordinate text too long";
-constexpr const char *kIpLocationMissingCoordinateLog = "ip location response missing latitude/longitude";
-#define IP_LOCATION_RESOLVED_FORMAT "ip location resolved: %s city=%s"
 constexpr const char *kQweatherCityInvalidArgLog = "qweather city invalid arg";
 constexpr const char *kQweatherCityLocationTooLongLog = "qweather city location too long";
 constexpr const char *kQweatherCityHttpFailedLog = "qweather city lookup http failed";
@@ -342,9 +174,6 @@ constexpr const char *kWeatherIpLookupUpdateFailedLog = "weather update failed a
 constexpr const char *kWeatherIpGeolocationLookupFailedLog = "ip geolocation lookup failed";
 constexpr const char *kWeatherReadyEventUnavailableLog = "weather ready event skipped: app events unavailable";
 constexpr const char *kQweatherFixedWarningTexts[] = {
-    kIpLocationInvalidArgLog,
-    kIpLocationCoordinateTooLongLog,
-    kIpLocationMissingCoordinateLog,
     kQweatherCityInvalidArgLog,
     kQweatherCityLocationTooLongLog,
     kQweatherCityHttpFailedLog,
@@ -361,8 +190,6 @@ constexpr const char *kQweatherFixedWarningTexts[] = {
     kWeatherReadyEventUnavailableLog,
 };
 constexpr const char *kQweatherStageAndStatusTexts[] = {
-    kQweatherDefaultStage,
-    kQweatherStageIpLocation,
     kQweatherStageCity,
     kQweatherStageAlert,
     kQweatherStageNow,
@@ -417,9 +244,9 @@ constexpr bool qweather_fixed_warning_texts_nonempty()
     return cstr_array_nonempty(kQweatherFixedWarningTexts);
 }
 
-constexpr bool qweather_endpoint_and_advice_texts_nonempty()
+constexpr bool qweather_endpoint_texts_nonempty()
 {
-    return cstr_array_nonempty(kQweatherEndpointAndAdviceTexts);
+    return cstr_array_nonempty(kQweatherEndpointTexts);
 }
 
 static_assert(array_count(kQweatherJsonFieldTexts) > 0,
@@ -430,153 +257,25 @@ static_assert(array_count(kQweatherStageAndStatusTexts) > 0,
               "QWeather stage/status guard must cover stage and status text");
 static_assert(array_count(kQweatherFixedWarningTexts) > 0,
               "QWeather fixed warning guard must cover fixed warning text");
-static_assert(array_count(kQweatherEndpointAndAdviceTexts) > 0,
-              "QWeather endpoint/advice guard must cover endpoint and advice text");
+static_assert(array_count(kQweatherEndpointTexts) > 0,
+              "QWeather endpoint guard must cover endpoint text");
 static_assert(qweather_stage_and_status_texts_nonempty(),
               "QWeather stage, preview, status and fixed log texts must be non-empty");
 static_assert(qweather_fixed_warning_texts_nonempty(),
               "QWeather fixed warning texts must be non-empty");
-static_assert(qweather_endpoint_and_advice_texts_nonempty(),
-              "QWeather endpoint, location, alert and advice texts must be non-empty");
-
-struct WarningColorInfo {
-    const char *code;
-    const char *name;
-    const char *short_name;
-    int rank;
-};
-
-struct WeatherIconRange {
-    int first;
-    int last;
-    uint32_t base_codepoint;
-};
-
-struct WeatherIconExact {
-    int code;
-    uint32_t codepoint;
-};
-
-constexpr WarningColorInfo kWarningColors[] = {
-    {"blue", "蓝色", "蓝", 2},
-    {"yellow", "黄色", "黄", 3},
-    {"orange", "橙色", "橙", 4},
-    {"red", "红色", "红", 5},
-    {"white", "白色", "白", 1},
-    {"black", "黑色", "黑", 1},
-};
-
-constexpr bool warning_color_table_valid()
-{
-    for (const WarningColorInfo &color : kWarningColors) {
-        if (!cstr_nonempty(color.code) ||
-            !cstr_nonempty(color.name) ||
-            !cstr_nonempty(color.short_name) ||
-            color.rank < 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
-constexpr WeatherIconRange kWeatherIconRanges[] = {
-    {kWeatherIconSunnyStart, kWeatherIconSunnyEnd, kWeatherIconSunnyBaseCodepoint},
-    {kWeatherIconNightSunnyStart, kWeatherIconNightSunnyEnd, kWeatherIconNightSunnyBaseCodepoint},
-    {kWeatherIconRainStart, kWeatherIconRainEnd, kWeatherIconRainBaseCodepoint},
-    {kWeatherIconNightRainStart, kWeatherIconNightRainEnd, kWeatherIconNightRainBaseCodepoint},
-    {kWeatherIconSnowStart, kWeatherIconSnowEnd, kWeatherIconSnowBaseCodepoint},
-    {kWeatherIconNightSnowStart, kWeatherIconNightSnowEnd, kWeatherIconNightSnowBaseCodepoint},
-    {kWeatherIconFogStart, kWeatherIconFogEnd, kWeatherIconFogBaseCodepoint},
-    {kWeatherIconDustStart, kWeatherIconDustEnd, kWeatherIconDustBaseCodepoint},
-    {kWeatherIconCloudStart, kWeatherIconCloudEnd, kWeatherIconCloudBaseCodepoint},
-};
-
-constexpr WeatherIconExact kWeatherIconExactCodes[] = {
-    {kWeatherIconRainUnknownCode, kWeatherIconRainUnknownCodepoint},
-    {kWeatherIconSnowUnknownCode, kWeatherIconSnowUnknownCodepoint},
-    {kWeatherIconHotCode, kWeatherIconHotCodepoint},
-    {kWeatherIconColdCode, kWeatherIconColdCodepoint},
-    {kWeatherIconUnknownCode, kWeatherIconUnknownCodepoint},
-};
-
-constexpr bool weather_icon_range_table_valid()
-{
-    for (const WeatherIconRange &range : kWeatherIconRanges) {
-        if (range.first > range.last || range.base_codepoint == 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
-constexpr bool weather_icon_exact_table_valid()
-{
-    for (const WeatherIconExact &exact : kWeatherIconExactCodes) {
-        if (exact.code < 0 || exact.codepoint == 0) {
-            return false;
-        }
-    }
-    return true;
-}
-
-static_assert(array_count(kWeatherIconRanges) > 0, "weather icon range table must not be empty");
-static_assert(array_count(kWeatherIconExactCodes) > 0, "weather icon exact code table must not be empty");
-static_assert(weather_icon_range_table_valid(), "weather icon range entries must be ordered and complete");
-static_assert(weather_icon_exact_table_valid(), "weather icon exact entries must be complete");
-static_assert(array_count(kWarningColors) > 0, "weather warning color table must not be empty");
-static_assert(warning_color_table_valid(), "weather warning color entries must be complete");
+static_assert(qweather_endpoint_texts_nonempty(),
+              "QWeather endpoint, location and alert texts must be non-empty");
 
 void log_qweather_fixed_warning(const char *message);
-
-const char *qweather_stage_text(const char *stage)
-{
-    return cstr_nonempty(stage) ? stage : kQweatherDefaultStage;
-}
 
 bool qweather_output_available(char *out, size_t out_len)
 {
     return out && out_len > 0;
 }
 
-void copy_first_nonempty_text(char *out,
-                              size_t out_len,
-                              const char *first,
-                              const char *second = nullptr,
-                              const char *third = nullptr)
-{
-    if (!qweather_output_available(out, out_len)) {
-        return;
-    }
-    const char *selected = cstr_nonempty(first)
-                               ? first
-                               : (cstr_nonempty(second) ? second : (cstr_nonempty(third) ? third : ""));
-    strlcpy(out, selected, out_len);
-}
-
-bool cstr_has_suffix(const char *text, const char *suffix)
-{
-    if (!text || !suffix || suffix[0] == '\0') {
-        return false;
-    }
-    size_t text_len = strlen(text);
-    size_t suffix_len = strlen(suffix);
-    return text_len >= suffix_len && strcmp(text + text_len - suffix_len, suffix) == 0;
-}
-
 bool qweather_format_failed(int written, size_t out_len)
 {
     return written < 0 || (size_t)written >= out_len;
-}
-
-void copy_ip_city_without_suffix(char *out, size_t out_len, const char *city_part)
-{
-    if (!qweather_output_available(out, out_len)) {
-        return;
-    }
-    strlcpy(out, city_part ? city_part : "", out_len);
-    if (cstr_has_suffix(out, kIpGeoCitySuffix)) {
-        out[strlen(out) - strlen(kIpGeoCitySuffix)] = '\0';
-    }
 }
 
 bool format_qweather_url(char *out, size_t out_len, const char *stage, const char *fmt, ...)
@@ -649,304 +348,12 @@ bool format_qweather_daily_url_for_city(char *url,
                                encoded_location);
 }
 
-bool format_ip_coordinates(char *out, size_t out_len, double longitude, double latitude)
-{
-    if (!qweather_output_available(out, out_len)) {
-        log_qweather_fixed_warning(kIpLocationInvalidArgLog);
-        return false;
-    }
-    int written = snprintf(out, out_len, kIpGeoCoordinateFormat, longitude, latitude);
-    if (qweather_format_failed(written, out_len)) {
-        out[0] = '\0';
-        log_qweather_fixed_warning(kIpLocationCoordinateTooLongLog);
-        return false;
-    }
-    return true;
-}
-
-void copy_ip_coordinate_location(const char *location, char *city_id, size_t city_id_len, WeatherData *weather)
-{
-    if (!location || !qweather_output_available(city_id, city_id_len) || !weather) {
-        return;
-    }
-    strlcpy(city_id, location, city_id_len);
-    char *comma = strchr(city_id, ',');
-    if (!comma) {
-        return;
-    }
-    size_t lon_len = comma - city_id;
-    if (lon_len >= sizeof(weather->lon)) {
-        lon_len = sizeof(weather->lon) - 1;
-    }
-    memcpy(weather->lon, city_id, lon_len);
-    weather->lon[lon_len] = '\0';
-    strlcpy(weather->lat, comma + 1, sizeof(weather->lat));
-}
-
-void copy_ip_region_city(char *out, size_t out_len, const char *region)
-{
-    if (!qweather_output_available(out, out_len) || !region || region[0] == '\0') {
-        return;
-    }
-
-    char region_copy[kIpRegionCopySize] = {};
-    strlcpy(region_copy, region, sizeof(region_copy));
-    char *parts[kIpRegionMaxParts] = {};
-    size_t count = 0;
-    char *save = nullptr;
-    char *token = strtok_r(region_copy, kIpRegionDelimiter, &save);
-    while (token && count < kIpRegionMaxParts) {
-        if (token[0] != '\0') {
-            parts[count++] = token;
-        }
-        token = strtok_r(nullptr, kIpRegionDelimiter, &save);
-    }
-
-    const char *city_part = count >= kIpRegionCityPartMinCount
-                                ? parts[kIpRegionCityPartIndex]
-                                : (count > 0 ? parts[count - 1] : "");
-    copy_ip_city_without_suffix(out, out_len, city_part);
-}
-
-char *alloc_qweather_response(const char *stage, size_t buffer_size)
-{
-    if (buffer_size == 0) {
-        ESP_LOGW(TAG, QWEATHER_RESPONSE_SIZE_INVALID_FORMAT, qweather_stage_text(stage));
-        return nullptr;
-    }
-    char *response = (char *)malloc(buffer_size);
-    if (!response) {
-        ESP_LOGW(TAG, QWEATHER_RESPONSE_ALLOC_FAILED_FORMAT, qweather_stage_text(stage));
-        return nullptr;
-    }
-    response[0] = '\0';
-    return response;
-}
-
-class QweatherResponseBuffer {
-public:
-    QweatherResponseBuffer(const char *stage, size_t buffer_size)
-        : data_(alloc_qweather_response(stage, buffer_size)),
-          size_(buffer_size)
-    {
-    }
-
-    ~QweatherResponseBuffer()
-    {
-        free(data_);
-    }
-
-    QweatherResponseBuffer(const QweatherResponseBuffer &) = delete;
-    QweatherResponseBuffer &operator=(const QweatherResponseBuffer &) = delete;
-
-    char *get() const
-    {
-        return data_;
-    }
-
-    size_t size() const
-    {
-        return size_;
-    }
-
-    explicit operator bool() const
-    {
-        return data_ != nullptr;
-    }
-
-private:
-    char *data_;
-    size_t size_;
-};
-
-class QweatherJsonRoot {
-public:
-    explicit QweatherJsonRoot(char *response)
-        : root_(cJSON_Parse(response))
-    {
-    }
-
-    ~QweatherJsonRoot()
-    {
-        cJSON_Delete(root_);
-    }
-
-    QweatherJsonRoot(const QweatherJsonRoot &) = delete;
-    QweatherJsonRoot &operator=(const QweatherJsonRoot &) = delete;
-
-    const cJSON *get() const
-    {
-        return root_;
-    }
-
-    explicit operator bool() const
-    {
-        return root_ != nullptr;
-    }
-
-private:
-    cJSON *root_;
-};
-
-const char *qweather_json_string_value(const cJSON *item)
-{
-    return cJSON_IsString(item) ? item->valuestring : nullptr;
-}
-
-bool qweather_code_ok(const cJSON *code)
-{
-    const char *text = qweather_json_string_value(code);
-    return text && strcmp(text, kQweatherSuccessCode) == 0;
-}
-
-const char *qweather_code_text(const cJSON *code)
-{
-    const char *text = qweather_json_string_value(code);
-    return text ? text : kQweatherMissingCodeText;
-}
-
-bool ip_geo_coordinates_available(const cJSON *lat, const cJSON *lon)
-{
-    return cJSON_IsNumber(lat) && cJSON_IsNumber(lon);
-}
-
-const cJSON *qweather_success_item(const cJSON *root, const char *field, const cJSON **code_out)
-{
-    const cJSON *code = root ? cJSON_GetObjectItem(root, kQweatherJsonCodeField) : nullptr;
-    if (code_out) {
-        *code_out = code;
-    }
-    const cJSON *item = root && field ? cJSON_GetObjectItem(root, field) : nullptr;
-    return qweather_code_ok(code) ? item : nullptr;
-}
-
-const cJSON *qweather_success_object(const cJSON *root, const char *field, const cJSON **code_out)
-{
-    const cJSON *item = qweather_success_item(root, field, code_out);
-    return cJSON_IsObject(item) ? item : nullptr;
-}
-
-const cJSON *qweather_success_array(const cJSON *root, const char *field, const cJSON **code_out)
-{
-    const cJSON *item = qweather_success_item(root, field, code_out);
-    return cJSON_IsArray(item) ? item : nullptr;
-}
-
 void log_qweather_fixed_warning(const char *message)
 {
     ESP_LOGW(TAG, "%s", cstr_nonempty(message) ? message : kQweatherUnknownStage);
 }
 
-const WarningColorInfo *find_warning_color(const char *code)
-{
-    if (!code) {
-        return nullptr;
-    }
-    for (const WarningColorInfo &color : kWarningColors) {
-        if (strcmp(code, color.code) == 0) {
-            return &color;
-        }
-    }
-    return nullptr;
-}
-
-uint32_t weather_icon_range_codepoint(int icon, int first, int last, uint32_t base_codepoint)
-{
-    if (icon < first || icon > last) {
-        return 0;
-    }
-    return base_codepoint + (uint32_t)(icon - first);
-}
-
-uint32_t weather_icon_range_codepoint(int icon, const WeatherIconRange &range)
-{
-    return weather_icon_range_codepoint(icon, range.first, range.last, range.base_codepoint);
-}
-
-void write_weather_icon_utf8(char *out, size_t out_len, uint32_t cp)
-{
-    if (!qweather_output_available(out, out_len)) {
-        return;
-    }
-    out[0] = '\0';
-    if (cp <= kUtf8OneByteMaxCodepoint) {
-        if (out_len <= kUtf8OneByteLen) {
-            return;
-        }
-        out[0] = (char)cp;
-        out[1] = '\0';
-        return;
-    }
-    if (cp <= kUtf8TwoByteMaxCodepoint) {
-        if (out_len <= kUtf8TwoByteLen) {
-            return;
-        }
-        out[0] = (char)(kUtf8TwoBytePrefix | (cp >> kUtf8Shift6));
-        out[1] = (char)(kUtf8ContinuationPrefix | (cp & kUtf8ContinuationPayloadMask));
-        out[2] = '\0';
-        return;
-    }
-    if (cp <= kUtf8ThreeByteMaxCodepoint) {
-        if (out_len <= kUtf8ThreeByteLen) {
-            return;
-        }
-        out[0] = (char)(kUtf8ThreeBytePrefix | (cp >> kUtf8Shift12));
-        out[1] = (char)(kUtf8ContinuationPrefix | ((cp >> kUtf8Shift6) & kUtf8ContinuationPayloadMask));
-        out[2] = (char)(kUtf8ContinuationPrefix | (cp & kUtf8ContinuationPayloadMask));
-        out[3] = '\0';
-        return;
-    }
-    if (out_len <= kUtf8FourByteLen) {
-        return;
-    }
-    out[0] = (char)(kUtf8FourBytePrefix | (cp >> kUtf8Shift18));
-    out[1] = (char)(kUtf8ContinuationPrefix | ((cp >> kUtf8Shift12) & kUtf8ContinuationPayloadMask));
-    out[2] = (char)(kUtf8ContinuationPrefix | ((cp >> kUtf8Shift6) & kUtf8ContinuationPayloadMask));
-    out[3] = (char)(kUtf8ContinuationPrefix | (cp & kUtf8ContinuationPayloadMask));
-    out[4] = '\0';
-}
 } // namespace
-
-bool ip_geolocation_lookup(char *location, size_t location_len, char *city, size_t city_len)
-{
-    if (!qweather_output_available(location, location_len) ||
-        !qweather_output_available(city, city_len)) {
-        log_qweather_fixed_warning(kIpLocationInvalidArgLog);
-        return false;
-    }
-    QweatherResponseBuffer response(kQweatherStageIpLocation, kIpGeoResponseBufferSize);
-    if (!response) {
-        return false;
-    }
-    if (http_get_text(kIpGeolocationUrl, response.get(), response.size()) != ESP_OK) {
-        return false;
-    }
-    QweatherJsonRoot root(response.get());
-    if (!root) {
-        return false;
-    }
-    bool ok = false;
-    const cJSON *lat = cJSON_GetObjectItem(root.get(), kIpGeoJsonLatitudeField);
-    const cJSON *lon = cJSON_GetObjectItem(root.get(), kIpGeoJsonLongitudeField);
-    const cJSON *region = cJSON_GetObjectItem(root.get(), kIpGeoJsonRegionField);
-    if (ip_geo_coordinates_available(lat, lon)) {
-        if (!format_ip_coordinates(location, location_len, lon->valuedouble, lat->valuedouble)) {
-            return false;
-        }
-        const char *region_text = qweather_json_string_value(region);
-        if (region_text) {
-            copy_ip_region_city(city, city_len, region_text);
-        }
-        if (city[0] == '\0') {
-            strlcpy(city, location, city_len);
-        }
-        ESP_LOGI(TAG, IP_LOCATION_RESOLVED_FORMAT, location, city);
-        ok = true;
-    } else {
-        log_qweather_fixed_warning(kIpLocationMissingCoordinateLog);
-    }
-    return ok;
-}
 
 QweatherCityLookupStatus qweather_lookup_city_status(const char *location,
                                                       char *city_id,
@@ -1056,180 +463,6 @@ static bool lookup_weather_city(const char *location,
                                 sizeof(weather->lat),
                                 weather->lon,
                                 sizeof(weather->lon));
-}
-
-const char *warning_color_name(const char *code)
-{
-    const WarningColorInfo *color = find_warning_color(code);
-    return color ? color->name : "";
-}
-
-int warning_color_rank(const char *code)
-{
-    const WarningColorInfo *color = find_warning_color(code);
-    return color ? color->rank : 0;
-}
-
-static size_t alert_utf8_char_len(const unsigned char *text)
-{
-    if (!text || text[0] == '\0') {
-        return 0;
-    }
-    const unsigned char ch = text[0];
-    size_t expected_len = kUtf8OneByteLen;
-    if ((ch & kUtf8AsciiMask) == 0) {
-        expected_len = kUtf8OneByteLen;
-    } else if ((ch & kUtf8TwoByteMask) == kUtf8TwoBytePrefix) {
-        expected_len = kUtf8TwoByteLen;
-    } else if ((ch & kUtf8ThreeByteMask) == kUtf8ThreeBytePrefix) {
-        expected_len = kUtf8ThreeByteLen;
-    } else if ((ch & kUtf8FourByteMask) == kUtf8FourBytePrefix) {
-        expected_len = kUtf8FourByteLen;
-    }
-    for (size_t index = 1; index < expected_len; ++index) {
-        if (text[index] == '\0' ||
-            (text[index] & kUtf8ContinuationMask) != kUtf8ContinuationPrefix) {
-            // Malformed external text must advance safely without reading past
-            // its terminator or consuming following valid characters.
-            return kUtf8OneByteLen;
-        }
-    }
-    return expected_len;
-}
-
-static size_t alert_utf8_char_count(const char *text)
-{
-    size_t count = 0;
-    for (const unsigned char *p = (const unsigned char *)text; p && *p;) {
-        size_t len = alert_utf8_char_len(p);
-        if (len == 0) {
-            break;
-        }
-        p += len;
-        ++count;
-    }
-    return count;
-}
-
-static void alert_utf8_copy_chars(char *out, size_t out_len, const char *in, size_t max_chars)
-{
-    if (!qweather_output_available(out, out_len)) {
-        return;
-    }
-    out[0] = '\0';
-    if (!in) {
-        return;
-    }
-    size_t used = 0;
-    size_t chars = 0;
-    const unsigned char *p = (const unsigned char *)in;
-    while (*p && chars < max_chars) {
-        size_t len = alert_utf8_char_len(p);
-        if (used + len >= out_len) {
-            break;
-        }
-        memcpy(out + used, p, len);
-        used += len;
-        p += len;
-        ++chars;
-    }
-    out[used] = '\0';
-}
-
-static void replace_all(char *text, size_t text_len, const char *from, const char *to)
-{
-    if (!qweather_output_available(text, text_len) || !from || !to) {
-        return;
-    }
-    char buffer[kWeatherAlertTitleLen] = {};
-    const char *read = text;
-    size_t used = 0;
-    size_t from_len = strlen(from);
-    size_t to_len = strlen(to);
-    if (from_len == 0) {
-        return;
-    }
-    while (*read && used + 1 < sizeof(buffer)) {
-        if (strncmp(read, from, from_len) == 0) {
-            if (used + to_len >= sizeof(buffer)) {
-                break;
-            }
-            memcpy(buffer + used, to, to_len);
-            used += to_len;
-            read += from_len;
-        } else {
-            size_t len = alert_utf8_char_len((const unsigned char *)read);
-            if (used + len >= sizeof(buffer)) {
-                break;
-            }
-            memcpy(buffer + used, read, len);
-            used += len;
-            read += len;
-        }
-    }
-    buffer[used] = '\0';
-    strlcpy(text, buffer, text_len);
-}
-
-static void compact_weather_alert_title(char *title, size_t title_len)
-{
-    if (!title || title[0] == '\0') {
-        return;
-    }
-    if (alert_utf8_char_count(title) <= kWeatherAlertCompactTitleChars) {
-        return;
-    }
-    replace_all(title, title_len, kWeatherAlertSuffix, "");
-    for (const WarningColorInfo &color : kWarningColors) {
-        replace_all(title, title_len, color.name, color.short_name);
-    }
-    if (alert_utf8_char_count(title) > kWeatherAlertCompactTitleChars) {
-        char clipped[kWeatherAlertTitleLen] = {};
-        alert_utf8_copy_chars(clipped, sizeof(clipped), title, kWeatherAlertCompactTitleChars);
-        strlcpy(title, clipped, title_len);
-    }
-}
-
-static void copy_compact_weather_alert_title(char *out, size_t out_len, const char *title)
-{
-    if (!qweather_output_available(out, out_len)) {
-        return;
-    }
-    out[0] = '\0';
-    if (!title || title[0] == '\0') {
-        return;
-    }
-    strlcpy(out, title, out_len);
-    compact_weather_alert_title(out, out_len);
-}
-
-void add_weather_alert_title(WeatherAlertData *alert, const char *title, int rank)
-{
-    if (!alert || !title || title[0] == '\0') {
-        return;
-    }
-
-    int insert_at = alert->count;
-    for (int i = 0; i < alert->count; ++i) {
-        if (rank > alert->ranks[i]) {
-            insert_at = i;
-            break;
-        }
-    }
-
-    if (alert->count < kMaxWeatherAlerts) {
-        ++alert->count;
-    } else if (insert_at >= kMaxWeatherAlerts) {
-        return;
-    }
-
-    for (int i = alert->count - 1; i > insert_at; --i) {
-        strlcpy(alert->titles[i], alert->titles[i - 1], sizeof(alert->titles[i]));
-        alert->ranks[i] = alert->ranks[i - 1];
-    }
-    copy_compact_weather_alert_title(alert->titles[insert_at], sizeof(alert->titles[insert_at]), title);
-    alert->ranks[insert_at] = rank;
-    alert->active = alert->count > 0;
 }
 
 static void format_weather_alert_title_text(char *title,
@@ -1403,97 +636,6 @@ bool qweather_fetch_now(const char *city_id, WeatherData *weather)
     return ok;
 }
 
-static int weather_text_to_int(const char *text, int fallback = 0)
-{
-    return text && text[0] ? atoi(text) : fallback;
-}
-
-const char *weather_advice_for_day(const WeatherForecastDay &today)
-{
-    int temp_max = weather_text_to_int(today.temp_max);
-    int temp_min = weather_text_to_int(today.temp_min, temp_max);
-    const char *text = today.text;
-    if (text && (strstr(text, "雨") || strstr(text, "雪"))) {
-        return kWeatherAdviceRainOrSnow;
-    }
-    if (temp_max >= kWeatherAdviceHotTempC) {
-        return kWeatherAdviceHot;
-    }
-    if (temp_min <= kWeatherAdviceColdTempC) {
-        return kWeatherAdviceCold;
-    }
-    if (temp_max - temp_min >= kWeatherAdviceLargeTempGapC) {
-        return kWeatherAdviceLargeTempGap;
-    }
-    return kWeatherAdviceCalm;
-}
-
-static void build_weather_advice(WeatherForecastData *forecast)
-{
-    if (!forecast || forecast->count <= 0 || !forecast->days[0].valid) {
-        return;
-    }
-    strlcpy(forecast->advice, weather_advice_for_day(forecast->days[0]), sizeof(forecast->advice));
-}
-
-static void copy_weather_forecast_day_fields(const cJSON *item, WeatherForecastDay *day)
-{
-    if (!item || !day) {
-        return;
-    }
-    json_copy_string(item, kQweatherDailyJsonDateField, day->date, sizeof(day->date));
-    json_copy_string(item, kQweatherDailyJsonTextDayField, day->text, sizeof(day->text));
-    json_copy_string(item, kQweatherDailyJsonIconDayField, day->icon, sizeof(day->icon));
-    json_copy_string(item, kQweatherDailyJsonTempMaxField, day->temp_max, sizeof(day->temp_max));
-    json_copy_string(item, kQweatherDailyJsonTempMinField, day->temp_min, sizeof(day->temp_min));
-    json_copy_string(item, kQweatherDailyJsonHumidityField, day->humidity, sizeof(day->humidity));
-    json_copy_string(item, kQweatherDailyJsonWindDirDayField, day->wind_dir, sizeof(day->wind_dir));
-    json_copy_string(item, kQweatherDailyJsonWindScaleDayField, day->wind_scale, sizeof(day->wind_scale));
-    json_copy_string(item, kQweatherDailyJsonSunriseField, day->sunrise, sizeof(day->sunrise));
-    json_copy_string(item, kQweatherDailyJsonSunsetField, day->sunset, sizeof(day->sunset));
-}
-
-static bool parse_weather_forecast_day(const cJSON *item, WeatherForecastDay *day)
-{
-    if (!cJSON_IsObject(item) || !day) {
-        return false;
-    }
-    copy_weather_forecast_day_fields(item, day);
-    day->valid = day->date[0] != '\0' &&
-                 (day->text[0] != '\0' || day->temp_max[0] != '\0' || day->temp_min[0] != '\0');
-    return day->valid;
-}
-
-static int weather_forecast_parse_count(const cJSON *daily)
-{
-    int count = cJSON_GetArraySize(daily);
-    return count > kWeatherForecastDays ? kWeatherForecastDays : count;
-}
-
-static bool parse_weather_forecast_days(const cJSON *daily, WeatherForecastData *forecast)
-{
-    if (!daily || !forecast) {
-        return false;
-    }
-    int count = weather_forecast_parse_count(daily);
-    for (int i = 0; i < count; ++i) {
-        const cJSON *item = cJSON_GetArrayItem(daily, i);
-        if (!cJSON_IsObject(item)) {
-            continue;
-        }
-        WeatherForecastDay &day = forecast->days[forecast->count];
-        if (parse_weather_forecast_day(item, &day)) {
-            ++forecast->count;
-        }
-    }
-    forecast->ready = forecast->count > 0;
-    if (forecast->ready) {
-        time(&forecast->updated_at);
-        build_weather_advice(forecast);
-    }
-    return forecast->ready;
-}
-
 static bool qweather_fetch_daily_days(const char *city_id, int days, WeatherForecastData *forecast)
 {
     if (!city_id || !forecast ||
@@ -1527,7 +669,7 @@ static bool qweather_fetch_daily_days(const char *city_id, int days, WeatherFore
     const cJSON *code = nullptr;
     const cJSON *daily = qweather_success_array(root.get(), kQweatherDailyJsonDailyField, &code);
     if (daily) {
-        if (parse_weather_forecast_days(daily, &next)) {
+        if (parse_qweather_forecast_days(daily, &next)) {
             *forecast = next;
             ok = true;
         }
@@ -1792,31 +934,4 @@ bool perform_weather_update()
         return update_weather_by_manual_city(manual_city);
     }
     return update_weather_by_ip_location();
-}
-
-uint32_t weather_icon_codepoint(const char *code)
-{
-    if (!code || code[0] == '\0') {
-        return kWeatherIconDefaultCodepoint;
-    }
-    int icon = atoi(code);
-    for (const WeatherIconRange &range : kWeatherIconRanges) {
-        uint32_t codepoint = weather_icon_range_codepoint(icon, range);
-        if (codepoint != 0) {
-            return codepoint;
-        }
-    }
-    for (const WeatherIconExact &exact : kWeatherIconExactCodes) {
-        if (icon == exact.code) {
-            return exact.codepoint;
-        }
-    }
-    return kWeatherIconDefaultCodepoint;
-}
-
-const char *weather_icon_text(const char *code)
-{
-    static char text[kWeatherIconUtf8TextSize];
-    write_weather_icon_utf8(text, sizeof(text), weather_icon_codepoint(code));
-    return text;
 }
