@@ -1,6 +1,10 @@
-// 处理 QWeather 预警颜色映射、UTF-8 安全压缩和标题优先级排序。
+// 处理 QWeather 预警标题组装、颜色映射、UTF-8 安全压缩和优先级排序。
 #include "qweather_alert_text.h"
 
+#include "app_constexpr.h"
+#include "app_text_format.h"
+
+#include <stdio.h>
 #include <string.h>
 
 namespace {
@@ -18,6 +22,8 @@ constexpr size_t kUtf8OneByteLen = 1;
 constexpr size_t kUtf8TwoByteLen = 2;
 constexpr size_t kUtf8ThreeByteLen = 3;
 constexpr size_t kUtf8FourByteLen = 4;
+constexpr const char *kWeatherAlertEventColorFormat = "%s%s%s";
+constexpr const char *kWeatherAlertEventOnlyFormat = "%s%s";
 
 struct WarningColorInfo {
     const char *code;
@@ -34,17 +40,6 @@ constexpr WarningColorInfo kWarningColors[] = {
     {"white", "白色", "白", 1},
     {"black", "黑色", "黑", 1},
 };
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
 
 constexpr bool warning_color_table_valid()
 {
@@ -70,11 +65,6 @@ const WarningColorInfo *find_warning_color(const char *code)
         }
     }
     return nullptr;
-}
-
-bool output_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
 }
 
 size_t alert_utf8_char_len(const unsigned char *text)
@@ -119,7 +109,7 @@ size_t alert_utf8_char_count(const char *text)
 
 void alert_utf8_copy_chars(char *out, size_t out_len, const char *in, size_t max_chars)
 {
-    if (!output_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
     out[0] = '\0';
@@ -144,7 +134,7 @@ void alert_utf8_copy_chars(char *out, size_t out_len, const char *in, size_t max
 
 void replace_all(char *text, size_t text_len, const char *from, const char *to)
 {
-    if (!output_available(text, text_len) || !from || !to) {
+    if (!app_text::output_buffer_available(text, text_len) || !from || !to) {
         return;
     }
     char buffer[kWeatherAlertTitleLen] = {};
@@ -198,7 +188,7 @@ void compact_weather_alert_title(char *title, size_t title_len)
 
 void copy_compact_weather_alert_title(char *out, size_t out_len, const char *title)
 {
-    if (!output_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
     out[0] = '\0';
@@ -207,6 +197,25 @@ void copy_compact_weather_alert_title(char *out, size_t out_len, const char *tit
     }
     strlcpy(out, title, out_len);
     compact_weather_alert_title(out, out_len);
+}
+
+bool format_weather_alert_title(char *title,
+                                size_t title_len,
+                                const char *format,
+                                const char *event_name,
+                                const char *color_name = nullptr)
+{
+    if (!app_text::output_buffer_available(title, title_len) || !format) {
+        return false;
+    }
+    int written = color_name
+                      ? snprintf(title, title_len, format, event_name, color_name, kWeatherAlertSuffix)
+                      : snprintf(title, title_len, format, event_name, kWeatherAlertSuffix);
+    if (written < 0) {
+        title[0] = '\0';
+        return false;
+    }
+    return true;
 }
 
 static_assert(kWeatherAlertCompactTitleChars > 0,
@@ -231,6 +240,37 @@ int warning_color_rank(const char *code)
 {
     const WarningColorInfo *color = find_warning_color(code);
     return color ? color->rank : 0;
+}
+
+bool build_weather_alert_title(char *title,
+                               size_t title_len,
+                               const char *event_name,
+                               const char *color_code,
+                               const char *headline)
+{
+    if (!app_text::output_buffer_available(title, title_len)) {
+        return false;
+    }
+    title[0] = '\0';
+    const char *color_name = warning_color_name(color_code);
+    if (cstr_nonempty(event_name) && cstr_nonempty(color_name)) {
+        return format_weather_alert_title(title,
+                                          title_len,
+                                          kWeatherAlertEventColorFormat,
+                                          event_name,
+                                          color_name);
+    }
+    if (cstr_nonempty(headline)) {
+        strlcpy(title, headline, title_len);
+        return true;
+    }
+    if (cstr_nonempty(event_name)) {
+        return format_weather_alert_title(title,
+                                          title_len,
+                                          kWeatherAlertEventOnlyFormat,
+                                          event_name);
+    }
+    return true;
 }
 
 void add_weather_alert_title(WeatherAlertData *alert, const char *title, int rank)

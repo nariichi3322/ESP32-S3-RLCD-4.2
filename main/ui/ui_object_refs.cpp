@@ -2,6 +2,7 @@
 #include "ui_object_refs.h"
 
 #include "app_state.h"
+#include "ui_progress.h"
 
 namespace {
 template <typename T, size_t N>
@@ -79,7 +80,6 @@ void clear_weather_clock_refs()
     g_time_canvas = nullptr;
     g_second_canvas = nullptr;
     g_status_gif_canvas = nullptr;
-    g_day_progress_canvas = nullptr;
     g_second_progress_canvas = nullptr;
 }
 
@@ -103,7 +103,6 @@ void clear_flip_clock_refs()
     g_flip_clock_lunar_bold_x_label = nullptr;
     g_flip_clock_lunar_bold_y_label = nullptr;
     g_flip_clock_lunar_bold_xy_label = nullptr;
-    g_flip_clock_day_progress_canvas = nullptr;
 }
 
 void clear_xiaozhi_refs()
@@ -144,7 +143,6 @@ void clear_ui_draw_cache_state()
     g_last_ui_minute = -1;
     g_last_ui_date_key = -1;
     g_last_ui_date_page = -1;
-    g_last_day_progress_filled = -1;
     g_last_second_progress_filled = -1;
     g_last_status_gif_frame = -1;
     g_last_flip_clock_hour = -1;
@@ -155,7 +153,6 @@ void clear_ui_draw_cache_state()
     g_last_flip_temp_trend = 99;
     g_last_flip_humi_trend = 99;
     g_last_flip_date_key = -1;
-    g_last_flip_day_progress_filled = -1;
     g_last_flip_sensor_minute = -1;
     g_last_temp_trend_drawn = 99;
     g_last_humi_trend_drawn = 99;
@@ -207,6 +204,7 @@ void clear_clock_object_refs()
     clear_weather_clock_refs();
     clear_flip_clock_refs();
     clear_xiaozhi_refs();
+    clear_work_page_day_progress_refs();
     clear_battery_segment_refs();
     clear_history_page_refs();
     clear_ui_draw_cache_state();

@@ -1,17 +1,14 @@
 // 实现日历日期到固定五行视口的映射，不包含日期算法或 LVGL 绘制。
 #include "ui_calendar_layout.h"
 
+#include "app_text_format.h"
+
 namespace {
 
 constexpr int kCalendarVisibleCellLimit =
     kCalendarWeekdayCount * kCalendarVisibleRowCount;
 constexpr int kTmYearOffset = 1900;
 constexpr int kMonthsPerYear = 12;
-
-bool calendar_output_buffer_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
 
 } // namespace
 
@@ -71,7 +68,7 @@ int calendar_month_key(const struct tm &local)
 
 void format_calendar_day_text(char *out, size_t out_len, int day)
 {
-    if (!calendar_output_buffer_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
     if (day < 10 && out_len >= 2) {

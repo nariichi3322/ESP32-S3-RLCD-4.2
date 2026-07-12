@@ -1,6 +1,7 @@
 // 构建并刷新设置页中的 OTA 状态、进度和操作提示。
 #include "ui_settings_ota_panel.h"
 
+#include "app_constexpr.h"
 #include "ui_text_format.h"
 #include "ui_views.h"
 
@@ -38,22 +39,6 @@ constexpr const char *kSettingsOtaHintTexts[] = {
     kSettingsOtaHintCheck,
 };
 
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-constexpr bool ota_texts_nonempty()
-{
-    for (const char *text : kSettingsOtaHintTexts) {
-        if (!text || text[0] == '\0') {
-            return false;
-        }
-    }
-    return true;
-}
-
 int settings_ota_progress_fill_width(int progress)
 {
     int clamped = progress;
@@ -70,7 +55,8 @@ int settings_ota_progress_fill_width(int progress)
 }
 
 static_assert(array_count(kSettingsOtaHintTexts) > 0, "settings OTA hint text registry must not be empty");
-static_assert(ota_texts_nonempty(), "settings OTA status and hint texts must be non-empty");
+static_assert(cstr_array_nonempty(kSettingsOtaHintTexts),
+              "settings OTA status and hint texts must be non-empty");
 static_assert(kSettingsOtaLineTextSize > 1 && kSettingsOtaHintTextSize > 1,
               "settings OTA text buffers must fit text and NUL");
 static_assert(kSettingsOtaBarInset >= 0, "settings OTA progress inset must be non-negative");

@@ -1,6 +1,7 @@
 // 维护设置页 KEY 导航、返回状态和二次确认清理逻辑。
 #include "ui_settings_navigation.h"
 
+#include "app_tick_time.h"
 #include "network_services.h"
 #include "ui_settings_feedback.h"
 #include "ui_views.h"
@@ -128,7 +129,8 @@ void handle_settings_key_long()
         s_settings_primary_exit_block_until = xTaskGetTickCount() + pdMS_TO_TICKS(kSettingsPrimaryExitBlockMs);
     } else {
         TickType_t now = xTaskGetTickCount();
-        if (s_settings_primary_exit_block_until != 0 && now < s_settings_primary_exit_block_until) {
+        if (s_settings_primary_exit_block_until != 0 &&
+            app_tick_deadline_pending(now, s_settings_primary_exit_block_until)) {
             g_settings_last_activity_tick = now;
             notify_ui_task();
             return;

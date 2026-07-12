@@ -1,6 +1,7 @@
 // 将 LVGL 像素写入 RLCD，并选择局部或全屏刷新及记录诊断统计。
 #include "ui_display_flush.h"
 
+#include "app_constexpr.h"
 #include "app_state.h"
 
 namespace {
@@ -19,22 +20,6 @@ struct FlushRange {
     int x1;
     int x2;
 };
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *text : items) {
-        if (!cstr_nonempty(text)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 constexpr bool flush_ranges_touch(const FlushRange &range, int x1, int x2)
 {

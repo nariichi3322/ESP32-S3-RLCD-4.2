@@ -2,6 +2,7 @@
 #include "input_tasks.h"
 
 #include "alarm_services.h"
+#include "app_constexpr.h"
 #include "audio_services.h"
 #include "ota_services.h"
 #include "pomodoro_services.h"
@@ -32,28 +33,6 @@ constexpr int kLowRefreshButtonIdlePages[] = {
     kWorkPageCalendar,
     kWorkPageWeatherBoard,
 };
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 constexpr bool work_page_id_valid(int page)
 {

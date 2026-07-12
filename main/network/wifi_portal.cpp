@@ -1,33 +1,17 @@
 // 实现设备配网 AP、强制门户、Wi-Fi 扫描和网页保存流程。
 #include "network_services.h"
 
-#include "captive_dns_packet.h"
+#include "app_constexpr.h"
+#include "app_text_format.h"
+#include "wifi_portal_dns.h"
 #include "wifi_portal_pages.h"
 
 #include "audio_services.h"
 #include "ui_views.h"
 #include "xiaozhi_ai.h"
 
-#include "lwip/inet.h"
-#include "lwip/sockets.h"
-
-#include <errno.h>
-
 namespace {
-TaskHandle_t s_captive_dns_task_handle = nullptr;
-volatile bool s_captive_dns_stop = false;
 esp_netif_t *s_ap_netif = nullptr;
-constexpr size_t kCaptivePortalUriSize = 64;
-char s_captive_portal_uri[kCaptivePortalUriSize] = {};
-constexpr uint16_t kCaptiveDnsPort = 53;
-constexpr int kCaptiveDnsSocketTimeoutSec = 1;
-constexpr int kCaptiveDnsStopWaitAttempts = 15;
-constexpr uint32_t kCaptiveDnsStopWaitDelayMs = 100;
-constexpr TickType_t kCaptiveDnsStopWaitDelay = pdMS_TO_TICKS(kCaptiveDnsStopWaitDelayMs);
-constexpr uint32_t kCaptiveDnsTaskStack = 3072;
-constexpr UBaseType_t kCaptiveDnsTaskPriority = 3;
-constexpr BaseType_t kCaptiveDnsTaskCore = 0;
-constexpr const char *kCaptiveDnsTaskName = "captive_dns";
 constexpr uint8_t kSetupApChannel = 1;
 constexpr uint8_t kSetupApMaxConnections = 4;
 constexpr uint16_t kSetupHttpServerPort = 80;
@@ -46,8 +30,13 @@ constexpr const char *kPortalWeatherCityDeferredMessage =
     "天气城市已保存，但在线校验超时；下次同步天气时会自动重试。";
 constexpr const char *kSetupApSsidFormat = "WeatherClock-%02X%02X";
 constexpr const char *kSetupApSsidFallback = "WeatherClock-0000";
+constexpr const char *kPortalRootUri = "/";
+constexpr const char *kPortalSaveUri = "/save";
+constexpr const char *kPortalFaviconUri = "/favicon.ico";
+constexpr const char *kPortalAppleTouchIconUri = "/apple-touch-icon.png";
+constexpr const char *kPortalAppleTouchIconPrecomposedUri = "/apple-touch-icon-precomposed.png";
+constexpr const char *kPortalWildcardUri = "/*";
 constexpr const char *kPortalFixedTexts[] = {
-    kCaptiveDnsTaskName,
     kPortalHttpStatusBadRequest,
     kPortalHttpStatusNoContent,
     kPortalErrorMissingQuery,
@@ -55,12 +44,29 @@ constexpr const char *kPortalFixedTexts[] = {
     kPortalWeatherCityDeferredMessage,
     kSetupApSsidFormat,
     kSetupApSsidFallback,
+    kPortalRootUri,
+    kPortalSaveUri,
+    kPortalFaviconUri,
+    kPortalAppleTouchIconUri,
+    kPortalAppleTouchIconPrecomposedUri,
+    kPortalWildcardUri,
 };
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
 
+struct PortalHttpRoute {
+    const char *uri;
+    httpd_method_t method;
+    esp_err_t (*handler)(httpd_req_t *);
+};
+
+constexpr PortalHttpRoute kPortalHttpRoutes[] = {
+    {kPortalRootUri, HTTP_GET, root_get_handler},
+    {kPortalSaveUri, HTTP_POST, save_post_handler},
+    {kPortalSaveUri, HTTP_GET, save_get_handler},
+    {kPortalFaviconUri, HTTP_GET, empty_asset_handler},
+    {kPortalAppleTouchIconUri, HTTP_GET, empty_asset_handler},
+    {kPortalAppleTouchIconPrecomposedUri, HTTP_GET, empty_asset_handler},
+    {kPortalWildcardUri, HTTP_GET, captive_portal_handler},
+};
 constexpr size_t cstr_len(const char *text)
 {
     size_t len = 0;
@@ -73,33 +79,16 @@ constexpr size_t cstr_len(const char *text)
     return len;
 }
 
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
+constexpr bool portal_http_routes_valid()
 {
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *text : items) {
-        if (!cstr_nonempty(text)) {
+    for (const PortalHttpRoute &route : kPortalHttpRoutes) {
+        if (!cstr_nonempty(route.uri) || !route.handler) {
             return false;
         }
     }
     return true;
 }
 
-static_assert(kCaptiveDnsPort > 0, "captive DNS port must be positive");
-static_assert(kCaptiveDnsSocketTimeoutSec > 0, "captive DNS socket timeout must be positive");
-static_assert(kCaptiveDnsStopWaitAttempts > 0, "captive DNS stop wait attempts must be positive");
-static_assert(kCaptiveDnsStopWaitDelayMs > 0, "captive DNS stop wait delay must be positive");
-static_assert(kCaptiveDnsStopWaitDelay > 0, "captive DNS stop wait delay must be positive");
-static_assert(kCaptiveDnsTaskStack > 0, "captive DNS task stack must be positive");
-static_assert(kCaptiveDnsTaskPriority > tskIDLE_PRIORITY, "captive DNS task priority must exceed idle");
-static_assert(kCaptiveDnsTaskCore >= 0, "captive DNS task core must be non-negative");
-static_assert(kCaptivePortalUriSize > cstr_len(kSetupPortalUrl),
-              "mutable captive portal URI must fit setup portal URL and NUL");
 static_assert(kSetupApChannel > 0, "setup AP channel must be positive");
 static_assert(kSetupApMaxConnections > 0, "setup AP max connections must be positive");
 static_assert(kSetupHttpServerPort > 0, "setup HTTP server port must be positive");
@@ -110,23 +99,12 @@ static_assert(kPortalWeatherCityIdSize > 1, "portal weather city id buffer must 
 static_assert(kPortalWeatherCityNameSize > 1, "portal weather city name buffer must fit text and NUL");
 static_assert(kPortalSaveWifiConnectWaitMs > 0, "portal save Wi-Fi wait must be positive");
 static_assert(cstr_len(kSetupApSsidFallback) < sizeof(g_ap_ssid), "setup AP SSID fallback must fit global buffer");
-static_assert(cstr_nonempty(kCaptiveDnsTaskName), "captive DNS task name must be non-empty");
 static_assert(cstr_nonempty(kSetupApSsidFormat), "setup AP SSID format must be non-empty");
 static_assert(array_count(kPortalFixedTexts) > 0,
               "portal fixed text registry must not be empty");
 static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must be non-empty");
-#define CAPTIVE_DNS_SOCKET_FAILED_LOG "captive dns socket failed"
-#define CAPTIVE_DNS_BIND_FAILED_LOG "captive dns bind failed"
-#define CAPTIVE_DNS_TIMEOUT_SETUP_FAILED_FORMAT "captive dns timeout setup failed errno=%d"
-#define CAPTIVE_DNS_STARTED_LOG "captive dns started"
-#define CAPTIVE_DNS_STOPPED_LOG "captive dns stopped"
-#define CAPTIVE_DHCPS_STOP_FAILED_FORMAT "dhcps stop before captive setup failed: %s"
-#define CAPTIVE_DHCPS_DNS_OPTION_FAILED_FORMAT "dhcps dns option failed: %s"
-#define CAPTIVE_AP_DNS_SETUP_FAILED_FORMAT "ap dns setup failed: %s"
-#define CAPTIVE_DHCPS_URI_OPTION_FAILED_FORMAT "dhcps captive uri option failed: %s"
-#define CAPTIVE_DHCPS_RESTART_FAILED_FORMAT "dhcps restart after captive setup failed: %s"
-#define CAPTIVE_DNS_TASK_STILL_STOPPING_LOG "previous captive dns task still stopping"
-#define CAPTIVE_DNS_TASK_START_FAILED_LOG "captive dns task start failed"
+static_assert(array_count(kPortalHttpRoutes) > 0, "portal HTTP route table must not be empty");
+static_assert(portal_http_routes_valid(), "portal HTTP routes must have URI and handler");
 #define SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG "setup portal running without captive dns"
 #define PORTAL_HTTP_SERVER_START_FAILED_FORMAT "http server start failed: %s"
 #define PORTAL_HTTP_SERVER_STOP_FAILED_FORMAT "http server stop failed: %s"
@@ -143,6 +121,7 @@ static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must b
 #define WIFI_SET_MODE_FAILED_FORMAT "wifi set mode failed: %s"
 #define WIFI_START_FAILED_FORMAT "wifi start failed: %s"
 #define WIFI_STOP_SKIPPED_OTA_LOG "wifi stop skipped during OTA"
+#define WIFI_STOP_SKIPPED_XIAOZHI_LOG "Wi-Fi stop skipped: Xiaozhi AI page is active"
 #define WIFI_DISCONNECT_DURING_STOP_FAILED_FORMAT "wifi disconnect during stop failed: %s"
 #define WIFI_STOP_FAILED_FORMAT "wifi stop failed: %s"
 #define WIFI_RADIO_OFF_LOG "wifi radio off"
@@ -169,18 +148,6 @@ static_assert(cstr_array_nonempty(kPortalFixedTexts), "portal fixed texts must b
 #define WIFI_INITIAL_SOFTAP_SETUP_FAILED_FORMAT "wifi initial softap setup failed: %s"
 #define PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG "setup save skipped initial sync request: app events unavailable"
 constexpr const char *kPortalLogTexts[] = {
-    CAPTIVE_DNS_SOCKET_FAILED_LOG,
-    CAPTIVE_DNS_BIND_FAILED_LOG,
-    CAPTIVE_DNS_TIMEOUT_SETUP_FAILED_FORMAT,
-    CAPTIVE_DNS_STARTED_LOG,
-    CAPTIVE_DNS_STOPPED_LOG,
-    CAPTIVE_DHCPS_STOP_FAILED_FORMAT,
-    CAPTIVE_DHCPS_DNS_OPTION_FAILED_FORMAT,
-    CAPTIVE_AP_DNS_SETUP_FAILED_FORMAT,
-    CAPTIVE_DHCPS_URI_OPTION_FAILED_FORMAT,
-    CAPTIVE_DHCPS_RESTART_FAILED_FORMAT,
-    CAPTIVE_DNS_TASK_STILL_STOPPING_LOG,
-    CAPTIVE_DNS_TASK_START_FAILED_LOG,
     SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG,
     PORTAL_HTTP_SERVER_START_FAILED_FORMAT,
     PORTAL_HTTP_SERVER_STOP_FAILED_FORMAT,
@@ -197,6 +164,7 @@ constexpr const char *kPortalLogTexts[] = {
     WIFI_SET_MODE_FAILED_FORMAT,
     WIFI_START_FAILED_FORMAT,
     WIFI_STOP_SKIPPED_OTA_LOG,
+    WIFI_STOP_SKIPPED_XIAOZHI_LOG,
     WIFI_DISCONNECT_DURING_STOP_FAILED_FORMAT,
     WIFI_STOP_FAILED_FORMAT,
     WIFI_RADIO_OFF_LOG,
@@ -234,11 +202,6 @@ void request_provisioning_sync_after_save()
     }
     xEventGroupSetBits(g_app_events, kProvisioningSyncBit);
 }
-bool portal_format_failed(int written, size_t out_len)
-{
-    return written < 0 || static_cast<size_t>(written) >= out_len;
-}
-
 void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
 {
     if (!ip) {
@@ -246,7 +209,7 @@ void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
         return;
     }
     int written = snprintf(g_sta_ip, sizeof(g_sta_ip), IPSTR, IP2STR(ip));
-    if (portal_format_failed(written, sizeof(g_sta_ip))) {
+    if (app_text::format_failed(written, sizeof(g_sta_ip))) {
         g_sta_ip[0] = '\0';
         ESP_LOGW(TAG, WIFI_STA_IP_FORMAT_FAILED_LOG);
     }
@@ -274,7 +237,7 @@ void clear_sta_connection_state()
 void format_setup_ap_ssid(uint8_t mac4, uint8_t mac5)
 {
     int written = snprintf(g_ap_ssid, sizeof(g_ap_ssid), kSetupApSsidFormat, mac4, mac5);
-    if (portal_format_failed(written, sizeof(g_ap_ssid))) {
+    if (app_text::format_failed(written, sizeof(g_ap_ssid))) {
         strlcpy(g_ap_ssid, kSetupApSsidFallback, sizeof(g_ap_ssid));
         ESP_LOGW(TAG, WIFI_SETUP_AP_SSID_FORMAT_FAILED_LOG);
     }
@@ -292,99 +255,6 @@ esp_err_t configure_softap()
     return esp_wifi_set_config(WIFI_IF_AP, &ap_config);
 }
 
-void captive_dns_task(void *)
-{
-    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-    if (sock < 0) {
-        ESP_LOGW(TAG, CAPTIVE_DNS_SOCKET_FAILED_LOG);
-        s_captive_dns_task_handle = nullptr;
-        vTaskDelete(nullptr);
-        return;
-    }
-
-    timeval timeout = {};
-    timeout.tv_sec = kCaptiveDnsSocketTimeoutSec;
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
-        ESP_LOGW(TAG, CAPTIVE_DNS_TIMEOUT_SETUP_FAILED_FORMAT, errno);
-    }
-
-    sockaddr_in addr = {};
-    addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    addr.sin_port = htons(kCaptiveDnsPort);
-    if (bind(sock, (sockaddr *)&addr, sizeof(addr)) != 0) {
-        ESP_LOGW(TAG, CAPTIVE_DNS_BIND_FAILED_LOG);
-        close(sock);
-        s_captive_dns_task_handle = nullptr;
-        vTaskDelete(nullptr);
-        return;
-    }
-
-    ESP_LOGI(TAG, CAPTIVE_DNS_STARTED_LOG);
-    while (!s_captive_dns_stop) {
-        uint8_t query[kCaptiveDnsPacketSize] = {};
-        sockaddr_in from = {};
-        socklen_t from_len = sizeof(from);
-        int len = recvfrom(sock, query, sizeof(query), 0, (sockaddr *)&from, &from_len);
-        if (len <= 0) {
-            continue;
-        }
-        uint8_t response[kCaptiveDnsPacketSize] = {};
-        int response_len = build_captive_dns_response(query, len, response, sizeof(response));
-        if (response_len > 0) {
-            sendto(sock, response, response_len, 0, (sockaddr *)&from, from_len);
-        }
-    }
-
-    close(sock);
-    s_captive_dns_task_handle = nullptr;
-    ESP_LOGI(TAG, CAPTIVE_DNS_STOPPED_LOG);
-    vTaskDelete(nullptr);
-}
-
-void configure_captive_portal_dhcp()
-{
-    if (!s_ap_netif) {
-        return;
-    }
-    esp_err_t err = esp_netif_dhcps_stop(s_ap_netif);
-    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) {
-        ESP_LOGW(TAG, CAPTIVE_DHCPS_STOP_FAILED_FORMAT, esp_err_to_name(err));
-    }
-
-    uint8_t offer_dns = 1;
-    err = esp_netif_dhcps_option(s_ap_netif,
-                                 ESP_NETIF_OP_SET,
-                                 ESP_NETIF_DOMAIN_NAME_SERVER,
-                                 &offer_dns,
-                                 sizeof(offer_dns));
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, CAPTIVE_DHCPS_DNS_OPTION_FAILED_FORMAT, esp_err_to_name(err));
-    }
-
-    esp_netif_dns_info_t dns = {};
-    dns.ip.type = ESP_IPADDR_TYPE_V4;
-    dns.ip.u_addr.ip4.addr = ipaddr_addr(kSetupPortalIp);
-    err = esp_netif_set_dns_info(s_ap_netif, ESP_NETIF_DNS_MAIN, &dns);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, CAPTIVE_AP_DNS_SETUP_FAILED_FORMAT, esp_err_to_name(err));
-    }
-
-    strlcpy(s_captive_portal_uri, kSetupPortalUrl, sizeof(s_captive_portal_uri));
-    err = esp_netif_dhcps_option(s_ap_netif,
-                                 ESP_NETIF_OP_SET,
-                                 ESP_NETIF_CAPTIVEPORTAL_URI,
-                                 s_captive_portal_uri,
-                                 strlen(s_captive_portal_uri));
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, CAPTIVE_DHCPS_URI_OPTION_FAILED_FORMAT, esp_err_to_name(err));
-    }
-
-    err = esp_netif_dhcps_start(s_ap_netif);
-    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
-        ESP_LOGW(TAG, CAPTIVE_DHCPS_RESTART_FAILED_FORMAT, esp_err_to_name(err));
-    }
-}
 } // namespace
 
 bool apply_station_config(bool reconnect)
@@ -560,54 +430,6 @@ esp_err_t register_http_handler(httpd_handle_t server, const char *uri, httpd_me
     return httpd_register_uri_handler(server, &route);
 }
 
-esp_err_t register_http_handler_if_ok(esp_err_t previous,
-                                      httpd_handle_t server,
-                                      const char *uri,
-                                      httpd_method_t method,
-                                      esp_err_t (*handler)(httpd_req_t *))
-{
-    return previous == ESP_OK ? register_http_handler(server, uri, method, handler) : previous;
-}
-
-bool start_captive_dns_server()
-{
-    if (s_captive_dns_task_handle) {
-        if (!s_captive_dns_stop) {
-            return true;
-        }
-        for (int i = 0; i < kCaptiveDnsStopWaitAttempts && s_captive_dns_task_handle; ++i) {
-            vTaskDelay(kCaptiveDnsStopWaitDelay);
-        }
-        if (s_captive_dns_task_handle) {
-            ESP_LOGW(TAG, CAPTIVE_DNS_TASK_STILL_STOPPING_LOG);
-            return false;
-        }
-    }
-    s_captive_dns_stop = false;
-    BaseType_t ok = xTaskCreatePinnedToCore(captive_dns_task,
-                                            kCaptiveDnsTaskName,
-                                            kCaptiveDnsTaskStack,
-                                            nullptr,
-                                            kCaptiveDnsTaskPriority,
-                                            &s_captive_dns_task_handle,
-                                            kCaptiveDnsTaskCore);
-    if (ok != pdPASS) {
-        s_captive_dns_task_handle = nullptr;
-        ESP_LOGW(TAG, CAPTIVE_DNS_TASK_START_FAILED_LOG);
-        return false;
-    }
-    return true;
-}
-
-void stop_captive_dns_server()
-{
-    if (!s_captive_dns_task_handle) {
-        s_captive_dns_stop = false;
-        return;
-    }
-    s_captive_dns_stop = true;
-}
-
 bool start_http_server()
 {
     if (g_http_server && !g_setup_portal_active && !stop_http_server_handle()) {
@@ -633,13 +455,12 @@ bool start_http_server()
         return false;
     }
 
-    err = register_http_handler_if_ok(err, g_http_server, "/", HTTP_GET, root_get_handler);
-    err = register_http_handler_if_ok(err, g_http_server, "/save", HTTP_POST, save_post_handler);
-    err = register_http_handler_if_ok(err, g_http_server, "/save", HTTP_GET, save_get_handler);
-    err = register_http_handler_if_ok(err, g_http_server, "/favicon.ico", HTTP_GET, empty_asset_handler);
-    err = register_http_handler_if_ok(err, g_http_server, "/apple-touch-icon.png", HTTP_GET, empty_asset_handler);
-    err = register_http_handler_if_ok(err, g_http_server, "/apple-touch-icon-precomposed.png", HTTP_GET, empty_asset_handler);
-    err = register_http_handler_if_ok(err, g_http_server, "/*", HTTP_GET, captive_portal_handler);
+    for (const PortalHttpRoute &route : kPortalHttpRoutes) {
+        if (err != ESP_OK) {
+            break;
+        }
+        err = register_http_handler(g_http_server, route.uri, route.method, route.handler);
+    }
     if (err != ESP_OK) {
         ESP_LOGW(TAG, PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT, esp_err_to_name(err));
         (void)stop_http_server_handle();
@@ -758,7 +579,7 @@ void stop_wifi_radio(bool force_setup_portal)
         return;
     }
     if (xiaozhi_ai_network_keepalive_active() && !force_setup_portal) {
-        ESP_LOGI(TAG, "Wi-Fi stop skipped: Xiaozhi AI page is active");
+        ESP_LOGI(TAG, WIFI_STOP_SKIPPED_XIAOZHI_LOG);
         return;
     }
     if (g_setup_portal_active && !force_setup_portal) {
@@ -835,7 +656,7 @@ void init_wifi()
         ESP_LOGW(TAG, WIFI_AP_NETIF_CREATE_FAILED_LOG);
         return;
     }
-    configure_captive_portal_dhcp();
+    configure_captive_portal_dhcp(s_ap_netif);
 
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     err = esp_wifi_init(&cfg);

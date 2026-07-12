@@ -1,16 +1,11 @@
 // 构建并刷新 System Info 与网络检测两个独立辅助页面。
 #include "ui_views.h"
 
+#include "app_constexpr.h"
 #include "ota_services.h"
 #include "ui_text_format.h"
 
 namespace {
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
 constexpr int kNetworkDiagLocalIpLine = 0;
 constexpr int kNetworkDiagPublicIpLine = 1;
 constexpr int kNetworkDiagGridFirstLine = 2;
@@ -109,22 +104,6 @@ constexpr size_t kInfoVersionLabelIndex = 4;
 constexpr size_t kInfoSourceLabelIndex = kInfoLabelCount - 1;
 
 #define NETWORK_DIAG_LINE_LABEL_CREATE_FAILED_FORMAT "network diag line %d label create failed"
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (size_t i = 0; i < N; ++i) {
-        if (!cstr_nonempty(items[i])) {
-            return false;
-        }
-    }
-    return true;
-}
 
 static_assert(cstr_array_nonempty(kAuxPageTexts), "auxiliary page text registry must not be empty");
 static_assert(kNetworkDiagLocalIpLine < kNetworkDiagPublicIpLine,

@@ -1,5 +1,6 @@
 // 初始化硬件、系统服务和常驻任务，是固件应用入口。
 #include "app_state.h"
+#include "app_constexpr.h"
 #include "alarm_services.h"
 #include "pomodoro_services.h"
 #include "weather_city_mcp.h"
@@ -75,28 +76,6 @@ constexpr const char *const kMainLogTexts[] = {
     MAIN_BOOT_TASK_CREATE_FAILED_LOG_FORMAT,
     MAIN_SHTC3_ALLOCATION_FAILED_LOG_FORMAT,
 };
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 static_assert(kBootAnimTaskStack > 0, "boot animation task stack must be positive");
 static_assert(kBootSyncTaskStack > 0, "boot sync task stack must be positive");

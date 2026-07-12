@@ -1,7 +1,10 @@
 // 实现配网页手动离线时间的纯解析与校验。
 #include "manual_time_parser.h"
 
+#include "app_constexpr.h"
 #include "app_state.h"
+
+#include <stdio.h>
 
 namespace {
 constexpr int kManualTimeMinMonth = 1;
@@ -19,11 +22,6 @@ constexpr const char *kManualTimeIsoSecondsFormat = "%d-%d-%dT%d:%d:%d";
 constexpr const char *kManualTimeSpaceSecondsFormat = "%d-%d-%d %d:%d:%d";
 constexpr const char *kManualTimeSpaceMinutesFormat = "%d-%d-%d %d:%d";
 #define MANUAL_TIME_NORMALIZATION_FAILED_LOG "manual offline time localtime normalization failed"
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
 
 bool value_in_range(int value, int min_value, int max_value)
 {

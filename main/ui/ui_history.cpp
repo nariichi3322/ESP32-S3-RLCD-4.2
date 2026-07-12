@@ -1,18 +1,13 @@
 // 构建和刷新温湿历史页面及工作页顶部温湿度摘要。
 #include "ui_views.h"
 
+#include "app_constexpr.h"
 #include "sensor_services.h"
 #include "ui_battery.h"
 #include "ui_history_format.h"
 #include "ui_history_window.h"
 
 namespace {
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
 constexpr int kHoursPerDay = 24;
 constexpr int kHistoryAxisValueCount = 3;
 constexpr int kHistoryAxisMaxIndex = 0;
@@ -568,6 +563,7 @@ void build_history_page()
                                true);
 
     build_history_chart_area(screen);
+    build_work_page_day_progress(screen, kWorkPageHistory);
     build_history_axis_labels(screen);
     build_history_value_badges(screen);
 

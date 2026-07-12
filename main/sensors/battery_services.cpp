@@ -1,6 +1,8 @@
 // 负责电池电压采样、电量估算和充电状态判断。
 #include "sensor_services.h"
 
+#include "app_constexpr.h"
+#include "battery_charging_state.h"
 #include "ui_views.h"
 
 #define BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT "battery adc calibration release failed: %s"
@@ -55,35 +57,17 @@ static constexpr int kBatteryPercentUnknown = -1;
 static constexpr int kTmYearOffset = 1900;
 static constexpr int kBatteryMinValidYear = 2023;
 static constexpr int kBatteryMinValidTmYear = kBatteryMinValidYear - kTmYearOffset;
-
-struct BatteryChargingTracker {
-    int rise_samples = 0;
-    int stop_samples = 0;
-    float peak_voltage = 0.0f;
-    TickType_t last_peak_tick = 0;
+static constexpr uint32_t kBatteryChargingAnimationIdleTicks =
+    pdMS_TO_TICKS(kBatteryChargingAnimationIdleMs);
+static constexpr BatteryChargingPolicy kBatteryChargingPolicy = {
+    kBatteryValidPreviousVoltageMin,
+    kBatteryChargingRiseVoltage,
+    kBatteryChargingStopVoltage,
+    kBatteryChargingRiseSamples,
+    kBatteryChargingStopSamples,
+    kBatteryChargingAnimationStopPercent,
+    kBatteryChargingAnimationIdleTicks,
 };
-
-static constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-static constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-static constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 static_assert(kBatteryVoltageDivider > 0.0f, "battery voltage divider must be positive");
 static_assert(kBatteryMillivoltsToVolts > 0.0f, "millivolts-to-volts scale must be positive");
@@ -113,6 +97,10 @@ static_assert(kBatteryChargingAnimationStopPercent > kBatteryPercentMin &&
               "charging animation stop percent must stay within the battery range");
 static_assert(kBatteryChargingAnimationIdleMs > 0,
               "charging animation idle timeout must be positive");
+static_assert(kBatteryChargingAnimationIdleTicks > 0,
+              "charging animation idle tick timeout must be positive");
+static_assert(sizeof(TickType_t) == sizeof(uint32_t),
+              "battery charging tracker expects 32-bit FreeRTOS ticks");
 static_assert(kBatteryChargingRiseVoltage > kBatteryChargingStopVoltage,
               "charging rise threshold must stay above stop threshold");
 static_assert(kBatteryChargingStopVoltage >=
@@ -131,27 +119,6 @@ static int clamp_battery_percent(int percent)
         return kBatteryPercentMax;
     }
     return percent;
-}
-
-static bool previous_battery_voltage_valid(float voltage)
-{
-    return voltage >= kBatteryValidPreviousVoltageMin;
-}
-
-static bool battery_voltage_dropped_from_peak(float voltage, float peak_voltage)
-{
-    return peak_voltage > 0.0f && voltage <= peak_voltage - kBatteryChargingStopVoltage;
-}
-
-static bool charging_should_stop(float voltage, float peak_voltage, int stop_samples)
-{
-    return battery_voltage_dropped_from_peak(voltage, peak_voltage) &&
-           stop_samples >= kBatteryChargingStopSamples;
-}
-
-static void reset_battery_charging_tracker(BatteryChargingTracker &tracker)
-{
-    tracker = {};
 }
 
 static bool battery_time_valid(time_t value)
@@ -300,61 +267,25 @@ bool read_battery_percent(int *percent)
     return true;
 }
 
-static void update_battery_charging_state(float previous_voltage, BatteryChargingTracker &tracker)
+static void apply_battery_charging_sample(float previous_voltage,
+                                          BatteryChargingTracker &tracker)
 {
-    if (!previous_battery_voltage_valid(previous_voltage)) {
-        reset_battery_charging_tracker(tracker);
-        g_battery_animation_complete = false;
-        return;
-    }
-
-    TickType_t now = xTaskGetTickCount();
-    float delta = g_battery_voltage - previous_voltage;
-    bool charging_activity = delta >= kBatteryChargingRiseVoltage;
-
-    if (charging_activity) {
-        if (tracker.rise_samples < kBatteryChargingRiseSamples) {
-            ++tracker.rise_samples;
-        }
-    } else {
-        tracker.rise_samples = 0;
-    }
-
-    if (g_battery_charging) {
-        if (g_battery_voltage > tracker.peak_voltage) {
-            tracker.peak_voltage = g_battery_voltage;
-            tracker.last_peak_tick = now;
-            tracker.stop_samples = 0;
-        } else if (battery_voltage_dropped_from_peak(g_battery_voltage, tracker.peak_voltage)) {
-            if (tracker.stop_samples < kBatteryChargingStopSamples) {
-                ++tracker.stop_samples;
-            }
-        } else {
-            tracker.stop_samples = 0;
-        }
-
-        if (charging_should_stop(g_battery_voltage, tracker.peak_voltage, tracker.stop_samples)) {
-            g_battery_charging = false;
-            g_battery_animation_complete = false;
-            reset_battery_charging_tracker(tracker);
-        }
-    } else if (tracker.rise_samples >= kBatteryChargingRiseSamples) {
-        g_battery_charging = true;
-        g_battery_animation_complete = false;
-        tracker.stop_samples = 0;
-        tracker.peak_voltage = g_battery_voltage;
-        tracker.last_peak_tick = now;
-    }
-
-    bool charging_idle = g_battery_charging &&
-                         tracker.last_peak_tick != 0 &&
-                         now - tracker.last_peak_tick >=
-                             pdMS_TO_TICKS(kBatteryChargingAnimationIdleMs);
-    if (g_battery_charging &&
-        !g_battery_animation_complete &&
-        (g_battery_percent >= kBatteryChargingAnimationStopPercent || charging_idle)) {
-        g_battery_animation_complete = true;
-    }
+    BatteryChargingInput input = {
+        previous_voltage,
+        g_battery_voltage,
+        g_battery_percent,
+        static_cast<uint32_t>(xTaskGetTickCount()),
+    };
+    BatteryChargingState state = {
+        g_battery_charging,
+        g_battery_animation_complete,
+    };
+    (void)update_battery_charging_state(input,
+                                        kBatteryChargingPolicy,
+                                        &tracker,
+                                        &state);
+    g_battery_charging = state.charging;
+    g_battery_animation_complete = state.animation_complete;
 }
 
 static void reset_battery_state_after_sample_failure(BatteryChargingTracker &tracker)
@@ -363,7 +294,7 @@ static void reset_battery_state_after_sample_failure(BatteryChargingTracker &tra
     g_battery_voltage = 0.0f;
     g_battery_charging = false;
     g_battery_animation_complete = false;
-    reset_battery_charging_tracker(tracker);
+    reset_battery_charging_tracker(&tracker);
 }
 
 static void publish_battery_sample_update(bool force)
@@ -385,7 +316,7 @@ void sample_battery()
     float previous_voltage = g_battery_voltage;
     if (read_battery_percent(&percent)) {
         g_battery_percent = percent;
-        update_battery_charging_state(previous_voltage, charging_tracker);
+        apply_battery_charging_sample(previous_voltage, charging_tracker);
         if (!previous_charging && g_battery_charging) {
             ESP_LOGI(TAG, BATTERY_CHARGING_STARTED_LOG_FORMAT, g_battery_voltage, g_battery_percent);
         }

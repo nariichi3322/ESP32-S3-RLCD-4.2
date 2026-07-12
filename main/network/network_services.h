@@ -2,6 +2,7 @@
 #pragma once
 #include "app_state.h"
 #include "network_form.h"
+#include "network_json.h"
 #include "network_text.h"
 #include "qweather_alert_text.h"
 #include "qweather_icons.h"
@@ -67,7 +68,6 @@ bool gzip_payload_range(const uint8_t *data, size_t len, size_t *payload_offset,
 esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len);
 esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *api_key = nullptr);
 const char *qweather_api_host();
-bool json_copy_string(const cJSON *obj, const char *name, char *out, size_t out_len);
 bool url_is_unreserved(char ch);
 bool url_encode_component(const char *in, char *out, size_t out_len);
 void log_response_preview(const char *stage, const char *response);

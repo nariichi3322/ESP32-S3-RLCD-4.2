@@ -1,6 +1,7 @@
 // 构建并刷新配网模式下显示的 AP、门户和 STA 状态行。
 #include "ui_setup_status.h"
 
+#include "app_constexpr.h"
 #include "app_state.h"
 #include "ui_text_format.h"
 #include "ui_views.h"
@@ -52,28 +53,6 @@ constexpr const char *kSetupStatusLogTexts[] = {
     SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT,
     SETUP_STATUS_LINE_INDEX_OUT_OF_RANGE_FORMAT,
 };
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *text : items) {
-        if (!cstr_nonempty(text)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 template <typename... Args>
 bool set_setup_status_line(size_t index, const char *fallback, const char *format, Args... args)

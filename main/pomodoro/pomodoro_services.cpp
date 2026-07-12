@@ -3,6 +3,8 @@
 
 #include "alarm_services.h"
 #include "audio_services.h"
+#include "reminder_schedule.h"
+#include "sensor_time.h"
 #include "ui_views.h"
 #include "xiaozhi_ai.h"
 #include "xiaozhi_mcp.h"
@@ -20,6 +22,8 @@ constexpr int kCompletionSoundIndex = 3; // 设置页“声音选择 4”。
 constexpr int kCompletionSoundRepeats = 2;
 constexpr uint32_t kAudioReleaseWaitMs = 3000U;
 constexpr uint32_t kAudioReleasePollMs = 20U;
+constexpr const char *kPomodoroAlarmConflictResult =
+    "pomodoro rejected: alarm is set for the same minute";
 
 portMUX_TYPE s_pomodoro_mux = portMUX_INITIALIZER_UNLOCKED;
 PomodoroSnapshot s_snapshot = {kPomodoroIdle, 0, 0, false, 1};
@@ -81,6 +85,20 @@ bool completion_audio_blocked()
            alarm.ringing;
 }
 
+bool conflicts_with_enabled_alarm(uint32_t duration_ms)
+{
+    if (!is_system_time_plausible()) {
+        return false;
+    }
+    AlarmSnapshot alarm = {};
+    alarm_get_snapshot(&alarm);
+    return alarm.enabled &&
+           reminder_targets_same_local_minute(reminder_wall_clock_ms(),
+                                              alarm.hour,
+                                              alarm.minute,
+                                              duration_ms);
+}
+
 void set_alerting(bool alerting)
 {
     portENTER_CRITICAL(&s_pomodoro_mux);
@@ -124,6 +142,17 @@ bool mcp_control_pomodoro(const XiaozhiMcpPomodoroRequest &request,
         uint32_t duration = request.has_duration_seconds
                                 ? request.duration_seconds
                                 : kDefaultDurationSeconds;
+        if (duration == 0 || duration > kMaximumDurationSeconds) {
+            return false;
+        }
+        uint32_t duration_ms = duration * 1000U;
+        if (conflicts_with_enabled_alarm(duration_ms)) {
+            ESP_LOGW(TAG, "pomodoro rejected by alarm minute conflict");
+            if (result && result_len > 0) {
+                std::snprintf(result, result_len, "%s", kPomodoroAlarmConflictResult);
+            }
+            return false;
+        }
         ok = pomodoro_start(duration);
     } else if (request.action == kXiaozhiMcpPomodoroCancel) {
         ok = pomodoro_cancel();
@@ -222,6 +251,9 @@ bool pomodoro_start(uint32_t duration_seconds)
         return false;
     }
     uint32_t duration_ms = duration_seconds * 1000U;
+    if (conflicts_with_enabled_alarm(duration_ms)) {
+        return false;
+    }
     int64_t now_us = esp_timer_get_time();
     s_stop_alert_requested.store(true);
     publish_state(kPomodoroRunning,

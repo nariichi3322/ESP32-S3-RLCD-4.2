@@ -13,6 +13,7 @@ enum XiaozhiMcpMessageResult {
 struct XiaozhiMcpAlarmRequest {
     int hour;
     int minute;
+    bool confirm_replace;
     char label[64];
 };
 

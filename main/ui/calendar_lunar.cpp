@@ -1,6 +1,9 @@
 // 计算公历、农历、节日和节气等日历页面数据。
 #include "calendar_lunar.h"
 
+#include "app_constexpr.h"
+#include "app_text_format.h"
+
 #include "app_state.h"
 
 struct LunarYearInfo {
@@ -13,12 +16,6 @@ struct CalendarFestivalRule {
     int day;
     const char *name;
 };
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
 
 static constexpr LunarYearInfo kLunarYears[] = {
     {2023, 0x0d2b2},
@@ -310,17 +307,12 @@ static void set_calendar_subtext(CalendarDayInfo *info, const char *text)
     strlcpy(info->subtext, text ? text : kCalendarLunarPlaceholder, sizeof(info->subtext));
 }
 
-static bool calendar_lunar_format_failed(int written, size_t out_len)
-{
-    return written < 0 || (size_t)written >= out_len;
-}
-
 static void set_calendar_lunar_month_subtext(CalendarDayInfo *info)
 {
     int written = snprintf(info->subtext, sizeof(info->subtext), kLunarMonthDisplayFormat,
                            info->lunar_leap ? "闰" : "",
                            kLunarMonthNames[info->lunar_month]);
-    if (calendar_lunar_format_failed(written, sizeof(info->subtext))) {
+    if (app_text::format_failed(written, sizeof(info->subtext))) {
         set_calendar_subtext(info, nullptr);
     }
 }

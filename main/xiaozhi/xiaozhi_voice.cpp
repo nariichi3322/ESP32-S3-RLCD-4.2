@@ -1,6 +1,7 @@
 // 使用 ESP-SR 模型分区监听唤醒词，采集链路由现有音频服务统一仲裁。
 #include "xiaozhi_voice.h"
 
+#include "app_tick_time.h"
 #include "audio_services.h"
 
 #include <esp_afe_config.h>
@@ -28,6 +29,9 @@ constexpr TickType_t kTaskStopWaitTicks = pdMS_TO_TICKS(kTaskStopWaitMs);
 constexpr float kWakeNetThreshold = 0.60f;
 constexpr TickType_t kLevelLogIntervalTicks = pdMS_TO_TICKS(3000);
 constexpr TickType_t kFetchWarningIntervalTicks = pdMS_TO_TICKS(3000);
+constexpr uint32_t kStreamFullWarningIntervalMs = 1000;
+constexpr TickType_t kStreamFullWarningIntervalTicks =
+    pdMS_TO_TICKS(kStreamFullWarningIntervalMs);
 constexpr size_t kProcessedStreamBytes = 16 * 1024;
 #define XIAOZHI_VOICE_TASK_STOP_TIMEOUT_FORMAT "MR AEC task stop timeout: feed_pending=%d detect_pending=%d"
 
@@ -89,6 +93,12 @@ bool ensure_processed_stream()
 static_assert(kTaskStopRetries > 0, "voice task stop retries must be positive");
 static_assert(kTaskStopWaitMs > 0, "voice task stop wait must be positive");
 static_assert(kTaskStopWaitTicks > 0, "voice task stop wait tick conversion must be positive");
+static_assert(kLevelLogIntervalTicks > 0, "voice level log interval must be positive");
+static_assert(kFetchWarningIntervalTicks > 0, "voice fetch warning interval must be positive");
+static_assert(kStreamFullWarningIntervalMs > 0,
+              "voice stream-full warning interval must be positive");
+static_assert(kStreamFullWarningIntervalTicks > 0,
+              "voice stream-full warning tick conversion must be positive");
 
 void release_task_storage()
 {
@@ -226,7 +236,7 @@ void feed_task(void *)
             continue;
         }
         TickType_t now = xTaskGetTickCount();
-        if (now >= next_level_log) {
+        if (app_tick_deadline_reached(now, next_level_log)) {
             int peak_mic = 0;
             int peak_reference = 0;
             for (int sample = 0; sample < chunk_samples; ++sample) {
@@ -253,6 +263,8 @@ void detect_task(void *)
 {
     TickType_t next_fetch_warning = 0;
     TickType_t next_stream_full_warning = 0;
+    bool fetch_warning_scheduled = false;
+    bool stream_full_warning_scheduled = false;
     uint32_t dropped_stream_frames = 0;
     while (s_running.load()) {
         afe_fetch_result_t *result = s_afe_iface->fetch_with_delay(s_afe_data, kFetchWaitTicks);
@@ -264,9 +276,11 @@ void detect_task(void *)
             // starve AFE input. This is recoverable once I2S RX continues, so do
             // not tear down the entire voice session on a single empty fetch.
             TickType_t now = xTaskGetTickCount();
-            if (now >= next_fetch_warning) {
+            if (!fetch_warning_scheduled ||
+                app_tick_deadline_reached(now, next_fetch_warning)) {
                 ESP_LOGW(kTag, "AFE fetch temporarily empty; listener kept alive");
                 next_fetch_warning = now + kFetchWarningIntervalTicks;
+                fetch_warning_scheduled = true;
             }
             continue;
         }
@@ -278,7 +292,8 @@ void detect_task(void *)
             if (sent != result->data_size) {
                 ++dropped_stream_frames;
                 TickType_t now = xTaskGetTickCount();
-                if (now >= next_stream_full_warning) {
+                if (!stream_full_warning_scheduled ||
+                    app_tick_deadline_reached(now, next_stream_full_warning)) {
                     ESP_LOGW(kTag,
                              "AEC output stream full: dropped=%u sent=%u expected=%u available=%u",
                              static_cast<unsigned>(dropped_stream_frames),
@@ -286,7 +301,8 @@ void detect_task(void *)
                              static_cast<unsigned>(result->data_size),
                              static_cast<unsigned>(xStreamBufferBytesAvailable(s_processed_stream)));
                     dropped_stream_frames = 0;
-                    next_stream_full_warning = now + pdMS_TO_TICKS(1000);
+                    next_stream_full_warning = now + kStreamFullWarningIntervalTicks;
+                    stream_full_warning_scheduled = true;
                 }
             }
         }
@@ -485,7 +501,7 @@ bool xiaozhi_voice_read_processed(int16_t *mono_samples,
     TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
     while (received < expected) {
         TickType_t now = xTaskGetTickCount();
-        TickType_t wait = now < deadline ? deadline - now : 0;
+        TickType_t wait = app_tick_deadline_remaining(now, deadline);
         size_t chunk = xStreamBufferReceive(s_processed_stream,
                                             out + received,
                                             expected - received,

@@ -1,4 +1,4 @@
-// 验证自定义资源包纯格式校验的正常路径和越界拒绝行为。
+// 验证自定义资源包纯格式、CRC32 正常路径和越界拒绝行为。
 #include "custom_asset_format.h"
 
 #include <assert.h>
@@ -111,5 +111,21 @@ int main()
     assert(custom_asset_packed_1bit_bytes_per_row(9) == 2);
     assert(custom_asset_packed_1bit_bytes_per_row(84) == 11);
     assert(custom_asset_packed_1bit_bytes_per_row(220) == 28);
+
+    constexpr uint8_t crc_vector[] = {'1', '2', '3', '4', '5', '6', '7', '8', '9'};
+    constexpr uint32_t kCrc32StandardVector = 0xCBF43926U;
+    assert(custom_asset_crc32_finalize(kCustomAssetCrc32Initial) == 0U);
+    uint32_t full_crc = custom_asset_crc32_update(kCustomAssetCrc32Initial,
+                                                  crc_vector,
+                                                  sizeof(crc_vector));
+    assert(custom_asset_crc32_finalize(full_crc) == kCrc32StandardVector);
+    uint32_t chunked_crc = custom_asset_crc32_update(kCustomAssetCrc32Initial,
+                                                     crc_vector,
+                                                     4);
+    chunked_crc = custom_asset_crc32_update(chunked_crc,
+                                            crc_vector + 4,
+                                            sizeof(crc_vector) - 4);
+    assert(custom_asset_crc32_finalize(chunked_crc) == kCrc32StandardVector);
+    assert(custom_asset_crc32_update(chunked_crc, nullptr, 1) == chunked_crc);
     return 0;
 }

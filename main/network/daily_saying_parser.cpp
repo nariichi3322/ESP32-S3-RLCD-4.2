@@ -1,6 +1,8 @@
 // 实现每日文字 JSON/纯文本解析，不包含 HTTP、缓存或任务状态。
 #include "daily_saying_parser.h"
 
+#include "app_constexpr.h"
+#include "app_text_format.h"
 #include "network_text.h"
 
 #include "cJSON.h"
@@ -24,32 +26,6 @@ constexpr const char *const kJsonFields[] = {
     "quote",
     "data",
 };
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-constexpr bool output_buffer_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
-
-constexpr bool json_fields_nonempty()
-{
-    for (const char *field : kJsonFields) {
-        if (!cstr_nonempty(field)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 class JsonRoot {
 public:
@@ -92,7 +68,7 @@ void copy_cstr(char *out, size_t out_len, const char *text)
 
 bool copy_trimmed_text(const char *text, char *out, size_t out_len)
 {
-    if (!text || !output_buffer_available(out, out_len)) {
+    if (!text || !app_text::output_buffer_available(out, out_len)) {
         return false;
     }
     copy_cstr(out, out_len, text);
@@ -108,7 +84,7 @@ bool plain_text_candidate(const char *text)
 
 bool copy_plain_text_candidate(const char *response, char *out, size_t out_len)
 {
-    if (!response || !output_buffer_available(out, out_len)) {
+    if (!response || !app_text::output_buffer_available(out, out_len)) {
         return false;
     }
     copy_cstr(out, out_len, response);
@@ -118,7 +94,7 @@ bool copy_plain_text_candidate(const char *response, char *out, size_t out_len)
 
 bool copy_json_field(cJSON *obj, char *out, size_t out_len, int depth)
 {
-    if (!obj || !output_buffer_available(out, out_len) || depth > kMaxJsonDepth) {
+    if (!obj || !app_text::output_buffer_available(out, out_len) || depth > kMaxJsonDepth) {
         return false;
     }
     if (cJSON_IsString(obj) && obj->valuestring) {
@@ -146,7 +122,8 @@ bool copy_json_field(cJSON *obj, char *out, size_t out_len, int depth)
 
 static_assert(array_count(kJsonFields) > 0,
               "daily saying JSON field table must not be empty");
-static_assert(json_fields_nonempty(), "daily saying JSON fields must be non-empty");
+static_assert(cstr_array_nonempty(kJsonFields),
+              "daily saying JSON fields must be non-empty");
 static_assert(kMaxChars > 0, "daily saying character limit must be positive");
 static_assert(kMaxJsonDepth >= 0, "daily saying JSON search depth must be non-negative");
 static_assert(kUtf8ContinuationMask == 0xC0,
@@ -160,7 +137,7 @@ static_assert(kCStringTerminatorSize == 1,
 
 bool extract(const char *response, char *out, size_t out_len)
 {
-    if (!output_buffer_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return false;
     }
     out[0] = '\0';

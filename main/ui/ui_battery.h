@@ -10,4 +10,9 @@ void update_battery_segments(lv_obj_t **segments,
                              int percent,
                              bool charging = false,
                              bool blink_on = true);
+// 保留旧的多页面刷新接口供兼容调用；UI 主循环使用下方可见页接口。
 void update_battery_icon(int percent, bool charging = false, bool blink_on = true);
+void update_work_page_battery_icon(int page,
+                                   int percent,
+                                   bool charging = false,
+                                   bool blink_on = true);

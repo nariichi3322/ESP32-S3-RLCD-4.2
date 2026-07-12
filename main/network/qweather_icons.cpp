@@ -1,6 +1,9 @@
 // 将 QWeather 图标代码映射为项目天气字体使用的私有区码点。
 #include "qweather_icons.h"
 
+#include "app_constexpr.h"
+#include "app_text_format.h"
+
 #include <stddef.h>
 #include <stdlib.h>
 
@@ -92,12 +95,6 @@ constexpr WeatherIconExact kWeatherIconExactCodes[] = {
     {kWeatherIconUnknownCode, kWeatherIconUnknownCodepoint},
 };
 
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
 constexpr bool weather_icon_range_table_valid()
 {
     for (const WeatherIconRange &range : kWeatherIconRanges) {
@@ -126,14 +123,9 @@ uint32_t weather_icon_range_codepoint(int icon, const WeatherIconRange &range)
     return range.base_codepoint + static_cast<uint32_t>(icon - range.first);
 }
 
-bool output_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
-
 void write_weather_icon_utf8(char *out, size_t out_len, uint32_t cp)
 {
-    if (!output_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
     out[0] = '\0';

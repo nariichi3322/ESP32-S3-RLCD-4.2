@@ -67,7 +67,9 @@ static_assert(kCaptiveDnsTtlSeconds > 0, "captive DNS TTL must be positive");
 
 int build_captive_dns_response(const uint8_t *query, int query_len, uint8_t *response, int response_len)
 {
-    if (query_len < kDnsHeaderSize || response_len < query_len + kCaptiveDnsAnswerSize) {
+    if (!query || !response || query_len < kDnsHeaderSize ||
+        response_len < kCaptiveDnsAnswerSize ||
+        query_len > response_len - kCaptiveDnsAnswerSize) {
         return 0;
     }
     uint16_t qd_count = (static_cast<uint16_t>(query[kDnsQuestionCountOffset]) << 8) |

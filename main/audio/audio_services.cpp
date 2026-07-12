@@ -1,6 +1,7 @@
 // 管理整点提醒、配网提示音和音频播放外设生命周期。
 #include "audio_services.h"
 
+#include "app_constexpr.h"
 #include "sensor_services.h"
 
 #include <cstddef>
@@ -78,28 +79,6 @@ constexpr const char *kAudioTexts[] = {
     AUDIO_IDLE_GPIO_CONFIG_FAILED_LOG_FORMAT,
     AUDIO_IDLE_GPIO_LEVEL_FAILED_LOG_FORMAT,
 };
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <std::size_t N>
-constexpr std::size_t array_count(const char *const (&)[N])
-{
-    return N;
-}
-
-template <std::size_t N>
-constexpr bool cstr_array_nonempty(const char *const (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 static_assert(kAudioPlaybackTaskStack > 0, "audio playback task stack must be positive");
 static_assert(kSettingsChimeRetryTaskStack > 0, "settings chime retry task stack must be positive");

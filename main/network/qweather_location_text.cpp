@@ -1,6 +1,9 @@
 // 处理天气定位经纬度、地区城市和显示城市候选文本。
 #include "qweather_location_text.h"
 
+#include "app_constexpr.h"
+#include "app_text_format.h"
+
 #include <stdio.h>
 #include <string.h>
 
@@ -20,27 +23,6 @@ constexpr const char *kLocationTextConstants[] = {
     kIpLocationCoordinateTooLongLog,
 };
 
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-constexpr bool location_text_constants_nonempty()
-{
-    for (const char *text : kLocationTextConstants) {
-        if (!text || text[0] == '\0') {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool output_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
-
 bool cstr_has_suffix(const char *text, const char *suffix)
 {
     if (!text || !suffix || suffix[0] == '\0') {
@@ -51,14 +33,9 @@ bool cstr_has_suffix(const char *text, const char *suffix)
     return text_len >= suffix_len && strcmp(text + text_len - suffix_len, suffix) == 0;
 }
 
-bool format_failed(int written, size_t out_len)
-{
-    return written < 0 || static_cast<size_t>(written) >= out_len;
-}
-
 void copy_ip_city_without_suffix(char *out, size_t out_len, const char *city_part)
 {
-    if (!output_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
     strlcpy(out, city_part ? city_part : "", out_len);
@@ -77,7 +54,7 @@ static_assert(kIpRegionCityPartMinCount <= kIpRegionMaxParts,
               "IP region city part minimum count must fit region parts array");
 static_assert(array_count(kLocationTextConstants) > 0,
               "location text constant registry must not be empty");
-static_assert(location_text_constants_nonempty(),
+static_assert(cstr_array_nonempty(kLocationTextConstants),
               "location format, delimiter, suffix and warning texts must be non-empty");
 } // namespace
 
@@ -87,7 +64,7 @@ void copy_first_nonempty_text(char *out,
                               const char *second,
                               const char *third)
 {
-    if (!output_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
     const char *selected = first && first[0] != '\0'
@@ -98,12 +75,12 @@ void copy_first_nonempty_text(char *out,
 
 bool format_ip_coordinates(char *out, size_t out_len, double longitude, double latitude)
 {
-    if (!output_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         ESP_LOGW(TAG, "%s", kIpLocationInvalidArgLog);
         return false;
     }
     int written = snprintf(out, out_len, kIpGeoCoordinateFormat, longitude, latitude);
-    if (format_failed(written, out_len)) {
+    if (app_text::format_failed(written, out_len)) {
         out[0] = '\0';
         ESP_LOGW(TAG, "%s", kIpLocationCoordinateTooLongLog);
         return false;
@@ -116,7 +93,7 @@ void copy_ip_coordinate_location(const char *location,
                                  size_t city_id_len,
                                  WeatherData *weather)
 {
-    if (!location || !output_available(city_id, city_id_len) || !weather) {
+    if (!location || !app_text::output_buffer_available(city_id, city_id_len) || !weather) {
         return;
     }
     strlcpy(city_id, location, city_id_len);
@@ -135,7 +112,7 @@ void copy_ip_coordinate_location(const char *location,
 
 void copy_ip_region_city(char *out, size_t out_len, const char *region)
 {
-    if (!output_available(out, out_len) || !region || region[0] == '\0') {
+    if (!app_text::output_buffer_available(out, out_len) || !region || region[0] == '\0') {
         return;
     }
 

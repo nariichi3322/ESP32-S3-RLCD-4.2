@@ -21,6 +21,9 @@ enum class CustomAssetEntryBoundsStatus {
     kPackageTooLarge,
 };
 
+inline constexpr uint32_t kCustomAssetCrc32Initial = 0xFFFFFFFFU;
+inline constexpr uint32_t kCustomAssetCrc32Polynomial = 0xEDB88320U;
+
 bool custom_asset_header_identity_valid(const CustomAssetsHeader &header);
 size_t custom_asset_entry_table_bytes(uint16_t entry_count);
 size_t custom_asset_required_header_bytes(uint16_t entry_count);
@@ -35,3 +38,5 @@ uint16_t custom_asset_packed_1bit_bytes_per_row(uint16_t width);
 bool custom_asset_text_metadata_valid(const CustomAssetEntry &entry);
 bool custom_asset_text_length_valid(const CustomAssetEntry &entry, size_t max_len);
 bool custom_asset_text_entry_valid(const CustomAssetEntry &entry, size_t max_len);
+uint32_t custom_asset_crc32_update(uint32_t crc, const uint8_t *data, size_t len);
+uint32_t custom_asset_crc32_finalize(uint32_t crc);

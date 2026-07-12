@@ -1,7 +1,10 @@
 // 解析配网页 application/x-www-form-urlencoded 字段，保持兼容字段和非法转义回退语义。
 #include "network_form.h"
 
+#include "app_text_format.h"
 #include "app_state.h"
+
+#include <string.h>
 
 #define FORM_VALUE_TRUNCATED_LOG_FORMAT "form value truncated for key=%s len=%u cap=%u"
 
@@ -29,11 +32,6 @@ static_assert(kUrlPercentLowNibbleIndex == kUrlPercentHighNibbleIndex + 1,
 static_assert(kUrlPercentDecodedSkip == 2, "Percent decode must skip two hex characters");
 static_assert(kHexAlphaDigitBaseValue == 10, "Hex alpha digits start at decimal 10");
 static_assert(kHexHighNibbleShift == 4, "Hex high nibble shift must remain 4 bits");
-
-bool output_buffer_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
 
 bool form_field_matches_key(const char *field, size_t field_len, const char *key, size_t key_len)
 {
@@ -101,7 +99,7 @@ bool decode_url_percent_byte(const char *src, char *out)
 
 void url_decode(char *dst, size_t dst_len, const char *src)
 {
-    if (!output_buffer_available(dst, dst_len)) {
+    if (!app_text::output_buffer_available(dst, dst_len)) {
         return;
     }
     if (!src) {
@@ -125,7 +123,7 @@ void url_decode(char *dst, size_t dst_len, const char *src)
 
 void form_value(const char *body, const char *key, char *out, size_t out_len)
 {
-    if (!output_buffer_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
     if (!body || !key || key[0] == '\0') {
@@ -157,7 +155,7 @@ void form_value_fallback(const char *body,
                          char *out,
                          size_t out_len)
 {
-    if (!output_buffer_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
     form_value(body, primary_key, out, out_len);

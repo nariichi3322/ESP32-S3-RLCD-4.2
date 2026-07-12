@@ -1,13 +1,12 @@
 // 维护本地温湿度趋势和 24 小时历史样本的内存与 NVS 数据。
 #include "sensor_services.h"
 
+#include "app_constexpr.h"
+#include "app_text_format.h"
 #include "sensor_trend.h"
 
 #include "ui_views.h"
 
-#include <cstddef>
-
-#define SENSOR_INTERVAL_INVALID_LOG_FORMAT "sensor interval invalid: %d"
 #define HOURLY_SLOT_KEY_INDEX_INVALID_LOG_FORMAT "hourly sensor slot key index invalid: %d"
 #define HOURLY_SLOT_KEY_TRUNCATED_LOG_FORMAT "hourly sensor slot key truncated index=%d"
 #define SENSOR_HISTORY_NVS_OPEN_FAILED_LOG_FORMAT "open sensor history nvs failed: %s"
@@ -50,9 +49,6 @@ constexpr int kUsPerMs = 1000;
 constexpr int kSecondsPerMinute = 60;
 constexpr int kMinutesPerHour = 60;
 constexpr int kSecondsPerHour = kMinutesPerHour * kSecondsPerMinute;
-constexpr int kUnknownTimeSensorSampleMs = kSecondsPerMinute * kMsPerSecond;
-constexpr int kSensorSampleDayMinutes = 1;
-constexpr int kSensorSampleNightMinutes = 2;
 constexpr int kSensorTrendWindowHours = 4;
 constexpr int64_t kSensorTrendWindowMs = (int64_t)kSensorTrendWindowHours * kMinutesPerHour * kSecondsPerMinute * kMsPerSecond;
 constexpr const char *kSensorHistoryTexts[] = {
@@ -60,7 +56,6 @@ constexpr const char *kSensorHistoryTexts[] = {
     kHourlyHistoryMetaKey,
     kLegacyHourlyHistoryKey,
     kHourlySlotKeyFormat,
-    SENSOR_INTERVAL_INVALID_LOG_FORMAT,
     HOURLY_SLOT_KEY_INDEX_INVALID_LOG_FORMAT,
     HOURLY_SLOT_KEY_TRUNCATED_LOG_FORMAT,
     SENSOR_HISTORY_NVS_OPEN_FAILED_LOG_FORMAT,
@@ -78,38 +73,6 @@ constexpr const char *kSensorHistoryTexts[] = {
 portMUX_TYPE s_hourly_history_mux = portMUX_INITIALIZER_UNLOCKED;
 portMUX_TYPE s_local_sensor_mux = portMUX_INITIALIZER_UNLOCKED;
 
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-bool sensor_history_output_buffer_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
-
-bool sensor_history_format_failed(int written, size_t out_len)
-{
-    return written < 0 || (size_t)written >= out_len;
-}
-
-template <std::size_t N>
-constexpr std::size_t array_count(const char *const (&)[N])
-{
-    return N;
-}
-
-template <std::size_t N>
-constexpr bool cstr_array_nonempty(const char *const (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static_assert(kHourlyHistoryCount > 0, "hourly history must keep at least one slot");
 static_assert(kLegacyHourlyHistoryCount > 0, "legacy hourly history must keep at least one sample");
 static_assert(kHourlyHistoryCount <= 99, "hourly slot key format h%02d supports two-digit indexes");
@@ -121,7 +84,6 @@ static_assert(kHourlySlotKeyBufferSize >= sizeof("h00"), "hourly slot key buffer
 static_assert(array_count(kSensorHistoryTexts) > 0,
               "sensor history text registry must not be empty");
 static_assert(cstr_array_nonempty(kSensorHistoryTexts), "sensor history NVS strings and logs must be non-empty");
-static_assert(kUnknownTimeSensorSampleMs > 0, "unknown-time sensor sample interval must be positive");
 static_assert(kSensorSampleDayMinutes > 0, "day sensor sample interval must be positive");
 static_assert(kSensorSampleNightMinutes > 0, "night sensor sample interval must be positive");
 static_assert(kSensorSampleNightMinutes >= kSensorSampleDayMinutes,
@@ -131,34 +93,6 @@ static_assert(kSensorTrendWindowMs > 0, "sensor trend window in ms must be posit
 static_assert(kSensorHistoryMinutes >= (kSensorTrendWindowHours * kMinutesPerHour) / kSensorSampleDayMinutes,
               "sensor trend history must cover the full day-sampling trend window");
 static_assert(kSecondsPerHour > 0, "seconds per hour must be positive");
-
-int seconds_until_next_interval(const struct tm &local, int interval_seconds)
-{
-    if (interval_seconds <= 0) {
-        ESP_LOGW(TAG, SENSOR_INTERVAL_INVALID_LOG_FORMAT, interval_seconds);
-        return kSecondsPerMinute;
-    }
-    int seconds_into_hour = local.tm_min * kSecondsPerMinute + local.tm_sec;
-    int seconds_to_next = interval_seconds - (seconds_into_hour % interval_seconds);
-    if (seconds_to_next <= 0 || seconds_to_next > interval_seconds) {
-        seconds_to_next = interval_seconds;
-    }
-    return seconds_to_next;
-}
-
-TickType_t next_periodic_sample_tick(TickType_t now,
-                                     int day_minutes,
-                                     int night_minutes,
-                                     int unknown_time_ms)
-{
-    struct tm local = {};
-    if (!is_system_time_plausible(&local)) {
-        return now + pdMS_TO_TICKS(unknown_time_ms);
-    }
-    int interval_seconds = periodic_sample_minutes(local, day_minutes, night_minutes) * kSecondsPerMinute;
-    int seconds_to_next = seconds_until_next_interval(local, interval_seconds);
-    return now + pdMS_TO_TICKS(seconds_to_next * kMsPerSecond);
-}
 
 bool should_log_nvs_read_error(esp_err_t err)
 {
@@ -263,7 +197,7 @@ void calculate_sensor_trend_from_average(const SensorTrendAverage &average,
 
 static bool hourly_slot_key(int index, char *out, size_t out_len)
 {
-    if (!sensor_history_output_buffer_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return false;
     }
     if (!is_hourly_history_index_valid(index)) {
@@ -272,7 +206,7 @@ static bool hourly_slot_key(int index, char *out, size_t out_len)
         return false;
     }
     int written = snprintf(out, out_len, kHourlySlotKeyFormat, index);
-    if (sensor_history_format_failed(written, out_len)) {
+    if (app_text::format_failed(written, out_len)) {
         out[0] = '\0';
         ESP_LOGW(TAG, HOURLY_SLOT_KEY_TRUNCATED_LOG_FORMAT, index);
         return false;
@@ -361,19 +295,6 @@ static esp_err_t save_hourly_sensor_meta_and_slot(nvs_handle_t nvs,
         return ESP_ERR_INVALID_ARG;
     }
     return nvs_set_blob(nvs, key, &sample, sizeof(sample));
-}
-
-int boot_sync_remaining_ms()
-{
-    if (g_boot_sync_deadline_us <= 0) {
-        return INT32_MAX;
-    }
-    int64_t remaining_us = g_boot_sync_deadline_us - esp_timer_get_time();
-    if (remaining_us <= 0) {
-        return 0;
-    }
-    int64_t remaining_ms = remaining_us / kUsPerMs;
-    return remaining_ms > INT32_MAX ? INT32_MAX : (int)remaining_ms;
 }
 
 void reset_hourly_sensor_history()
@@ -565,22 +486,4 @@ bool get_local_sensor_snapshot(float *temperature,
     }
     portEXIT_CRITICAL(&s_local_sensor_mux);
     return sensor_ok;
-}
-
-TickType_t next_sensor_sample_tick(TickType_t now)
-{
-    return next_periodic_sample_tick(now,
-                                     kSensorSampleDayMinutes,
-                                     kSensorSampleNightMinutes,
-                                     kUnknownTimeSensorSampleMs);
-}
-
-TickType_t next_battery_sample_tick(TickType_t now)
-{
-    TickType_t normal_sample = next_periodic_sample_tick(now,
-                                                         kBatterySampleDayMinutes,
-                                                         kBatterySampleNightMinutes,
-                                                         kBatterySampleUnknownTimeMinutes * kSecondsPerMinute * kMsPerSecond);
-    TickType_t charge_probe = now + pdMS_TO_TICKS(kBatteryChargeProbeSampleMs);
-    return charge_probe < normal_sample ? charge_probe : normal_sample;
 }

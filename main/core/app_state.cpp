@@ -2,7 +2,7 @@
 #include "app_state.h"
 
 const char *const TAG = "WeatherClock";
-const char *const APP_VERSION = "v1.5.5";
+const char *const APP_VERSION = "v1.5.6";
 #ifndef WEATHER_CLOCK_BUILD_DATE
 #define WEATHER_CLOCK_BUILD_DATE "unknown"
 #endif
@@ -223,8 +223,6 @@ lv_obj_t *g_second_canvas;
 lv_color_t *g_second_canvas_buf;
 lv_obj_t *g_status_gif_canvas;
 lv_color_t *g_status_gif_canvas_buf;
-lv_obj_t *g_day_progress_canvas;
-lv_color_t *g_day_progress_canvas_buf;
 lv_obj_t *g_second_progress_canvas;
 lv_color_t *g_second_progress_canvas_buf;
 lv_obj_t *g_flip_clock_card_canvas[3];
@@ -250,8 +248,6 @@ lv_obj_t *g_flip_clock_lunar_label;
 lv_obj_t *g_flip_clock_lunar_bold_x_label;
 lv_obj_t *g_flip_clock_lunar_bold_y_label;
 lv_obj_t *g_flip_clock_lunar_bold_xy_label;
-lv_obj_t *g_flip_clock_day_progress_canvas;
-lv_color_t *g_flip_clock_day_progress_canvas_buf;
 lv_obj_t *g_lower_panel_objects[13];
 lv_obj_t *g_setup_status_labels[6];
 lv_obj_t *g_boot_status_label;
@@ -283,13 +279,11 @@ int g_last_ui_second = -1;
 int g_last_ui_minute = -1;
 int g_last_ui_date_key = -1;
 int g_last_ui_date_page = -1;
-int g_last_day_progress_filled = -1;
 int g_last_second_progress_filled = -1;
 int g_last_status_gif_frame = -1;
 int g_last_flip_clock_hour = -1;
 int g_last_flip_clock_minute = -1;
 int g_last_flip_clock_second = -1;
-int g_last_flip_day_progress_filled = -1;
 int g_last_flip_sensor_minute = -1;
 int g_last_flip_temp_mood = -1;
 int g_last_flip_humi_mood = -1;

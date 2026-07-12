@@ -1,6 +1,7 @@
 // 构建和刷新图片时钟页面的图库、大号时间和每日文字。
 #include "ui_views.h"
 
+#include "app_constexpr.h"
 #include "clock_gallery_images.h"
 #include "custom_assets.h"
 #include "network_services.h"
@@ -20,19 +21,20 @@ static constexpr int kGalleryTopLineY = 54;
 static constexpr int kGalleryTopLineW = 364;
 static constexpr int kGalleryTopLineH = 4;
 static constexpr int kGalleryImageCanvasX = 20;
-static constexpr int kGalleryImageCanvasY = 62;
+static constexpr int kGalleryImageCanvasY = 66;
 static constexpr int kGalleryDividerX = 252;
-static constexpr int kGalleryDividerY = 66;
+static constexpr int kGalleryDividerY = 70;
 static constexpr int kGalleryDividerW = 3;
-static constexpr int kGalleryDividerH = 188;
+static constexpr int kGalleryDividerH = kGalleryImageCanvasY + CLOCK_GALLERY_IMAGE_HEIGHT -
+                                        kGalleryDividerY;
 static constexpr int kGalleryTimeCanvasX = 268;
-static constexpr int kGalleryTimeCanvasY = 62;
+static constexpr int kGalleryTimeCanvasY = 66;
 static constexpr int kGalleryTimeCanvasW = 112;
 static constexpr int kGalleryTimeCanvasH = 198;
 static constexpr int kGallerySayingLabelX = 18;
-static constexpr int kGallerySayingLabelY = 272;
+static constexpr int kGallerySayingLabelY = 275;
 static constexpr int kGallerySayingLabelW = 364;
-static constexpr int kGallerySayingLabelH = 26;
+static constexpr int kGallerySayingLabelH = 24;
 static constexpr int kGalleryMinutesPerHour = 60;
 static constexpr int kGalleryBlockDigitRows = 7;
 static constexpr int kGalleryBlockDigitCols = 5;
@@ -43,12 +45,6 @@ static constexpr int kGalleryBlockDigitH = kGalleryBlockDigitRows * kGalleryBloc
 static constexpr int kGalleryBlockNumberW = kGalleryBlockDigitW * 2 + kGalleryBlockDigitGap;
 static constexpr int kGalleryTimeHourY = 15;
 static constexpr int kGalleryTimeMinuteY = 116;
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
 
 static const char *const kBlockDigits[][kGalleryBlockDigitRows] = {
     {"11111", "10001", "10011", "10101", "11001", "10001", "11111"},
@@ -67,6 +63,8 @@ static constexpr int kGalleryBlockDigitCount = static_cast<int>(array_count(kBlo
 static_assert(kGalleryBlockDigitCount > 0, "Gallery block digit table must not be empty");
 static_assert(kGalleryTopLineW > 0 && kGalleryTopLineH > 0, "Gallery top separator size must be positive");
 static_assert(kGalleryDividerW > 0 && kGalleryDividerH > 0, "Gallery divider size must be positive");
+static_assert(kGalleryDividerY + kGalleryDividerH == kGalleryImageCanvasY + CLOCK_GALLERY_IMAGE_HEIGHT,
+              "Gallery divider bottom must align with the image canvas bottom");
 static_assert(kGalleryTimeCanvasW > 0 && kGalleryTimeCanvasH > 0, "Gallery time canvas dimensions must be positive");
 static_assert(kGallerySayingLabelW > 0 && kGallerySayingLabelH > 0, "Gallery saying label size must be positive");
 static_assert(kGalleryMinutesPerHour > 0, "Gallery minutes per hour must be positive");
@@ -250,6 +248,7 @@ void build_gallery_page()
                                   kGalleryTopLineW,
                                   kGalleryTopLineH);
     set_obj_black(top_line, true);
+    build_work_page_day_progress(screen, kWorkPageGallery);
 
     build_gallery_canvas(screen,
                          &g_gallery_image_canvas,

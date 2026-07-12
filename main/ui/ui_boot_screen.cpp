@@ -1,6 +1,8 @@
 // 构建启动屏、播放启动动画并在启动完成后切换到首个已启用工作页。
 #include "ui_views.h"
 
+#include "app_constexpr.h"
+
 namespace {
 constexpr uint32_t kBootAnimLvglLockTimeoutMs = 100;
 constexpr uint32_t kBootAnimFinishLvglLockTimeoutMs = 200;
@@ -30,22 +32,6 @@ constexpr const char *const kBootTexts[] = {
     BOOT_ANIM_DONE_EVENT_SKIPPED_LOG,
     BOOT_ANIM_CANVAS_CREATE_FAILED_LOG,
 };
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 static_assert(kBootContentX >= 0 && kBootContentW > 0,
               "boot screen content frame must be valid");

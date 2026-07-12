@@ -1,5 +1,7 @@
 // 对接 IP 定位、QWeather 城市查询、实时天气和天气预警接口。
 #include "network_services.h"
+#include "app_constexpr.h"
+#include "app_text_format.h"
 #include "qweather_forecast_parser.h"
 #include "qweather_location_text.h"
 #include "qweather_response.h"
@@ -67,8 +69,6 @@ constexpr const char *kQweatherDailyUrlFormat =
     "https://%s/v7/weather/%dd?location=%s&lang=zh&unit=m";
 constexpr const char *kQweatherAirUrlFormat =
     "https://%s/v7/air/now?location=%s&lang=zh";
-constexpr const char *kWeatherAlertEventColorFormat = "%s%s%s";
-constexpr const char *kWeatherAlertEventOnlyFormat = "%s%s";
 constexpr const char *kQweatherEndpointTexts[] = {
     kQweatherApiHost,
     kQweatherGeoApiHost,
@@ -77,9 +77,6 @@ constexpr const char *kQweatherEndpointTexts[] = {
     kQweatherNowUrlFormat,
     kQweatherDailyUrlFormat,
     kQweatherAirUrlFormat,
-    kWeatherAlertSuffix,
-    kWeatherAlertEventColorFormat,
-    kWeatherAlertEventOnlyFormat,
 };
 constexpr const char *kQweatherStageCity = "city";
 constexpr const char *kQweatherStageAlert = "alert";
@@ -201,51 +198,9 @@ constexpr const char *kQweatherStageAndStatusTexts[] = {
     kWeatherIpGeolocationLookupFailedLog,
 };
 
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&texts)[N])
-{
-    for (const char *text : texts) {
-        if (!cstr_nonempty(text)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-constexpr bool qweather_json_field_texts_nonempty()
-{
-    return cstr_array_nonempty(kQweatherJsonFieldTexts);
-}
-
-constexpr bool qweather_stage_and_status_texts_nonempty()
-{
-    return cstr_array_nonempty(kQweatherStageAndStatusTexts);
-}
-
-constexpr bool qweather_fixed_warning_texts_nonempty()
-{
-    return cstr_array_nonempty(kQweatherFixedWarningTexts);
-}
-
-constexpr bool qweather_endpoint_texts_nonempty()
-{
-    return cstr_array_nonempty(kQweatherEndpointTexts);
-}
-
 static_assert(array_count(kQweatherJsonFieldTexts) > 0,
               "QWeather JSON field guard must cover parsed fields");
-static_assert(qweather_json_field_texts_nonempty(),
+static_assert(cstr_array_nonempty(kQweatherJsonFieldTexts),
               "QWeather JSON field and business code strings must be non-empty");
 static_assert(array_count(kQweatherStageAndStatusTexts) > 0,
               "QWeather stage/status guard must cover stage and status text");
@@ -253,28 +208,18 @@ static_assert(array_count(kQweatherFixedWarningTexts) > 0,
               "QWeather fixed warning guard must cover fixed warning text");
 static_assert(array_count(kQweatherEndpointTexts) > 0,
               "QWeather endpoint guard must cover endpoint text");
-static_assert(qweather_stage_and_status_texts_nonempty(),
+static_assert(cstr_array_nonempty(kQweatherStageAndStatusTexts),
               "QWeather stage, preview, status and fixed log texts must be non-empty");
-static_assert(qweather_fixed_warning_texts_nonempty(),
+static_assert(cstr_array_nonempty(kQweatherFixedWarningTexts),
               "QWeather fixed warning texts must be non-empty");
-static_assert(qweather_endpoint_texts_nonempty(),
+static_assert(cstr_array_nonempty(kQweatherEndpointTexts),
               "QWeather endpoint, location and alert texts must be non-empty");
 
 void log_qweather_fixed_warning(const char *message);
 
-bool qweather_output_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
-
-bool qweather_format_failed(int written, size_t out_len)
-{
-    return written < 0 || (size_t)written >= out_len;
-}
-
 bool format_qweather_url(char *out, size_t out_len, const char *stage, const char *fmt, ...)
 {
-    if (!qweather_output_available(out, out_len) || !fmt) {
+    if (!app_text::output_buffer_available(out, out_len) || !fmt) {
         ESP_LOGW(TAG, QWEATHER_URL_INVALID_ARG_FORMAT, qweather_stage_text(stage));
         return false;
     }
@@ -282,7 +227,7 @@ bool format_qweather_url(char *out, size_t out_len, const char *stage, const cha
     va_start(args, fmt);
     int written = vsnprintf(out, out_len, fmt, args);
     va_end(args);
-    if (qweather_format_failed(written, out_len)) {
+    if (app_text::format_failed(written, out_len)) {
         out[0] = '\0';
         ESP_LOGW(TAG, QWEATHER_URL_TOO_LONG_FORMAT, qweather_stage_text(stage));
         return false;
@@ -360,8 +305,8 @@ QweatherCityLookupStatus qweather_lookup_city_status(const char *location,
                                                       size_t lon_len)
 {
     if (!location ||
-        !qweather_output_available(city_id, city_id_len) ||
-        !qweather_output_available(city_name, city_name_len)) {
+        !app_text::output_buffer_available(city_id, city_id_len) ||
+        !app_text::output_buffer_available(city_name, city_name_len)) {
         log_qweather_fixed_warning(kQweatherCityInvalidArgLog);
         return kQweatherCityLookupError;
     }
@@ -459,47 +404,6 @@ static bool lookup_weather_city(const char *location,
                                 sizeof(weather->lon));
 }
 
-static void format_weather_alert_title_text(char *title,
-                                            size_t title_len,
-                                            const char *format,
-                                            const char *event_name,
-                                            const char *color_name = nullptr)
-{
-    if (!qweather_output_available(title, title_len) || !format) {
-        return;
-    }
-    int written = 0;
-    if (color_name) {
-        written = snprintf(title, title_len, format, event_name, color_name, kWeatherAlertSuffix);
-    } else {
-        written = snprintf(title, title_len, format, event_name, kWeatherAlertSuffix);
-    }
-    if (written < 0) {
-        title[0] = '\0';
-        log_qweather_fixed_warning(kQweatherAlertTitleFormatFailedLog);
-    }
-}
-
-static void build_weather_alert_title(char *title,
-                                      size_t title_len,
-                                      const char *event_name,
-                                      const char *color_code,
-                                      const char *headline)
-{
-    if (!qweather_output_available(title, title_len)) {
-        return;
-    }
-    title[0] = '\0';
-    const char *color_name = warning_color_name(color_code);
-    if (cstr_nonempty(event_name) && cstr_nonempty(color_name)) {
-        format_weather_alert_title_text(title, title_len, kWeatherAlertEventColorFormat, event_name, color_name);
-    } else if (cstr_nonempty(headline)) {
-        strlcpy(title, headline, title_len);
-    } else if (cstr_nonempty(event_name)) {
-        format_weather_alert_title_text(title, title_len, kWeatherAlertEventOnlyFormat, event_name);
-    }
-}
-
 static void parse_weather_alert_item(const cJSON *item, WeatherAlertData *alert)
 {
     if (!cJSON_IsObject(item) || !alert) {
@@ -520,7 +424,9 @@ static void parse_weather_alert_item(const cJSON *item, WeatherAlertData *alert)
 
     int rank = warning_color_rank(color_code);
     char title[kWeatherAlertTitleLen] = {};
-    build_weather_alert_title(title, sizeof(title), event_name, color_code, headline);
+    if (!build_weather_alert_title(title, sizeof(title), event_name, color_code, headline)) {
+        log_qweather_fixed_warning(kQweatherAlertTitleFormatFailedLog);
+    }
     add_weather_alert_title(alert, title, rank);
 }
 

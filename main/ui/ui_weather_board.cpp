@@ -1,6 +1,7 @@
 // 绘制第五页天气看板，复用 QWeather 缓存并避免秒级刷新。
 #include "ui_views.h"
 
+#include "app_constexpr.h"
 #include "network_services.h"
 #include "ui_battery.h"
 #include "ui_weather_board_sun.h"
@@ -37,11 +38,6 @@ constexpr const char *kWeatherBoardWaitingData = "等待数据";
 constexpr const char *kWeatherBoardSyncing = "同步中";
 constexpr const char *kWeatherBoardCurrentUnitText = "C";
 constexpr int kForecastCardX[kWeatherForecastDays] = {138, 180, 222, 264, 306, 348};
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
 
 constexpr int kForecastCardY = 66;
 constexpr int kForecastCardW = 34;
@@ -486,6 +482,7 @@ void build_weather_board_page()
                                true);
 
     build_current_weather_panel(screen);
+    build_work_page_day_progress(screen, kWorkPageWeatherBoard);
 
     for (int i = 0; i < kWeatherForecastDays; ++i) {
         build_forecast_card(screen, s_cards[i], i);

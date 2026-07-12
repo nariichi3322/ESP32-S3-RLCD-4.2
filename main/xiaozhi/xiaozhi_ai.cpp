@@ -1,6 +1,7 @@
 // 复用本项目网络与电源服务对接小智官方激活和 WebSocket 会话。
 #include "xiaozhi_ai.h"
 
+#include "app_tick_time.h"
 #include "app_state.h"
 #include "alarm_services.h"
 #include "audio_services.h"
@@ -247,6 +248,8 @@ struct WebsocketSession {
     bool discard_tts_audio = false;
     bool exit_after_reply_requested = false;
     bool exit_reply_started = false;
+    bool exit_reply_deadline_set = false;
+    bool user_text_hold_set = false;
     bool peer_disconnected = false;
     TickType_t tts_stop_received_tick = 0;
     TickType_t last_tts_audio_tick = 0;
@@ -515,10 +518,10 @@ bool parse_server_hello(WebsocketSession *session, const char *json, size_t len)
 
 bool user_subtitle_hold_active(const WebsocketSession *session)
 {
-    if (!session || session->user_text_hold_until == 0) {
+    if (!session || !session->user_text_hold_set) {
         return false;
     }
-    return static_cast<int32_t>(session->user_text_hold_until - xTaskGetTickCount()) > 0;
+    return app_tick_deadline_pending(xTaskGetTickCount(), session->user_text_hold_until);
 }
 
 void publish_pending_assistant_text(WebsocketSession *session)
@@ -526,6 +529,7 @@ void publish_pending_assistant_text(WebsocketSession *session)
     if (!session || user_subtitle_hold_active(session)) {
         return;
     }
+    session->user_text_hold_set = false;
     session->user_text_hold_until = 0;
     if (session->pending_assistant_text[0] == '\0') {
         return;
@@ -646,6 +650,7 @@ void update_incoming_text(WebsocketSession *session, const char *json, size_t le
                  text->valuestring);
         session->user_text_hold_until =
             xTaskGetTickCount() + pdMS_TO_TICKS(kUserSubtitleMinVisibleMs);
+        session->user_text_hold_set = true;
         session->pending_assistant_text[0] = '\0';
         snapshot_set(kXiaozhiAiListening, "正在对话", text->valuestring);
         if (user_requested_xiaozhi_exit(text->valuestring)) {
@@ -653,6 +658,7 @@ void update_incoming_text(WebsocketSession *session, const char *json, size_t le
             session->exit_reply_started = false;
             session->exit_reply_deadline =
                 xTaskGetTickCount() + pdMS_TO_TICKS(kExitReplyTimeoutMs);
+            session->exit_reply_deadline_set = true;
             ESP_LOGI(TAG, "Xiaozhi voice exit requested, waiting for farewell");
         }
     } else if (cJSON_IsString(type) && strcmp(type->valuestring, "llm") == 0) {
@@ -1010,7 +1016,8 @@ bool run_voice_conversation()
         return false;
     }
     TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(kWebsocketTimeoutMs);
-    while (xTaskGetTickCount() < deadline && session.session_id[0] == '\0') {
+    while (app_tick_deadline_pending(xTaskGetTickCount(), deadline) &&
+           session.session_id[0] == '\0') {
         int received = esp_transport_read(session.socket, buffers->incoming, sizeof(buffers->incoming), 500);
         if (received > 0 && esp_transport_ws_get_read_opcode(session.socket) == WS_TRANSPORT_OPCODES_TEXT) {
             parse_server_hello(&session, buffers->incoming, static_cast<size_t>(received));
@@ -1111,6 +1118,7 @@ bool run_voice_conversation()
             bool playback_restarted = start_tts_playback();
             xiaozhi_voice_set_streaming(true);
             session.user_text_hold_until = 0;
+            session.user_text_hold_set = false;
             session.pending_assistant_text[0] = '\0';
             snapshot_set(kXiaozhiAiListening, "已打断", "请继续说话");
             ESP_LOGI(TAG,
@@ -1248,8 +1256,8 @@ bool run_voice_conversation()
             vTaskDelay(pdMS_TO_TICKS(10));
         }
         if (session.exit_after_reply_requested &&
-            session.exit_reply_deadline != 0 &&
-            static_cast<int32_t>(xTaskGetTickCount() - session.exit_reply_deadline) >= 0 &&
+            session.exit_reply_deadline_set &&
+            app_tick_deadline_reached(xTaskGetTickCount(), session.exit_reply_deadline) &&
             (!session.exit_reply_started || tts_playback_drained())) {
             ESP_LOGW(TAG, "Xiaozhi farewell timeout, returning home");
             return_from_xiaozhi_to_home();
@@ -1750,6 +1758,7 @@ bool acquire_realtime_network()
 void xiaozhi_ai_task(void *)
 {
     TickType_t next_activation_attempt = 0;
+    bool activation_attempt_scheduled = false;
     for (;;) {
         EventBits_t bits = xEventGroupGetBits(s_events);
         bool active = (bits & kAiPageActiveBit) != 0;
@@ -1778,9 +1787,11 @@ void xiaozhi_ai_task(void *)
             continue;
         }
         TickType_t now = xTaskGetTickCount();
-        if (next_activation_attempt == 0 || now >= next_activation_attempt) {
+        if (!activation_attempt_scheduled ||
+            app_tick_deadline_reached(now, next_activation_attempt)) {
             activate_or_restore_session();
             next_activation_attempt = now + pdMS_TO_TICKS(kActivationRetryMs);
+            activation_attempt_scheduled = true;
         }
         if (s_snapshot.state == kXiaozhiAiReady) {
             ensure_wake_word_listening();

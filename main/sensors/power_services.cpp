@@ -1,6 +1,7 @@
 // 管理网络和音频期间的电源管理锁，避免关键流程被睡眠打断。
 #include "sensor_services.h"
 
+#include "app_constexpr.h"
 #include "ui_views.h"
 
 #include <errno.h>
@@ -76,28 +77,6 @@ constexpr const char *const kPowerTexts[] = {
     POWER_RTC_SYNC_LOCALTIME_FAILED_LOG_FORMAT,
     POWER_RTC_SYNC_TIME_NOT_PLAUSIBLE_LOG_FORMAT,
 };
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 static_assert(kMinValidYear <= kMaxValidYear, "valid year range must be ordered");
 static_assert(kRtcMinMonth == 1, "RTC month range must start at 1");

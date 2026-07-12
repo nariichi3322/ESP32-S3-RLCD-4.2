@@ -4,15 +4,20 @@
 #include "ui_clock_alert_state.h"
 
 #include "alarm_services.h"
+#include "app_constexpr.h"
+#include "app_tick_time.h"
 #include "audio_services.h"
 #include "network_services.h"
 #include "ota_services.h"
 #include "pomodoro_services.h"
 #include "sensor_services.h"
 #include "ui_battery.h"
+#include "ui_battery_blink.h"
 #include "ui_setup_status.h"
 #include "ui_text_format.h"
+#include "ui_visible_cache.h"
 #include "ui_visible_sync_retry.h"
+#include "ui_xiaozhi_auto_return.h"
 #include "xiaozhi_ai.h"
 
 #include <stdint.h>
@@ -29,10 +34,6 @@ constexpr int kUiFlipClockPollMs = 200;
 constexpr int64_t kUiUsPerSecond = 1000000;
 constexpr int kUiMsPerSecond = 1000;
 constexpr int kUiSecondsPerMinute = 60;
-constexpr int kUiMinutesPerHour = 60;
-constexpr int kUiHoursPerDay = 24;
-constexpr int kUiSecondsPerHour = kUiSecondsPerMinute * kUiMinutesPerHour;
-constexpr int kUiSecondsPerDay = kUiSecondsPerHour * kUiHoursPerDay;
 constexpr int kUiBoundaryWakeSlackMs = 5;
 constexpr int kUiNextSecondDelayMinMs = 10;
 constexpr int kUiNextSecondDelayMaxMs = kUiMsPerSecond + kUiBoundaryWakeSlackMs;
@@ -71,11 +72,6 @@ constexpr const char *kUiLogTexts[] = {
     UI_XIAOZHI_AUTO_RETURN_LOG,
 };
 
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
 constexpr size_t cstr_len(const char *text)
 {
     size_t len = 0;
@@ -95,24 +91,7 @@ bool settings_timeout_elapsed(TickType_t last_activity)
     }
     TickType_t now = xTaskGetTickCount();
     TickType_t timeout_ticks = pdMS_TO_TICKS(kSettingsTimeoutMs);
-    return static_cast<int32_t>(now - last_activity) >= static_cast<int32_t>(timeout_ticks);
-}
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *text : items) {
-        if (!cstr_nonempty(text)) {
-            return false;
-        }
-    }
-    return true;
+    return app_tick_interval_elapsed(now, last_activity, timeout_ticks);
 }
 
 static_assert(kUiStatusRefreshMs > 0, "UI status refresh interval must be positive");
@@ -127,10 +106,6 @@ static_assert(kUiFlipClockPollMs > 0 && kUiFlipClockPollMs <= kUiMsPerSecond,
               "flip clock poll interval must stay within one second");
 static_assert(kUiUsPerSecond == 1000LL * kUiMsPerSecond,
               "UI microsecond and millisecond constants must stay consistent");
-static_assert(kUiSecondsPerHour == kUiSecondsPerMinute * kUiMinutesPerHour,
-              "UI seconds-per-hour constant must match minute/hour constants");
-static_assert(kUiSecondsPerDay == kUiSecondsPerHour * kUiHoursPerDay,
-              "UI seconds-per-day constant must match hour/day constants");
 static_assert(kUiBoundaryWakeSlackMs >= 0, "UI boundary wake slack must be non-negative");
 static_assert(kUiNextSecondDelayMinMs > 0, "next-second delay minimum must be positive");
 static_assert(kUiNextSecondDelayMaxMs >= kUiMsPerSecond,
@@ -233,36 +208,18 @@ TickType_t next_minute_delay_ticks(const struct tm &local)
 
 bool weather_cache_stale(time_t now_value)
 {
-    if (g_last_weather_sync_time <= 0) {
-        return true;
-    }
-    struct tm now_local = {};
-    struct tm last_local = {};
-    localtime_r(&now_value, &now_local);
-    localtime_r(&g_last_weather_sync_time, &last_local);
-    if (!is_tm_plausible(now_local) || !is_tm_plausible(last_local)) {
-        return now_value - g_last_weather_sync_time >= kUiSecondsPerHour;
-    }
-    return now_local.tm_year != last_local.tm_year ||
-           now_local.tm_yday != last_local.tm_yday ||
-           now_local.tm_hour != last_local.tm_hour;
+    return ui_weather_cache_stale(now_value, g_last_weather_sync_time);
 }
 
 bool saying_cache_stale(const struct tm &local_value, time_t now_value)
 {
     char saying[kDailySayingLen] = {};
     time_t last_sync_time = 0;
-    if (!get_daily_saying_snapshot(saying, sizeof(saying), &last_sync_time) ||
-        last_sync_time <= 0) {
-        return true;
-    }
-    struct tm saying_local = {};
-    localtime_r(&last_sync_time, &saying_local);
-    if (!is_tm_plausible(saying_local) || !is_tm_plausible(local_value)) {
-        return now_value - last_sync_time >= kUiSecondsPerDay;
-    }
-    return saying_local.tm_year != local_value.tm_year ||
-           saying_local.tm_yday != local_value.tm_yday;
+    bool snapshot_ready = get_daily_saying_snapshot(saying, sizeof(saying), &last_sync_time);
+    return ui_daily_saying_cache_stale(local_value,
+                                       now_value,
+                                       snapshot_ready,
+                                       last_sync_time);
 }
 
 bool weather_board_details_missing()
@@ -313,35 +270,6 @@ bool update_invalid_time_labels_for_active_page(bool clock_page_active,
         return update_invalid_date_time_labels(g_xiaozhi_date_label, g_xiaozhi_status_time_label);
     }
     return false;
-}
-
-void update_visible_work_page_battery_segments(bool history_page_active,
-                                               bool gallery_page_active,
-                                               bool calendar_page_active,
-                                               bool weather_board_page_active,
-                                               bool flip_clock_page_active,
-                                               bool xiaozhi_page_active,
-                                               bool battery_blink_visible,
-                                               bool battery_blink_on)
-{
-    if (history_page_active) {
-        update_battery_segments(g_history_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
-    }
-    if (gallery_page_active) {
-        update_battery_segments(g_gallery_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
-    }
-    if (calendar_page_active) {
-        update_battery_segments(g_calendar_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
-    }
-    if (weather_board_page_active) {
-        update_battery_segments(g_weather_board_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
-    }
-    if (flip_clock_page_active) {
-        update_battery_segments(g_flip_clock_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
-    }
-    if (xiaozhi_page_active) {
-        update_battery_segments(g_xiaozhi_battery_segments, g_battery_percent, battery_blink_visible, battery_blink_on);
-    }
 }
 
 bool auxiliary_page_requested()
@@ -397,6 +325,20 @@ TickType_t next_ui_loop_delay_ticks(const struct tm &local, bool battery_blink_v
         }
     }
     if (normal_work_page_active(kWorkPageXiaozhiAI)) {
+        PomodoroSnapshot pomodoro = {};
+        pomodoro_get_snapshot(&pomodoro);
+        if (pomodoro.state == kPomodoroRunning) {
+            uint32_t boundary_ms = pomodoro_next_display_boundary_ms(pomodoro.remaining_ms);
+            if (boundary_ms > 0) {
+                TickType_t boundary_ticks = pdMS_TO_TICKS(boundary_ms + kUiBoundaryWakeSlackMs);
+                if (boundary_ticks == 0) {
+                    boundary_ticks = 1;
+                }
+                if (boundary_ticks < delay_ticks) {
+                    delay_ticks = boundary_ticks;
+                }
+            }
+        }
         uint32_t subtitle_delay_ms = xiaozhi_subtitle_animation_delay_ms();
         if (subtitle_delay_ms > 0) {
             TickType_t subtitle_delay_ticks = pdMS_TO_TICKS(subtitle_delay_ms);
@@ -481,25 +423,30 @@ void ui_task(void *)
         if (g_active_work_page == kWorkPageXiaozhiAI && auxiliary_page_requested()) {
             xiaozhi_last_activity_tick = tick_now;
         }
-        bool status_due = tick_now - last_status_update >= pdMS_TO_TICKS(kUiStatusRefreshMs);
+        bool status_due = app_tick_interval_elapsed(tick_now,
+                                                    last_status_update,
+                                                    pdMS_TO_TICKS(kUiStatusRefreshMs));
         uint32_t current_alarm_version = alarm_state_version();
         if (current_alarm_version != last_alarm_version) {
             status_due = true;
         }
         bool battery_due = g_battery_version != last_battery_version;
-        bool battery_blink_visible = g_battery_charging &&
-                                     !g_battery_animation_complete &&
-                                     g_battery_percent >= 0 &&
-                                     g_battery_percent < kBatteryChargingAnimationStopPercent &&
-                                     g_active_work_page >= 0 &&
-                                     g_active_work_page < kWorkPageCount &&
-                                     !g_setup_portal_active &&
-                                     !auxiliary_page_requested();
-        bool battery_blink_second_even = is_tm_plausible(local)
-                                             ? (local.tm_sec % 2 == 0)
-                                             : (((xTaskGetTickCount() / pdMS_TO_TICKS(kAppMsPerSecond)) % 2) == 0);
-        bool battery_blink_on = battery_blink_visible && battery_blink_second_even;
-        int battery_blink_phase = battery_blink_on ? 1 : 0;
+        UiBatteryBlinkState battery_blink = ui_battery_blink_state({
+            g_battery_charging,
+            g_battery_animation_complete,
+            g_battery_percent,
+            kBatteryChargingAnimationStopPercent,
+            g_active_work_page,
+            kWorkPageCount,
+            g_setup_portal_active,
+            auxiliary_page_requested(),
+            is_tm_plausible(local),
+            local.tm_sec,
+            xTaskGetTickCount() / pdMS_TO_TICKS(kAppMsPerSecond),
+        });
+        bool battery_blink_visible = battery_blink.visible;
+        bool battery_blink_on = battery_blink.on;
+        int battery_blink_phase = battery_blink.phase;
         bool battery_blink_due = battery_blink_visible != last_battery_charging ||
                                  (battery_blink_visible &&
                                   battery_blink_phase != last_battery_blink_phase);
@@ -530,7 +477,9 @@ void ui_task(void *)
                 g_last_ui_date_page = -1;
                 refresh_now = true;
             };
-            if (info_requested && info_until != 0 && tick_now >= info_until && !ota_flow_active()) {
+            if (info_requested && info_until != 0 &&
+                app_tick_deadline_reached(tick_now, info_until) &&
+                !ota_flow_active()) {
                 g_boot_info_requested = false;
                 g_info_page_until_tick = 0;
                 info_requested = false;
@@ -656,7 +605,7 @@ void ui_task(void *)
                 }
                 if (settings_requested && is_settings_sync_busy()) {
                     TickType_t deadline = g_settings_sync_deadline_tick;
-                    if (deadline != 0 && tick_now >= deadline) {
+                    if (deadline != 0 && app_tick_deadline_reached(tick_now, deadline)) {
                         int op = g_settings_sync_op;
                         ESP_LOGW(TAG, UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT, op);
                         if (op == kSettingsSyncNtp) {
@@ -731,15 +680,18 @@ void ui_task(void *)
                 xiaozhi_ai_get_snapshot(&snapshot);
                 bool conversation_active = snapshot.state == kXiaozhiAiListening ||
                                            snapshot.state == kXiaozhiAiSpeaking;
-                if (pomodoro_is_running() ||
-                    xiaozhi_last_activity_tick == 0 ||
-                    snapshot.activity_sequence != last_xiaozhi_activity_sequence ||
-                    conversation_active) {
+                XiaozhiAutoReturnDecision auto_return = xiaozhi_auto_return_decision(
+                    tick_now,
+                    xiaozhi_last_activity_tick,
+                    pdMS_TO_TICKS(kXiaozhiAutoReturnTimeoutMs),
+                    g_xiaozhi_auto_return_enabled,
+                    pomodoro_is_running(),
+                    conversation_active,
+                    snapshot.activity_sequence != last_xiaozhi_activity_sequence);
+                if (auto_return.record_activity) {
                     xiaozhi_last_activity_tick = tick_now;
                     last_xiaozhi_activity_sequence = snapshot.activity_sequence;
-                } else if (g_xiaozhi_auto_return_enabled &&
-                           tick_now - xiaozhi_last_activity_tick >=
-                               pdMS_TO_TICKS(kXiaozhiAutoReturnTimeoutMs)) {
+                } else if (auto_return.return_home) {
                     int home_page = first_enabled_work_page();
                     if (home_page != kWorkPageXiaozhiAI) {
                         ESP_LOGI(TAG, UI_XIAOZHI_AUTO_RETURN_LOG, home_page);
@@ -763,7 +715,6 @@ void ui_task(void *)
                 g_last_flip_clock_hour = -1;
                 g_last_flip_clock_minute = -1;
                 g_last_flip_clock_second = -1;
-                g_last_flip_day_progress_filled = -1;
                 g_last_flip_sensor_minute = -1;
                 g_last_ui_date_key = -1;
                 g_last_ui_date_page = -1;
@@ -837,6 +788,9 @@ void ui_task(void *)
                 if (xiaozhi_page_active && update_xiaozhi_page(local)) {
                     refresh_now = true;
                 }
+                if (update_work_page_day_progress(g_active_work_page, local)) {
+                    refresh_now = true;
+                }
                 if (clock_page_active) {
                     WeatherAlertData alert = {};
                     get_weather_snapshot(nullptr, &alert);
@@ -890,7 +844,6 @@ void ui_task(void *)
                     g_last_ui_minute = -1;
                     g_last_ui_date_key = -1;
                     g_last_ui_date_page = -1;
-                    g_last_day_progress_filled = -1;
                     g_last_second_progress_filled = -1;
                     update_alert_pill(false);
                     alert_visible = false;
@@ -971,19 +924,14 @@ void ui_task(void *)
                     }
                 }
                 if (battery_due || battery_blink_due) {
-                    update_battery_icon(g_battery_percent, battery_blink_visible, battery_blink_on);
+                    update_work_page_battery_icon(g_active_work_page,
+                                                  g_battery_percent,
+                                                  battery_blink_visible,
+                                                  battery_blink_on);
                     last_battery_version = g_battery_version;
                     last_battery_charging = battery_blink_visible;
                     last_battery_blink_phase = battery_blink_phase;
                     content_changed = true;
-                    update_visible_work_page_battery_segments(history_page_active,
-                                                              gallery_page_active,
-                                                              calendar_page_active,
-                                                              weather_board_page_active,
-                                                              flip_clock_page_active,
-                                                              xiaozhi_page_active,
-                                                              battery_blink_visible,
-                                                              battery_blink_on);
                 }
                 if (status_due) {
                     if (!clock_page_active) {

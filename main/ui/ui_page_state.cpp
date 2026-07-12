@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "alarm_services.h"
+#include "app_constexpr.h"
 #include "network_services.h"
 
 namespace {
@@ -13,12 +14,6 @@ constexpr int kPageRootX = 0;
 constexpr int kPageRootY = 0;
 constexpr int kPageRootW = kDisplayWidth;
 constexpr int kPageRootH = kDisplayHeight;
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
 struct PageRootList {
     lv_obj_t *items[kWorkPageCount + kAuxPageRootCount];
 };
@@ -199,7 +194,7 @@ void apply_clock_mode_visibility(bool setup_active)
 {
     bool low = g_low_battery_mode;
     set_obj_visible(g_second_canvas, !low);
-    set_obj_visible(g_day_progress_canvas, !low);
+    set_work_page_day_progress_visible(kWorkPageWeatherClock, !low);
     set_obj_visible(g_second_progress_canvas, !low);
     set_obj_visible(g_low_battery_icon_canvas, low);
     set_lower_panel_visible(!setup_active && !low);

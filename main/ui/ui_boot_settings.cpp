@@ -2,6 +2,8 @@
 #include "ui_views.h"
 
 #include "alarm_services.h"
+#include "app_constexpr.h"
+#include "app_tick_time.h"
 
 #include "audio_services.h"
 #include "network_services.h"
@@ -13,12 +15,6 @@
 #include <stdarg.h>
 
 namespace {
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
 int collect_visible_work_page_order_indices(int *indices, size_t capacity)
 {
     if (!indices || capacity == 0) {
@@ -38,22 +34,6 @@ int collect_visible_work_page_order_indices(int *indices, size_t capacity)
 #define SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT "settings secondary text format failed index=%d"
 #define SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT "settings switch dot create failed index=%d"
 #define SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT "settings switch text create failed index=%d"
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (size_t i = 0; i < N; ++i) {
-        if (!cstr_nonempty(items[i])) {
-            return false;
-        }
-    }
-    return true;
-}
 
 constexpr int kSettingsPrimaryX = 12;
 constexpr int kSettingsPrimaryW = 112;
@@ -86,16 +66,6 @@ constexpr int kSettingsGridSwitchTextYOffset = 7;
 constexpr int kSettingsSystemLongItemY = 144;
 constexpr int kSettingsDisplayLongItemY = 183;
 constexpr const char *kSettingsPrimaryItems[kSettingsPrimaryCount] = {"网络", "声音", "显示", "系统"};
-constexpr bool settings_primary_items_nonempty()
-{
-    for (const char *item : kSettingsPrimaryItems) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 constexpr const char *kSettingsNetworkSyncTimeText = "同步时间";
 constexpr const char *kSettingsNetworkSyncWeatherText = "同步天气";
 constexpr const char *kSettingsNetworkSayingText = "更新一言";
@@ -162,21 +132,6 @@ constexpr const char *kBootSettingsLogTexts[] = {
     SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT,
 };
 
-constexpr bool settings_secondary_texts_nonempty()
-{
-    return cstr_array_nonempty(kSettingsSecondaryTexts);
-}
-
-constexpr bool settings_fixed_texts_nonempty()
-{
-    return cstr_array_nonempty(kSettingsFixedTexts);
-}
-
-constexpr bool boot_settings_log_texts_nonempty()
-{
-    return cstr_array_nonempty(kBootSettingsLogTexts);
-}
-
 struct SettingsGridCell {
     int x;
     int y;
@@ -228,10 +183,10 @@ static_assert(array_count(g_settings_switch_texts) == kSettingsSecondaryMaxCount
 static_assert(array_count(kSettingsSecondaryTexts) > 0, "settings secondary text registry must not be empty");
 static_assert(array_count(kSettingsFixedTexts) > 0, "settings fixed text registry must not be empty");
 static_assert(array_count(kBootSettingsLogTexts) > 0, "boot/settings log registry must not be empty");
-static_assert(settings_primary_items_nonempty(), "settings primary menu texts must be non-empty");
-static_assert(settings_secondary_texts_nonempty(), "settings secondary menu texts must be non-empty");
-static_assert(settings_fixed_texts_nonempty(), "settings fixed texts must be non-empty");
-static_assert(boot_settings_log_texts_nonempty(), "boot/settings log texts must be non-empty");
+static_assert(cstr_array_nonempty(kSettingsPrimaryItems), "settings primary menu texts must be non-empty");
+static_assert(cstr_array_nonempty(kSettingsSecondaryTexts), "settings secondary menu texts must be non-empty");
+static_assert(cstr_array_nonempty(kSettingsFixedTexts), "settings fixed texts must be non-empty");
+static_assert(cstr_array_nonempty(kBootSettingsLogTexts), "boot/settings log texts must be non-empty");
 static_assert(kSettingsSecondaryTextSize > 1, "settings secondary text buffer must fit text and NUL");
 static_assert(kSettingsGridColumns > 0, "settings grid must have columns");
 static_assert(kSettingsGridColW > 0 && kSettingsSecondaryH > 0,
@@ -655,7 +610,9 @@ bool update_settings_page()
     changed |= update_settings_ota_panel(ota_panel_visible);
     if (g_settings_feedback_label) {
         TickType_t now = xTaskGetTickCount();
-        if (g_settings_feedback[0] && now < g_settings_feedback_until_tick) {
+        if (g_settings_feedback[0] &&
+            g_settings_feedback_until_tick != 0 &&
+            app_tick_deadline_pending(now, g_settings_feedback_until_tick)) {
             changed |= set_label_text_if_changed(g_settings_feedback_label, g_settings_feedback);
         } else {
             g_settings_feedback[0] = '\0';

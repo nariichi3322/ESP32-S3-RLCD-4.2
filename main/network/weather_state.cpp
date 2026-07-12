@@ -1,6 +1,7 @@
 // 维护天气数据的一致快照、成功更新时间和 ready 事件发布。
 #include "weather_state.h"
 
+#include "app_constexpr.h"
 #include "network_services.h"
 
 namespace {
@@ -15,23 +16,6 @@ constexpr const char *kWeatherStateTexts[] = {
     kWeatherFetchStatusCached,
     kWeatherReadyEventUnavailableLog,
 };
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&texts)[N])
-{
-    for (const char *text : texts) {
-        if (!text || text[0] == '\0') {
-            return false;
-        }
-    }
-    return true;
-}
 
 static_assert(array_count(kWeatherStateTexts) > 0,
               "weather state text guard must cover status and logs");

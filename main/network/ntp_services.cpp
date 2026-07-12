@@ -1,6 +1,7 @@
 // 执行 NTP 时间同步并维护系统可信时间状态。
 #include "network_services.h"
 
+#include "app_constexpr.h"
 #include "sensor_services.h"
 
 #include "sdkconfig.h"
@@ -15,12 +16,6 @@ constexpr const char *const kNtpServers[] = {
     "ntp.aliyun.com",
     "time.windows.com",
 };
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
 constexpr size_t kNtpServerCount = array_count(kNtpServers);
 constexpr size_t kDefaultConfiguredNtpServerSlots = 1;
 #ifdef CONFIG_LWIP_SNTP_MAX_SERVERS
@@ -37,22 +32,6 @@ static_assert(kConfiguredNtpServerSlots > 0, "SNTP must support at least one con
 constexpr size_t min_size(size_t a, size_t b)
 {
     return a < b ? a : b;
-}
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *text : items) {
-        if (!cstr_nonempty(text)) {
-            return false;
-        }
-    }
-    return true;
 }
 
 constexpr size_t kActiveNtpServerCount = min_size(kNtpServerCount, kConfiguredNtpServerSlots);

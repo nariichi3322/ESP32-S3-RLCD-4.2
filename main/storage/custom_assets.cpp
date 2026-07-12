@@ -1,6 +1,7 @@
 // 读取并校验上位机写入 assets 分区的自定义图片资源包。
 #include "custom_assets.h"
 
+#include "app_constexpr.h"
 #include "custom_asset_format.h"
 
 #include "app_state.h"
@@ -79,32 +80,7 @@ static int s_gallery_count = 0;
 static bool s_assets_ready = false;
 static constexpr const char *kCustomAssetsPartitionLabel = "assets";
 static constexpr size_t kCustomAssetCrcChunkSize = 256;
-static constexpr uint16_t kBitsPerByte = 8;
-static constexpr uint32_t kCustomAssetCrc32Polynomial = 0xEDB88320U;
-static constexpr uint32_t kCustomAssetCrc32Initial = 0xFFFFFFFFU;
 static constexpr int kCustomAssetDiagGifFrames[] = {0, 1, 30, 59};
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 constexpr bool custom_asset_diag_frames_valid()
 {
@@ -187,27 +163,9 @@ static_assert(sizeof(CustomAssetsHeader) +
                   UINT16_MAX,
               "custom asset header must fit its 16-bit wire size");
 static_assert(kCustomAssetCrcChunkSize > 0, "custom asset CRC chunk size must be positive");
-static_assert(kBitsPerByte == 8, "custom assets expect 8-bit bytes");
-static_assert(kCustomAssetCrc32Initial == 0xFFFFFFFFU, "custom asset CRC32 initial value must stay stable");
-static_assert(kCustomAssetCrc32Polynomial == 0xEDB88320U, "custom asset CRC32 polynomial must stay stable");
 static_assert(array_count(kCustomAssetLogTexts) > 0,
               "custom assets log guard must cover log texts");
 static_assert(cstr_array_nonempty(kCustomAssetLogTexts), "custom assets log texts must be non-empty");
-
-static uint32_t crc32_update_raw(uint32_t crc, const uint8_t *data, size_t len)
-{
-    if (!data && len > 0) {
-        return crc;
-    }
-    for (size_t i = 0; i < len; ++i) {
-        crc ^= data[i];
-        for (int bit = 0; bit < kBitsPerByte; ++bit) {
-            uint32_t mask = -(crc & 1U);
-            crc = (crc >> 1) ^ (kCustomAssetCrc32Polynomial & mask);
-        }
-    }
-    return crc;
-}
 
 static bool partition_range_valid(uint32_t offset, size_t length)
 {
@@ -249,11 +207,11 @@ static bool partition_crc(uint32_t offset, uint32_t length, uint32_t *crc_out)
             ESP_LOGW(TAG, CUSTOM_ASSETS_PARTITION_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
             return false;
         }
-        crc = crc32_update_raw(crc, buffer, chunk);
+        crc = custom_asset_crc32_update(crc, buffer, chunk);
         cursor += chunk;
         remaining -= chunk;
     }
-    *crc_out = ~crc;
+    *crc_out = custom_asset_crc32_finalize(crc);
     return true;
 }
 
@@ -366,11 +324,13 @@ static bool validate_header_crc()
     CustomAssetsHeader header = s_assets_header;
     header.header_crc = 0;
     uint32_t crc = kCustomAssetCrc32Initial;
-    crc = crc32_update_raw(crc, reinterpret_cast<const uint8_t *>(&header), sizeof(header));
-    crc = crc32_update_raw(crc,
-                           reinterpret_cast<const uint8_t *>(s_entries),
-                           custom_asset_entry_table_bytes());
-    crc = ~crc;
+    crc = custom_asset_crc32_update(crc,
+                                    reinterpret_cast<const uint8_t *>(&header),
+                                    sizeof(header));
+    crc = custom_asset_crc32_update(crc,
+                                    reinterpret_cast<const uint8_t *>(s_entries),
+                                    custom_asset_entry_table_bytes());
+    crc = custom_asset_crc32_finalize(crc);
     if (crc != s_assets_header.header_crc) {
         ESP_LOGW(TAG, CUSTOM_ASSETS_HEADER_CRC_MISMATCH_LOG_FORMAT);
         return false;

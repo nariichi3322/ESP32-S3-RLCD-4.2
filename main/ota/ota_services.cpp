@@ -2,6 +2,9 @@
 #include "ota_services.h"
 #include "ota_validation.h"
 
+#include "app_constexpr.h"
+#include "app_text_format.h"
+#include "app_tick_time.h"
 #include "network_services.h"
 #include "sensor_services.h"
 #include "ui_views.h"
@@ -38,6 +41,7 @@ struct OtaManifestSource {
 };
 
 static RTC_DATA_ATTR OtaCrashBreadcrumb s_ota_breadcrumb;
+static volatile bool s_ota_status_hold_set = false;
 static constexpr uint32_t kOtaBreadcrumbMagic = 0x4f544131;
 static constexpr int kOtaMaxRedirects = 5;
 static constexpr size_t kOtaRedirectUrlLen = 1024;
@@ -46,8 +50,6 @@ static constexpr size_t kOtaManifestResponseBufferSize = 2048;
 static constexpr int kOtaManifestSourceNameLen = 16;
 static constexpr size_t kOtaDownloadStatusTextLen = 48;
 static constexpr int64_t kOtaUsPerMs = 1000;
-static constexpr int64_t kOtaUsPerSecond = 1000000;
-static constexpr int kOtaBytesPerKiB = 1024;
 static constexpr uint32_t kOtaFailureHoldMs = 5000;
 static constexpr uint32_t kOtaSuccessHoldMs = 6000;
 static constexpr uint32_t kOtaOfflineHoldMs = 3500;
@@ -56,11 +58,6 @@ static constexpr uint32_t kOtaPreRestartDisplayQuietMs = 1500;
 static constexpr uint32_t kOtaWifiConnectTimeoutMs = 45000;
 static constexpr uint32_t kOtaReadRetryDelayMs = 100;
 static constexpr TickType_t kOtaReadRetryDelay = pdMS_TO_TICKS(kOtaReadRetryDelayMs);
-static constexpr int kHttpStatusMovedPermanently = 301;
-static constexpr int kHttpStatusFound = 302;
-static constexpr int kHttpStatusSeeOther = 303;
-static constexpr int kHttpStatusTemporaryRedirect = 307;
-static constexpr int kHttpStatusPermanentRedirect = 308;
 static_assert(kOtaMaxRedirects > 0, "OTA redirect limit must be positive");
 static_assert(kOtaRedirectUrlLen > kOtaUrlLen, "OTA redirect URL buffer must exceed manifest URL storage");
 static_assert(kOtaHttpTxBufferSize > 0, "OTA HTTP tx buffer must be positive");
@@ -70,8 +67,6 @@ static_assert(kOtaSha256HexLen + 1 == kOtaSha256Len,
               "OTA SHA256 hex length must match manifest storage");
 static_assert(kOtaDownloadStatusTextLen <= kOtaStatusLen,
               "OTA download status scratch text must fit global OTA status storage");
-static_assert(kOtaUsPerSecond == kOtaUsPerMs * 1000, "OTA microsecond constants must stay consistent");
-static_assert(kOtaBytesPerKiB == 1024, "OTA KiB conversion must remain binary");
 static_assert(kOtaFailureHoldMs > 0 && kOtaSuccessHoldMs > 0 && kOtaOfflineHoldMs > 0,
               "OTA terminal status hold times must be positive");
 static_assert(kOtaRebootNoticeDelayMs >= kOtaPreRestartDisplayQuietMs,
@@ -79,11 +74,6 @@ static_assert(kOtaRebootNoticeDelayMs >= kOtaPreRestartDisplayQuietMs,
 static_assert(kOtaWifiConnectTimeoutMs > 0, "OTA Wi-Fi connect timeout must be positive");
 static_assert(kOtaReadRetryDelayMs > 0, "OTA read retry delay must be positive");
 static_assert(kOtaReadRetryDelay > 0, "OTA read retry tick delay must be positive");
-static_assert(kHttpStatusMovedPermanently < kHttpStatusFound &&
-                  kHttpStatusFound < kHttpStatusSeeOther &&
-                  kHttpStatusSeeOther < kHttpStatusTemporaryRedirect &&
-                  kHttpStatusTemporaryRedirect < kHttpStatusPermanentRedirect,
-              "OTA HTTP redirect status constants must stay ordered");
 static constexpr const char *kOtaStatusCheckFailed = "Check failed";
 static constexpr const char *kOtaStatusCheckingUpdate = "Checking update";
 static constexpr const char *kOtaStatusAlreadyLatest = "Already latest";
@@ -232,11 +222,6 @@ static constexpr const char *kOtaLogTexts[] = {
     kOtaPrimaryDownloadRetryBackupLog,
 };
 
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
 constexpr size_t cstr_len(const char *text)
 {
     size_t len = 0;
@@ -264,19 +249,9 @@ static const char *ota_status_text_or_fallback(const char *text)
     return cstr_nonempty(text) ? text : kOtaStatusFallbackError;
 }
 
-static bool ota_output_buffer_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
-
-static bool ota_format_failed(int written, size_t out_len)
-{
-    return written < 0 || static_cast<size_t>(written) >= out_len;
-}
-
 static void format_ota_status_text(char *out, size_t out_len, const char *fmt, ...)
 {
-    if (!ota_output_buffer_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
     if (!fmt) {
@@ -287,26 +262,9 @@ static void format_ota_status_text(char *out, size_t out_len, const char *fmt, .
     va_start(args, fmt);
     int written = vsnprintf(out, out_len, fmt, args);
     va_end(args);
-    if (ota_format_failed(written, out_len)) {
+    if (app_text::format_failed(written, out_len)) {
         strlcpy(out, kOtaStatusFallbackError, out_len);
     }
-}
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&texts)[N])
-{
-    for (const char *text : texts) {
-        if (!cstr_nonempty(text)) {
-            return false;
-        }
-    }
-    return true;
 }
 
 static_assert(array_count(kOtaStatusTexts) > 0,
@@ -345,14 +303,6 @@ static void log_ota_heap(const char *stage, int downloaded, int progress)
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
-}
-
-static int ota_speed_kbps_for_window(int bytes, int64_t elapsed_us)
-{
-    if (bytes <= 0 || elapsed_us <= 0) {
-        return 0;
-    }
-    return (int)((int64_t)bytes * kOtaUsPerSecond / elapsed_us / kOtaBytesPerKiB);
 }
 
 class OtaDisplayQuietGuard {
@@ -531,7 +481,13 @@ static void ota_set_status(int state, const char *text, int progress = -1, uint3
     g_ota_state = state;
     g_ota_progress = progress;
     strlcpy(g_ota_status, ota_status_text_or_fallback(text), sizeof(g_ota_status));
-    g_ota_status_until_tick = hold_ms > 0 ? xTaskGetTickCount() + pdMS_TO_TICKS(hold_ms) : 0;
+    if (hold_ms > 0) {
+        g_ota_status_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(hold_ms);
+        s_ota_status_hold_set = true;
+    } else {
+        s_ota_status_hold_set = false;
+        g_ota_status_until_tick = 0;
+    }
     notify_ui_task();
 }
 
@@ -610,15 +566,6 @@ static void keep_ota_settings_panel_visible()
     g_info_page_until_tick = 0;
 }
 
-static bool is_http_redirect_status(int status)
-{
-    return status == kHttpStatusMovedPermanently ||
-           status == kHttpStatusFound ||
-           status == kHttpStatusSeeOther ||
-           status == kHttpStatusTemporaryRedirect ||
-           status == kHttpStatusPermanentRedirect;
-}
-
 static esp_err_t ota_http_event_handler(esp_http_client_event_t *evt)
 {
     if (!evt) {
@@ -640,7 +587,8 @@ static esp_err_t ota_http_event_handler(esp_http_client_event_t *evt)
 
 static bool ota_status_hold_active(TickType_t now)
 {
-    return g_ota_status_until_tick != 0 && now < g_ota_status_until_tick;
+    return s_ota_status_hold_set &&
+           app_tick_deadline_pending(now, static_cast<TickType_t>(g_ota_status_until_tick));
 }
 
 static bool ota_flow_active_at(TickType_t now)
@@ -661,9 +609,10 @@ void ota_reset_status_if_idle()
     TickType_t now = xTaskGetTickCount();
     if (!ota_flow_active_at(now) &&
         g_ota_state != kOtaIdle &&
-        g_ota_status_until_tick != 0 &&
-        now >= g_ota_status_until_tick) {
+        s_ota_status_hold_set &&
+        app_tick_deadline_reached(now, static_cast<TickType_t>(g_ota_status_until_tick))) {
         g_ota_state = kOtaIdle;
+        s_ota_status_hold_set = false;
         g_ota_status_until_tick = 0;
     }
     if (g_ota_state == kOtaIdle) {
@@ -827,7 +776,7 @@ static bool fetch_ota_manifest_from_source(const OtaManifestSource &source, OtaM
 
 static void store_ota_manifest_source_name(char *out, size_t out_len, const char *name)
 {
-    if (!ota_output_buffer_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
     strlcpy(out, ota_manifest_source_name_or_unknown(name), out_len);
@@ -853,15 +802,6 @@ static bool fetch_ota_manifest(OtaManifest *manifest, char *source_name = nullpt
     return false;
 }
 
-static bool ota_backup_manifest_matches_current(const OtaManifest &current,
-                                                const OtaManifest &candidate)
-{
-    const bool versions_match = strcmp(candidate.version, current.version) == 0;
-    const bool checksums_match = strcasecmp(candidate.sha256, current.sha256) == 0;
-    const bool sizes_match = current.size <= 0 || candidate.size <= 0 || current.size == candidate.size;
-    return versions_match && checksums_match && sizes_match;
-}
-
 static bool fetch_backup_manifest_for_install(const OtaManifest &current, OtaManifest *backup)
 {
     if (!backup || current.version[0] == '\0' || !ota_valid_sha256_string(current.sha256)) {
@@ -873,7 +813,12 @@ static bool fetch_backup_manifest_for_install(const OtaManifest &current, OtaMan
     if (!fetch_ota_manifest_from_source(backup_source, &candidate)) {
         return false;
     }
-    if (!ota_backup_manifest_matches_current(current, candidate)) {
+    if (!ota_backup_manifest_metadata_matches(current.version,
+                                              current.sha256,
+                                              current.size,
+                                              candidate.version,
+                                              candidate.sha256,
+                                              candidate.size)) {
         ESP_LOGW(TAG,
                  OTA_BACKUP_MANIFEST_MISMATCH_FORMAT,
                  current.version,
@@ -954,7 +899,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         }
         content_len = esp_http_client_fetch_headers(client);
         int status = esp_http_client_get_status_code(client);
-        if (is_http_redirect_status(status)) {
+        if (ota_is_http_redirect_status(status)) {
             ESP_LOGI(TAG, OTA_REDIRECT_STATUS_FORMAT, status, redirect_url[0] ? redirect_url : "--");
             close_ota_http_client(&client);
             if (redirect_url[0] == '\0' || strlen(redirect_url) >= sizeof(current_url)) {

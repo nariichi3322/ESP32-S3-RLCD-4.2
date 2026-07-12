@@ -1,7 +1,8 @@
 // 解析 QWeather 每日预报字段并生成本地天气建议。
 #include "qweather_forecast_parser.h"
 
-#include "network_services.h"
+#include "app_constexpr.h"
+#include "network_json.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -42,22 +43,6 @@ constexpr const char *kForecastParserTexts[] = {
     kQweatherDailyJsonSunriseField,
     kQweatherDailyJsonSunsetField,
 };
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-constexpr bool forecast_parser_texts_nonempty()
-{
-    for (const char *text : kForecastParserTexts) {
-        if (!text || text[0] == '\0') {
-            return false;
-        }
-    }
-    return true;
-}
 
 int weather_text_to_int(const char *text, int fallback = 0)
 {
@@ -110,7 +95,8 @@ static_assert(kWeatherAdviceColdTempC < kWeatherAdviceHotTempC,
               "weather advice cold threshold must be below hot threshold");
 static_assert(kWeatherAdviceLargeTempGapC > 0, "weather advice temperature gap must be positive");
 static_assert(array_count(kForecastParserTexts) > 0, "forecast parser text registry must not be empty");
-static_assert(forecast_parser_texts_nonempty(), "forecast parser field and advice texts must be non-empty");
+static_assert(cstr_array_nonempty(kForecastParserTexts),
+              "forecast parser field and advice texts must be non-empty");
 } // namespace
 
 const char *weather_advice_for_day(const WeatherForecastDay &today)

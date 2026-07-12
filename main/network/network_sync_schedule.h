@@ -1,0 +1,34 @@
+// 声明联网同步任务每轮到期项目与下一唤醒时间的纯计算接口。
+#pragma once
+
+#include <stdint.h>
+#include <time.h>
+
+struct NetworkSyncScheduleInput {
+    time_t now = 0;
+    time_t next_ntp_retry_at = 0;
+    time_t boot_weather_due_at = 0;
+    time_t boot_saying_due_at = 0;
+    bool have_weather_key = false;
+    bool low_battery_mode = false;
+    bool provisioning_sync_due = false;
+    bool manual_ntp_due = false;
+    bool manual_weather_due = false;
+    bool manual_saying_due = false;
+    bool boot_ntp_due = false;
+    bool midnight_ntp_due = false;
+    bool boot_weather_due = false;
+    bool boot_saying_due = false;
+};
+
+struct NetworkSyncSchedule {
+    bool boot_weather_ready = false;
+    bool boot_saying_ready = false;
+    bool ntp_due = false;
+    bool weather_due = false;
+    bool saying_due = false;
+    time_t next_boot_due_at = 0;
+};
+
+NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInput &input);
+int network_boot_budget_remaining_ms(int64_t deadline_us, int64_t now_us);

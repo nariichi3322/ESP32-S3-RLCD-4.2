@@ -1,6 +1,7 @@
 // 构建并刷新所有工作页复用的五格电池图标。
 #include "ui_battery.h"
 
+#include "app_constexpr.h"
 #include "app_state.h"
 
 namespace {
@@ -36,24 +37,19 @@ constexpr const char *kBatteryLogTexts[] = {
     BATTERY_TIP_CREATE_FAILED_LOG,
     BATTERY_SEGMENT_CREATE_FAILED_FORMAT,
 };
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *text : items) {
-        if (!cstr_nonempty(text)) {
-            return false;
-        }
-    }
-    return true;
-}
+lv_obj_t **const kBatterySegmentsByWorkPage[kWorkPageCount] = {
+    g_battery_segments,
+    g_gallery_battery_segments,
+    g_weather_board_battery_segments,
+    g_flip_clock_battery_segments,
+    g_calendar_battery_segments,
+    g_history_battery_segments,
+    g_xiaozhi_battery_segments,
+};
 
 static_assert(cstr_array_nonempty(kBatteryLogTexts), "battery log texts must be non-empty");
+static_assert(array_count(kBatterySegmentsByWorkPage) == kWorkPageCount,
+              "battery segment page map must cover every work page");
 static_assert(kBatteryFrameW > 0 && kBatteryFrameH > 0,
               "battery frame size must be positive");
 static_assert(kBatteryInnerW > 0 && kBatteryInnerH > 0,
@@ -183,4 +179,12 @@ void update_battery_icon(int percent, bool charging, bool blink_on)
     update_battery_segments(g_history_battery_segments, percent, charging, blink_on);
     update_battery_segments(g_gallery_battery_segments, percent, charging, blink_on);
     update_battery_segments(g_calendar_battery_segments, percent, charging, blink_on);
+}
+
+void update_work_page_battery_icon(int page, int percent, bool charging, bool blink_on)
+{
+    if (page < 0 || page >= kWorkPageCount) {
+        return;
+    }
+    update_battery_segments(kBatterySegmentsByWorkPage[page], percent, charging, blink_on);
 }

@@ -58,6 +58,11 @@ int main()
     assert(!is_night_slow_window(local_value(2026, 7, 12, 21, 59, 59)));
     assert(periodic_sample_minutes(local_value(2026, 7, 12, 23, 0, 0), 1, 2) == 2);
     assert(periodic_sample_minutes(local_value(2026, 7, 12, 12, 0, 0), 1, 2) == 1);
+    assert(seconds_until_next_periodic_sample(local_value(2026, 7, 12, 12, 0, 0), 60) == 60);
+    assert(seconds_until_next_periodic_sample(local_value(2026, 7, 12, 12, 0, 1), 60) == 59);
+    assert(seconds_until_next_periodic_sample(local_value(2026, 7, 12, 12, 1, 59), 60) == 1);
+    assert(seconds_until_next_periodic_sample(local_value(2026, 7, 12, 12, 5, 0), 120) == 60);
+    assert(seconds_until_next_periodic_sample(local_value(2026, 7, 12, 12, 5, 0), 0) == 60);
 
     time_t value = local_epoch(2026, 7, 12, 13, 45, 56);
     expect_local_time(hour_start_from_time(value), 2026, 7, 12, 13, 0);

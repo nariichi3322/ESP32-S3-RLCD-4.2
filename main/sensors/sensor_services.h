@@ -3,6 +3,9 @@
 #include "app_state.h"
 #include "sensor_time.h"
 
+inline constexpr int kSensorSampleDayMinutes = 1;
+inline constexpr int kSensorSampleNightMinutes = 2;
+
 void init_power_management();
 void acquire_network_awake_lock();
 void release_network_awake_lock();

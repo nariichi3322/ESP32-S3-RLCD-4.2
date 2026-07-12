@@ -1,6 +1,7 @@
 // 管理工作页名称、启用状态、设置映射和用户自定义顺序。
 #include "ui_work_page_catalog.h"
 
+#include "app_constexpr.h"
 #include "app_state.h"
 
 namespace {
@@ -57,6 +58,13 @@ constexpr uint8_t work_page_mask(int page)
     return static_cast<uint8_t>(1U << page);
 }
 
+constexpr uint8_t kAllWorkPageMask = static_cast<uint8_t>((1U << kWorkPageCount) - 1U);
+constexpr uint8_t kNetworkWorkPageMask = work_page_mask(kWorkPageWeatherClock) |
+                                         work_page_mask(kWorkPageGallery) |
+                                         work_page_mask(kWorkPageWeatherBoard) |
+                                         work_page_mask(kWorkPageXiaozhiAI);
+constexpr uint8_t kLocalWorkPageMask = static_cast<uint8_t>(~kNetworkWorkPageMask) & kAllWorkPageMask;
+
 bool page_mask_has_non_xiaozhi_page(uint8_t page_mask)
 {
     for (int page = kFirstWorkPage; page < kWorkPageCount; ++page) {
@@ -65,28 +73,6 @@ bool page_mask_has_non_xiaozhi_page(uint8_t page_mask)
         }
     }
     return false;
-}
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
 }
 
 template <typename T, size_t N>
@@ -181,6 +167,9 @@ static_assert(kFallbackWorkPage == kWorkPageWeatherClock, "work page order fallb
 static_assert(kWorkPageCount > 0, "there must be at least one work page");
 static_assert(kWorkPageCount <= static_cast<int>(sizeof(uint8_t) * 8),
               "work page enabled mask is stored as uint8_t");
+static_assert(kLocalWorkPageMask != 0, "offline mode requires at least one local work page");
+static_assert((kLocalWorkPageMask & kNetworkWorkPageMask) == 0,
+              "local and network work page masks must not overlap");
 static_assert(array_count(kDefaultWorkPageOrder) == kWorkPageCount,
               "default work page order must cover every work page");
 static_assert(array_count(kDisplaySettingPages) == kDisplaySettingsPageItemCount,
@@ -201,6 +190,27 @@ bool is_work_page_enabled(int page)
         return false;
     }
     return (g_work_page_enabled_mask & work_page_mask(page)) != 0;
+}
+
+bool work_page_requires_network(int page)
+{
+    return is_work_page_index(page) && (kNetworkWorkPageMask & work_page_mask(page)) != 0;
+}
+
+uint8_t work_page_mask_for_offline_mode(uint8_t page_mask)
+{
+    uint8_t local_mask = static_cast<uint8_t>(page_mask & kLocalWorkPageMask);
+    if (local_mask != 0) {
+        return local_mask;
+    }
+    if (work_page_order_valid(g_work_page_order, sizeof(g_work_page_order))) {
+        for (uint8_t page : g_work_page_order) {
+            if (!work_page_requires_network(page)) {
+                return work_page_mask(page);
+            }
+        }
+    }
+    return work_page_mask(kWorkPageFlipClock);
 }
 
 const char *work_page_name(int page)

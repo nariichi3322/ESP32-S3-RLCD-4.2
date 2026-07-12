@@ -1,6 +1,8 @@
 // 提供 HTTPS 文本请求、gzip 解码、URL 编码和 JSON 字段读取工具。
 #include "network_services.h"
 
+#include "app_constexpr.h"
+#include "app_text_format.h"
 #include "qweather_ca.h"
 
 namespace {
@@ -102,28 +104,6 @@ constexpr const char *const kHttpLogTexts[] = {
     HTTP_GET_OK_FORMAT,
     HTTP_SET_HEADER_FAILED_FORMAT,
 };
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 constexpr size_t cstr_len(const char *text)
 {
@@ -279,19 +259,14 @@ bool skip_gzip_zero_terminated_field(const uint8_t *data, size_t len, size_t *po
     return advance_gzip_pos(pos, 1, len);
 }
 
-bool output_buffer_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
-
 bool decode_http_body_args_valid(char *out, size_t out_len, const size_t *body_len)
 {
-    return output_buffer_available(out, out_len) && body_len;
+    return app_text::output_buffer_available(out, out_len) && body_len;
 }
 
 bool http_get_text_args_valid(const char *url, char *out, size_t out_len)
 {
-    return cstr_nonempty(url) && output_buffer_available(out, out_len);
+    return cstr_nonempty(url) && app_text::output_buffer_available(out, out_len);
 }
 
 bool http_buffer_can_accept_data(const HttpBuffer *buffer)
@@ -305,7 +280,7 @@ bool http_buffer_can_accept_data(const HttpBuffer *buffer)
 
 void copy_log_preview(char *out, size_t out_len, const char *text)
 {
-    if (!output_buffer_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
     if (!text) {
@@ -587,7 +562,7 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
 
 bool json_copy_string(const cJSON *obj, const char *name, char *out, size_t out_len)
 {
-    if (!obj || !name || !output_buffer_available(out, out_len)) {
+    if (!obj || !name || !app_text::output_buffer_available(out, out_len)) {
         return false;
     }
     const cJSON *item = cJSON_GetObjectItem(obj, name);
@@ -607,7 +582,7 @@ bool url_is_unreserved(char ch)
 
 bool url_encode_component(const char *in, char *out, size_t out_len)
 {
-    if (!in || !output_buffer_available(out, out_len)) {
+    if (!in || !app_text::output_buffer_available(out, out_len)) {
         return false;
     }
     size_t pos = 0;

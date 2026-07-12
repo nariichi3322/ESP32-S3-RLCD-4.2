@@ -1,6 +1,9 @@
 // 管理 QWeather 动态响应内存、JSON 根对象和业务成功字段读取。
 #include "qweather_response.h"
 
+#include "app_constexpr.h"
+#include "app_state.h"
+
 #include <stdlib.h>
 #include <string.h>
 
@@ -17,22 +20,6 @@ constexpr const char *kQweatherResponseTexts[] = {
 };
 #define QWEATHER_RESPONSE_SIZE_INVALID_FORMAT "qweather %s response size invalid"
 #define QWEATHER_RESPONSE_ALLOC_FAILED_FORMAT "qweather %s response alloc failed"
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-constexpr bool response_texts_nonempty()
-{
-    for (const char *text : kQweatherResponseTexts) {
-        if (!text || text[0] == '\0') {
-            return false;
-        }
-    }
-    return true;
-}
 
 char *alloc_qweather_response(const char *stage, size_t buffer_size)
 {
@@ -51,13 +38,13 @@ char *alloc_qweather_response(const char *stage, size_t buffer_size)
 
 static_assert(array_count(kQweatherResponseTexts) > 0,
               "QWeather response text registry must not be empty");
-static_assert(response_texts_nonempty(),
+static_assert(cstr_array_nonempty(kQweatherResponseTexts),
               "QWeather response stage, field and business code texts must be non-empty");
 } // namespace
 
 const char *qweather_stage_text(const char *stage)
 {
-    return stage && stage[0] != '\0' ? stage : kQweatherDefaultStage;
+    return cstr_nonempty(stage) ? stage : kQweatherDefaultStage;
 }
 
 QweatherResponseBuffer::QweatherResponseBuffer(const char *stage, size_t buffer_size)
@@ -72,7 +59,7 @@ QweatherResponseBuffer::~QweatherResponseBuffer()
 }
 
 QweatherJsonRoot::QweatherJsonRoot(char *response)
-    : root_(cJSON_Parse(response))
+    : root_(response ? cJSON_Parse(response) : nullptr)
 {
 }
 

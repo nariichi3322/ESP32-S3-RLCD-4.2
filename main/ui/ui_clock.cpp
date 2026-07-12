@@ -1,6 +1,7 @@
 // 构建和刷新天气时钟主页的时间、天气、温湿度和状态区域。
 #include "ui_views.h"
 
+#include "app_constexpr.h"
 #include "audio_services.h"
 #include "sensor_services.h"
 #include "ui_battery.h"
@@ -8,12 +9,6 @@
 #include "ui_setup_status.h"
 
 namespace {
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
 constexpr size_t kClockDateTextSize = 48;
 #define CLOCK_DATE_LABEL_CREATE_FAILED_LOG "clock date label create failed"
 #define CLOCK_ALERT_PILL_CREATE_FAILED_LOG "clock alert pill create failed"
@@ -67,22 +62,6 @@ constexpr const char *kClockLogTexts[] = {
     kClockComponentStatusGif,
     kClockComponentLowBatteryIcon,
 };
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (size_t i = 0; i < N; ++i) {
-        if (!cstr_nonempty(items[i])) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static_assert(array_count(kClockLogTexts) > 0, "clock log registry must not be empty");
 static_assert(cstr_array_nonempty(kClockLogTexts), "clock log texts must be non-empty");
 constexpr int kClockTimeCanvasX = 18;
@@ -121,7 +100,6 @@ constexpr int kClockTopDividerY = 54;
 constexpr int kClockBottomDividerY = 184;
 constexpr int kClockDividerWidth = 364;
 constexpr int kClockDividerHeight = 4;
-constexpr int kClockDayProgressCanvasY = 59;
 constexpr int kClockSecondProgressCanvasY = 180;
 constexpr int kClockLowerPanelSeparatorY = 188;
 constexpr int kClockLowerPanelSeparatorWidth = 2;
@@ -565,7 +543,7 @@ void build_clock_dividers_and_progress(lv_obj_t *screen)
                                      kClockBottomDividerY,
                                      kClockDividerWidth,
                                      kClockDividerHeight);
-    build_progress_canvas(screen, &g_day_progress_canvas, &g_day_progress_canvas_buf, kClockDayProgressCanvasY);
+    build_work_page_day_progress(screen, kWorkPageWeatherClock);
     build_progress_canvas(screen,
                           &g_second_progress_canvas,
                           &g_second_progress_canvas_buf,
@@ -649,11 +627,6 @@ bool update_time_ui(const struct tm &local, bool clock_page_active, int active_w
     ClockUiTimeSnapshot time_snapshot = clock_ui_time_snapshot(local);
     if (clock_page_active && time_snapshot.minute_key != g_last_ui_minute) {
         draw_time_canvas(local);
-        if (!g_low_battery_mode) {
-            update_progress_canvas(g_day_progress_canvas,
-                                   time_snapshot.day_progress_filled,
-                                   &g_last_day_progress_filled);
-        }
         g_last_ui_minute = time_snapshot.minute_key;
         changed = true;
     }

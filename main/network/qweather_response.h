@@ -1,7 +1,9 @@
 // 声明 QWeather 响应缓冲、JSON 根对象和业务成功字段读取接口。
 #pragma once
 
-#include "app_state.h"
+#include "cJSON.h"
+
+#include <stddef.h>
 
 const char *qweather_stage_text(const char *stage);
 

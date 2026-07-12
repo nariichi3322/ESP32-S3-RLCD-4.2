@@ -5,6 +5,7 @@
 
 namespace {
 constexpr int kSecondsPerHour = 60 * 60;
+constexpr int kSecondsPerMinute = 60;
 constexpr int kWeatherSyncFallbackSeconds = kSecondsPerHour;
 constexpr int kWeatherSyncSearchHours = 30;
 constexpr int kWeatherSyncSearchStepHours = 1;
@@ -53,6 +54,19 @@ int periodic_sample_minutes(const struct tm &local,
                             int night_minutes)
 {
     return is_night_slow_window(local) ? night_minutes : day_minutes;
+}
+
+int seconds_until_next_periodic_sample(const struct tm &local, int interval_seconds)
+{
+    if (interval_seconds <= 0) {
+        return kSecondsPerMinute;
+    }
+    int seconds_into_hour = local.tm_min * kSecondsPerMinute + local.tm_sec;
+    int seconds_to_next = interval_seconds - (seconds_into_hour % interval_seconds);
+    if (seconds_to_next <= 0 || seconds_to_next > interval_seconds) {
+        return interval_seconds;
+    }
+    return seconds_to_next;
 }
 
 time_t hour_start_from_time(time_t value)

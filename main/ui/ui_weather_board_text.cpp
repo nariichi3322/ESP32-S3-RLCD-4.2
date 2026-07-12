@@ -1,6 +1,7 @@
 // 实现天气看板不依赖 LVGL 的日期、温度范围和预警文本格式化。
 #include "ui_weather_board_text.h"
 
+#include "app_constexpr.h"
 #include "ui_text_format.h"
 
 #include <stdio.h>
@@ -30,12 +31,6 @@ constexpr const char *kWeatherBoardSunriseFormat = "日出 %s";
 constexpr const char *kWeatherBoardSunsetFormat = "日落 %s";
 constexpr int kWeatherBoardMaxAlertTitles = 3;
 constexpr size_t kForecastShortDateSize = 8;
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
 
 static_assert(array_count(kWeatherBoardWeekdayNames) == kWeatherBoardWeekdayCount,
               "weather board weekday names must match weekday count");

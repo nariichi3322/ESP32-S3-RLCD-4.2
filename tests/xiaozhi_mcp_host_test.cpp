@@ -22,6 +22,8 @@ int s_applied_volume = -1;
 int s_save_count = 0;
 bool s_save_result = true;
 int s_alarm_disable_count = 0;
+int s_alarm_call_count = 0;
+XiaozhiMcpAlarmRequest s_last_alarm_request = {};
 int s_pomodoro_call_count = 0;
 XiaozhiMcpPomodoroRequest s_last_pomodoro_request = {};
 int s_weather_city_call_count = 0;
@@ -124,6 +126,14 @@ const cJSON *tool_by_name(const cJSON *tools, const char *name)
     return nullptr;
 }
 
+void expect_tool_name_at(const cJSON *tools, int index, const char *expected)
+{
+    const cJSON *tool = cJSON_IsArray(tools) ? cJSON_GetArrayItem(tools, index) : nullptr;
+    const cJSON *name = cJSON_IsObject(tool) ? cJSON_GetObjectItem(tool, "name") : nullptr;
+    expect(cJSON_IsString(name) && std::strcmp(name->valuestring, expected) == 0,
+           "MCP tool order changed");
+}
+
 bool string_array_contains(const cJSON *items, const char *value)
 {
     const cJSON *item = nullptr;
@@ -168,6 +178,14 @@ void test_non_mcp_and_initialize()
     const cJSON *version = cJSON_IsObject(result) ? cJSON_GetObjectItem(result, "protocolVersion") : nullptr;
     expect(cJSON_IsString(version) && std::strcmp(version->valuestring, "2024-11-05") == 0,
            "initialize protocol version mismatch");
+    const cJSON *server_info = cJSON_IsObject(result) ? cJSON_GetObjectItem(result, "serverInfo") : nullptr;
+    const cJSON *server_name = cJSON_IsObject(server_info) ? cJSON_GetObjectItem(server_info, "name") : nullptr;
+    const cJSON *app_version = cJSON_IsObject(server_info) ? cJSON_GetObjectItem(server_info, "version") : nullptr;
+    expect(cJSON_IsString(server_name) &&
+               std::strcmp(server_name->valuestring, "ESP32-S3-RLCD-4.2") == 0,
+           "initialize server name mismatch");
+    expect(cJSON_IsString(app_version) && std::strcmp(app_version->valuestring, APP_VERSION) == 0,
+           "initialize app version mismatch");
 }
 
 void test_default_tool_whitelist()
@@ -175,6 +193,8 @@ void test_default_tool_whitelist()
     JsonOwner root = list_tools();
     const cJSON *tools = tools_from_response(root.value);
     expect(cJSON_GetArraySize(tools) == 2, "default tools list must contain exactly two tools");
+    expect_tool_name_at(tools, 0, "self.get_device_status");
+    expect_tool_name_at(tools, 1, "self.audio_speaker.set_volume");
     expect(tools_contains(tools, "self.get_device_status"), "device status tool missing");
     expect(tools_contains(tools, "self.audio_speaker.set_volume"), "volume tool missing");
     expect(!tools_contains(tools, "self.alarm.set"), "unregistered alarm tool was exposed");
@@ -233,6 +253,8 @@ void test_volume_control()
 
 bool alarm_handler(const XiaozhiMcpAlarmRequest &request, char *result, size_t result_len)
 {
+    ++s_alarm_call_count;
+    s_last_alarm_request = request;
     std::snprintf(result, result_len, "alarm %02d:%02d %s", request.hour, request.minute, request.label);
     return request.hour == 7 && request.minute == 30;
 }
@@ -284,6 +306,13 @@ void test_reserved_handlers()
     JsonOwner root = list_tools();
     const cJSON *tools = tools_from_response(root.value);
     expect(cJSON_GetArraySize(tools) == 7, "registered MCP tools were not published");
+    expect_tool_name_at(tools, 0, "self.get_device_status");
+    expect_tool_name_at(tools, 1, "self.audio_speaker.set_volume");
+    expect_tool_name_at(tools, 2, "self.alarm.set");
+    expect_tool_name_at(tools, 3, "self.alarm.disable");
+    expect_tool_name_at(tools, 4, "self.timer.set_countdown");
+    expect_tool_name_at(tools, 5, "self.pomodoro.control");
+    expect_tool_name_at(tools, 6, "self.weather.set_city");
     expect(tools_contains(tools, "self.alarm.set"), "registered alarm tool missing");
     expect(tools_contains(tools, "self.alarm.disable"), "registered alarm disable tool missing");
     expect(tools_contains(tools, "self.timer.set_countdown"), "registered countdown tool missing");
@@ -299,11 +328,39 @@ void test_reserved_handlers()
     expect(string_array_contains(alarm_required, "hour") &&
                string_array_contains(alarm_required, "minute"),
            "alarm schema required fields mismatch");
+    const cJSON *alarm_properties = cJSON_IsObject(alarm_schema)
+                                        ? cJSON_GetObjectItem(alarm_schema, "properties")
+                                        : nullptr;
+    const cJSON *confirm_property = cJSON_IsObject(alarm_properties)
+                                        ? cJSON_GetObjectItem(alarm_properties, "confirm_replace")
+                                        : nullptr;
+    const cJSON *confirm_type = cJSON_IsObject(confirm_property)
+                                    ? cJSON_GetObjectItem(confirm_property, "type")
+                                    : nullptr;
+    expect(cJSON_IsString(confirm_type) && std::strcmp(confirm_type->valuestring, "boolean") == 0,
+           "alarm confirmation schema must be optional boolean");
 
     root = send_request(
         "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"self.alarm.set\",\"arguments\":{\"hour\":7,\"minute\":30,\"label\":\"wake\"}},\"id\":6}");
     expect(cJSON_IsObject(cJSON_GetObjectItem(response_payload(root.value), "result")),
            "registered alarm handler call failed");
+    expect(s_alarm_call_count == 1 && !s_last_alarm_request.confirm_replace,
+           "initial alarm request unexpectedly confirmed replacement");
+
+    root = send_request(
+        "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"self.alarm.set\",\"arguments\":{\"hour\":7,\"minute\":30,\"confirm_replace\":true}},\"id\":61}");
+    expect(cJSON_IsObject(cJSON_GetObjectItem(response_payload(root.value), "result")),
+           "confirmed alarm handler call failed");
+    expect(s_alarm_call_count == 2 && s_last_alarm_request.confirm_replace,
+           "alarm replacement confirmation was not forwarded");
+
+    int alarm_calls_before_invalid = s_alarm_call_count;
+    root = send_request(
+        "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"self.alarm.set\",\"arguments\":{\"hour\":7,\"minute\":30,\"confirm_replace\":1}},\"id\":62}");
+    expect(cJSON_IsObject(cJSON_GetObjectItem(response_payload(root.value), "error")),
+           "non-boolean alarm confirmation did not fail");
+    expect(s_alarm_call_count == alarm_calls_before_invalid,
+           "invalid alarm confirmation reached handler");
 
     root = send_request(
         "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"self.alarm.disable\",\"arguments\":{}},\"id\":8}");

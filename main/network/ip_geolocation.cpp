@@ -1,6 +1,8 @@
 // 调用独立 IP 定位服务并转换为天气城市查询所需的位置文本。
 #include "network_services.h"
 
+#include "app_constexpr.h"
+#include "app_text_format.h"
 #include "qweather_location_text.h"
 #include "qweather_response.h"
 
@@ -25,33 +27,6 @@ constexpr const char *kIpGeolocationTexts[] = {
     IP_LOCATION_RESOLVED_FORMAT,
 };
 
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool output_buffer_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
-
 bool coordinates_available(const cJSON *latitude, const cJSON *longitude)
 {
     return cJSON_IsNumber(latitude) && cJSON_IsNumber(longitude);
@@ -72,8 +47,8 @@ static_assert(cstr_array_nonempty(kIpGeolocationTexts),
 
 bool ip_geolocation_lookup(char *location, size_t location_len, char *city, size_t city_len)
 {
-    if (!output_buffer_available(location, location_len) ||
-        !output_buffer_available(city, city_len)) {
+    if (!app_text::output_buffer_available(location, location_len) ||
+        !app_text::output_buffer_available(city, city_len)) {
         log_ip_geolocation_warning(kIpLocationInvalidArgLog);
         return false;
     }

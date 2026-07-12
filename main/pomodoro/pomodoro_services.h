@@ -17,6 +17,20 @@ struct PomodoroSnapshot {
     uint32_t version;
 };
 
+constexpr uint32_t pomodoro_display_seconds(uint32_t remaining_ms)
+{
+    return remaining_ms == 0 ? 0 : 1U + (remaining_ms - 1U) / 1000U;
+}
+
+constexpr uint32_t pomodoro_next_display_boundary_ms(uint32_t remaining_ms)
+{
+    if (remaining_ms == 0) {
+        return 0;
+    }
+    uint32_t remainder = remaining_ms % 1000U;
+    return remainder == 0 ? 1000U : remainder;
+}
+
 void pomodoro_services_init();
 void pomodoro_task(void *);
 void pomodoro_get_snapshot(PomodoroSnapshot *out);

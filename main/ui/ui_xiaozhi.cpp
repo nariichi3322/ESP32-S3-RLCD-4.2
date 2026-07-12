@@ -37,9 +37,6 @@ constexpr int kDetailX = 118;
 constexpr int kDetailY = 224;
 constexpr int kDetailW = 248;
 constexpr int kDetailH = 58;
-constexpr int kDayProgressY = 59;
-constexpr int kProgressSegmentCount = 60;
-constexpr int kSecondsPerDay = 24 * 60 * 60;
 constexpr uint32_t kSubtitleCharacterIntervalMs = 80;
 constexpr uint32_t kExpressionFrameIntervalMs = 250;
 constexpr uint32_t kPreparingDotsIntervalMs = 400;
@@ -73,9 +70,6 @@ enum FaceEmotion {
 lv_obj_t *s_clock_cards[kClockCardCount] = {};
 lv_color_t *s_clock_card_buffers[kClockCardCount] = {};
 int s_last_clock_values[kClockCardCount] = {-1, -1, -1};
-lv_obj_t *s_day_progress_canvas = nullptr;
-lv_color_t *s_day_progress_buffer = nullptr;
-int s_last_day_progress = -1;
 lv_obj_t *s_last_face_canvas = nullptr;
 XiaozhiAiState s_last_face_state = kXiaozhiAiInactive;
 int s_last_face_frame = -1;
@@ -105,19 +99,19 @@ struct PomodoroDisplayValues {
 
 constexpr PomodoroDisplayValues pomodoro_display_values(uint32_t remaining_ms)
 {
-    uint32_t remaining_seconds = remaining_ms / 1000U;
+    uint32_t remaining_seconds = pomodoro_display_seconds(remaining_ms);
     return {static_cast<int>(remaining_seconds / 60U),
             static_cast<int>(remaining_seconds % 60U)};
 }
 
 constexpr PomodoroDisplayValues kPomodoroAtSixtySeconds = pomodoro_display_values(60000U);
-constexpr PomodoroDisplayValues kPomodoroBelowSixtySeconds = pomodoro_display_values(59990U);
+constexpr PomodoroDisplayValues kPomodoroAtFiftyNineSeconds = pomodoro_display_values(59000U);
 static_assert(kPomodoroAtSixtySeconds.second_card == 1 &&
                   kPomodoroAtSixtySeconds.third_card == 0,
               "60 seconds must remain one minute and zero seconds");
-static_assert(kPomodoroBelowSixtySeconds.second_card == 0 &&
-                  kPomodoroBelowSixtySeconds.third_card == 59,
-              "below one minute must show zero minutes and whole seconds");
+static_assert(kPomodoroAtFiftyNineSeconds.second_card == 0 &&
+                  kPomodoroAtFiftyNineSeconds.third_card == 59,
+              "59 seconds must show zero minutes and 59 seconds");
 
 lv_obj_t *create_xiaozhi_canvas(lv_obj_t *parent,
                                 lv_color_t *buffer,
@@ -519,10 +513,7 @@ void build_xiaozhi_page()
     set_obj_visible(g_xiaozhi_status_time_label, false);
     lv_obj_t *top_line = make_bar(g_xiaozhi_root, kTopLineX, kTopLineY, kTopLineW, kTopLineH);
     set_obj_black(top_line, true);
-    build_progress_canvas(g_xiaozhi_root,
-                          &s_day_progress_canvas,
-                          &s_day_progress_buffer,
-                          kDayProgressY);
+    build_work_page_day_progress(g_xiaozhi_root, kWorkPageXiaozhiAI);
     build_inverted_clock_cards(g_xiaozhi_root, s_clock_cards, s_clock_card_buffers);
     s_pomodoro_title_label = make_pomodoro_card_label(s_clock_cards[0],
                                                        kPomodoroTitleY,
@@ -551,7 +542,6 @@ void build_xiaozhi_page()
     s_last_clock_values[0] = -1;
     s_last_clock_values[1] = -1;
     s_last_clock_values[2] = -1;
-    s_last_day_progress = -1;
 
     lv_obj_t *interaction_panel = make_bar(g_xiaozhi_root,
                                            kInteractionPanelX,
@@ -660,12 +650,6 @@ bool update_xiaozhi_page(const struct tm &local)
     changed |= update_work_page_sensor_summary(g_xiaozhi_summary_label);
     changed |= update_work_page_status_icons(kWorkPageXiaozhiAI);
     changed |= update_xiaozhi_clock_or_pomodoro(local, pomodoro);
-    int seconds_of_day = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
-    int day_filled = (seconds_of_day * kProgressSegmentCount) / kSecondsPerDay;
-    if (day_filled != s_last_day_progress) {
-        update_progress_canvas(s_day_progress_canvas, day_filled, &s_last_day_progress);
-        changed = true;
-    }
     int previous_face_frame = s_last_face_frame;
     XiaozhiAiState previous_face_state = s_last_face_state;
     char previous_emotion[sizeof(s_last_face_emotion)] = {};

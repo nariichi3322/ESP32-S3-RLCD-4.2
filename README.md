@@ -90,6 +90,12 @@ RLCD 屏幕适合长时间显示，因此固件尽量只刷新变化区域：
 
 项目还预留了自定义资源分区，用于后续通过上位机写入图片时钟和天气时钟相关素材。内置素材会作为兜底存在，避免用户资源损坏导致页面空白。
 
+## 开源来源与第三方许可
+
+本项目的小智 AI 页面基于 [`78/xiaozhi-esp32`](https://github.com/78/xiaozhi-esp32) 进行移植和二次开发，当前固定参考基线为提交 [`7b190b78e4f8dfef14126f6cd478c134b3cd3cd8`](https://github.com/78/xiaozhi-esp32/commit/7b190b78e4f8dfef14126f6cd478c134b3cd3cd8)。
+
+`xiaozhi-esp32` 由 Shenzhen Xinzhi Future Technology Co., Ltd. 及项目贡献者以 MIT License 发布。其版权声明、MIT 许可文本和免责声明保留在 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) 中。本仓库的非商业许可只适用于项目维护者拥有版权的原创部分，不覆盖或限制第三方代码依其原许可证已经授予的权利。
+
 ## 注意事项
 
 - 本公开仓库只同步时钟固件源码，不包含本地密钥、私有地址、自动化脚本、上位机工程和构建产物。

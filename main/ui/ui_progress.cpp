@@ -1,6 +1,7 @@
 // 构建 60 段工作页进度条，并按填充变化执行局部刷新。
 #include "ui_progress.h"
 
+#include "ui_clock_time.h"
 #include "ui_views.h"
 
 #define UI_PROGRESS_CANVAS_BUILD_INVALID_ARG_LOG "progress canvas build invalid arg"
@@ -15,6 +16,18 @@ constexpr int kProgressSegmentStride = kProgressSegmentW + kProgressSegmentGap;
 constexpr int kProgressCanvasX = 20;
 constexpr int kProgressCanvasW = kProgressSegmentCount * kProgressSegmentStride - kProgressSegmentGap;
 constexpr int kProgressCanvasH = kProgressSegmentH;
+constexpr int kWorkPageDayProgressY = 59;
+static_assert(kWorkPageCount > 0, "work page count must be positive");
+
+lv_obj_t *s_work_page_day_progress_canvas[kWorkPageCount] = {};
+// All work pages display identical pixels, so one PSRAM buffer is sufficient.
+lv_color_t *s_work_page_day_progress_buffer = nullptr;
+int s_work_page_day_progress_filled = -1;
+
+bool valid_work_page(int page)
+{
+    return page >= 0 && page < kWorkPageCount;
+}
 
 bool is_progress_segment_index(int index)
 {
@@ -119,4 +132,47 @@ void update_progress_canvas(lv_obj_t *canvas, int filled, int *last_filled)
         invalidate_progress_segment(canvas, i);
     }
     *last_filled = filled;
+}
+
+void build_work_page_day_progress(lv_obj_t *parent, int page)
+{
+    if (!parent || !valid_work_page(page) || s_work_page_day_progress_canvas[page]) {
+        return;
+    }
+    build_progress_canvas(parent,
+                          &s_work_page_day_progress_canvas[page],
+                          &s_work_page_day_progress_buffer,
+                          kWorkPageDayProgressY);
+    if (s_work_page_day_progress_canvas[page]) {
+        s_work_page_day_progress_filled = -1;
+    }
+}
+
+bool update_work_page_day_progress(int page, const struct tm &local)
+{
+    if (!valid_work_page(page) || !s_work_page_day_progress_canvas[page]) {
+        return false;
+    }
+    int previous = s_work_page_day_progress_filled;
+    ClockUiTimeSnapshot snapshot = clock_ui_time_snapshot(local);
+    update_progress_canvas(s_work_page_day_progress_canvas[page],
+                           snapshot.day_progress_filled,
+                           &s_work_page_day_progress_filled);
+    return previous != s_work_page_day_progress_filled;
+}
+
+void set_work_page_day_progress_visible(int page, bool visible)
+{
+    if (!valid_work_page(page)) {
+        return;
+    }
+    set_obj_visible(s_work_page_day_progress_canvas[page], visible);
+}
+
+void clear_work_page_day_progress_refs()
+{
+    for (lv_obj_t *&canvas : s_work_page_day_progress_canvas) {
+        canvas = nullptr;
+    }
+    s_work_page_day_progress_filled = -1;
 }

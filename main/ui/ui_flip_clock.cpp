@@ -1,15 +1,15 @@
 // 绘制第六页温湿时钟，秒级只局部刷新对应数字牌。
 #include "ui_views.h"
 
+#include "app_constexpr.h"
 #include "calendar_lunar.h"
 #include "flip_sensor_icons.h"
 #include "sensor_services.h"
 #include "ui_battery.h"
 #include "ui_clock_time.h"
+#include "ui_dseg_layout.h"
 #include "ui_flip_sensor_mood.h"
 #include "ui_text_format.h"
-
-#include <algorithm>
 
 #define FLIP_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT "flip clock card %d canvas create failed"
 #define FLIP_CLOCK_TEMP_LABEL_CREATE_FAILED_LOG "flip clock temp label create failed"
@@ -32,7 +32,6 @@ static constexpr int kFlipTopLineX = 18;
 static constexpr int kFlipTopLineY = 54;
 static constexpr int kFlipTopLineW = 364;
 static constexpr int kFlipTopLineH = 4;
-static constexpr int kFlipDayProgressCanvasY = 59;
 static constexpr int kDigitScaleNumerator = 3;
 static constexpr int kDigitScaleDenominator = 4;
 static constexpr int kDigitBaselineY = 84;
@@ -77,12 +76,6 @@ static constexpr const char *kFlipDayPlaceholder = "--";
 static constexpr const char *kFlipTempFormat = "%.1fC";
 static constexpr const char *kFlipHumiFormat = "%.0f%%";
 static constexpr const char *kFlipDayFormat = "%d";
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
 
 static_assert(array_count(kCardX) == kCardCount,
               "flip clock card X table must match card count");
@@ -168,31 +161,25 @@ void draw_card_digits(lv_obj_t *canvas, int value, int clip_y0 = 0, int clip_y1 
     if (!tens || !ones) {
         return;
     }
-    auto scaled = [=](int value) {
-        return (value * kDigitScaleNumerator) / kDigitScaleDenominator;
-    };
-    auto scaled_size = [=](int value) {
-        return (value * kDigitScaleNumerator + kDigitScaleDenominator - 1) / kDigitScaleDenominator;
-    };
-    int tens_origin = 0;
-    int ones_origin = scaled(tens->x_advance);
-    int left = std::min(tens_origin + scaled(tens->x_offset),
-                        ones_origin + scaled(ones->x_offset));
-    int right = std::max(tens_origin + scaled(tens->x_offset) + scaled_size(tens->width),
-                         ones_origin + scaled(ones->x_offset) + scaled_size(ones->width));
-    int x = (kCardW - (right - left)) / 2 - left;
+    DsegPairLayout layout = centered_dseg_pair_layout(kCardW,
+                                                       kDigitScaleNumerator,
+                                                       kDigitScaleDenominator,
+                                                       tens->x_offset,
+                                                       tens->width,
+                                                       tens->x_advance,
+                                                       ones->x_offset,
+                                                       ones->width);
     draw_scaled_dseg_digit(canvas,
                            tens,
-                           x,
+                           layout.first_origin_x,
                            kDigitBaselineY,
                            kDigitScaleNumerator,
                            kDigitScaleDenominator,
                            clip_y0,
                            clip_y1);
-    x += scaled(tens->x_advance);
     draw_scaled_dseg_digit(canvas,
                            ones,
-                           x,
+                           layout.second_origin_x,
                            kDigitBaselineY,
                            kDigitScaleNumerator,
                            kDigitScaleDenominator,
@@ -663,7 +650,6 @@ void reset_flip_clock_refresh_cache()
     g_last_flip_clock_hour = -1;
     g_last_flip_clock_minute = -1;
     g_last_flip_clock_second = -1;
-    g_last_flip_day_progress_filled = -1;
     g_last_flip_sensor_minute = -1;
     g_last_flip_temp_mood = -1;
     g_last_flip_humi_mood = -1;
@@ -773,10 +759,7 @@ void build_flip_clock_page()
                                   kFlipTopLineW,
                                   kFlipTopLineH);
     set_obj_black(top_line, true);
-    build_progress_canvas(screen,
-                          &g_flip_clock_day_progress_canvas,
-                          &g_flip_clock_day_progress_canvas_buf,
-                          kFlipDayProgressCanvasY);
+    build_work_page_day_progress(screen, kWorkPageFlipClock);
 
     build_inverted_clock_cards(screen,
                                g_flip_clock_card_canvas,
@@ -812,9 +795,6 @@ bool update_flip_clock_page(const struct tm &local)
         changed |= update_flip_date_text(local);
     }
 
-    update_progress_canvas(g_flip_clock_day_progress_canvas,
-                           time_snapshot.day_progress_filled,
-                           &g_last_flip_day_progress_filled);
     if (minute != g_last_flip_sensor_minute) {
         g_last_flip_sensor_minute = minute;
         changed |= update_flip_sensor_text();

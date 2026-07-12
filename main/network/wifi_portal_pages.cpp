@@ -1,6 +1,8 @@
 // 生成配网页 HTML、Wi-Fi 扫描列表和保存结果页面。
 #include "wifi_portal_pages.h"
 
+#include "app_constexpr.h"
+#include "app_text_format.h"
 #include "app_state.h"
 
 #include <stdarg.h>
@@ -72,28 +74,6 @@ constexpr const char *kPortalPageTexts[] = {
     PORTAL_HTML_TRUNCATED_FORMAT,
 };
 
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *text : items) {
-        if (!cstr_nonempty(text)) {
-            return false;
-        }
-    }
-    return true;
-}
-
 static_assert(kMaxListedApCount > 0, "listed AP count must be positive");
 static_assert(kPortalEscapedSsidSize > kPortalSubmitSsidFieldSize,
               "escaped SSID buffer must exceed submitted SSID field size");
@@ -106,11 +86,6 @@ static_assert(kPortalRootHtmlSize > kPortalOfflineResultHtmlSize,
 static_assert(kPortalSaveExtraTextSize > 1, "portal save extra text buffer must fit text and NUL");
 static_assert(array_count(kPortalPageTexts) > 0, "portal page text registry must not be empty");
 static_assert(cstr_array_nonempty(kPortalPageTexts), "portal page texts must be non-empty");
-
-bool portal_output_buffer_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
 
 class WifiScanRecords {
 public:
@@ -242,7 +217,7 @@ void append_wifi_scan_message_and_close(char *html, size_t html_len, const char 
 
 void html_append(char *html, size_t html_len, const char *fmt, ...)
 {
-    if (!portal_output_buffer_available(html, html_len) || !fmt) {
+    if (!app_text::output_buffer_available(html, html_len) || !fmt) {
         return;
     }
     size_t used = strnlen(html, html_len);
@@ -266,7 +241,7 @@ void html_append(char *html, size_t html_len, const char *fmt, ...)
 
 void html_escape(const char *src, char *dst, size_t dst_len)
 {
-    if (!portal_output_buffer_available(dst, dst_len)) {
+    if (!app_text::output_buffer_available(dst, dst_len)) {
         return;
     }
     if (!src) {
@@ -330,7 +305,7 @@ esp_err_t redirect_to_setup_portal(httpd_req_t *req)
 
 void append_wifi_scan_list(char *html, size_t html_len)
 {
-    if (!portal_output_buffer_available(html, html_len)) {
+    if (!app_text::output_buffer_available(html, html_len)) {
         return;
     }
     html_append(html, html_len, "<section><div class='section-title'><span>附近的 Wi-Fi</span><a href='/'>重新扫描</a></div><div class='wifi-list'>");

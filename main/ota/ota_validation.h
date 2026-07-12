@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
+#include <strings.h>
 
 inline constexpr size_t kOtaSha256ByteCount = 32;
 inline constexpr size_t kOtaSha256HexLen = kOtaSha256ByteCount * 2;
@@ -11,6 +12,13 @@ inline constexpr size_t kOtaSha256HexLen = kOtaSha256ByteCount * 2;
 namespace ota_validation_detail {
 inline constexpr int kSemverComponentCount = 3;
 inline constexpr char kHexDigits[] = "0123456789abcdef";
+inline constexpr int64_t kUsPerSecond = 1000000;
+inline constexpr int kBytesPerKiB = 1024;
+inline constexpr int kHttpStatusMovedPermanently = 301;
+inline constexpr int kHttpStatusFound = 302;
+inline constexpr int kHttpStatusSeeOther = 303;
+inline constexpr int kHttpStatusTemporaryRedirect = 307;
+inline constexpr int kHttpStatusPermanentRedirect = 308;
 
 inline int parse_semver_component(const char **cursor)
 {
@@ -34,6 +42,13 @@ static_assert(kOtaSha256ByteCount == 32, "OTA SHA256 byte count must remain 32")
 static_assert(kOtaSha256HexLen == kOtaSha256ByteCount * 2,
               "OTA SHA256 hex text must use two characters per byte");
 static_assert(sizeof(kHexDigits) == 17, "OTA lowercase hex table must contain 16 digits and NUL");
+static_assert(kUsPerSecond > 0, "OTA speed conversion requires a positive second");
+static_assert(kBytesPerKiB == 1024, "OTA speed conversion must remain binary KiB");
+static_assert(kHttpStatusMovedPermanently < kHttpStatusFound &&
+                  kHttpStatusFound < kHttpStatusSeeOther &&
+                  kHttpStatusSeeOther < kHttpStatusTemporaryRedirect &&
+                  kHttpStatusTemporaryRedirect < kHttpStatusPermanentRedirect,
+              "OTA HTTP redirect status constants must stay ordered");
 } // namespace ota_validation_detail
 
 inline int ota_compare_versions(const char *remote, const char *current)
@@ -70,6 +85,40 @@ inline bool ota_valid_sha256_string(const char *text)
         }
     }
     return true;
+}
+
+inline int ota_speed_kbps_for_window(int bytes, int64_t elapsed_us)
+{
+    if (bytes <= 0 || elapsed_us <= 0) {
+        return 0;
+    }
+    return static_cast<int>(static_cast<int64_t>(bytes) * ota_validation_detail::kUsPerSecond /
+                            elapsed_us / ota_validation_detail::kBytesPerKiB);
+}
+
+inline bool ota_is_http_redirect_status(int status)
+{
+    return status == ota_validation_detail::kHttpStatusMovedPermanently ||
+           status == ota_validation_detail::kHttpStatusFound ||
+           status == ota_validation_detail::kHttpStatusSeeOther ||
+           status == ota_validation_detail::kHttpStatusTemporaryRedirect ||
+           status == ota_validation_detail::kHttpStatusPermanentRedirect;
+}
+
+inline bool ota_backup_manifest_metadata_matches(const char *current_version,
+                                                 const char *current_sha256,
+                                                 int current_size,
+                                                 const char *candidate_version,
+                                                 const char *candidate_sha256,
+                                                 int candidate_size)
+{
+    if (!current_version || !current_sha256 || !candidate_version || !candidate_sha256) {
+        return false;
+    }
+    const bool versions_match = strcmp(candidate_version, current_version) == 0;
+    const bool checksums_match = strcasecmp(candidate_sha256, current_sha256) == 0;
+    const bool sizes_match = current_size <= 0 || candidate_size <= 0 || current_size == candidate_size;
+    return versions_match && checksums_match && sizes_match;
 }
 
 inline void ota_sha256_to_hex(const uint8_t *hash, char *out, size_t out_len)

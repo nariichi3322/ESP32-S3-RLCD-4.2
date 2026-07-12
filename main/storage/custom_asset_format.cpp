@@ -3,6 +3,12 @@
 
 namespace {
 constexpr uint16_t kBitsPerByte = 8;
+
+static_assert(kBitsPerByte == 8, "custom assets expect 8-bit bytes");
+static_assert(kCustomAssetCrc32Initial == 0xFFFFFFFFU,
+              "custom asset CRC32 initial value must stay stable");
+static_assert(kCustomAssetCrc32Polynomial == 0xEDB88320U,
+              "custom asset CRC32 polynomial must stay stable");
 }
 
 bool custom_asset_header_identity_valid(const CustomAssetsHeader &header)
@@ -83,4 +89,24 @@ bool custom_asset_text_entry_valid(const CustomAssetEntry &entry, size_t max_len
 {
     return custom_asset_text_metadata_valid(entry) &&
            custom_asset_text_length_valid(entry, max_len);
+}
+
+uint32_t custom_asset_crc32_update(uint32_t crc, const uint8_t *data, size_t len)
+{
+    if (!data && len > 0) {
+        return crc;
+    }
+    for (size_t i = 0; i < len; ++i) {
+        crc ^= data[i];
+        for (int bit = 0; bit < kBitsPerByte; ++bit) {
+            uint32_t mask = -(crc & 1U);
+            crc = (crc >> 1) ^ (kCustomAssetCrc32Polynomial & mask);
+        }
+    }
+    return crc;
+}
+
+uint32_t custom_asset_crc32_finalize(uint32_t crc)
+{
+    return ~crc;
 }

@@ -1,6 +1,8 @@
 // 获取、筛选和缓存图片时钟底部每日文字。
 #include "network_services.h"
 
+#include "app_constexpr.h"
+#include "app_text_format.h"
 #include "daily_saying_parser.h"
 #include "ui_views.h"
 
@@ -23,33 +25,6 @@ constexpr const char *const kDailySayingLogTexts[] = {
     DAILY_SAYING_UPDATED_LOG_FORMAT,
 };
 portMUX_TYPE s_daily_saying_mux = portMUX_INITIALIZER_UNLOCKED;
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-constexpr bool output_buffer_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *item : items) {
-        if (!cstr_nonempty(item)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 static_assert(array_count(kDailySayingLogTexts) > 0,
               "daily saying log guard must cover log text");
@@ -172,7 +147,7 @@ void load_daily_saying_cache()
 
 bool get_daily_saying_snapshot(char *out, size_t out_len, time_t *last_sync_time)
 {
-    if (!output_buffer_available(out, out_len)) {
+    if (!app_text::output_buffer_available(out, out_len)) {
         return false;
     }
     portENTER_CRITICAL(&s_daily_saying_mux);

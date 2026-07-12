@@ -1,6 +1,8 @@
 // 提供可见页面按需同步共用的请求、超时、重试和退避状态机。
 #pragma once
 
+#include "app_tick_time.h"
+
 template <typename Tick>
 class VisibleSyncRetryState {
 public:
@@ -13,6 +15,9 @@ public:
     void reset_attempts()
     {
         attempts_ = 0;
+        backoff_active_ = false;
+        backoff_started_tick_ = 0;
+        backoff_duration_ticks_ = 0;
         backoff_until_tick_ = 0;
     }
 
@@ -29,14 +34,19 @@ public:
                         int max_attempts,
                         Tick backoff_ticks)
     {
-        if (backoff_until_tick_ != 0 && now >= backoff_until_tick_) {
+        if (backoff_active_ && app_tick_interval_elapsed(now,
+                                                         backoff_started_tick_,
+                                                         backoff_duration_ticks_)) {
             reset_attempts();
         }
-        bool backoff_active = backoff_until_tick_ != 0 && now < backoff_until_tick_;
+        bool backoff_active = backoff_active_;
         if (requested_ && !sync_in_flight &&
-            request_tick_ != 0 && now - request_tick_ >= retry_ticks) {
+            app_tick_interval_elapsed(now, request_tick_, retry_ticks)) {
             reset_request();
             if (attempts_ >= max_attempts) {
+                backoff_active_ = true;
+                backoff_started_tick_ = now;
+                backoff_duration_ticks_ = backoff_ticks;
                 backoff_until_tick_ = now + backoff_ticks;
                 backoff_active = true;
             }
@@ -63,5 +73,8 @@ private:
     bool requested_ = false;
     Tick request_tick_ = 0;
     int attempts_ = 0;
+    bool backoff_active_ = false;
+    Tick backoff_started_tick_ = 0;
+    Tick backoff_duration_ticks_ = 0;
     Tick backoff_until_tick_ = 0;
 };

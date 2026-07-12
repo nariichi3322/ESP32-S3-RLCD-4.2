@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "alarm_services.h"
+#include "app_constexpr.h"
 #include "audio_services.h"
 #include "network_services.h"
 #include "ota_services.h"
@@ -12,12 +13,6 @@
 
 namespace {
 constexpr int kChimeVolumeLevels[] = {20, 40, 60, 80, 100};
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
 
 constexpr int kChimeVolumeLevelCount = static_cast<int>(array_count(kChimeVolumeLevels));
 constexpr int kDefaultChimeVolumePercent = kChimeVolumeLevels[0];
@@ -31,6 +26,7 @@ constexpr const char *kSettingsOrderSavedFeedback = "页面顺序已保存";
 constexpr const char *kSettingsSyncBusyFeedback = "请等待同步完成";
 constexpr const char *kSettingsOfflineEnabledFeedback = "离线模式已开启";
 constexpr const char *kSettingsOfflineDisabledFeedback = "离线模式已关闭";
+constexpr const char *kOfflinePageUnavailableFeedback = "当前处于离线模式";
 constexpr const char *kManualWeatherCityEditFeedback = "请进入配网页修改";
 constexpr const char *kManualWeatherCityClearConfirmFeedback = "再次确认清除";
 constexpr const char *kManualWeatherCityAutoFeedback = "已恢复自动定位";
@@ -82,6 +78,7 @@ constexpr const char *kSettingsActionTexts[] = {
     kSettingsSyncBusyFeedback,
     kSettingsOfflineEnabledFeedback,
     kSettingsOfflineDisabledFeedback,
+    kOfflinePageUnavailableFeedback,
     kManualWeatherCityEditFeedback,
     kManualWeatherCityClearConfirmFeedback,
     kManualWeatherCityAutoFeedback,
@@ -126,22 +123,6 @@ constexpr const char *kSettingsActionTexts[] = {
     FACTORY_RESET_REQUESTED_LOG,
     SYSTEM_INFO_REQUESTED_LOG,
 };
-
-constexpr bool cstr_nonempty(const char *text)
-{
-    return text && text[0] != '\0';
-}
-
-template <typename T, size_t N>
-constexpr bool cstr_array_nonempty(const T (&items)[N])
-{
-    for (const char *text : items) {
-        if (!cstr_nonempty(text)) {
-            return false;
-        }
-    }
-    return true;
-}
 
 constexpr bool work_page_index_valid(int page)
 {
@@ -373,6 +354,12 @@ void handle_settings_action()
             int page = g_settings_selection;
             if (!work_page_index_valid(page)) {
                 page = kWorkPageWeatherClock;
+            }
+            if (g_offline_mode_ui_enabled &&
+                !is_work_page_enabled(page) &&
+                work_page_requires_network(page)) {
+                set_settings_feedback(kOfflinePageUnavailableFeedback, kSettingsFeedbackDefaultMs);
+                return;
             }
             uint8_t next_mask = toggled_work_page_mask(g_work_page_enabled_mask, page);
             if (next_mask == 0) {

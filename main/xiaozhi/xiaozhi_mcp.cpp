@@ -1,5 +1,6 @@
 // 实现小智 WebSocket 上的轻量 MCP JSON-RPC 工具服务。
 #include "xiaozhi_mcp.h"
+#include "xiaozhi_mcp_schema.h"
 
 #ifdef XIAOZHI_MCP_HOST_TEST
 #include "xiaozhi_mcp_host_port.h"
@@ -16,8 +17,6 @@
 #include <string.h>
 
 namespace {
-constexpr const char *kMcpProtocolVersion = "2024-11-05";
-constexpr const char *kMcpServerName = "ESP32-S3-RLCD-4.2";
 constexpr const char *kMcpType = "mcp";
 constexpr const char *kMcpJsonRpcVersion = "2.0";
 constexpr const char *kMcpInitializeMethod = "initialize";
@@ -25,40 +24,12 @@ constexpr const char *kMcpToolsListMethod = "tools/list";
 constexpr const char *kMcpToolsCallMethod = "tools/call";
 constexpr const char *kMcpNotificationPrefix = "notifications";
 constexpr const char *kJsonFieldType = "type";
-constexpr const char *kJsonFieldProperties = "properties";
-constexpr const char *kJsonFieldRequired = "required";
 constexpr const char *kJsonFieldAction = "action";
 constexpr const char *kJsonFieldDurationSeconds = "duration_seconds";
 constexpr const char *kJsonFieldPayload = "payload";
-constexpr const char *kJsonTypeObject = "object";
-constexpr const char *kJsonTypeString = "string";
-constexpr const char *kJsonTypeInteger = "integer";
 constexpr const char *kPomodoroActionStart = "start";
 constexpr const char *kPomodoroActionCancel = "cancel";
 constexpr const char *kPomodoroActionStatus = "status";
-constexpr const char *kDeviceStatusTool = "self.get_device_status";
-constexpr const char *kSetVolumeTool = "self.audio_speaker.set_volume";
-constexpr const char *kSetAlarmTool = "self.alarm.set";
-constexpr const char *kDisableAlarmTool = "self.alarm.disable";
-constexpr const char *kSetCountdownTool = "self.timer.set_countdown";
-constexpr const char *kPomodoroControlTool = "self.pomodoro.control";
-constexpr const char *kSetWeatherCityTool = "self.weather.set_city";
-constexpr const char *kDeviceStatusDescription =
-    "Get local temperature, humidity, battery percentage and speaker volume.";
-constexpr const char *kSetVolumeDescription =
-    "Set the device speaker volume from 0 to 100 percent.";
-constexpr const char *kSetAlarmDescription =
-    "Set or replace the one-shot alarm at the next occurrence of the supplied 24-hour local hour and minute. Requests such as tomorrow at 06:30, tonight, or this morning should call this tool directly with hour=6 and minute=30; no date lookup, date parameter, or follow-up confirmation is needed.";
-constexpr const char *kDisableAlarmDescription =
-    "Disable or stop the local alarm.";
-constexpr const char *kSetCountdownDescription =
-    "Set a local countdown reminder in seconds.";
-constexpr const char *kPomodoroControlDescription =
-    "Control the focus Pomodoro timer. You MUST call this tool for every request containing focus, 专注, or 番茄钟, and MUST NOT claim that a timer started or changed unless the tool returned success. "
-    "Use start to create or replace it, cancel to stop it, and status to query it. "
-    "Do not use alarm tools for focus or Pomodoro requests, and do not use this tool for ordinary reminders.";
-constexpr const char *kSetWeatherCityDescription =
-    "Set the QWeather location from the user's spoken city name. Pass the city exactly as spoken, including an optional Chinese 市 suffix; the device normalizes and validates a manual city with QWeather before saving. To restore IP-based automatic location, call this same tool with city=自动. Never claim the location changed unless the tool returned success.";
 constexpr int kJsonRpcInvalidRequest = -32600;
 constexpr int kJsonRpcMethodNotFound = -32601;
 constexpr int kJsonRpcInvalidParams = -32602;
@@ -69,6 +40,14 @@ constexpr int kMinutesPerHour = 60;
 constexpr uint32_t kMaxCountdownSeconds = 7U * 24U * 60U * 60U;
 constexpr uint32_t kDefaultPomodoroSeconds = 25U * 60U;
 constexpr uint32_t kMaxPomodoroSeconds = 99U * 60U + 59U;
+
+using xiaozhi_mcp_schema::kDeviceStatusTool;
+using xiaozhi_mcp_schema::kDisableAlarmTool;
+using xiaozhi_mcp_schema::kPomodoroControlTool;
+using xiaozhi_mcp_schema::kSetAlarmTool;
+using xiaozhi_mcp_schema::kSetCountdownTool;
+using xiaozhi_mcp_schema::kSetVolumeTool;
+using xiaozhi_mcp_schema::kSetWeatherCityTool;
 
 std::atomic<bool> s_volume_save_pending{false};
 XiaozhiMcpAlarmHandler s_alarm_handler = nullptr;
@@ -103,260 +82,6 @@ bool contains_mcp_json_token(const char *message, size_t message_len)
 bool add_string(cJSON *object, const char *name, const char *value)
 {
     return object && name && value && cJSON_AddStringToObject(object, name, value) != nullptr;
-}
-
-cJSON *create_object_schema()
-{
-    cJSON *schema = cJSON_CreateObject();
-    if (!schema || !add_string(schema, kJsonFieldType, kJsonTypeObject) ||
-        !cJSON_AddItemToObject(schema, kJsonFieldProperties, cJSON_CreateObject())) {
-        cJSON_Delete(schema);
-        return nullptr;
-    }
-    return schema;
-}
-
-cJSON *create_tool(const char *name, const char *description, cJSON *input_schema)
-{
-    if (!input_schema) {
-        return nullptr;
-    }
-    cJSON *tool = cJSON_CreateObject();
-    if (!tool || !add_string(tool, "name", name) ||
-        !add_string(tool, "description", description)) {
-        cJSON_Delete(tool);
-        cJSON_Delete(input_schema);
-        return nullptr;
-    }
-    cJSON_AddItemToObject(tool, "inputSchema", input_schema);
-    return tool;
-}
-
-bool add_required_integer(cJSON *schema,
-                          const char *name,
-                          int minimum,
-                          int maximum)
-{
-    cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
-    cJSON *property = cJSON_CreateObject();
-    cJSON *required = schema ? cJSON_GetObjectItem(schema, kJsonFieldRequired) : nullptr;
-    if (!required) {
-        required = cJSON_CreateArray();
-        if (schema && required) {
-            cJSON_AddItemToObject(schema, kJsonFieldRequired, required);
-        }
-    }
-    if (!cJSON_IsObject(properties) || !property || !cJSON_IsArray(required) ||
-        !add_string(property, kJsonFieldType, kJsonTypeInteger) ||
-        !cJSON_AddNumberToObject(property, "minimum", minimum) ||
-        !cJSON_AddNumberToObject(property, "maximum", maximum) ||
-        !cJSON_AddItemToArray(required, cJSON_CreateString(name))) {
-        cJSON_Delete(property);
-        return false;
-    }
-    cJSON_AddItemToObject(properties, name, property);
-    return true;
-}
-
-bool add_optional_string(cJSON *schema, const char *name)
-{
-    cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
-    cJSON *property = cJSON_CreateObject();
-    if (!cJSON_IsObject(properties) || !property ||
-        !add_string(property, kJsonFieldType, kJsonTypeString)) {
-        cJSON_Delete(property);
-        return false;
-    }
-    cJSON_AddItemToObject(properties, name, property);
-    return true;
-}
-
-bool add_required_string(cJSON *schema, const char *name)
-{
-    cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
-    cJSON *property = cJSON_CreateObject();
-    cJSON *required = schema ? cJSON_GetObjectItem(schema, kJsonFieldRequired) : nullptr;
-    if (!required) {
-        required = cJSON_CreateArray();
-        if (schema && required) {
-            cJSON_AddItemToObject(schema, kJsonFieldRequired, required);
-        }
-    }
-    if (!cJSON_IsObject(properties) || !property || !cJSON_IsArray(required) ||
-        !add_string(property, kJsonFieldType, kJsonTypeString) ||
-        !cJSON_AddItemToArray(required, cJSON_CreateString(name))) {
-        cJSON_Delete(property);
-        return false;
-    }
-    cJSON_AddItemToObject(properties, name, property);
-    return true;
-}
-
-bool add_optional_integer(cJSON *schema, const char *name, int minimum, int maximum)
-{
-    cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
-    cJSON *property = cJSON_CreateObject();
-    if (!cJSON_IsObject(properties) || !property ||
-        !add_string(property, kJsonFieldType, kJsonTypeInteger) ||
-        !cJSON_AddNumberToObject(property, "minimum", minimum) ||
-        !cJSON_AddNumberToObject(property, "maximum", maximum)) {
-        cJSON_Delete(property);
-        return false;
-    }
-    cJSON_AddItemToObject(properties, name, property);
-    return true;
-}
-
-bool add_required_action(cJSON *schema)
-{
-    cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
-    cJSON *property = cJSON_CreateObject();
-    cJSON *values = cJSON_CreateArray();
-    cJSON *required = cJSON_CreateArray();
-    if (!cJSON_IsObject(properties) || !property || !values || !required ||
-        !add_string(property, kJsonFieldType, kJsonTypeString) ||
-        !cJSON_AddItemToArray(values, cJSON_CreateString(kPomodoroActionStart)) ||
-        !cJSON_AddItemToArray(values, cJSON_CreateString(kPomodoroActionCancel)) ||
-        !cJSON_AddItemToArray(values, cJSON_CreateString(kPomodoroActionStatus)) ||
-        !cJSON_AddItemToArray(required, cJSON_CreateString(kJsonFieldAction))) {
-        cJSON_Delete(property);
-        cJSON_Delete(values);
-        cJSON_Delete(required);
-        return false;
-    }
-    cJSON_AddItemToObject(property, "enum", values);
-    cJSON_AddItemToObject(properties, kJsonFieldAction, property);
-    cJSON_AddItemToObject(schema, kJsonFieldRequired, required);
-    return true;
-}
-
-cJSON *create_integer_tool(const char *name,
-                           const char *description,
-                           const char *argument,
-                           int minimum,
-                           int maximum)
-{
-    cJSON *schema = create_object_schema();
-    if (!schema || !add_required_integer(schema, argument, minimum, maximum)) {
-        cJSON_Delete(schema);
-        return nullptr;
-    }
-    return create_tool(name, description, schema);
-}
-
-cJSON *create_alarm_tool()
-{
-    cJSON *schema = create_object_schema();
-    if (!schema ||
-        !add_required_integer(schema, "hour", 0, kHoursPerDay - 1) ||
-        !add_required_integer(schema, "minute", 0, kMinutesPerHour - 1) ||
-        !add_optional_string(schema, "label")) {
-        cJSON_Delete(schema);
-        return nullptr;
-    }
-    return create_tool(kSetAlarmTool, kSetAlarmDescription, schema);
-}
-
-cJSON *create_countdown_tool()
-{
-    cJSON *schema = create_object_schema();
-    if (!schema ||
-        !add_required_integer(schema, kJsonFieldDurationSeconds, 1, static_cast<int>(kMaxCountdownSeconds)) ||
-        !add_optional_string(schema, "label")) {
-        cJSON_Delete(schema);
-        return nullptr;
-    }
-    return create_tool(kSetCountdownTool, kSetCountdownDescription, schema);
-}
-
-cJSON *create_pomodoro_tool()
-{
-    cJSON *schema = create_object_schema();
-    if (!schema ||
-        !add_required_action(schema) ||
-        !add_optional_integer(schema,
-                              kJsonFieldDurationSeconds,
-                              1,
-                              static_cast<int>(kMaxPomodoroSeconds))) {
-        cJSON_Delete(schema);
-        return nullptr;
-    }
-    return create_tool(kPomodoroControlTool, kPomodoroControlDescription, schema);
-}
-
-cJSON *create_weather_city_tool()
-{
-    cJSON *schema = create_object_schema();
-    if (!schema || !add_required_string(schema, "city")) {
-        cJSON_Delete(schema);
-        return nullptr;
-    }
-    return create_tool(kSetWeatherCityTool, kSetWeatherCityDescription, schema);
-}
-
-bool add_tool_if_present(cJSON *tools, cJSON *tool)
-{
-    return tools && tool && cJSON_AddItemToArray(tools, tool);
-}
-
-cJSON *create_tools_list_result()
-{
-    cJSON *result = cJSON_CreateObject();
-    cJSON *tools = cJSON_CreateArray();
-    cJSON *status_schema = create_object_schema();
-    if (!result || !tools || !status_schema ||
-        !add_tool_if_present(tools, create_tool(kDeviceStatusTool,
-                                                kDeviceStatusDescription,
-                                                status_schema)) ||
-        !add_tool_if_present(tools, create_integer_tool(kSetVolumeTool,
-                                                        kSetVolumeDescription,
-                                                        "volume",
-                                                        0,
-                                                        100)) ||
-        (s_alarm_handler && !add_tool_if_present(tools, create_alarm_tool())) ||
-        (s_alarm_disable_handler &&
-         !add_tool_if_present(tools, create_tool(kDisableAlarmTool,
-                                                 kDisableAlarmDescription,
-                                                 create_object_schema()))) ||
-        (s_countdown_handler && !add_tool_if_present(tools, create_countdown_tool()))) {
-        cJSON_Delete(result);
-        cJSON_Delete(tools);
-        return nullptr;
-    }
-    if (s_pomodoro_handler && !add_tool_if_present(tools, create_pomodoro_tool())) {
-        cJSON_Delete(result);
-        cJSON_Delete(tools);
-        return nullptr;
-    }
-    if (s_weather_city_handler && !add_tool_if_present(tools, create_weather_city_tool())) {
-        cJSON_Delete(result);
-        cJSON_Delete(tools);
-        return nullptr;
-    }
-    cJSON_AddItemToObject(result, "tools", tools);
-    return result;
-}
-
-cJSON *create_initialize_result()
-{
-    cJSON *result = cJSON_CreateObject();
-    cJSON *capabilities = cJSON_CreateObject();
-    cJSON *tools = cJSON_CreateObject();
-    cJSON *server_info = cJSON_CreateObject();
-    if (!result || !capabilities || !tools || !server_info ||
-        !add_string(result, "protocolVersion", kMcpProtocolVersion) ||
-        !add_string(server_info, "name", kMcpServerName) ||
-        !add_string(server_info, "version", APP_VERSION)) {
-        cJSON_Delete(result);
-        cJSON_Delete(capabilities);
-        cJSON_Delete(tools);
-        cJSON_Delete(server_info);
-        return nullptr;
-    }
-    cJSON_AddItemToObject(capabilities, "tools", tools);
-    cJSON_AddItemToObject(result, "capabilities", capabilities);
-    cJSON_AddItemToObject(result, "serverInfo", server_info);
-    return result;
 }
 
 cJSON *create_tool_content(const char *text, bool is_error)
@@ -468,6 +193,11 @@ cJSON *call_alarm(const cJSON *arguments)
         !json_integer_in_range(arguments, "minute", 0, kMinutesPerHour - 1, &request.minute)) {
         return nullptr;
     }
+    const cJSON *confirm_replace = cJSON_GetObjectItem(arguments, "confirm_replace");
+    if (confirm_replace && !cJSON_IsBool(confirm_replace)) {
+        return nullptr;
+    }
+    request.confirm_replace = cJSON_IsTrue(confirm_replace);
     copy_optional_label(arguments, request.label, sizeof(request.label));
     char result[kToolResultTextLen] = {};
     return s_alarm_handler(request, result, sizeof(result))
@@ -739,9 +469,13 @@ XiaozhiMcpMessageResult xiaozhi_mcp_handle_message(const char *message,
     int error_code = kJsonRpcInvalidRequest;
     const char *error_message = "Invalid MCP request";
     if (strcmp(method->valuestring, kMcpInitializeMethod) == 0) {
-        result = create_initialize_result();
+        result = xiaozhi_mcp_schema::create_initialize_result(APP_VERSION);
     } else if (strcmp(method->valuestring, kMcpToolsListMethod) == 0) {
-        result = create_tools_list_result();
+        result = xiaozhi_mcp_schema::create_tools_list_result(s_alarm_handler != nullptr,
+                                                              s_alarm_disable_handler != nullptr,
+                                                              s_countdown_handler != nullptr,
+                                                              s_pomodoro_handler != nullptr,
+                                                              s_weather_city_handler != nullptr);
     } else if (strcmp(method->valuestring, kMcpToolsCallMethod) == 0) {
         result = create_tool_call_result(params,
                                          allow_alarm_disable,

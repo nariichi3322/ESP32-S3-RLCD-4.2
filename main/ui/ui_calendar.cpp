@@ -1,6 +1,7 @@
 // 构建和刷新当月日历页面及其农历节日显示。
 #include "ui_views.h"
 
+#include "app_constexpr.h"
 #include "calendar_lunar.h"
 #include "sensor_services.h"
 #include "ui_battery.h"
@@ -12,7 +13,7 @@
 static constexpr int kCalendarCanvasW = 364;
 static constexpr int kCalendarCanvasH = 228;
 static constexpr int kCalendarCanvasX = 18;
-static constexpr int kCalendarCanvasY = 62;
+static constexpr int kCalendarCanvasY = 60;
 static constexpr int kCalendarTopLineX = 18;
 static constexpr int kCalendarTopLineY = 54;
 static constexpr int kCalendarTopLineW = 364;
@@ -42,12 +43,6 @@ static constexpr int kTmYearOffset = 1900;
 static constexpr int kTmMonthOffset = 1;
 static constexpr int kCalendarDayTextSize = 4; // "31" plus terminator, with one byte spare.
 static constexpr const char *kCalendarWeekdays[kCalendarWeekdayCount] = {"日", "一", "二", "三", "四", "五", "六"};
-
-template <typename T, size_t N>
-constexpr size_t array_count(const T (&)[N])
-{
-    return N;
-}
 
 static_assert(array_count(kCalendarWeekdays) == kCalendarWeekdayCount,
               "calendar weekday label table must match weekday count");
@@ -316,6 +311,7 @@ void build_calendar_page()
                                   kCalendarTopLineW,
                                   kCalendarTopLineH);
     set_obj_black(top_line, true);
+    build_work_page_day_progress(screen, kWorkPageCalendar);
 
     if (!g_calendar_canvas_buf) {
         g_calendar_canvas_buf = alloc_canvas_buffer(kCalendarCanvasW, kCalendarCanvasH);

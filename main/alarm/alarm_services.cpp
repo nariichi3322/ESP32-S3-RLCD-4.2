@@ -1,7 +1,10 @@
 // 实现单个、单次有效的本地闹钟；设置入口由小智 MCP 提供。
 #include "alarm_services.h"
 
+#include "alarm_replacement_policy.h"
 #include "audio_services.h"
+#include "pomodoro_services.h"
+#include "reminder_schedule.h"
 #include "sensor_services.h"
 #include "ui_views.h"
 #include "xiaozhi_ai.h"
@@ -26,21 +29,72 @@ constexpr uint32_t kAlarmRepeatPauseMs = 5U * 1000U;
 constexpr uint32_t kAlarmTaskPollMs = 1000U;
 constexpr uint32_t kAlarmAudioReleaseWaitMs = 3000U;
 constexpr uint32_t kAlarmAudioReleasePollMs = 20U;
+constexpr uint32_t kAlarmReplaceConfirmationTimeoutMs = 2U * 60U * 1000U;
 constexpr const char *kAlarmSetResultFormat =
     "{\"enabled\":true,\"hour\":%d,\"minute\":%d,\"single_use\":true}";
 constexpr const char *kAlarmDisabledResult =
     "{\"enabled\":false,\"single_use\":true}";
+constexpr const char *kAlarmPomodoroConflictResult =
+    "alarm rejected: active pomodoro ends in the same minute";
+constexpr const char *kAlarmReplaceConfirmationFormat =
+    "{\"confirmation_required\":true,\"existing\":\"%02d:%02d\",\"requested\":\"%02d:%02d\",\"message\":\"已有闹钟，是否覆盖？\"}";
+constexpr const char *kAlarmReplaceConfirmationInvalidResult =
+    "alarm replacement confirmation invalid or expired; ask the user again";
 
 portMUX_TYPE s_alarm_mux = portMUX_INITIALIZER_UNLOCKED;
 AlarmSnapshot s_alarm = {false, false, 0, 0, 1};
 TaskHandle_t s_alarm_task_handle = nullptr;
 std::atomic<bool> s_stop_requested{false};
 std::atomic<bool> s_save_pending{false};
+AlarmReplacementConfirmation s_replacement_confirmation = {};
 
 bool valid_alarm_time(int hour, int minute)
 {
     return hour >= 0 && hour < kAlarmHoursPerDay &&
            minute >= 0 && minute < kAlarmMinutesPerHour;
+}
+
+bool conflicts_with_running_pomodoro(int hour, int minute)
+{
+    if (!is_system_time_plausible()) {
+        return false;
+    }
+    PomodoroSnapshot pomodoro = {};
+    pomodoro_get_snapshot(&pomodoro);
+    return pomodoro.state == kPomodoroRunning &&
+           reminder_targets_same_local_minute(reminder_wall_clock_ms(),
+                                              hour,
+                                              minute,
+                                              pomodoro.remaining_ms);
+}
+
+void clear_pending_alarm_replacement()
+{
+    portENTER_CRITICAL(&s_alarm_mux);
+    clear_alarm_replacement_confirmation(&s_replacement_confirmation);
+    portEXIT_CRITICAL(&s_alarm_mux);
+}
+
+AlarmReplacementDecision replacement_decision(const XiaozhiMcpAlarmRequest &request,
+                                                AlarmSnapshot *existing)
+{
+    portENTER_CRITICAL(&s_alarm_mux);
+    if (existing) {
+        *existing = s_alarm;
+    }
+    AlarmReplacementDecision decision = evaluate_alarm_replacement(
+        s_alarm.enabled,
+        s_alarm.hour,
+        s_alarm.minute,
+        s_alarm.version,
+        request.hour,
+        request.minute,
+        request.confirm_replace,
+        pdTICKS_TO_MS(xTaskGetTickCount()),
+        kAlarmReplaceConfirmationTimeoutMs,
+        &s_replacement_confirmation);
+    portEXIT_CRITICAL(&s_alarm_mux);
+    return decision;
 }
 
 void publish_alarm_state(bool enabled, bool ringing, int hour, int minute)
@@ -151,6 +205,7 @@ void run_alarm_ring()
     s_stop_requested.store(false);
     AlarmSnapshot snapshot = {};
     alarm_get_snapshot(&snapshot);
+    clear_pending_alarm_replacement();
     // 先关闭运行态，再释放小智音频后写 NVS；避免实时语音期间 Flash 写入。
     s_save_pending.store(false);
     publish_alarm_state(false, true, snapshot.hour, snapshot.minute);
@@ -185,12 +240,68 @@ void run_alarm_ring()
 bool mcp_set_alarm(const XiaozhiMcpAlarmRequest &request, char *result, size_t result_len)
 {
     AlarmSnapshot snapshot = {};
-    alarm_get_snapshot(&snapshot);
-    if (snapshot.ringing || !valid_alarm_time(request.hour, request.minute)) {
+    if (!valid_alarm_time(request.hour, request.minute)) {
         if (result && result_len > 0) {
             strlcpy(result, "alarm rejected", result_len);
         }
         return false;
+    }
+    alarm_get_snapshot(&snapshot);
+    if (snapshot.ringing) {
+        clear_pending_alarm_replacement();
+        if (result && result_len > 0) {
+            strlcpy(result, "alarm rejected", result_len);
+        }
+        return false;
+    }
+    if (conflicts_with_running_pomodoro(request.hour, request.minute)) {
+        clear_pending_alarm_replacement();
+        ESP_LOGW(TAG, "alarm rejected by active pomodoro minute conflict");
+        if (result && result_len > 0) {
+            strlcpy(result, kAlarmPomodoroConflictResult, result_len);
+        }
+        return false;
+    }
+    AlarmReplacementDecision replace = replacement_decision(request, &snapshot);
+    if (replace == kAlarmReplacementConfirmationRequired) {
+        ESP_LOGI(TAG,
+                 "alarm replacement confirmation requested existing=%02u:%02u requested=%02d:%02d",
+                 static_cast<unsigned>(snapshot.hour),
+                 static_cast<unsigned>(snapshot.minute),
+                 request.hour,
+                 request.minute);
+        if (result && result_len > 0) {
+            snprintf(result,
+                     result_len,
+                     kAlarmReplaceConfirmationFormat,
+                     snapshot.hour,
+                     snapshot.minute,
+                     request.hour,
+                     request.minute);
+        }
+        return false;
+    }
+    if (replace == kAlarmReplacementConfirmationInvalid) {
+        ESP_LOGW(TAG, "alarm replacement confirmation invalid or expired");
+        if (result && result_len > 0) {
+            strlcpy(result, kAlarmReplaceConfirmationInvalidResult, result_len);
+        }
+        return false;
+    }
+    if (snapshot.enabled &&
+        snapshot.hour == request.hour && snapshot.minute == request.minute) {
+        if (result && result_len > 0) {
+            snprintf(result, result_len, kAlarmSetResultFormat, request.hour, request.minute);
+        }
+        return true;
+    }
+    if (snapshot.enabled) {
+        ESP_LOGI(TAG,
+                 "alarm replacement confirmed existing=%02u:%02u requested=%02d:%02d",
+                 static_cast<unsigned>(snapshot.hour),
+                 static_cast<unsigned>(snapshot.minute),
+                 request.hour,
+                 request.minute);
     }
     s_stop_requested.store(true);
     publish_alarm_state(true, false, request.hour, request.minute);
@@ -205,6 +316,7 @@ bool mcp_disable_alarm(char *result, size_t result_len)
 {
     AlarmSnapshot snapshot = {};
     alarm_get_snapshot(&snapshot);
+    clear_pending_alarm_replacement();
     s_stop_requested.store(true);
     publish_alarm_state(false, false, snapshot.hour, snapshot.minute);
     s_save_pending.store(true);
@@ -267,9 +379,11 @@ bool alarm_set_once(int hour, int minute)
     AlarmSnapshot snapshot = {};
     alarm_get_snapshot(&snapshot);
     if (snapshot.ringing || !valid_alarm_time(hour, minute) ||
+        conflicts_with_running_pomodoro(hour, minute) ||
         !persist_alarm(true, hour, minute)) {
         return false;
     }
+    clear_pending_alarm_replacement();
     s_save_pending.store(false);
     s_stop_requested.store(true);
     publish_alarm_state(true, false, hour, minute);
@@ -281,6 +395,7 @@ bool alarm_disable()
 {
     AlarmSnapshot snapshot = {};
     alarm_get_snapshot(&snapshot);
+    clear_pending_alarm_replacement();
     s_stop_requested.store(true);
     if (!persist_alarm(false, snapshot.hour, snapshot.minute)) {
         return false;
@@ -307,6 +422,7 @@ bool alarm_stop_ringing_from_button()
 
 bool alarm_clear_saved_state()
 {
+    clear_pending_alarm_replacement();
     s_stop_requested.store(true);
     s_save_pending.store(false);
     nvs_handle_t nvs = 0;
