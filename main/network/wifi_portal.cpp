@@ -39,11 +39,11 @@ constexpr size_t kPortalWeatherCityNameSize = 32;
 constexpr uint32_t kPortalSaveWifiConnectWaitMs = 12000;
 constexpr const char *kPortalHttpStatusBadRequest = "400 Bad Request";
 constexpr const char *kPortalHttpStatusNoContent = "204 No Content";
-constexpr const char *kPortalErrorMissingQuery = "Missing query.";
+constexpr const char *kPortalErrorMissingQuery = "缺少请求参数。";
 constexpr const char *kPortalWeatherCityInvalidMessage =
-    "Weather city is not recognized by QWeather. Auto location has been restored.";
+    "QWeather 无法识别填写的天气城市，已恢复为自动定位。";
 constexpr const char *kPortalWeatherCityDeferredMessage =
-    "Weather city was saved, but online validation timed out. The next weather sync will retry.";
+    "天气城市已保存，但在线校验超时；下次同步天气时会自动重试。";
 constexpr const char *kSetupApSsidFormat = "WeatherClock-%02X%02X";
 constexpr const char *kSetupApSsidFallback = "WeatherClock-0000";
 constexpr const char *kPortalFixedTexts[] = {

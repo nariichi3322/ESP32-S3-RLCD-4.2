@@ -3,6 +3,7 @@
 #include "qweather_forecast_parser.h"
 #include "qweather_location_text.h"
 #include "qweather_response.h"
+#include "weather_state.h"
 
 #include <stdarg.h>
 
@@ -162,9 +163,6 @@ constexpr const char *kQweatherAirLocationTooLongLog = "qweather air location to
 #define QWEATHER_AIR_LOOKUP_FORMAT "qweather air lookup: %s via %s"
 #define QWEATHER_AIR_HTTP_FAILED_FORMAT "qweather air http failed err=%s"
 #define QWEATHER_AIR_FAILED_FORMAT "qweather air failed code=%s"
-#define WEATHER_UPDATED_LOG_FORMAT "weather updated: %s %s %sC %s%% icon=%s forecast=%s air=%s"
-constexpr const char *kWeatherFetchStatusOk = "ok";
-constexpr const char *kWeatherFetchStatusCached = "cached";
 #define WEATHER_UPDATE_MANUAL_CITY_FORMAT "weather update using manual city: %s"
 #define WEATHER_MANUAL_CITY_LOOKUP_FAILED_FORMAT "manual weather city lookup failed: %s"
 #define WEATHER_MANUAL_CITY_UPDATE_FAILED_FORMAT "weather update failed for manual city: %s"
@@ -172,7 +170,6 @@ constexpr const char *kWeatherFetchStatusCached = "cached";
 #define WEATHER_USING_IP_COORDINATES_FORMAT "using ip coordinates for weather now: %s"
 constexpr const char *kWeatherIpLookupUpdateFailedLog = "weather update failed after ip lookup";
 constexpr const char *kWeatherIpGeolocationLookupFailedLog = "ip geolocation lookup failed";
-constexpr const char *kWeatherReadyEventUnavailableLog = "weather ready event skipped: app events unavailable";
 constexpr const char *kQweatherFixedWarningTexts[] = {
     kQweatherCityInvalidArgLog,
     kQweatherCityLocationTooLongLog,
@@ -187,7 +184,6 @@ constexpr const char *kQweatherFixedWarningTexts[] = {
     kQweatherDailyLocationTooLongLog,
     kQweatherAirInvalidArgLog,
     kQweatherAirLocationTooLongLog,
-    kWeatherReadyEventUnavailableLog,
 };
 constexpr const char *kQweatherStageAndStatusTexts[] = {
     kQweatherStageCity,
@@ -201,8 +197,6 @@ constexpr const char *kQweatherStageAndStatusTexts[] = {
     kQweatherPreviewDailyLabel,
     kQweatherPreviewAirLabel,
     kQweatherUnknownStage,
-    kWeatherFetchStatusOk,
-    kWeatherFetchStatusCached,
     kWeatherIpLookupUpdateFailedLog,
     kWeatherIpGeolocationLookupFailedLog,
 };
@@ -756,97 +750,6 @@ bool qweather_fetch_air(const char *city_id, WeatherAirData *air)
         ESP_LOGW(TAG, QWEATHER_AIR_FAILED_FORMAT, qweather_code_text(code));
     }
     return ok;
-}
-
-void get_weather_full_snapshot(WeatherData *weather,
-                               WeatherAlertData *alert,
-                               WeatherForecastData *forecast,
-                               WeatherAirData *air)
-{
-    portENTER_CRITICAL(&g_weather_state_mux);
-    if (weather) {
-        *weather = g_weather;
-    }
-    if (alert) {
-        *alert = g_weather_alert;
-    }
-    if (forecast) {
-        *forecast = g_weather_forecast;
-    }
-    if (air) {
-        *air = g_weather_air;
-    }
-    portEXIT_CRITICAL(&g_weather_state_mux);
-}
-
-void get_weather_snapshot(WeatherData *weather, WeatherAlertData *alert)
-{
-    get_weather_full_snapshot(weather, alert, nullptr, nullptr);
-}
-
-void get_weather_forecast_snapshot(WeatherForecastData *forecast)
-{
-    if (!forecast) {
-        return;
-    }
-    get_weather_full_snapshot(nullptr, nullptr, forecast, nullptr);
-}
-
-void get_weather_air_snapshot(WeatherAirData *air)
-{
-    if (!air) {
-        return;
-    }
-    get_weather_full_snapshot(nullptr, nullptr, nullptr, air);
-}
-
-static void publish_weather_ready_event()
-{
-    if (!g_app_events) {
-        log_qweather_fixed_warning(kWeatherReadyEventUnavailableLog);
-        return;
-    }
-    xEventGroupSetBits(g_app_events, kWeatherReadyBit);
-}
-
-static void clear_weather_ready_event()
-{
-    if (!g_app_events) {
-        log_qweather_fixed_warning(kWeatherReadyEventUnavailableLog);
-        return;
-    }
-    xEventGroupClearBits(g_app_events, kWeatherReadyBit);
-}
-
-static void commit_weather_update_snapshot(const WeatherData &next,
-                                           const WeatherAlertData &next_alert,
-                                           const WeatherForecastData &next_forecast,
-                                           const WeatherAirData &next_air,
-                                           bool forecast_ok,
-                                           bool air_ok)
-{
-    time_t now = 0;
-    time(&now);
-    portENTER_CRITICAL(&g_weather_state_mux);
-    g_weather = next;
-    g_weather_alert = next_alert;
-    if (forecast_ok) {
-        g_weather_forecast = next_forecast;
-    }
-    if (air_ok) {
-        g_weather_air = next_air;
-    }
-    g_last_weather_sync_time = now;
-    portEXIT_CRITICAL(&g_weather_state_mux);
-    publish_weather_ready_event();
-    ESP_LOGI(TAG, WEATHER_UPDATED_LOG_FORMAT,
-             next.city,
-             next.text,
-             next.temp,
-             next.humidity,
-             next.icon,
-             forecast_ok ? kWeatherFetchStatusOk : kWeatherFetchStatusCached,
-             air_ok ? kWeatherFetchStatusOk : kWeatherFetchStatusCached);
 }
 
 static bool fetch_and_commit_weather(const char *city_id, WeatherData *next)

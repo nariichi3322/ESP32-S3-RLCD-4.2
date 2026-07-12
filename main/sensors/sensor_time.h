@@ -1,0 +1,11 @@
+// 声明传感器、天气、UI 和闹钟共用的本地时间判断与整点计算。
+#pragma once
+
+#include <time.h>
+
+bool is_system_time_plausible(struct tm *local_out = nullptr);
+bool is_tm_plausible(const struct tm &local);
+bool is_night_slow_window(const struct tm &local);
+int periodic_sample_minutes(const struct tm &local, int day_minutes, int night_minutes);
+time_t hour_start_from_time(time_t value);
+time_t next_weather_sync_time(time_t from);

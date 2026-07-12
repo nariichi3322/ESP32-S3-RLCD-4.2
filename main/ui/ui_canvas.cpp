@@ -93,6 +93,24 @@ lv_color_t *alloc_canvas_buffer(int width, int height)
     return buf;
 }
 
+void configure_canvas_base(lv_obj_t *canvas,
+                           lv_color_t *buffer,
+                           int x,
+                           int y,
+                           int width,
+                           int height)
+{
+    if (!canvas || !buffer || !canvas_size_valid(width, height)) {
+        return;
+    }
+    lv_obj_clear_flag(canvas, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(canvas, x, y);
+    lv_obj_set_size(canvas, width, height);
+    lv_obj_set_style_border_width(canvas, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(canvas, 0, LV_PART_MAIN);
+    lv_canvas_set_buffer(canvas, buffer, width, height, LV_IMG_CF_TRUE_COLOR);
+}
+
 int clamp_int(int value, int min_value, int max_value)
 {
     order_int_pair(&min_value, &max_value);

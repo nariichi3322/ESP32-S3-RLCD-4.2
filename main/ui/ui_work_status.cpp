@@ -103,12 +103,7 @@ void build_status_icon(lv_obj_t *screen,
         ESP_LOGW(TAG, "%s", WORK_STATUS_ICON_CANVAS_CREATE_FAILED_LOG);
         return;
     }
-    lv_obj_clear_flag(*canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(*canvas, x, y);
-    lv_obj_set_size(*canvas, width, height);
-    lv_obj_set_style_border_width(*canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(*canvas, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(*canvas, *buffer, width, height, LV_IMG_CF_TRUE_COLOR);
+    configure_canvas_base(*canvas, *buffer, x, y, width, height);
     draw_1bit_icon(*canvas, width, height, bytes_per_row, bits, lv_color_black(), lv_color_white());
     lv_obj_add_flag(*canvas, LV_OBJ_FLAG_HIDDEN);
 }
@@ -287,6 +282,26 @@ bool update_work_page_sensor_summary(lv_obj_t *label)
         ui_text::copy(text, sizeof(text), kStatusSensorSummaryFallback);
     }
     return set_label_text_if_changed(label, text);
+}
+
+bool update_non_clock_work_page_sensor_status(int page)
+{
+    switch (page) {
+    case kWorkPageHistory:
+        return update_work_page_sensor_summary(g_history_summary_label);
+    case kWorkPageGallery:
+        return update_work_page_sensor_summary(g_gallery_summary_label);
+    case kWorkPageCalendar:
+        return update_work_page_sensor_summary(g_calendar_summary_label);
+    case kWorkPageWeatherBoard:
+        return update_work_page_sensor_summary(g_weather_board_summary_label);
+    case kWorkPageFlipClock:
+        return update_flip_clock_sensor_status();
+    case kWorkPageXiaozhiAI:
+        return update_work_page_sensor_summary(g_xiaozhi_summary_label);
+    default:
+        return false;
+    }
 }
 
 void style_work_page_sensor_summary(lv_obj_t *label)

@@ -80,6 +80,8 @@ static constexpr const char *kNetworkDiagWifiOnLog = "wifi radio on for network 
 #define NETWORK_SYNC_WIFI_ON_FORMAT "wifi radio on for sync: ntp=%d weather=%d saying=%d boot_weather=%d boot_saying=%d"
 static constexpr const char *kNetworkSyncWifiStartFailedLog = "wifi start failed during sync window";
 static constexpr const char *kNetworkSyncWifiConnectTimeoutLog = "wifi connect timeout during sync window";
+static constexpr const char *kBootRtcInvalidNtpPriorityLog =
+    "system time invalid after Wi-Fi connect, prioritizing boot NTP";
 
 namespace {
 class BootSyncDeadlineGuard {
@@ -271,6 +273,20 @@ void run_boot_connectivity_sync()
     bool boot_weather_page_visible = active_work_page_uses_weather_data();
     bool boot_gallery_page_visible = active_work_page_uses_daily_saying();
     update_boot_screen(42, "Wi-Fi connected", boot_weather_page_visible ? "Loading weather" : "Checking time");
+    bool ntp_attempted = false;
+    bool ntp_ok = false;
+    if (!is_time_valid()) {
+        ESP_LOGI(TAG, "%s", kBootRtcInvalidNtpPriorityLog);
+        remaining_ms = boot_sync_remaining_ms();
+        if (remaining_ms > kBootNtpMinRemainingMs) {
+            ntp_attempted = true;
+            update_boot_screen(46, kBootDetailSynchronizingTime, "Restoring lost RTC time");
+            ntp_ok = perform_ntp_sync(kBootNtpRetries);
+            update_boot_screen(50,
+                               ntp_ok ? "Time synchronized" : "NTP retry later",
+                               ntp_ok ? "Loading page data" : "Will retry in background");
+        }
+    }
     remaining_ms = boot_sync_remaining_ms();
     if (boot_weather_page_visible && g_have_weather_key && !g_low_battery_mode && remaining_ms > kBootWeatherMinRemainingMs) {
         bool weather_ok = false;
@@ -309,9 +325,8 @@ void run_boot_connectivity_sync()
         update_boot_screen(78, "Quote deferred", "Open image page");
     }
 
-    bool ntp_ok = false;
     remaining_ms = boot_sync_remaining_ms();
-    if (remaining_ms > kBootNtpMinRemainingMs) {
+    if (!ntp_attempted && remaining_ms > kBootNtpMinRemainingMs) {
         update_boot_screen(82, kBootDetailSynchronizingTime, "Short NTP check");
         ntp_ok = perform_ntp_sync(kBootNtpRetries);
     }

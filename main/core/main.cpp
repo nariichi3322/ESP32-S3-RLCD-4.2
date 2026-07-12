@@ -262,6 +262,9 @@ extern "C" void app_main(void)
         ESP_LOGW(TAG, MAIN_SHTC3_ALLOCATION_FAILED_LOG_FORMAT);
     }
     sample_battery();
+    if (!g_low_battery_mode) {
+        sample_sensor();
+    }
     init_wifi();
     park_unused_audio_peripherals();
     xiaozhi_ai_init();

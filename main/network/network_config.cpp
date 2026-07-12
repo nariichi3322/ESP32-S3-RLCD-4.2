@@ -3,6 +3,7 @@
 
 #include "alarm_services.h"
 #include "manual_time_parser.h"
+#include "network_config_nvs.h"
 #include "provisioning_form_fields.h"
 #include "weather_city_text.h"
 #include "xiaozhi_ai.h"
@@ -13,8 +14,21 @@
 
 #include <errno.h>
 
+using network_config_nvs::close_nvs_save_ok;
+using network_config_nvs::commit_nvs_if_changed;
+using network_config_nvs::commit_nvs_if_ok;
+using network_config_nvs::erase_nvs_key_if_present;
+using network_config_nvs::nvs_string_matches;
+using network_config_nvs::nvs_u8_matches;
+using network_config_nvs::open_wifi_nvs;
+using network_config_nvs::read_nvs_string;
+using network_config_nvs::read_nvs_u8_or_default;
+using network_config_nvs::set_nvs_str_if_ok;
+using network_config_nvs::set_nvs_u8_if_ok;
+using network_config_nvs::write_changed_nvs_u8;
+using network_config_nvs::write_optional_nvs_string_key;
+
 namespace {
-constexpr const char *kWifiNvsNamespace = "wifi";
 constexpr const char *kWifiSsidKey = "ssid";
 constexpr const char *kWifiPassKey = "pass";
 constexpr const char *kWeatherApiKeyKey = "api_key";
@@ -37,7 +51,6 @@ constexpr const char *kPageOrderV3Key = "page_order_v3";
 constexpr const char *kPageOrderV4Key = "page_order_v4";
 constexpr const char *kPageOrderV5Key = "page_order_v5";
 constexpr const char *kXiaozhiAutoReturnKey = "xz_auto_ret_v1";
-constexpr uint8_t kNvsUnsetU8 = 0xFF;
 constexpr uint8_t kDefaultChimeVolumePercent = 80;
 constexpr uint8_t kValidChimeVolumePercent[] = {20, 40, 60, 80, 100};
 constexpr uint8_t work_page_mask_bit(int page)
@@ -80,7 +93,6 @@ constexpr const char *kConfigEventReasonProvisioningSave = "provisioning save";
 constexpr const char *kConfigEventActionFallback = "action";
 constexpr const char *kConfigEventActionClear = "clear";
 constexpr const char *kConfigEventActionSet = "set";
-constexpr const char *kNvsActionAccessingConfig = "accessing config";
 constexpr const char *kNvsActionLoadingConfig = "loading config";
 constexpr const char *kNvsActionSavingOfflineMode = "saving offline mode";
 constexpr const char *kNvsActionSavingConfig = "saving config";
@@ -95,8 +107,6 @@ constexpr const char *kEmptyWifiSsidSaveLog = "skip saving empty wifi ssid";
 constexpr const char *kInvalidWeatherCitySaveLog = "skip saving invalid weather city";
 constexpr const char *kInvalidWeatherCityLoadLog = "ignore invalid weather city loaded from NVS";
 #define CONFIG_EVENT_GROUP_UNAVAILABLE_FORMAT "skip %s event bits for %s: event group unavailable"
-#define NVS_OPEN_FAILED_FORMAT "nvs open failed while %s: %s"
-#define NVS_READ_U8_FAILED_FORMAT "nvs read u8 key=%s failed: %s"
 #define NVS_SAVE_OFFLINE_MODE_FAILED_FORMAT "nvs save offline mode failed: %s"
 #define NVS_ERASE_LEGACY_API_HOST_FAILED_FORMAT "nvs erase legacy api host failed while saving config: %s"
 #define NVS_SAVE_CONFIG_FAILED_FORMAT "nvs save config failed: %s"
@@ -119,7 +129,6 @@ constexpr const char *kInvalidWeatherCityLoadLog = "ignore invalid weather city 
 #define PROVISIONING_INVALID_WEATHER_CITY_LOG "provisioning ignored invalid weather city"
 #define PROVISIONING_SAVED_FORMAT "provisioning saved ssid=%s pass_len=%u api_key=%s len=%u weather_city=%s city_len=%u"
 constexpr const char *kNvsConfigTexts[] = {
-    kWifiNvsNamespace,
     kWifiSsidKey,
     kWifiPassKey,
     kWeatherApiKeyKey,
@@ -174,7 +183,6 @@ constexpr const char *kConfigEventTexts[] = {
     kConfigEventActionSet,
 };
 constexpr const char *kNvsActionTexts[] = {
-    kNvsActionAccessingConfig,
     kNvsActionLoadingConfig,
     kNvsActionSavingOfflineMode,
     kNvsActionSavingConfig,
@@ -190,7 +198,6 @@ constexpr const char *kConfigWarningTexts[] = {
     kEmptyWifiSsidSaveLog,
     kInvalidWeatherCitySaveLog,
     kInvalidWeatherCityLoadLog,
-    NVS_READ_U8_FAILED_FORMAT,
 };
 
 struct LoadedNetworkConfig {
@@ -379,11 +386,6 @@ const char *config_event_action_text(const char *action)
     return cstr_nonempty(action) ? action : kConfigEventActionFallback;
 }
 
-const char *nvs_action_text(const char *action)
-{
-    return cstr_nonempty(action) ? action : kNvsActionAccessingConfig;
-}
-
 void log_config_event_group_unavailable(const char *action, const char *reason)
 {
     ESP_LOGW(TAG, CONFIG_EVENT_GROUP_UNAVAILABLE_FORMAT,
@@ -429,91 +431,9 @@ constexpr bool nvs_u8_to_bool(uint8_t value)
     return value != 0;
 }
 
-esp_err_t erase_nvs_key_if_present(nvs_handle_t nvs, const char *key, bool *erased)
-{
-    esp_err_t err = nvs_erase_key(nvs, key);
-    if (err == ESP_OK) {
-        if (erased) {
-            *erased = true;
-        }
-        return ESP_OK;
-    }
-    return err == ESP_ERR_NVS_NOT_FOUND ? ESP_OK : err;
-}
-
-esp_err_t open_wifi_nvs(nvs_open_mode_t mode, nvs_handle_t *nvs, const char *action, bool log_not_found = true)
-{
-    if (!nvs) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    esp_err_t err = nvs_open(kWifiNvsNamespace, mode, nvs);
-    if (err != ESP_OK && (log_not_found || err != ESP_ERR_NVS_NOT_FOUND)) {
-        ESP_LOGW(TAG, NVS_OPEN_FAILED_FORMAT, nvs_action_text(action), esp_err_to_name(err));
-    }
-    return err;
-}
-
-esp_err_t commit_nvs_if_ok(nvs_handle_t nvs, esp_err_t err)
-{
-    return err == ESP_OK ? nvs_commit(nvs) : err;
-}
-
-esp_err_t commit_nvs_if_changed(nvs_handle_t nvs, esp_err_t err, bool changed)
-{
-    return changed ? commit_nvs_if_ok(nvs, err) : err;
-}
-
-esp_err_t set_nvs_str_if_ok(nvs_handle_t nvs, esp_err_t err, const char *key, const char *value)
-{
-    if (err != ESP_OK) {
-        return err;
-    }
-    if (!key || !value) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    return nvs_set_str(nvs, key, value);
-}
-
-esp_err_t set_nvs_u8_if_ok(nvs_handle_t nvs, esp_err_t err, const char *key, uint8_t value)
-{
-    if (err != ESP_OK) {
-        return err;
-    }
-    if (!key) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    return nvs_set_u8(nvs, key, value);
-}
-
-esp_err_t write_optional_nvs_string_key(nvs_handle_t nvs, const char *key, const char *value)
-{
-    return cstr_nonempty(value)
-               ? nvs_set_str(nvs, key, value)
-               : erase_nvs_key_if_present(nvs, key, nullptr);
-}
-
 esp_err_t write_manual_weather_city_key(nvs_handle_t nvs, const char *city)
 {
     return write_optional_nvs_string_key(nvs, kManualWeatherCityKey, city);
-}
-
-esp_err_t read_nvs_string(nvs_handle_t nvs, const char *key, char *out, size_t out_len)
-{
-    if (!key || !output_buffer_available(out, out_len)) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    size_t len = out_len;
-    return nvs_get_str(nvs, key, out, &len);
-}
-
-bool nvs_string_matches(nvs_handle_t nvs, const char *key, const char *expected, char *scratch, size_t scratch_len)
-{
-    if (!cstr_nonempty(expected) || !output_buffer_available(scratch, scratch_len)) {
-        return false;
-    }
-    scratch[0] = '\0';
-    return read_nvs_string(nvs, key, scratch, scratch_len) == ESP_OK &&
-           strcmp(scratch, expected) == 0;
 }
 
 bool asset_weather_city_ignored(nvs_handle_t nvs, const char *city)
@@ -575,51 +495,6 @@ esp_err_t write_matching_asset_weather_city_ignore(nvs_handle_t nvs, const char 
         return write_ignored_asset_weather_city(nvs, asset_weather_city);
     }
     return ESP_OK;
-}
-
-uint8_t read_nvs_u8_or_default(nvs_handle_t nvs, const char *key, uint8_t default_value)
-{
-    if (!key) {
-        return default_value;
-    }
-    uint8_t value = default_value;
-    esp_err_t err = nvs_get_u8(nvs, key, &value);
-    if (err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND) {
-        ESP_LOGW(TAG, NVS_READ_U8_FAILED_FORMAT, key, esp_err_to_name(err));
-    }
-    return value;
-}
-
-bool nvs_u8_matches(nvs_handle_t nvs, const char *key, uint8_t expected)
-{
-    if (!key) {
-        return false;
-    }
-    uint8_t value = kNvsUnsetU8;
-    return nvs_get_u8(nvs, key, &value) == ESP_OK && value == expected;
-}
-
-esp_err_t write_changed_nvs_u8(nvs_handle_t nvs, esp_err_t err, const char *key, uint8_t value, bool *changed)
-{
-    if (changed) {
-        *changed = false;
-    }
-    if (err != ESP_OK) {
-        return err;
-    }
-    if (nvs_u8_matches(nvs, key, value)) {
-        return ESP_OK;
-    }
-    if (changed) {
-        *changed = true;
-    }
-    return set_nvs_u8_if_ok(nvs, err, key, value);
-}
-
-bool close_nvs_save_ok(nvs_handle_t nvs, esp_err_t err)
-{
-    nvs_close(nvs);
-    return err == ESP_OK;
 }
 
 bool hourly_chime_settings_match_nvs(nvs_handle_t nvs,

@@ -25,6 +25,12 @@ constexpr const char *kClockWeatherTempPlaceholder = "--℃";
 constexpr const char *kClockWeatherHumidityPlaceholder = "--%";
 constexpr const char *kClockWeatherUnknownIconCode = "999";
 lv_color_t *alloc_canvas_buffer(int width, int height);
+void configure_canvas_base(lv_obj_t *canvas,
+                           lv_color_t *buffer,
+                           int x,
+                           int y,
+                           int width,
+                           int height);
 void build_work_page_status_bar(lv_obj_t *screen,
                                 int page,
                                 lv_obj_t **date_label,
@@ -33,6 +39,7 @@ void build_work_page_status_bar(lv_obj_t *screen,
                                 bool show_time);
 bool update_work_page_status_time(lv_obj_t *label, const struct tm &local);
 bool update_work_page_sensor_summary(lv_obj_t *label);
+bool update_non_clock_work_page_sensor_status(int page);
 void style_work_page_sensor_summary(lv_obj_t *label);
 bool update_work_page_status_icons(int page);
 lv_obj_t *create_page_root();
@@ -113,6 +120,7 @@ void clear_inverted_clock_card(lv_obj_t *card_canvas);
 bool update_inverted_clock_card_value(lv_obj_t *card_canvas,
                                       int value,
                                       int *last_value);
+bool update_flip_clock_sensor_status();
 bool update_flip_clock_page(const struct tm &local);
 void build_flip_clock_page();
 bool update_xiaozhi_page(const struct tm &local);

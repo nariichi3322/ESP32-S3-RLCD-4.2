@@ -216,11 +216,9 @@ void handle_settings_action()
     if (primary < 0 || primary >= kSettingsPrimaryCount) {
         primary = kSettingsPrimaryNetwork;
     }
-    int selected = g_settings_selection;
-    int secondary_count = settings_secondary_count(primary);
-    if (selected < 0 || selected >= secondary_count) {
-        selected = 0;
-    }
+    int selected = clamp_settings_selection_for_mode(primary,
+                                                     g_settings_selection,
+                                                     g_settings_page_toggle_mode);
     g_settings_primary_selection = primary;
     g_settings_selection = selected;
     g_settings_last_activity_tick = xTaskGetTickCount();

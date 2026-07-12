@@ -1,6 +1,8 @@
 // 维护本地温湿度趋势和 24 小时历史样本的内存与 NVS 数据。
 #include "sensor_services.h"
 
+#include "sensor_trend.h"
+
 #include "ui_views.h"
 
 #include <cstddef>
@@ -37,15 +39,6 @@ struct LegacyHourlySensorHistoryBlob {
     HourlySensorSample samples[kLegacyHourlyHistoryCount] = {};
 };
 
-struct SensorHistoryAverage {
-    float temperature = 0.0f;
-    float humidity = 0.0f;
-    int count = 0;
-};
-
-bool is_system_time_plausible(struct tm *local_out);
-int periodic_sample_minutes(const struct tm &local, int day_minutes, int night_minutes);
-
 namespace {
 constexpr const char *kSensorNvsNamespace = "sensor";
 constexpr const char *kHourlyHistoryMetaKey = "hourmeta";
@@ -57,17 +50,11 @@ constexpr int kUsPerMs = 1000;
 constexpr int kSecondsPerMinute = 60;
 constexpr int kMinutesPerHour = 60;
 constexpr int kSecondsPerHour = kMinutesPerHour * kSecondsPerMinute;
-constexpr int kWeatherSyncFallbackSeconds = kSecondsPerHour;
-constexpr int kWeatherSyncSearchHours = 30;
-constexpr int kWeatherSyncSearchStepHours = 1;
 constexpr int kUnknownTimeSensorSampleMs = kSecondsPerMinute * kMsPerSecond;
 constexpr int kSensorSampleDayMinutes = 1;
 constexpr int kSensorSampleNightMinutes = 2;
 constexpr int kSensorTrendWindowHours = 4;
 constexpr int64_t kSensorTrendWindowMs = (int64_t)kSensorTrendWindowHours * kMinutesPerHour * kSecondsPerMinute * kMsPerSecond;
-constexpr int kNightSlowWindowStartHour = 22;
-constexpr int kNightSlowWindowEndHour = 6;
-constexpr int kTmYearOffset = 1900;
 constexpr const char *kSensorHistoryTexts[] = {
     kSensorNvsNamespace,
     kHourlyHistoryMetaKey,
@@ -134,9 +121,6 @@ static_assert(kHourlySlotKeyBufferSize >= sizeof("h00"), "hourly slot key buffer
 static_assert(array_count(kSensorHistoryTexts) > 0,
               "sensor history text registry must not be empty");
 static_assert(cstr_array_nonempty(kSensorHistoryTexts), "sensor history NVS strings and logs must be non-empty");
-static_assert(kWeatherSyncFallbackSeconds > 0, "weather sync fallback interval must be positive");
-static_assert(kWeatherSyncSearchHours > 0, "weather sync search hours must be positive");
-static_assert(kWeatherSyncSearchStepHours > 0, "weather sync search step must be positive");
 static_assert(kUnknownTimeSensorSampleMs > 0, "unknown-time sensor sample interval must be positive");
 static_assert(kSensorSampleDayMinutes > 0, "day sensor sample interval must be positive");
 static_assert(kSensorSampleNightMinutes > 0, "night sensor sample interval must be positive");
@@ -146,10 +130,6 @@ static_assert(kSensorTrendWindowHours > 0, "sensor trend window must be positive
 static_assert(kSensorTrendWindowMs > 0, "sensor trend window in ms must be positive");
 static_assert(kSensorHistoryMinutes >= (kSensorTrendWindowHours * kMinutesPerHour) / kSensorSampleDayMinutes,
               "sensor trend history must cover the full day-sampling trend window");
-static_assert(kNightSlowWindowStartHour >= 0 && kNightSlowWindowStartHour < 24,
-              "night slow window start hour must be in 0..23");
-static_assert(kNightSlowWindowEndHour >= 0 && kNightSlowWindowEndHour < 24,
-              "night slow window end hour must be in 0..23");
 static_assert(kSecondsPerHour > 0, "seconds per hour must be positive");
 
 int seconds_until_next_interval(const struct tm &local, int interval_seconds)
@@ -235,13 +215,6 @@ int64_t sensor_trend_now_ms()
     return esp_timer_get_time() / kUsPerMs;
 }
 
-bool sensor_sample_in_trend_window(const SensorSample &sample, int64_t now_ms)
-{
-    return sample.sampled_at_ms > 0 &&
-           sample.sampled_at_ms >= now_ms - kSensorTrendWindowMs &&
-           sample.sampled_at_ms <= now_ms;
-}
-
 void append_sensor_history_sample(float temp, float humi)
 {
     g_sensor_history[g_sensor_history_next].sampled_at_ms = sensor_trend_now_ms();
@@ -253,50 +226,35 @@ void append_sensor_history_sample(float temp, float humi)
     }
 }
 
-SensorHistoryAverage calculate_sensor_history_average()
+SensorTrendAverage calculate_sensor_history_average()
 {
-    SensorHistoryAverage average = {};
-    if (g_sensor_history_count <= 0) {
-        return average;
-    }
-    int64_t now_ms = sensor_trend_now_ms();
-    float temp_sum = 0.0f;
-    float humi_sum = 0.0f;
-    for (int i = 0; i < g_sensor_history_count; ++i) {
-        if (!sensor_sample_in_trend_window(g_sensor_history[i], now_ms)) {
-            continue;
-        }
-        temp_sum += g_sensor_history[i].temperature;
-        humi_sum += g_sensor_history[i].humidity;
-        ++average.count;
-    }
-    if (average.count <= 0) {
-        return average;
-    }
-    average.temperature = temp_sum / average.count;
-    average.humidity = humi_sum / average.count;
-    return average;
+    return calculate_sensor_trend_average(g_sensor_history,
+                                          g_sensor_history_count,
+                                          kSensorHistoryMinutes,
+                                          sensor_trend_now_ms(),
+                                          kSensorTrendWindowMs);
 }
 
-void calculate_sensor_trend_from_average(const SensorHistoryAverage &average,
+void calculate_sensor_trend_from_average(const SensorTrendAverage &average,
                                           int *temperature_trend,
                                           int *humidity_trend)
 {
     if (!temperature_trend || !humidity_trend) {
         return;
     }
-    *temperature_trend = 0;
-    *humidity_trend = 0;
     if (average.count <= 0) {
+        *temperature_trend = 0;
+        *humidity_trend = 0;
         g_sensor_average_valid = false;
         return;
     }
-    if (g_sensor_average_valid && average.count >= 2) {
-        float temp_delta = average.temperature - g_last_temp_average;
-        float humi_delta = average.humidity - g_last_humi_average;
-        *temperature_trend = temp_delta > kTrendEpsilon ? 1 : (temp_delta < -kTrendEpsilon ? -1 : 0);
-        *humidity_trend = humi_delta > kTrendEpsilon ? 1 : (humi_delta < -kTrendEpsilon ? -1 : 0);
-    }
+    calculate_sensor_trend_directions(average,
+                                      g_sensor_average_valid,
+                                      g_last_temp_average,
+                                      g_last_humi_average,
+                                      kTrendEpsilon,
+                                      temperature_trend,
+                                      humidity_trend);
     g_last_temp_average = average.temperature;
     g_last_humi_average = average.humidity;
     g_sensor_average_valid = true;
@@ -416,44 +374,6 @@ int boot_sync_remaining_ms()
     }
     int64_t remaining_ms = remaining_us / kUsPerMs;
     return remaining_ms > INT32_MAX ? INT32_MAX : (int)remaining_ms;
-}
-
-bool is_system_time_plausible(struct tm *local_out)
-{
-    time_t now;
-    time(&now);
-    struct tm local = {};
-    localtime_r(&now, &local);
-    int year = local.tm_year + kTmYearOffset;
-    if (local_out) {
-        *local_out = local;
-    }
-    return year >= kMinValidYear && year <= kMaxValidYear;
-}
-
-bool is_tm_plausible(const struct tm &local)
-{
-    int year = local.tm_year + kTmYearOffset;
-    return year >= kMinValidYear && year <= kMaxValidYear;
-}
-
-bool is_night_slow_window(const struct tm &local)
-{
-    return local.tm_hour >= kNightSlowWindowStartHour || local.tm_hour < kNightSlowWindowEndHour;
-}
-
-int periodic_sample_minutes(const struct tm &local, int day_minutes, int night_minutes)
-{
-    return is_night_slow_window(local) ? night_minutes : day_minutes;
-}
-
-time_t hour_start_from_time(time_t value)
-{
-    struct tm local = {};
-    localtime_r(&value, &local);
-    local.tm_min = 0;
-    local.tm_sec = 0;
-    return mktime(&local);
 }
 
 void reset_hourly_sensor_history()
@@ -576,29 +496,6 @@ bool get_hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history, uint32
     }
     portEXIT_CRITICAL(&s_hourly_history_mux);
     return true;
-}
-
-time_t next_weather_sync_time(time_t from)
-{
-    struct tm candidate = {};
-    localtime_r(&from, &candidate);
-    if (!is_tm_plausible(candidate)) {
-        return from + kWeatherSyncFallbackSeconds;
-    }
-    candidate.tm_sec = 0;
-    candidate.tm_min = 0;
-    candidate.tm_hour += kWeatherSyncSearchStepHours;
-    time_t next = mktime(&candidate);
-    for (int i = 0; i < kWeatherSyncSearchHours; ++i) {
-        struct tm local = {};
-        localtime_r(&next, &local);
-        if (!is_night_slow_window(local) || (local.tm_hour % 2 == 0)) {
-            return next;
-        }
-        local.tm_hour += kWeatherSyncSearchStepHours;
-        next = mktime(&local);
-    }
-    return from + kWeatherSyncFallbackSeconds;
 }
 
 static void calculate_updated_sensor_trends(float temp,

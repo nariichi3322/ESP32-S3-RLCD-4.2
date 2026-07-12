@@ -259,11 +259,6 @@ bool compute_http_timeout_ms(int *timeout_ms)
     return true;
 }
 
-bool http_ascii_space(char ch)
-{
-    return isspace((unsigned char)ch);
-}
-
 bool advance_gzip_pos(size_t *pos, size_t amount, size_t len)
 {
     if (!pos || amount > len || *pos > len - amount) {
@@ -588,24 +583,6 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
              (unsigned)buffer.len,
              has_gzip_magic_prefix(out, buffer.len));
     return decode_http_body(out, out_len, &buffer.len);
-}
-
-void trim_ascii(char *text)
-{
-    if (!text) {
-        return;
-    }
-    size_t len = strlen(text);
-    while (len > 0 && http_ascii_space(text[len - 1])) {
-        text[--len] = '\0';
-    }
-    char *start = text;
-    while (*start && http_ascii_space(*start)) {
-        ++start;
-    }
-    if (start != text) {
-        memmove(text, start, strlen(start) + kCStringTerminatorSize);
-    }
 }
 
 bool json_copy_string(const cJSON *obj, const char *name, char *out, size_t out_len)

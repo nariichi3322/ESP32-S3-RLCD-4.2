@@ -63,7 +63,7 @@ static_assert(cstr_array_nonempty(kBootTexts), "boot screen text registry must n
 
 void draw_boot_anim_frame_index(int frame)
 {
-    if (!g_boot_anim_canvas) {
+    if (!g_boot_anim_canvas || !g_boot_anim_canvas_buf) {
         return;
     }
     if (frame < 0) {
@@ -135,19 +135,20 @@ void show_boot_screen()
     if (!g_boot_anim_canvas_buf) {
         g_boot_anim_canvas_buf = alloc_canvas_buffer(BOOT_ANIM_WIDTH, BOOT_ANIM_HEIGHT);
     }
-    g_boot_anim_canvas = lv_canvas_create(screen);
-    if (g_boot_anim_canvas) {
-        lv_obj_clear_flag(g_boot_anim_canvas, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_boot_anim_canvas, kBootAnimCanvasX, kBootAnimCanvasY);
-        lv_obj_set_size(g_boot_anim_canvas, BOOT_ANIM_WIDTH, BOOT_ANIM_HEIGHT);
-        lv_obj_set_style_border_width(g_boot_anim_canvas, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(g_boot_anim_canvas, 0, LV_PART_MAIN);
-    } else {
-        ESP_LOGW(TAG, BOOT_ANIM_CANVAS_CREATE_FAILED_LOG);
+    g_boot_anim_canvas = nullptr;
+    if (g_boot_anim_canvas_buf) {
+        g_boot_anim_canvas = lv_canvas_create(screen);
+        if (!g_boot_anim_canvas) {
+            ESP_LOGW(TAG, BOOT_ANIM_CANVAS_CREATE_FAILED_LOG);
+        }
     }
-    if (g_boot_anim_canvas && g_boot_anim_canvas_buf) {
-        lv_canvas_set_buffer(g_boot_anim_canvas, g_boot_anim_canvas_buf,
-                             BOOT_ANIM_WIDTH, BOOT_ANIM_HEIGHT, LV_IMG_CF_TRUE_COLOR);
+    if (g_boot_anim_canvas) {
+        configure_canvas_base(g_boot_anim_canvas,
+                              g_boot_anim_canvas_buf,
+                              kBootAnimCanvasX,
+                              kBootAnimCanvasY,
+                              BOOT_ANIM_WIDTH,
+                              BOOT_ANIM_HEIGHT);
         lv_canvas_fill_bg(g_boot_anim_canvas, lv_color_white(), LV_OPA_COVER);
         draw_boot_anim_frame_index(0);
     }

@@ -24,7 +24,7 @@ LV_FONT_DECLARE(zh_pomodoro_title_24);
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.5.4";
+static const char *APP_VERSION = "v1.5.5";
 static const char *const kPreviewWeekDaysFull[] = {
     "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六",
 };
@@ -1043,7 +1043,7 @@ static void build_gallery_preview_ui()
                    CLOCK_GALLERY_IMAGE_WIDTH,
                    CLOCK_GALLERY_IMAGE_HEIGHT,
                    CLOCK_GALLERY_IMAGE_BYTES_PER_ROW,
-                   clock_gallery_images[local.tm_hour % CLOCK_GALLERY_IMAGE_COUNT],
+                   clock_gallery_images[local.tm_wday % CLOCK_GALLERY_IMAGE_COUNT],
                    lv_color_black(),
                    lv_color_white());
 
@@ -1469,7 +1469,12 @@ static void build_xiaozhi_preview_ui(const char *preview_mode)
     time_t now = preview_time();
     struct tm local = {};
     localtime_r(&now, &local);
-    build_preview_work_status_bar(screen, local, true, true);
+    bool pomodoro_running = preview_mode_is(preview_mode, "xiaozhi_pomodoro");
+    bool pomodoro_final = preview_mode_is(preview_mode, "xiaozhi_pomodoro_final");
+    bool pomodoro_completed = preview_mode_is(preview_mode, "xiaozhi_pomodoro_done");
+    bool preparing = preview_mode_is(preview_mode, "xiaozhi_preparing");
+    bool pomodoro_visible = pomodoro_running || pomodoro_final || pomodoro_completed;
+    build_preview_work_status_bar(screen, local, pomodoro_visible, true);
 
     lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
     set_obj_black(top_line, true);
@@ -1479,11 +1484,6 @@ static void build_xiaozhi_preview_ui(const char *preview_mode)
     int seconds_of_day = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
     update_progress_canvas(day_progress, (seconds_of_day * 60) / (24 * 3600), &last_day);
 
-    bool pomodoro_running = preview_mode_is(preview_mode, "xiaozhi_pomodoro");
-    bool pomodoro_final = preview_mode_is(preview_mode, "xiaozhi_pomodoro_final");
-    bool pomodoro_completed = preview_mode_is(preview_mode, "xiaozhi_pomodoro_done");
-    bool preparing = preview_mode_is(preview_mode, "xiaozhi_preparing");
-    bool pomodoro_visible = pomodoro_running || pomodoro_final || pomodoro_completed;
     static const int card_x[3] = {18, 144, 270};
     int values[3] = {
         local.tm_hour,

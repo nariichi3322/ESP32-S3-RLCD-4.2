@@ -24,6 +24,18 @@ constexpr const char *kMcpInitializeMethod = "initialize";
 constexpr const char *kMcpToolsListMethod = "tools/list";
 constexpr const char *kMcpToolsCallMethod = "tools/call";
 constexpr const char *kMcpNotificationPrefix = "notifications";
+constexpr const char *kJsonFieldType = "type";
+constexpr const char *kJsonFieldProperties = "properties";
+constexpr const char *kJsonFieldRequired = "required";
+constexpr const char *kJsonFieldAction = "action";
+constexpr const char *kJsonFieldDurationSeconds = "duration_seconds";
+constexpr const char *kJsonFieldPayload = "payload";
+constexpr const char *kJsonTypeObject = "object";
+constexpr const char *kJsonTypeString = "string";
+constexpr const char *kJsonTypeInteger = "integer";
+constexpr const char *kPomodoroActionStart = "start";
+constexpr const char *kPomodoroActionCancel = "cancel";
+constexpr const char *kPomodoroActionStatus = "status";
 constexpr const char *kDeviceStatusTool = "self.get_device_status";
 constexpr const char *kSetVolumeTool = "self.audio_speaker.set_volume";
 constexpr const char *kSetAlarmTool = "self.alarm.set";
@@ -96,8 +108,8 @@ bool add_string(cJSON *object, const char *name, const char *value)
 cJSON *create_object_schema()
 {
     cJSON *schema = cJSON_CreateObject();
-    if (!schema || !add_string(schema, "type", "object") ||
-        !cJSON_AddItemToObject(schema, "properties", cJSON_CreateObject())) {
+    if (!schema || !add_string(schema, kJsonFieldType, kJsonTypeObject) ||
+        !cJSON_AddItemToObject(schema, kJsonFieldProperties, cJSON_CreateObject())) {
         cJSON_Delete(schema);
         return nullptr;
     }
@@ -125,17 +137,17 @@ bool add_required_integer(cJSON *schema,
                           int minimum,
                           int maximum)
 {
-    cJSON *properties = schema ? cJSON_GetObjectItem(schema, "properties") : nullptr;
+    cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
     cJSON *property = cJSON_CreateObject();
-    cJSON *required = schema ? cJSON_GetObjectItem(schema, "required") : nullptr;
+    cJSON *required = schema ? cJSON_GetObjectItem(schema, kJsonFieldRequired) : nullptr;
     if (!required) {
         required = cJSON_CreateArray();
         if (schema && required) {
-            cJSON_AddItemToObject(schema, "required", required);
+            cJSON_AddItemToObject(schema, kJsonFieldRequired, required);
         }
     }
     if (!cJSON_IsObject(properties) || !property || !cJSON_IsArray(required) ||
-        !add_string(property, "type", "integer") ||
+        !add_string(property, kJsonFieldType, kJsonTypeInteger) ||
         !cJSON_AddNumberToObject(property, "minimum", minimum) ||
         !cJSON_AddNumberToObject(property, "maximum", maximum) ||
         !cJSON_AddItemToArray(required, cJSON_CreateString(name))) {
@@ -148,9 +160,10 @@ bool add_required_integer(cJSON *schema,
 
 bool add_optional_string(cJSON *schema, const char *name)
 {
-    cJSON *properties = schema ? cJSON_GetObjectItem(schema, "properties") : nullptr;
+    cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
     cJSON *property = cJSON_CreateObject();
-    if (!cJSON_IsObject(properties) || !property || !add_string(property, "type", "string")) {
+    if (!cJSON_IsObject(properties) || !property ||
+        !add_string(property, kJsonFieldType, kJsonTypeString)) {
         cJSON_Delete(property);
         return false;
     }
@@ -160,17 +173,17 @@ bool add_optional_string(cJSON *schema, const char *name)
 
 bool add_required_string(cJSON *schema, const char *name)
 {
-    cJSON *properties = schema ? cJSON_GetObjectItem(schema, "properties") : nullptr;
+    cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
     cJSON *property = cJSON_CreateObject();
-    cJSON *required = schema ? cJSON_GetObjectItem(schema, "required") : nullptr;
+    cJSON *required = schema ? cJSON_GetObjectItem(schema, kJsonFieldRequired) : nullptr;
     if (!required) {
         required = cJSON_CreateArray();
         if (schema && required) {
-            cJSON_AddItemToObject(schema, "required", required);
+            cJSON_AddItemToObject(schema, kJsonFieldRequired, required);
         }
     }
     if (!cJSON_IsObject(properties) || !property || !cJSON_IsArray(required) ||
-        !add_string(property, "type", "string") ||
+        !add_string(property, kJsonFieldType, kJsonTypeString) ||
         !cJSON_AddItemToArray(required, cJSON_CreateString(name))) {
         cJSON_Delete(property);
         return false;
@@ -181,10 +194,10 @@ bool add_required_string(cJSON *schema, const char *name)
 
 bool add_optional_integer(cJSON *schema, const char *name, int minimum, int maximum)
 {
-    cJSON *properties = schema ? cJSON_GetObjectItem(schema, "properties") : nullptr;
+    cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
     cJSON *property = cJSON_CreateObject();
     if (!cJSON_IsObject(properties) || !property ||
-        !add_string(property, "type", "integer") ||
+        !add_string(property, kJsonFieldType, kJsonTypeInteger) ||
         !cJSON_AddNumberToObject(property, "minimum", minimum) ||
         !cJSON_AddNumberToObject(property, "maximum", maximum)) {
         cJSON_Delete(property);
@@ -196,24 +209,24 @@ bool add_optional_integer(cJSON *schema, const char *name, int minimum, int maxi
 
 bool add_required_action(cJSON *schema)
 {
-    cJSON *properties = schema ? cJSON_GetObjectItem(schema, "properties") : nullptr;
+    cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
     cJSON *property = cJSON_CreateObject();
     cJSON *values = cJSON_CreateArray();
     cJSON *required = cJSON_CreateArray();
     if (!cJSON_IsObject(properties) || !property || !values || !required ||
-        !add_string(property, "type", "string") ||
-        !cJSON_AddItemToArray(values, cJSON_CreateString("start")) ||
-        !cJSON_AddItemToArray(values, cJSON_CreateString("cancel")) ||
-        !cJSON_AddItemToArray(values, cJSON_CreateString("status")) ||
-        !cJSON_AddItemToArray(required, cJSON_CreateString("action"))) {
+        !add_string(property, kJsonFieldType, kJsonTypeString) ||
+        !cJSON_AddItemToArray(values, cJSON_CreateString(kPomodoroActionStart)) ||
+        !cJSON_AddItemToArray(values, cJSON_CreateString(kPomodoroActionCancel)) ||
+        !cJSON_AddItemToArray(values, cJSON_CreateString(kPomodoroActionStatus)) ||
+        !cJSON_AddItemToArray(required, cJSON_CreateString(kJsonFieldAction))) {
         cJSON_Delete(property);
         cJSON_Delete(values);
         cJSON_Delete(required);
         return false;
     }
     cJSON_AddItemToObject(property, "enum", values);
-    cJSON_AddItemToObject(properties, "action", property);
-    cJSON_AddItemToObject(schema, "required", required);
+    cJSON_AddItemToObject(properties, kJsonFieldAction, property);
+    cJSON_AddItemToObject(schema, kJsonFieldRequired, required);
     return true;
 }
 
@@ -248,7 +261,7 @@ cJSON *create_countdown_tool()
 {
     cJSON *schema = create_object_schema();
     if (!schema ||
-        !add_required_integer(schema, "duration_seconds", 1, static_cast<int>(kMaxCountdownSeconds)) ||
+        !add_required_integer(schema, kJsonFieldDurationSeconds, 1, static_cast<int>(kMaxCountdownSeconds)) ||
         !add_optional_string(schema, "label")) {
         cJSON_Delete(schema);
         return nullptr;
@@ -262,7 +275,7 @@ cJSON *create_pomodoro_tool()
     if (!schema ||
         !add_required_action(schema) ||
         !add_optional_integer(schema,
-                              "duration_seconds",
+                              kJsonFieldDurationSeconds,
                               1,
                               static_cast<int>(kMaxPomodoroSeconds))) {
         cJSON_Delete(schema);
@@ -481,7 +494,7 @@ cJSON *call_countdown(const cJSON *arguments)
     XiaozhiMcpCountdownRequest request = {};
     int seconds = 0;
     if (!json_integer_in_range(arguments,
-                               "duration_seconds",
+                               kJsonFieldDurationSeconds,
                                1,
                                static_cast<int>(kMaxCountdownSeconds),
                                &seconds)) {
@@ -500,13 +513,13 @@ cJSON *call_pomodoro(const cJSON *arguments)
     if (!s_pomodoro_handler || !cJSON_IsObject(arguments)) {
         return nullptr;
     }
-    const cJSON *action = cJSON_GetObjectItem(arguments, "action");
-    const cJSON *duration = cJSON_GetObjectItem(arguments, "duration_seconds");
+    const cJSON *action = cJSON_GetObjectItem(arguments, kJsonFieldAction);
+    const cJSON *duration = cJSON_GetObjectItem(arguments, kJsonFieldDurationSeconds);
     if (!cJSON_IsString(action) || (duration && !cJSON_IsNumber(duration))) {
         return nullptr;
     }
     XiaozhiMcpPomodoroRequest request = {};
-    if (strcmp(action->valuestring, "start") == 0) {
+    if (strcmp(action->valuestring, kPomodoroActionStart) == 0) {
         request.action = kXiaozhiMcpPomodoroStart;
         request.has_duration_seconds = duration != nullptr;
         request.duration_seconds = request.has_duration_seconds
@@ -516,12 +529,12 @@ cJSON *call_pomodoro(const cJSON *arguments)
             (duration && duration->valuedouble != duration->valueint)) {
             return nullptr;
         }
-    } else if (strcmp(action->valuestring, "cancel") == 0) {
+    } else if (strcmp(action->valuestring, kPomodoroActionCancel) == 0) {
         if (duration) {
             return nullptr;
         }
         request.action = kXiaozhiMcpPomodoroCancel;
-    } else if (strcmp(action->valuestring, "status") == 0) {
+    } else if (strcmp(action->valuestring, kPomodoroActionStatus) == 0) {
         if (duration) {
             return nullptr;
         }
@@ -631,7 +644,7 @@ bool write_response(const char *session_id,
     cJSON *payload = cJSON_CreateObject();
     if (!root.value || !payload || !response || response_len == 0 ||
         !add_string(root.value, "session_id", session_id ? session_id : "") ||
-        !add_string(root.value, "type", kMcpType) ||
+        !add_string(root.value, kJsonFieldType, kMcpType) ||
         !add_string(payload, "jsonrpc", kMcpJsonRpcVersion)) {
         cJSON_Delete(payload);
         cJSON_Delete(result);
@@ -656,7 +669,7 @@ bool write_response(const char *session_id,
         }
         cJSON_AddItemToObject(payload, "error", error);
     }
-    cJSON_AddItemToObject(root.value, "payload", payload);
+    cJSON_AddItemToObject(root.value, kJsonFieldPayload, payload);
     response[0] = '\0';
     return cJSON_PrintPreallocated(root.value,
                                    response,
@@ -671,9 +684,9 @@ bool xiaozhi_mcp_message_calls_weather_city(const char *message, size_t message_
         return false;
     }
     JsonOwner request{cJSON_ParseWithLength(message, message_len)};
-    const cJSON *type = request.value ? cJSON_GetObjectItem(request.value, "type") : nullptr;
+    const cJSON *type = request.value ? cJSON_GetObjectItem(request.value, kJsonFieldType) : nullptr;
     const cJSON *payload = cJSON_IsString(type) && strcmp(type->valuestring, kMcpType) == 0
-                               ? cJSON_GetObjectItem(request.value, "payload")
+                               ? cJSON_GetObjectItem(request.value, kJsonFieldPayload)
                                : nullptr;
     const cJSON *method = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "method") : nullptr;
     const cJSON *params = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "params") : nullptr;
@@ -698,14 +711,14 @@ XiaozhiMcpMessageResult xiaozhi_mcp_handle_message(const char *message,
         return kXiaozhiMcpNotHandled;
     }
     JsonOwner request{cJSON_ParseWithLength(message, message_len)};
-    const cJSON *type = request.value ? cJSON_GetObjectItem(request.value, "type") : nullptr;
+    const cJSON *type = request.value ? cJSON_GetObjectItem(request.value, kJsonFieldType) : nullptr;
     if (!cJSON_IsString(type) || strcmp(type->valuestring, kMcpType) != 0) {
         return kXiaozhiMcpNotHandled;
     }
     if (response && response_len > 0) {
         response[0] = '\0';
     }
-    const cJSON *payload = cJSON_GetObjectItem(request.value, "payload");
+    const cJSON *payload = cJSON_GetObjectItem(request.value, kJsonFieldPayload);
     const cJSON *version = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "jsonrpc") : nullptr;
     const cJSON *method = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "method") : nullptr;
     if (!cJSON_IsString(version) || strcmp(version->valuestring, kMcpJsonRpcVersion) != 0 ||

@@ -13,11 +13,20 @@ constexpr uint32_t kSettingsOrderExitFeedbackMs = 2500;
 constexpr const char *kSettingsOrderExitSavedFeedback = "页面顺序已保存";
 constexpr const char *kSettingsOrderExitSaveFailedFeedback = "保存失败";
 
+constexpr int clamp_selection_to_count(int selected, int count)
+{
+    return count > 0 && selected >= 0 && selected < count ? selected : 0;
+}
+
 static_assert(kSettingsPrimaryExitBlockMs > 0, "settings primary exit block duration must be positive");
 static_assert(kSettingsOrderExitFeedbackMs > 0, "settings order exit feedback duration must be positive");
 static_assert(kSettingsOrderExitSavedFeedback[0] != '\0', "settings order saved feedback must not be empty");
 static_assert(kSettingsOrderExitSaveFailedFeedback[0] != '\0',
               "settings order save failed feedback must not be empty");
+static_assert(clamp_selection_to_count(kWorkPageCalendar, kWorkPageCount) == kWorkPageCalendar &&
+                  clamp_selection_to_count(kWorkPageHistory, kWorkPageCount) == kWorkPageHistory &&
+                  clamp_selection_to_count(kWorkPageXiaozhiAI, kWorkPageCount) == kWorkPageXiaozhiAI,
+              "high work page indices must remain selectable in page toggle mode");
 } // namespace
 
 int settings_secondary_count(int primary)
@@ -54,13 +63,15 @@ int clamp_settings_primary(int primary)
 int clamp_settings_secondary(int primary, int selected)
 {
     int count = settings_secondary_count(primary);
-    if (count <= 0) {
-        return 0;
+    return clamp_selection_to_count(selected, count);
+}
+
+int clamp_settings_selection_for_mode(int primary, int selected, bool page_toggle_mode)
+{
+    if (!page_toggle_mode) {
+        return clamp_settings_secondary(primary, selected);
     }
-    if (selected < 0 || selected >= count) {
-        return 0;
-    }
-    return selected;
+    return clamp_selection_to_count(selected, kWorkPageCount);
 }
 
 void handle_settings_key_short()

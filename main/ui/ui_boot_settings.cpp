@@ -413,14 +413,9 @@ bool update_settings_page()
 
     char secondary_items[kSettingsSecondaryMaxCount][kSettingsSecondaryTextSize] = {};
     int primary = clamp_settings_primary(g_settings_primary_selection);
-    int selected = g_settings_selection;
-    if (g_settings_page_toggle_mode) {
-        if (selected < 0 || selected >= kWorkPageCount) {
-            selected = 0;
-        }
-    } else {
-        selected = clamp_settings_secondary(primary, selected);
-    }
+    int selected = clamp_settings_selection_for_mode(primary,
+                                                     g_settings_selection,
+                                                     g_settings_page_toggle_mode);
     g_settings_primary_selection = primary;
     g_settings_selection = selected;
     if (g_settings_page_order_mode) {

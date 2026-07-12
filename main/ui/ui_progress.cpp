@@ -84,11 +84,12 @@ void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf
         ESP_LOGW(TAG, "%s", UI_PROGRESS_CANVAS_CREATE_FAILED_LOG);
         return;
     }
-    lv_obj_clear_flag(*canvas, LV_OBJ_FLAG_SCROLLABLE);
-    set_obj_box(*canvas, kProgressCanvasX, y, kProgressCanvasW, kProgressCanvasH);
-    lv_obj_set_style_border_width(*canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(*canvas, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(*canvas, *buf, kProgressCanvasW, kProgressCanvasH, LV_IMG_CF_TRUE_COLOR);
+    configure_canvas_base(*canvas,
+                          *buf,
+                          kProgressCanvasX,
+                          y,
+                          kProgressCanvasW,
+                          kProgressCanvasH);
     lv_canvas_fill_bg(*canvas, lv_color_white(), LV_OPA_COVER);
     for (int i = 0; i < kProgressSegmentCount; ++i) {
         draw_progress_segment(*canvas, i, false);

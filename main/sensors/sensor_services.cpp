@@ -48,6 +48,11 @@ bool system_time_became_valid(bool current_valid, bool previous_valid)
 {
     return current_valid && !previous_valid;
 }
+
+bool local_sensor_sample_available()
+{
+    return get_local_sensor_snapshot(nullptr, nullptr, nullptr, nullptr);
+}
 } // namespace
 
 void housekeeping_task(void *)
@@ -56,7 +61,7 @@ void housekeeping_task(void *)
     TickType_t next_sensor = next_sensor_sample_tick(start_tick);
     TickType_t next_battery = next_battery_sample_tick(start_tick);
     bool last_time_valid = is_system_time_plausible();
-    if (!g_low_battery_mode) {
+    if (!g_low_battery_mode && !local_sensor_sample_available()) {
         sample_sensor();
     }
     for (;;) {

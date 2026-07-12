@@ -1,6 +1,8 @@
 // 读取并校验上位机写入 assets 分区的自定义图片资源包。
 #include "custom_assets.h"
 
+#include "custom_asset_format.h"
+
 #include "app_state.h"
 #include "clock_gallery_images.h"
 #include "status_gif_60.h"
@@ -276,37 +278,29 @@ static bool validate_entry_bounds(const CustomAssetEntry &entry)
     if (!s_assets_partition) {
         return false;
     }
-    if (entry.offset < s_assets_header.header_size) {
+    switch (custom_asset_entry_bounds_status(s_assets_header,
+                                             entry,
+                                             s_assets_partition->size)) {
+    case CustomAssetEntryBoundsStatus::kOk:
+        return true;
+    case CustomAssetEntryBoundsStatus::kBeforePayload:
         ESP_LOGW(TAG, CUSTOM_ASSETS_ENTRY_BEFORE_PAYLOAD_LOG_FORMAT, entry.type, entry.index);
         return false;
-    }
-    if (entry.length == 0 || entry.offset > s_assets_header.total_size) {
+    case CustomAssetEntryBoundsStatus::kInvalidOffset:
         ESP_LOGW(TAG, CUSTOM_ASSETS_ENTRY_OFFSET_INVALID_LOG_FORMAT, entry.type, entry.index);
         return false;
-    }
-    if (entry.length > s_assets_header.total_size - entry.offset) {
+    case CustomAssetEntryBoundsStatus::kInvalidLength:
         ESP_LOGW(TAG, CUSTOM_ASSETS_ENTRY_LENGTH_INVALID_LOG_FORMAT, entry.type, entry.index);
         return false;
-    }
-    if (s_assets_header.total_size > s_assets_partition->size) {
+    case CustomAssetEntryBoundsStatus::kPackageTooLarge:
         return false;
     }
-    return true;
-}
-
-static uint16_t packed_1bit_bytes_per_row(uint16_t width)
-{
-    return (width + kBitsPerByte - 1) / kBitsPerByte;
+    return false;
 }
 
 static size_t custom_asset_entry_table_bytes()
 {
-    return (size_t)s_entry_count * sizeof(CustomAssetEntry);
-}
-
-static size_t custom_asset_header_bytes()
-{
-    return sizeof(CustomAssetsHeader) + custom_asset_entry_table_bytes();
+    return ::custom_asset_entry_table_bytes(static_cast<uint16_t>(s_entry_count));
 }
 
 static size_t custom_asset_gallery_image_bytes()
@@ -314,32 +308,13 @@ static size_t custom_asset_gallery_image_bytes()
     return (size_t)CLOCK_GALLERY_IMAGE_BYTES_PER_ROW * CLOCK_GALLERY_IMAGE_HEIGHT;
 }
 
-static bool custom_asset_text_metadata_valid(const CustomAssetEntry &entry)
-{
-    return entry.index == 0 &&
-           entry.width == 0 &&
-           entry.height == 0 &&
-           entry.frame_count == 0 &&
-           entry.bytes_per_row == 0;
-}
-
-static bool custom_asset_text_length_valid(const CustomAssetEntry &entry, size_t max_len)
-{
-    return entry.length > 0 && entry.length <= max_len;
-}
-
-static bool custom_asset_text_entry_valid(const CustomAssetEntry &entry, size_t max_len)
-{
-    return custom_asset_text_metadata_valid(entry) &&
-           custom_asset_text_length_valid(entry, max_len);
-}
-
 static bool validate_entry_shape(const CustomAssetEntry &entry)
 {
     bool valid = false;
     if (entry.type == kCustomAssetTypeMainGif) {
         size_t expected = (size_t)STATUS_GIF_FRAME_COUNT * STATUS_GIF_BYTES_PER_FRAME;
-        bool row_ok = entry.bytes_per_row == 0 || entry.bytes_per_row == packed_1bit_bytes_per_row(STATUS_GIF_WIDTH);
+        bool row_ok = entry.bytes_per_row == 0 ||
+                      entry.bytes_per_row == custom_asset_packed_1bit_bytes_per_row(STATUS_GIF_WIDTH);
         valid = entry.index == 0 &&
                 entry.width == STATUS_GIF_WIDTH &&
                 entry.height == STATUS_GIF_HEIGHT &&
@@ -472,21 +447,12 @@ static void log_custom_gif_frame_density(int frame)
              STATUS_GIF_WIDTH * STATUS_GIF_HEIGHT);
 }
 
-static bool custom_assets_header_identity_valid()
-{
-    return s_assets_header.magic == kCustomAssetsMagic &&
-           s_assets_header.version == kCustomAssetsVersion &&
-           s_assets_header.entry_count > 0 &&
-           s_assets_header.entry_count <= kCustomAssetMaxEntries;
-}
-
 static bool read_and_validate_custom_asset_entry_table()
 {
     s_entry_count = s_assets_header.entry_count;
-    size_t min_header_size = custom_asset_header_bytes();
-    if (s_assets_header.header_size != min_header_size ||
-        s_assets_header.total_size <= s_assets_header.header_size ||
-        s_assets_header.total_size > s_assets_partition->size) {
+    if (custom_asset_header_layout_status(s_assets_header,
+                                          s_assets_partition->size) !=
+        CustomAssetHeaderLayoutStatus::kOk) {
         ESP_LOGW(TAG, CUSTOM_ASSETS_HEADER_SIZE_INVALID_LOG_FORMAT);
         return false;
     }
@@ -609,7 +575,7 @@ void custom_assets_init()
              (unsigned long)s_assets_header.total_size,
              (unsigned long)s_assets_header.header_crc,
              (unsigned long)s_assets_header.payload_crc);
-    if (!custom_assets_header_identity_valid()) {
+    if (!custom_asset_header_identity_valid(s_assets_header)) {
         ESP_LOGI(TAG, CUSTOM_ASSETS_DIAG_NO_VALID_PACKAGE_LOG_FORMAT);
         return;
     }

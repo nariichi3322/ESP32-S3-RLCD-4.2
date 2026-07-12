@@ -4,8 +4,10 @@
 #include "calendar_lunar.h"
 #include "sensor_services.h"
 #include "ui_battery.h"
+#include "ui_calendar_layout.h"
 
 #define CALENDAR_CANVAS_CREATE_FAILED_LOG "calendar canvas create failed"
+#define CALENDAR_LAYOUT_INVALID_LOG "calendar layout invalid"
 
 static constexpr int kCalendarCanvasW = 364;
 static constexpr int kCalendarCanvasH = 228;
@@ -15,9 +17,6 @@ static constexpr int kCalendarTopLineX = 18;
 static constexpr int kCalendarTopLineY = 54;
 static constexpr int kCalendarTopLineW = 364;
 static constexpr int kCalendarTopLineH = 4;
-static constexpr int kCalendarWeekdayCount = 7;
-static constexpr int kCalendarVisibleRowCount = 5;
-static constexpr int kCalendarVisibleCellLimit = kCalendarWeekdayCount * kCalendarVisibleRowCount;
 static constexpr int kCalendarSundayColumn = 0;
 static constexpr int kCalendarSaturdayColumn = kCalendarWeekdayCount - 1;
 static constexpr int kCalendarHeaderY = 2;
@@ -41,7 +40,6 @@ static constexpr int kCalendarSubTextY = 20;
 static constexpr int kCalendarSubTextH = 12;
 static constexpr int kTmYearOffset = 1900;
 static constexpr int kTmMonthOffset = 1;
-static constexpr int kMonthsPerYear = 12;
 static constexpr int kCalendarDayTextSize = 4; // "31" plus terminator, with one byte spare.
 static constexpr const char *kCalendarWeekdays[kCalendarWeekdayCount] = {"日", "一", "二", "三", "四", "五", "六"};
 
@@ -49,11 +47,6 @@ template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
 {
     return N;
-}
-
-static bool calendar_output_buffer_available(char *out, size_t out_len)
-{
-    return out && out_len > 0;
 }
 
 static_assert(array_count(kCalendarWeekdays) == kCalendarWeekdayCount,
@@ -149,37 +142,8 @@ static void draw_calendar_text(lv_obj_t *canvas,
     lv_obj_invalidate_area(canvas, &area);
 }
 
-static void format_calendar_day_text(char *out, size_t out_len, int day)
+static void draw_calendar_weekday_header()
 {
-    if (!calendar_output_buffer_available(out, out_len)) {
-        return;
-    }
-    if (day < 10 && out_len >= 2) {
-        out[0] = (char)('0' + day);
-        out[1] = '\0';
-        return;
-    }
-    if (out_len >= 3) {
-        out[0] = (char)('0' + day / 10);
-        out[1] = (char)('0' + day % 10);
-        out[2] = '\0';
-        return;
-    }
-    out[0] = '\0';
-}
-
-static int calendar_month_key(const struct tm &local)
-{
-    return (local.tm_year + kTmYearOffset) * kMonthsPerYear + local.tm_mon;
-}
-
-static void draw_calendar_grid(const struct tm &local)
-{
-    if (!g_calendar_canvas) {
-        return;
-    }
-    lv_canvas_fill_bg(g_calendar_canvas, lv_color_white(), LV_OPA_COVER);
-
     canvas_fill_rect_safe(g_calendar_canvas,
                           kCalendarCanvasW,
                           kCalendarCanvasH,
@@ -228,69 +192,85 @@ static void draw_calendar_grid(const struct tm &local)
                                LV_TEXT_ALIGN_CENTER);
         }
     }
+}
+
+static void draw_calendar_day_cell(const struct tm &local,
+                                   const CalendarMonthLayout &layout,
+                                   int day)
+{
+    int display_row = -1;
+    int col = -1;
+    if (!calendar_day_display_position(layout, day, &display_row, &col)) {
+        return;
+    }
+    int x = kCalendarGridX + col * kCalendarCellW;
+    int y = kCalendarCellY + display_row * kCalendarCellH;
+    bool is_today = day == local.tm_mday;
+
+    if (is_today) {
+        canvas_fill_round_rect_safe(g_calendar_canvas,
+                                    kCalendarCanvasW,
+                                    kCalendarCanvasH,
+                                    x + kCalendarTodayInsetX,
+                                    y + kCalendarTodayInsetTop,
+                                    kCalendarCellW - kCalendarTodayInsetW,
+                                    kCalendarCellH - kCalendarTodayInsetH,
+                                    kCalendarTodayRadius,
+                                    lv_color_black());
+    }
+
+    char day_text[kCalendarDayTextSize] = {};
+    format_calendar_day_text(day_text, sizeof(day_text), day);
+    draw_calendar_text(g_calendar_canvas,
+                       day_text,
+                       x + kCalendarDayTextXInset,
+                       y + kCalendarDayTextY,
+                       kCalendarCellW - kCalendarDayTextWInset,
+                       kCalendarDayTextH,
+                       &lv_font_montserrat_16,
+                       is_today ? lv_color_white() : lv_color_black(),
+                       LV_TEXT_ALIGN_CENTER);
+
+    struct tm day_tm = local;
+    day_tm.tm_mday = day;
+    day_tm.tm_hour = 12;
+    day_tm.tm_min = 0;
+    day_tm.tm_sec = 0;
+    mktime(&day_tm);
+    CalendarDayInfo info;
+    calendar_day_info(day_tm, &info);
+    draw_calendar_text(g_calendar_canvas,
+                       info.subtext,
+                       x + kCalendarDayTextXInset,
+                       y + kCalendarSubTextY,
+                       kCalendarCellW - kCalendarDayTextWInset,
+                       kCalendarSubTextH,
+                       &zh_font_16,
+                       is_today ? lv_color_white() : lv_color_black(),
+                       LV_TEXT_ALIGN_CENTER);
+}
+
+static void draw_calendar_grid(const struct tm &local)
+{
+    if (!g_calendar_canvas) {
+        return;
+    }
+    lv_canvas_fill_bg(g_calendar_canvas, lv_color_white(), LV_OPA_COVER);
+    draw_calendar_weekday_header();
 
     int year = local.tm_year + kTmYearOffset;
     int month = local.tm_mon + kTmMonthOffset;
     int today = local.tm_mday;
     int first_weekday = calendar_first_weekday(year, month);
     int days = calendar_days_in_month(year, month);
-    int today_index = first_weekday + today - 1;
-    int today_row = today_index / kCalendarWeekdayCount;
-    bool shift_past_first_row = first_weekday + days > kCalendarVisibleCellLimit && today_row >= kCalendarVisibleRowCount;
-    int row_offset = shift_past_first_row ? 1 : 0;
+    CalendarMonthLayout layout = {};
+    if (!calculate_calendar_month_layout(first_weekday, days, today, &layout)) {
+        ESP_LOGW(TAG, "%s", CALENDAR_LAYOUT_INVALID_LOG);
+        lv_obj_invalidate(g_calendar_canvas);
+        return;
+    }
     for (int day = 1; day <= days; ++day) {
-        int index = first_weekday + day - 1;
-        int row = index / kCalendarWeekdayCount;
-        int col = index % kCalendarWeekdayCount;
-        int display_row = row - row_offset;
-        if (display_row < 0 || display_row >= kCalendarVisibleRowCount) {
-            continue;
-        }
-        int x = kCalendarGridX + col * kCalendarCellW;
-        int y = kCalendarCellY + display_row * kCalendarCellH;
-        bool is_today = day == today;
-
-        if (is_today) {
-            canvas_fill_round_rect_safe(g_calendar_canvas,
-                                        kCalendarCanvasW,
-                                        kCalendarCanvasH,
-                                        x + kCalendarTodayInsetX,
-                                        y + kCalendarTodayInsetTop,
-                                        kCalendarCellW - kCalendarTodayInsetW,
-                                        kCalendarCellH - kCalendarTodayInsetH,
-                                        kCalendarTodayRadius,
-                                        lv_color_black());
-        }
-
-        char day_text[kCalendarDayTextSize] = {};
-        format_calendar_day_text(day_text, sizeof(day_text), day);
-        draw_calendar_text(g_calendar_canvas,
-                           day_text,
-                           x + kCalendarDayTextXInset,
-                           y + kCalendarDayTextY,
-                           kCalendarCellW - kCalendarDayTextWInset,
-                           kCalendarDayTextH,
-                           &lv_font_montserrat_16,
-                           is_today ? lv_color_white() : lv_color_black(),
-                           LV_TEXT_ALIGN_CENTER);
-
-        struct tm day_tm = local;
-        day_tm.tm_mday = day;
-        day_tm.tm_hour = 12;
-        day_tm.tm_min = 0;
-        day_tm.tm_sec = 0;
-        mktime(&day_tm);
-        CalendarDayInfo info;
-        calendar_day_info(day_tm, &info);
-        draw_calendar_text(g_calendar_canvas,
-                           info.subtext,
-                           x + kCalendarDayTextXInset,
-                           y + kCalendarSubTextY,
-                           kCalendarCellW - kCalendarDayTextWInset,
-                           kCalendarSubTextH,
-                           &zh_font_16,
-                           is_today ? lv_color_white() : lv_color_black(),
-                           LV_TEXT_ALIGN_CENTER);
+        draw_calendar_day_cell(local, layout, day);
     }
     lv_obj_invalidate(g_calendar_canvas);
 }
@@ -349,16 +329,12 @@ void build_calendar_page()
     if (!g_calendar_canvas) {
         ESP_LOGW(TAG, "%s", CALENDAR_CANVAS_CREATE_FAILED_LOG);
     } else {
-        lv_obj_clear_flag(g_calendar_canvas, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_calendar_canvas, kCalendarCanvasX, kCalendarCanvasY);
-        lv_obj_set_size(g_calendar_canvas, kCalendarCanvasW, kCalendarCanvasH);
-        lv_obj_set_style_border_width(g_calendar_canvas, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(g_calendar_canvas, 0, LV_PART_MAIN);
-        lv_canvas_set_buffer(g_calendar_canvas,
-                             g_calendar_canvas_buf,
-                             kCalendarCanvasW,
-                             kCalendarCanvasH,
-                             LV_IMG_CF_TRUE_COLOR);
+        configure_canvas_base(g_calendar_canvas,
+                              g_calendar_canvas_buf,
+                              kCalendarCanvasX,
+                              kCalendarCanvasY,
+                              kCalendarCanvasW,
+                              kCalendarCanvasH);
         lv_canvas_fill_bg(g_calendar_canvas, lv_color_white(), LV_OPA_COVER);
     }
 

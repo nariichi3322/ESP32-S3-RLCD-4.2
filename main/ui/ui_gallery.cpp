@@ -5,6 +5,7 @@
 #include "custom_assets.h"
 #include "network_services.h"
 #include "ui_battery.h"
+#include "ui_gallery_selection.h"
 
 #define GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG "gallery image canvas create failed"
 #define GALLERY_TIME_CANVAS_CREATE_FAILED_LOG "gallery time canvas create failed"
@@ -146,23 +147,56 @@ static void style_gallery_saying_label(lv_obj_t *label)
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
 }
 
-static bool update_gallery_image_for_hour(int hour)
+static void build_gallery_canvas(lv_obj_t *screen,
+                                 lv_obj_t **canvas,
+                                 lv_color_t **buffer,
+                                 int x,
+                                 int y,
+                                 int width,
+                                 int height,
+                                 const char *failure_log)
+{
+    if (!screen || !canvas || !buffer || width <= 0 || height <= 0) {
+        return;
+    }
+    if (!*buffer) {
+        *buffer = alloc_canvas_buffer(width, height);
+    }
+    if (!*buffer) {
+        return;
+    }
+    *canvas = lv_canvas_create(screen);
+    if (!*canvas) {
+        ESP_LOGW(TAG, "%s", failure_log);
+        return;
+    }
+    configure_canvas_base(*canvas, *buffer, x, y, width, height);
+    lv_canvas_fill_bg(*canvas, lv_color_white(), LV_OPA_COVER);
+}
+
+static bool update_gallery_image_for_date(const struct tm &local)
 {
     if (!g_gallery_image_canvas || !g_gallery_image_canvas_buf) {
         return false;
     }
     int custom_count = custom_assets_gallery_count();
-    int image_count = custom_count > 0 ? custom_count : CLOCK_GALLERY_IMAGE_COUNT;
-    if (image_count <= 0) {
+    GalleryImageSelection selection = {};
+    if (!gallery_image_selection_for_date(local.tm_year + 1900,
+                                          local.tm_mon + 1,
+                                          local.tm_mday,
+                                          local.tm_wday,
+                                          custom_count,
+                                          CLOCK_GALLERY_IMAGE_COUNT,
+                                          &selection)) {
         return false;
     }
-    int image_index = hour % image_count;
+    int image_index = selection.image_index;
     if (image_index == s_last_gallery_image_index) {
         return false;
     }
     s_last_gallery_image_index = image_index;
-    const uint8_t *image_bits = clock_gallery_images[image_index % CLOCK_GALLERY_IMAGE_COUNT];
-    if (custom_count > 0 &&
+    const uint8_t *image_bits = clock_gallery_images[selection.builtin_index];
+    if (selection.uses_custom_gallery &&
         custom_assets_read_gallery_image(image_index, s_custom_gallery_image, sizeof(s_custom_gallery_image))) {
         image_bits = s_custom_gallery_image;
     }
@@ -185,7 +219,7 @@ bool update_gallery_page(const struct tm &local)
         s_last_gallery_time_key = time_key;
         changed |= update_gallery_time_labels(local);
     }
-    changed |= update_gallery_image_for_hour(local.tm_hour);
+    changed |= update_gallery_image_for_date(local);
     changed |= update_work_page_sensor_summary(g_gallery_summary_label);
     changed |= update_gallery_saying_label();
     return changed;
@@ -217,27 +251,14 @@ void build_gallery_page()
                                   kGalleryTopLineH);
     set_obj_black(top_line, true);
 
-    if (!g_gallery_image_canvas_buf) {
-        g_gallery_image_canvas_buf = alloc_canvas_buffer(CLOCK_GALLERY_IMAGE_WIDTH, CLOCK_GALLERY_IMAGE_HEIGHT);
-    }
-    if (g_gallery_image_canvas_buf) {
-        g_gallery_image_canvas = lv_canvas_create(screen);
-    }
-    if (g_gallery_image_canvas) {
-        lv_obj_clear_flag(g_gallery_image_canvas, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_gallery_image_canvas, kGalleryImageCanvasX, kGalleryImageCanvasY);
-        lv_obj_set_size(g_gallery_image_canvas, CLOCK_GALLERY_IMAGE_WIDTH, CLOCK_GALLERY_IMAGE_HEIGHT);
-        lv_obj_set_style_border_width(g_gallery_image_canvas, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(g_gallery_image_canvas, 0, LV_PART_MAIN);
-        lv_canvas_set_buffer(g_gallery_image_canvas,
-                             g_gallery_image_canvas_buf,
-                             CLOCK_GALLERY_IMAGE_WIDTH,
-                             CLOCK_GALLERY_IMAGE_HEIGHT,
-                             LV_IMG_CF_TRUE_COLOR);
-        lv_canvas_fill_bg(g_gallery_image_canvas, lv_color_white(), LV_OPA_COVER);
-    } else if (g_gallery_image_canvas_buf) {
-        ESP_LOGW(TAG, "%s", GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG);
-    }
+    build_gallery_canvas(screen,
+                         &g_gallery_image_canvas,
+                         &g_gallery_image_canvas_buf,
+                         kGalleryImageCanvasX,
+                         kGalleryImageCanvasY,
+                         CLOCK_GALLERY_IMAGE_WIDTH,
+                         CLOCK_GALLERY_IMAGE_HEIGHT,
+                         GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG);
 
     lv_obj_t *divider = make_bar(screen,
                                  kGalleryDividerX,
@@ -245,27 +266,14 @@ void build_gallery_page()
                                  kGalleryDividerW,
                                  kGalleryDividerH);
     set_obj_black(divider, true);
-    if (!g_gallery_time_canvas_buf) {
-        g_gallery_time_canvas_buf = alloc_canvas_buffer(kGalleryTimeCanvasW, kGalleryTimeCanvasH);
-    }
-    if (g_gallery_time_canvas_buf) {
-        g_gallery_time_canvas = lv_canvas_create(screen);
-    }
-    if (g_gallery_time_canvas) {
-        lv_obj_clear_flag(g_gallery_time_canvas, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_gallery_time_canvas, kGalleryTimeCanvasX, kGalleryTimeCanvasY);
-        lv_obj_set_size(g_gallery_time_canvas, kGalleryTimeCanvasW, kGalleryTimeCanvasH);
-        lv_obj_set_style_border_width(g_gallery_time_canvas, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(g_gallery_time_canvas, 0, LV_PART_MAIN);
-        lv_canvas_set_buffer(g_gallery_time_canvas,
-                             g_gallery_time_canvas_buf,
-                             kGalleryTimeCanvasW,
-                             kGalleryTimeCanvasH,
-                             LV_IMG_CF_TRUE_COLOR);
-        lv_canvas_fill_bg(g_gallery_time_canvas, lv_color_white(), LV_OPA_COVER);
-    } else if (g_gallery_time_canvas_buf) {
-        ESP_LOGW(TAG, "%s", GALLERY_TIME_CANVAS_CREATE_FAILED_LOG);
-    }
+    build_gallery_canvas(screen,
+                         &g_gallery_time_canvas,
+                         &g_gallery_time_canvas_buf,
+                         kGalleryTimeCanvasX,
+                         kGalleryTimeCanvasY,
+                         kGalleryTimeCanvasW,
+                         kGalleryTimeCanvasH,
+                         GALLERY_TIME_CANVAS_CREATE_FAILED_LOG);
 
     g_gallery_saying_label = make_label(screen,
                                         kGallerySayingLabelX,

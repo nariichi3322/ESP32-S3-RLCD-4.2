@@ -22,25 +22,25 @@ constexpr const char *kPortalHttpStatusFound = "302 Found";
 constexpr const char *kPortalHeaderLocation = "Location";
 constexpr const char *kPortalHeaderCacheControl = "Cache-Control";
 constexpr const char *kPortalCacheNoStore = "no-store";
-constexpr const char *kPortalErrorNotEnoughMemory = "Not enough memory.";
-constexpr const char *kPortalSaveConnectedTitle = "Connected";
-constexpr const char *kPortalSaveConnectingTitle = "Saved, still connecting";
-constexpr const char *kPortalSaveMissingTitle = "Missing setup data";
-constexpr const char *kPortalSaveConnectedBody = "The clock has joined your Wi-Fi network.";
+constexpr const char *kPortalErrorNotEnoughMemory = "设备内存不足，请稍后重试。";
+constexpr const char *kPortalSaveConnectedTitle = "网络连接成功";
+constexpr const char *kPortalSaveConnectingTitle = "设置已保存，正在连接";
+constexpr const char *kPortalSaveMissingTitle = "配置信息不完整";
+constexpr const char *kPortalSaveConnectedBody = "天气时钟已连接到 Wi-Fi 网络。";
 constexpr const char *kPortalSaveConnectingBody =
-    "The clock saved your settings but did not get an IP yet. Check the password or router signal, then try again.";
+    "设置已经保存，但设备暂未获取到 IP 地址。请检查 Wi-Fi 密码和路由器信号后重试。";
 constexpr const char *kPortalSaveMissingBody =
-    "Enter Wi-Fi and QWeather API Key, or set date and time for offline mode.";
-constexpr const char *kPortalOfflineSavedTitle = "Offline mode enabled";
-constexpr const char *kPortalOfflineInvalidTitle = "Invalid date or time";
-constexpr const char *kPortalOfflineSavedBody = "The clock will use the RTC time and skip all network updates.";
-constexpr const char *kPortalOfflineInvalidBody = "Please enter a valid date and time, or configure Wi-Fi and API Key.";
-constexpr const char *kPortalWifiScanBusyMessage = "Scan busy, refresh this page.";
-constexpr const char *kPortalWifiScanFailedMessage = "Scan failed, refresh this page.";
-constexpr const char *kPortalWifiScanEmptyMessage = "No Wi-Fi found.";
-constexpr const char *kPortalWifiScanNoMemoryMessage = "Not enough memory to list Wi-Fi.";
+    "请填写 Wi-Fi 和和风天气 API 密钥；如果只使用离线模式，也可以仅设置日期和时间。";
+constexpr const char *kPortalOfflineSavedTitle = "离线模式已开启";
+constexpr const char *kPortalOfflineInvalidTitle = "日期或时间无效";
+constexpr const char *kPortalOfflineSavedBody = "天气时钟将使用 RTC 时间，并停止所有网络更新。";
+constexpr const char *kPortalOfflineInvalidBody = "请输入有效的日期和时间，或者填写 Wi-Fi 和和风天气 API 密钥。";
+constexpr const char *kPortalWifiScanBusyMessage = "Wi-Fi 正在扫描，请稍后刷新页面。";
+constexpr const char *kPortalWifiScanFailedMessage = "Wi-Fi 扫描失败，请刷新页面重试。";
+constexpr const char *kPortalWifiScanEmptyMessage = "没有发现可用的 Wi-Fi 网络。";
+constexpr const char *kPortalWifiScanNoMemoryMessage = "设备内存不足，暂时无法显示 Wi-Fi 列表。";
 constexpr const char *kPortalHtmlHeadPrefix =
-    "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
+    "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
 #define PORTAL_HTML_APPEND_FAILED_LOG "setup html append failed"
 #define PORTAL_HTML_TRUNCATED_FORMAT "setup html truncated buffer=%u"
 
@@ -333,7 +333,7 @@ void append_wifi_scan_list(char *html, size_t html_len)
     if (!portal_output_buffer_available(html, html_len)) {
         return;
     }
-    html_append(html, html_len, "<section><div class='section-title'><span>Nearby Wi-Fi</span><a href='/'>Refresh</a></div><div class='wifi-list'>");
+    html_append(html, html_len, "<section><div class='section-title'><span>附近的 Wi-Fi</span><a href='/'>重新扫描</a></div><div class='wifi-list'>");
     wifi_scan_config_t scan_config = {};
     esp_err_t err = esp_wifi_scan_start(&scan_config, true);
     if (err != ESP_OK) {
@@ -394,7 +394,7 @@ esp_err_t root_get_handler(httpd_req_t *req)
     }
     html_append(html.data(), html.size(),
                 "%s"
-                "<title>WeatherClock Setup</title><style>"
+                "<title>天气时钟配网</title><style>"
                 ":root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#eef1f5;color:#17202a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}"
                 ".wrap{max-width:480px;margin:0 auto;padding:22px 16px 34px}.brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}"
                 ".mark{width:44px;height:44px;border:2px solid #17202a;border-radius:8px;display:grid;place-items:center;font-weight:900;font-size:22px;background:#fff}"
@@ -407,14 +407,14 @@ esp_err_t root_get_handler(httpd_req_t *req)
                 ".wifi-list{display:grid;gap:8px}.wifi{width:100%;border:1px solid #d3dae2;background:#fff;border-radius:6px;padding:12px;display:flex;justify-content:space-between;gap:12px;text-align:left;font-size:16px;color:#17202a}"
                 ".wifi b{font-size:12px;color:#697784;white-space:nowrap}.muted{padding:12px;border:1px dashed #c7d0d9;border-radius:6px;color:#697784;background:#fbfcfd}"
                 "</style><script>function pick(s){document.querySelector('[name=ssid]').value=s;document.querySelector('[name=pass]').focus();}</script></head>"
-                "<body><main class='wrap'><div class='brand'><div><h1>WeatherClock</h1><p class='sub'>Connect Wi-Fi, or set time for offline mode.</p></div><div class='mark'>42</div></div>"
-                "<div class='panel'><div class='pill'>Setup AP: %s</div><form method='get' action='/save' accept-charset='UTF-8'>"
-                "<label>Wi-Fi SSID</label><input name='ssid' placeholder='Choose or type network name' value='%s' autocomplete='off'>"
-                "<label>Password</label><input name='pass' placeholder='Wi-Fi password' type='password' autocomplete='current-password'>"
-                "<label>QWeather API Key</label><input name='api_key' placeholder='Leave blank to keep saved key' value='' autocomplete='off'>"
-                "<label>Weather City (Optional)</label><input name='weather_city' placeholder='Leave blank for auto location' value='%s' autocomplete='off'>"
-                "<label>Offline Date & Time</label><input name='manual_time' type='datetime-local' placeholder='Set time without Wi-Fi'>"
-                "<button class='submit' type='submit'>Save and connect</button></form></div>",
+                "<body><main class='wrap'><div class='brand'><div><h1>天气时钟</h1><p class='sub'>连接 Wi-Fi 使用联网功能，或设置时间进入离线模式。</p></div><div class='mark'>42</div></div>"
+                "<div class='panel'><div class='pill'>配网热点：%s</div><form method='get' action='/save' accept-charset='UTF-8'>"
+                "<label>Wi-Fi 名称（SSID）</label><input name='ssid' placeholder='请选择或输入 Wi-Fi 名称' value='%s' autocomplete='off'>"
+                "<label>Wi-Fi 密码</label><input name='pass' placeholder='请输入 Wi-Fi 密码' type='password' autocomplete='current-password'>"
+                "<label>和风天气 API 密钥</label><input name='api_key' placeholder='已有密钥时可留空，继续使用原密钥' value='' autocomplete='off'>"
+                "<label>天气城市（选填）</label><input name='weather_city' placeholder='例如：杭州；留空则根据公网 IP 自动定位' value='%s' autocomplete='off'>"
+                "<label>离线日期和时间</label><input name='manual_time' type='datetime-local' placeholder='不使用 Wi-Fi 时设置设备时间'>"
+                "<button class='submit' type='submit'>保存并连接</button></form></div>",
                 kPortalHtmlHeadPrefix, g_ap_ssid, safe_ssid, safe_weather_city);
     append_wifi_scan_list(html.data(), html.size());
     html_append(html.data(), html.size(), "</main></body></html>");
@@ -427,23 +427,23 @@ esp_err_t send_save_result_page(httpd_req_t *req, bool saved, bool connected, co
     char safe_city[kPortalEscapedCitySize] = {};
     char safe_extra[kPortalSaveExtraTextSize] = {};
     html_escape(g_wifi_ssid, safe_ssid, sizeof(safe_ssid));
-    html_escape(g_has_manual_weather_city ? g_manual_weather_city : "Auto", safe_city, sizeof(safe_city));
+    html_escape(g_has_manual_weather_city ? g_manual_weather_city : "自动定位", safe_city, sizeof(safe_city));
     html_escape(extra_message ? extra_message : "", safe_extra, sizeof(safe_extra));
     char html[kPortalSaveResultHtmlSize] = {};
     const char *title = portal_save_result_title(saved, connected);
     const char *body = portal_save_result_body(saved, connected);
     html_append(html, sizeof(html),
                 "%s"
-                "<title>WeatherClock Setup</title><style>"
+                "<title>天气时钟配网结果</title><style>"
                 "*{box-sizing:border-box}body{margin:0;background:#eef1f5;color:#17202a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}"
                 ".wrap{max-width:460px;margin:0 auto;padding:28px 16px}.panel{background:#fff;border:1px solid #d3dae2;border-radius:8px;padding:18px;box-shadow:0 8px 24px rgba(23,32,42,.08)}"
-                ".state{width:48px;height:48px;border-radius:8px;border:2px solid #17202a;display:grid;place-items:center;font-size:24px;font-weight:900;margin-bottom:14px}"
+                ".state{width:72px;height:42px;border-radius:8px;border:2px solid #17202a;display:grid;place-items:center;font-size:16px;font-weight:900;margin-bottom:14px}"
                 "h1{font-size:24px;margin:0 0 8px}p{font-size:15px;line-height:1.45;color:#4d5b68;margin:0 0 14px}.note{border:1px solid #d3dae2;border-radius:6px;padding:10px;margin:0 0 14px;color:#17202a;background:#fbfcfd;font-size:14px}.meta{border-top:1px solid #e1e6eb;padding-top:12px;color:#697784;font-size:13px}"
                 "a{display:block;height:46px;line-height:46px;text-align:center;background:#17202a;color:#fff;text-decoration:none;border-radius:6px;font-weight:800;margin-top:16px}"
                 "</style></head><body><main class='wrap'><section class='panel'><div class='state'>%s</div><h1>%s</h1><p>%s</p>"
-                "%s%s%s<div class='meta'>SSID: %s<br>Weather city: %s<br>Last Wi-Fi reason: %d</div><a href='/'>Back to setup</a></section></main></body></html>",
+                "%s%s%s<div class='meta'>Wi-Fi 名称：%s<br>天气城市：%s<br>最近一次 Wi-Fi 断开原因：%d</div><a href='/'>返回配网页</a></section></main></body></html>",
                 kPortalHtmlHeadPrefix,
-                connected ? "OK" : "!",
+                connected ? "已连接" : "提示",
                 title,
                 body,
                 safe_extra[0] ? "<div class='note'>" : "",
@@ -460,15 +460,15 @@ esp_err_t send_offline_result_page(httpd_req_t *req, bool saved)
     char html[kPortalOfflineResultHtmlSize] = {};
     html_append(html, sizeof(html),
                 "%s"
-                "<title>WeatherClock Offline</title><style>"
+                "<title>天气时钟离线模式</title><style>"
                 "*{box-sizing:border-box}body{margin:0;background:#eef1f5;color:#17202a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}"
                 ".wrap{max-width:460px;margin:0 auto;padding:28px 16px}.panel{background:#fff;border:1px solid #d3dae2;border-radius:8px;padding:18px;box-shadow:0 8px 24px rgba(23,32,42,.08)}"
-                ".state{width:48px;height:48px;border-radius:8px;border:2px solid #17202a;display:grid;place-items:center;font-size:24px;font-weight:900;margin-bottom:14px}"
+                ".state{width:72px;height:42px;border-radius:8px;border:2px solid #17202a;display:grid;place-items:center;font-size:16px;font-weight:900;margin-bottom:14px}"
                 "h1{font-size:24px;margin:0 0 8px}p{font-size:15px;line-height:1.45;color:#4d5b68;margin:0 0 14px}"
                 "a{display:block;height:46px;line-height:46px;text-align:center;background:#17202a;color:#fff;text-decoration:none;border-radius:6px;font-weight:800;margin-top:16px}"
-                "</style></head><body><main class='wrap'><section class='panel'><div class='state'>%s</div><h1>%s</h1><p>%s</p><a href='/'>Back to setup</a></section></main></body></html>",
+                "</style></head><body><main class='wrap'><section class='panel'><div class='state'>%s</div><h1>%s</h1><p>%s</p><a href='/'>返回配网页</a></section></main></body></html>",
                 kPortalHtmlHeadPrefix,
-                saved ? "OK" : "!",
+                saved ? "已开启" : "提示",
                 saved ? kPortalOfflineSavedTitle : kPortalOfflineInvalidTitle,
                 saved ? kPortalOfflineSavedBody : kPortalOfflineInvalidBody);
     return send_portal_html(req, html);
