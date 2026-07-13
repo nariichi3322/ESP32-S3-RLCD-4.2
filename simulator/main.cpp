@@ -11,30 +11,33 @@
 #include "lvgl.h"
 #include "dseg_digits.h"
 #include "boot_anim.h"
-#include "clock_gallery_images.h"
-#include "flip_sensor_icons.h"
 #include "status_gif_60.h"
 #include "sdl_preview_backend.h"
+#include "sdl_preview_calendar.h"
+#include "sdl_preview_flip_clock.h"
+#include "sdl_preview_gallery.h"
+#include "sdl_preview_history.h"
 #include "sdl_preview_settings.h"
+#include "sdl_preview_weather.h"
 #include "sdl_preview_widgets.h"
+#include "sdl_preview_xiaozhi.h"
 #include "core/app_constexpr.h"
-#include "ui/ui_dseg_layout.h"
 #include "ui_icons.h"
 
 LV_FONT_DECLARE(qweather_icons_36);
 LV_FONT_DECLARE(zh_font_16);
-LV_FONT_DECLARE(zh_flip_lunar_22);
-LV_FONT_DECLARE(zh_pomodoro_title_24);
 
 using sdl_preview_widgets::make_bar;
 using sdl_preview_widgets::make_label;
 using sdl_preview_widgets::make_label_with_font;
+using sdl_preview_widgets::draw_1bit_icon;
+using sdl_preview_widgets::set_label_text_if_changed;
 using sdl_preview_widgets::set_obj_black;
 
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.5.6";
+static const char *APP_VERSION = "v1.5.7";
 static const char *const kPreviewWeekDaysFull[] = {
     "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六",
 };
@@ -102,39 +105,10 @@ static constexpr int kProgressCanvasW = kProgressSegmentCount * kProgressSegment
 static constexpr int kProgressCanvasH = kProgressSegmentH;
 static std::vector<lv_color_t> g_day_progress_canvas_pixels(kProgressCanvasW * kProgressCanvasH);
 static std::vector<lv_color_t> g_second_progress_canvas_pixels(kProgressCanvasW * kProgressCanvasH);
-static constexpr int kHistoryCanvasW = 364;
-static constexpr int kHistoryCanvasH = 190;
-static std::vector<lv_color_t> g_history_chart_canvas_pixels(kHistoryCanvasW * kHistoryCanvasH);
-static constexpr int kGalleryTimeCanvasW = 96;
-static constexpr int kGalleryTimeCanvasH = 126;
-static std::vector<lv_color_t> g_gallery_image_canvas_pixels(CLOCK_GALLERY_IMAGE_WIDTH * CLOCK_GALLERY_IMAGE_HEIGHT);
-static std::vector<lv_color_t> g_gallery_time_canvas_pixels(112 * 208);
-static constexpr int kCalendarCanvasW = 364;
-static constexpr int kCalendarCanvasH = 228;
-static std::vector<lv_color_t> g_calendar_canvas_pixels(kCalendarCanvasW * kCalendarCanvasH);
-static constexpr int kFlipCardW = 112;
-static constexpr int kFlipCardH = 112;
-static constexpr int kFlipCardRadius = 8;
-static std::vector<lv_color_t> g_flip_card_pixels[3] = {
-    std::vector<lv_color_t>(kFlipCardW * kFlipCardH),
-    std::vector<lv_color_t>(kFlipCardW * kFlipCardH),
-    std::vector<lv_color_t>(kFlipCardW * kFlipCardH),
-};
 static std::vector<lv_color_t> g_flip_day_progress_pixels(kProgressCanvasW * kProgressCanvasH);
-static std::vector<lv_color_t> g_flip_second_progress_pixels(kProgressCanvasW * kProgressCanvasH);
-static std::vector<lv_color_t> g_flip_temp_mood_pixels(FLIP_SENSOR_ICON_WIDTH * FLIP_SENSOR_ICON_HEIGHT);
-static std::vector<lv_color_t> g_flip_humi_mood_pixels(FLIP_SENSOR_ICON_WIDTH * FLIP_SENSOR_ICON_HEIGHT);
-static std::vector<lv_color_t> g_xiaozhi_face_pixels(76 * 76);
-static std::vector<lv_color_t> g_xiaozhi_preparing_pixels(48 * 16);
-
-struct PreviewHistorySample {
-    float temp;
-    float humi;
-};
 
 static void update_time_ui(const struct tm &local);
 static time_t preview_time();
-static const char *weather_icon_text(const char *code);
 static void build_battery_icon(lv_obj_t *parent);
 static void update_battery_icon(int percent);
 
@@ -239,132 +213,6 @@ static void build_preview_day_progress(lv_obj_t *screen, const struct tm &local)
     int filled = (seconds_of_day * kProgressSegmentCount) / (24 * 3600);
     int last_filled = -1;
     update_progress_canvas(progress, filled, &last_filled);
-}
-
-static void draw_1bit_icon(lv_obj_t *canvas,
-                           int width,
-                           int height,
-                           int bytes_per_row,
-                           const uint8_t *bits,
-                           lv_color_t fg,
-                           lv_color_t bg)
-{
-    if (!canvas || !bits) return;
-    lv_canvas_fill_bg(canvas, bg, LV_OPA_COVER);
-    for (int y = 0; y < height; ++y) {
-        const uint8_t *row = bits + y * bytes_per_row;
-        for (int x = 0; x < width; ++x) {
-            if (row[x / 8] & (0x80 >> (x & 7))) {
-                lv_canvas_set_px_color(canvas, x, y, fg);
-            }
-        }
-    }
-    lv_obj_invalidate(canvas);
-}
-
-static const char *const kBlockDigits[10][7] = {
-    {"11111", "10001", "10011", "10101", "11001", "10001", "11111"},
-    {"00100", "01100", "00100", "00100", "00100", "00100", "01110"},
-    {"11110", "00001", "00001", "11110", "10000", "10000", "11111"},
-    {"11110", "00001", "00001", "01110", "00001", "00001", "11110"},
-    {"10010", "10010", "10010", "11111", "00010", "00010", "00010"},
-    {"11111", "10000", "10000", "11110", "00001", "00001", "11110"},
-    {"01111", "10000", "10000", "11110", "10001", "10001", "01110"},
-    {"11111", "00001", "00010", "00100", "01000", "01000", "01000"},
-    {"01110", "10001", "10001", "01110", "10001", "10001", "01110"},
-    {"01110", "10001", "10001", "01111", "00001", "00001", "11110"},
-};
-
-static void canvas_fill_rect(lv_obj_t *canvas, int x, int y, int w, int h, lv_color_t color)
-{
-    for (int yy = y; yy < y + h; ++yy) {
-        for (int xx = x; xx < x + w; ++xx) {
-            lv_canvas_set_px_color(canvas, xx, yy, color);
-        }
-    }
-}
-
-static void apply_preview_card_rounding(lv_obj_t *canvas)
-{
-    int radius = kFlipCardRadius;
-    int r2 = radius * radius;
-    for (int y = 0; y < radius; ++y) {
-        for (int x = 0; x < radius; ++x) {
-            int dx = radius - 1 - x;
-            int dy = radius - 1 - y;
-            if (dx * dx + dy * dy > r2) {
-                lv_canvas_set_px_color(canvas, x, y, lv_color_white());
-                lv_canvas_set_px_color(canvas, kFlipCardW - 1 - x, y, lv_color_white());
-                lv_canvas_set_px_color(canvas, x, kFlipCardH - 1 - y, lv_color_white());
-                lv_canvas_set_px_color(canvas, kFlipCardW - 1 - x, kFlipCardH - 1 - y, lv_color_white());
-            }
-        }
-    }
-}
-
-static void canvas_dot_rect(lv_obj_t *canvas, int x, int y, int w, int h)
-{
-    for (int yy = y; yy < y + h; yy += 3) {
-        for (int xx = x; xx < x + w; xx += 4) {
-            lv_canvas_set_px_color(canvas, xx, yy, lv_color_black());
-        }
-    }
-    int right = x + w - 1;
-    int bottom = y + h - 1;
-    for (int yy = y; yy <= bottom; yy += 3) {
-        lv_canvas_set_px_color(canvas, right, yy, lv_color_black());
-    }
-    for (int xx = x; xx <= right; xx += 4) {
-        lv_canvas_set_px_color(canvas, xx, bottom, lv_color_black());
-    }
-    lv_canvas_set_px_color(canvas, right, bottom, lv_color_black());
-}
-
-static void canvas_fill_round_rect(lv_obj_t *canvas, int x, int y, int w, int h, int radius, lv_color_t color)
-{
-    int r2 = radius * radius;
-    for (int yy = 0; yy < h; ++yy) {
-        for (int xx = 0; xx < w; ++xx) {
-            int dx = 0;
-            if (xx < radius) {
-                dx = radius - xx;
-            } else if (xx >= w - radius) {
-                dx = xx - (w - radius - 1);
-            }
-            int dy = 0;
-            if (yy < radius) {
-                dy = radius - yy;
-            } else if (yy >= h - radius) {
-                dy = yy - (h - radius - 1);
-            }
-            if (dx == 0 || dy == 0 || dx * dx + dy * dy <= r2) {
-                lv_canvas_set_px_color(canvas, x + xx, y + yy, color);
-            }
-        }
-    }
-}
-
-static void draw_block_digit(lv_obj_t *canvas, int digit, int x, int y, int scale)
-{
-    if (digit < 0 || digit > 9) return;
-    for (int row = 0; row < 7; ++row) {
-        for (int col = 0; col < 5; ++col) {
-            if (kBlockDigits[digit][row][col] == '1') {
-                canvas_fill_rect(canvas, x + col * scale, y + row * scale, scale - 1, scale - 1, lv_color_black());
-            }
-        }
-    }
-}
-
-static void draw_block_number(lv_obj_t *canvas, int value, int y)
-{
-    constexpr int scale = 10;
-    constexpr int digit_w = 5 * scale;
-    constexpr int gap = 8;
-    constexpr int total_w = digit_w * 2 + gap;
-    int x = (112 - total_w) / 2;
-    draw_block_digit(canvas, value / 10, x, y, scale);
-    draw_block_digit(canvas, value % 10, x + digit_w + gap, y, scale);
 }
 
 static void update_trend_icon(lv_obj_t *canvas, int trend)
@@ -584,15 +432,6 @@ static void set_obj_visible(lv_obj_t *obj, bool visible)
     else lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
 }
 
-static void set_label_text_if_changed(lv_obj_t *label, const char *text)
-{
-    if (!label || !text) return;
-    const char *current = lv_label_get_text(label);
-    if (current == nullptr || strcmp(current, text) != 0) {
-        lv_label_set_text(label, text);
-    }
-}
-
 static void draw_boot_anim_frame_index(int frame)
 {
     if (!g_boot_anim_canvas) return;
@@ -714,200 +553,6 @@ static void update_battery_icon(int percent)
     }
 }
 
-static int clamp_int(int value, int min_value, int max_value)
-{
-    if (value < min_value) return min_value;
-    if (value > max_value) return max_value;
-    return value;
-}
-
-static void canvas_set_px_safe(lv_obj_t *canvas, int x, int y, int w, int h, lv_color_t color)
-{
-    if (x < 0 || y < 0 || x >= w || y >= h) return;
-    lv_canvas_set_px_color(canvas, x, y, color);
-}
-
-static void canvas_draw_line(lv_obj_t *canvas, int w, int h, int x0, int y0, int x1, int y1, lv_color_t color)
-{
-    int dx = x1 > x0 ? x1 - x0 : x0 - x1;
-    int sx = x0 < x1 ? 1 : -1;
-    int dy = y1 > y0 ? y0 - y1 : y1 - y0;
-    int sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy;
-    for (;;) {
-        canvas_set_px_safe(canvas, x0, y0, w, h, color);
-        if (x0 == x1 && y0 == y1) break;
-        int e2 = 2 * err;
-        if (e2 >= dy) {
-            err += dy;
-            x0 += sx;
-        }
-        if (e2 <= dx) {
-            err += dx;
-            y0 += sy;
-        }
-    }
-}
-
-static void canvas_draw_dashed_hline(lv_obj_t *canvas, int w, int h, int x1, int x2, int y, lv_color_t color)
-{
-    for (int x = x1; x <= x2; ++x) {
-        if (((x - x1) / 5) % 2 == 0) {
-            canvas_set_px_safe(canvas, x, y, w, h, color);
-        }
-    }
-}
-
-static void canvas_draw_filled_circle(lv_obj_t *canvas, int w, int h, int cx, int cy, int radius, lv_color_t color)
-{
-    for (int y = -radius; y <= radius; ++y) {
-        for (int x = -radius; x <= radius; ++x) {
-            if (x * x + y * y <= radius * radius) {
-                canvas_set_px_safe(canvas, cx + x, cy + y, w, h, color);
-            }
-        }
-    }
-}
-
-static int value_to_plot_y(float value, float min_value, float max_value, int y, int h)
-{
-    float range = max_value - min_value;
-    if (range < 0.01f) range = 1.0f;
-    float normalized = (value - min_value) / range;
-    int offset = (int)(normalized * (h - 1) + 0.5f);
-    return y + h - 1 - offset;
-}
-
-static void style_history_badge(lv_obj_t *label)
-{
-    lv_obj_set_style_bg_color(label, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_font(label, &lv_font_montserrat_12, LV_PART_MAIN);
-    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(label, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(label, 6, LV_PART_MAIN);
-    lv_obj_set_style_pad_left(label, 3, LV_PART_MAIN);
-    lv_obj_set_style_pad_right(label, 3, LV_PART_MAIN);
-    lv_obj_set_style_pad_top(label, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_bottom(label, 0, LV_PART_MAIN);
-}
-
-static void place_badge(lv_obj_t *label, const char *text, int point_x, int point_y, int plot_x, int plot_y, int plot_w, int plot_h)
-{
-    set_label_text_if_changed(label, text);
-    int label_w = 40;
-    int label_h = 16;
-    int x = 18 + point_x - label_w / 2;
-    int min_y = 82 + plot_y;
-    int y = 82 + point_y - label_h - 4;
-    if (y < min_y) {
-        y = 82 + point_y + 4;
-    }
-    x = clamp_int(x, 18 + plot_x, 18 + plot_x + plot_w - label_w);
-    y = clamp_int(y, min_y, 82 + plot_y + plot_h - label_h);
-    lv_obj_set_pos(label, x, y);
-    lv_obj_set_size(label, label_w, label_h);
-}
-
-static void format_axis_hour(time_t value, char *out, size_t out_len)
-{
-    struct tm local = {};
-    localtime_r(&value, &local);
-    snprintf(out, out_len, "%02d:00", local.tm_hour);
-}
-
-static void draw_preview_history_panel(lv_obj_t *canvas,
-                                       const PreviewHistorySample *samples,
-                                       bool temperature,
-                                       int plot_x,
-                                       int plot_y,
-                                       int plot_w,
-                                       int plot_h,
-                                       lv_obj_t *max_label,
-                                       lv_obj_t *min_label,
-                                       lv_obj_t **axis_labels)
-{
-    float min_value = temperature ? samples[0].temp : samples[0].humi;
-    float max_value = min_value;
-    int min_index = 0;
-    int max_index = 0;
-    for (int i = 1; i < 24; ++i) {
-        float value = temperature ? samples[i].temp : samples[i].humi;
-        if (value < min_value) {
-            min_value = value;
-            min_index = i;
-        }
-        if (value > max_value) {
-            max_value = value;
-            max_index = i;
-        }
-    }
-    for (int i = 0; i < 4; ++i) {
-        int y = plot_y + (plot_h * i) / 3;
-        canvas_draw_dashed_hline(canvas, kHistoryCanvasW, kHistoryCanvasH, plot_x, plot_x + plot_w, y, lv_color_black());
-    }
-    canvas_draw_line(canvas, kHistoryCanvasW, kHistoryCanvasH, plot_x, plot_y + plot_h, plot_x + plot_w, plot_y + plot_h, lv_color_black());
-
-    float pad = temperature ? 0.6f : 3.0f;
-    float axis_min = min_value - pad;
-    float axis_max = max_value + pad;
-    float axis_mid = (axis_min + axis_max) * 0.5f;
-    char text[16];
-    snprintf(text, sizeof(text), temperature ? "%.0f℃" : "%.0f%%", axis_max);
-    set_label_text_if_changed(axis_labels[0], text);
-    snprintf(text, sizeof(text), temperature ? "%.0f℃" : "%.0f%%", axis_mid);
-    set_label_text_if_changed(axis_labels[1], text);
-    snprintf(text, sizeof(text), temperature ? "%.0f℃" : "%.0f%%", axis_min);
-    set_label_text_if_changed(axis_labels[2], text);
-
-    int prev_x = 0;
-    int prev_y = 0;
-    for (int i = 0; i < 24; ++i) {
-        int x = plot_x + ((i + 1) * plot_w) / 24;
-        float value = temperature ? samples[i].temp : samples[i].humi;
-        int y = value_to_plot_y(value, axis_min, axis_max, plot_y, plot_h);
-        if (i > 0) {
-            canvas_draw_line(canvas, kHistoryCanvasW, kHistoryCanvasH, prev_x, prev_y, x, y, lv_color_black());
-        }
-        prev_x = x;
-        prev_y = y;
-    }
-
-    snprintf(text, sizeof(text), temperature ? "%.1f" : "%.0f", temperature ? samples[max_index].temp : samples[max_index].humi);
-    canvas_draw_filled_circle(canvas,
-                              kHistoryCanvasW,
-                              kHistoryCanvasH,
-                              plot_x + ((max_index + 1) * plot_w) / 24,
-                              value_to_plot_y(max_value, axis_min, axis_max, plot_y, plot_h),
-                              3,
-                              lv_color_black());
-    place_badge(max_label,
-                text,
-                plot_x + ((max_index + 1) * plot_w) / 24,
-                value_to_plot_y(max_value, axis_min, axis_max, plot_y, plot_h),
-                plot_x,
-                plot_y,
-                plot_w,
-                plot_h);
-    snprintf(text, sizeof(text), temperature ? "%.1f" : "%.0f", temperature ? samples[min_index].temp : samples[min_index].humi);
-    canvas_draw_filled_circle(canvas,
-                              kHistoryCanvasW,
-                              kHistoryCanvasH,
-                              plot_x + ((min_index + 1) * plot_w) / 24,
-                              value_to_plot_y(min_value, axis_min, axis_max, plot_y, plot_h),
-                              3,
-                              lv_color_black());
-    place_badge(min_label,
-                text,
-                plot_x + ((min_index + 1) * plot_w) / 24,
-                value_to_plot_y(min_value, axis_min, axis_max, plot_y, plot_h),
-                plot_x,
-                plot_y,
-                plot_w,
-                plot_h);
-}
-
 static void build_history_preview_ui()
 {
     lv_obj_t *screen = lv_scr_act();
@@ -923,63 +568,7 @@ static void build_history_preview_ui()
     set_obj_black(history_top_line, true);
     build_preview_day_progress(screen, local);
 
-    lv_obj_t *temp_title = make_label(screen, 24, 67, 80, 24, "温度");
-    lv_obj_set_style_text_font(temp_title, &zh_font_16, LV_PART_MAIN);
-    lv_obj_t *humi_title = make_label(screen, 24, 172, 80, 24, "湿度");
-    lv_obj_set_style_text_font(humi_title, &zh_font_16, LV_PART_MAIN);
-
-    lv_obj_t *chart = lv_canvas_create(screen);
-    lv_obj_clear_flag(chart, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(chart, 18, 82);
-    lv_obj_set_size(chart, kHistoryCanvasW, kHistoryCanvasH);
-    lv_obj_set_style_border_width(chart, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(chart, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(chart, g_history_chart_canvas_pixels.data(), kHistoryCanvasW, kHistoryCanvasH, LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(chart, lv_color_white(), LV_OPA_COVER);
-    lv_obj_move_foreground(temp_title);
-    lv_obj_move_foreground(humi_title);
-
-    const int time_x[5] = {42, 110, 178, 246, 314};
-    local.tm_min = 0;
-    local.tm_sec = 0;
-    time_t end_hour = mktime(&local);
-    time_t start_hour = end_hour - 24 * 3600;
-    const int tick_hours[5] = {0, 6, 12, 18, 24};
-    for (int i = 0; i < 5; ++i) {
-        char text[8];
-        format_axis_hour(start_hour + tick_hours[i] * 3600, text, sizeof(text));
-        lv_obj_t *label = make_label_with_font(screen, time_x[i] - 20, 274, 48, 18, text, &lv_font_montserrat_14);
-        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    }
-
-    lv_obj_t *temp_axis[3] = {};
-    lv_obj_t *humi_axis[3] = {};
-    for (int i = 0; i < 3; ++i) {
-        temp_axis[i] = make_label(screen, 332, 84 + i * 30, 56, 18, "--");
-        humi_axis[i] = make_label(screen, 332, 186 + i * 30, 56, 18, "--");
-        lv_obj_set_style_text_align(temp_axis[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-        lv_obj_set_style_text_align(humi_axis[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-    }
-
-    lv_obj_t *temp_max = make_label_with_font(screen, 0, 0, 40, 16, "--", &lv_font_montserrat_12);
-    lv_obj_t *temp_min = make_label_with_font(screen, 0, 0, 40, 16, "--", &lv_font_montserrat_12);
-    lv_obj_t *humi_max = make_label_with_font(screen, 0, 0, 40, 16, "--", &lv_font_montserrat_12);
-    lv_obj_t *humi_min = make_label_with_font(screen, 0, 0, 40, 16, "--", &lv_font_montserrat_12);
-    style_history_badge(temp_max);
-    style_history_badge(temp_min);
-    style_history_badge(humi_max);
-    style_history_badge(humi_min);
-
-    PreviewHistorySample samples[24] = {
-        {26.9f, 58}, {26.8f, 57}, {27.2f, 64}, {27.7f, 64}, {26.8f, 59}, {26.3f, 64},
-        {26.2f, 64}, {26.3f, 65}, {26.3f, 65}, {26.4f, 66}, {26.4f, 66}, {26.4f, 65},
-        {26.2f, 66}, {26.3f, 65}, {26.0f, 66}, {26.1f, 65}, {26.0f, 66}, {25.9f, 68},
-        {26.1f, 66}, {26.2f, 65}, {26.4f, 65}, {26.6f, 63}, {26.8f, 63}, {27.0f, 62},
-    };
-    draw_preview_history_panel(chart, samples, true, 34, 10, 276, 62, temp_max, temp_min, temp_axis);
-    draw_preview_history_panel(chart, samples, false, 34, 112, 276, 62, humi_max, humi_min, humi_axis);
-    lv_obj_invalidate(chart);
-
+    build_history_preview_body(screen, &local);
     update_time_ui(local);
 }
 
@@ -1002,87 +591,9 @@ static void build_gallery_preview_ui()
     set_obj_black(top_line, true);
     build_preview_day_progress(screen, local);
 
-    lv_obj_t *image_canvas = lv_canvas_create(screen);
-    lv_obj_clear_flag(image_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(image_canvas, 20, 66);
-    lv_obj_set_size(image_canvas, CLOCK_GALLERY_IMAGE_WIDTH, CLOCK_GALLERY_IMAGE_HEIGHT);
-    lv_obj_set_style_border_width(image_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(image_canvas, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(image_canvas,
-                         g_gallery_image_canvas_pixels.data(),
-                         CLOCK_GALLERY_IMAGE_WIDTH,
-                         CLOCK_GALLERY_IMAGE_HEIGHT,
-                         LV_IMG_CF_TRUE_COLOR);
-    draw_1bit_icon(image_canvas,
-                   CLOCK_GALLERY_IMAGE_WIDTH,
-                   CLOCK_GALLERY_IMAGE_HEIGHT,
-                   CLOCK_GALLERY_IMAGE_BYTES_PER_ROW,
-                   clock_gallery_images[local.tm_wday % CLOCK_GALLERY_IMAGE_COUNT],
-                   lv_color_black(),
-                   lv_color_white());
-
-    lv_obj_t *divider = make_bar(screen,
-                                 252,
-                                 70,
-                                 3,
-                                 66 + CLOCK_GALLERY_IMAGE_HEIGHT - 70);
-    set_obj_black(divider, true);
-
-    lv_obj_t *time_canvas = lv_canvas_create(screen);
-    lv_obj_clear_flag(time_canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(time_canvas, 268, 66);
-    lv_obj_set_size(time_canvas, 112, 198);
-    lv_obj_set_style_border_width(time_canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(time_canvas, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(time_canvas, g_gallery_time_canvas_pixels.data(), 112, 198, LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(time_canvas, lv_color_white(), LV_OPA_COVER);
-    draw_block_number(time_canvas, local.tm_hour, 15);
-    draw_block_number(time_canvas, local.tm_min, 116);
-    lv_obj_invalidate(time_canvas);
-
-    lv_obj_t *saying = make_label(screen, 18, 275, 364, 24, "今日无事，适合慢慢来。");
-    lv_obj_set_style_text_font(saying, &zh_font_16, LV_PART_MAIN);
-    lv_obj_set_style_text_align(saying, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_label_set_long_mode(saying, LV_LABEL_LONG_DOT);
+    build_gallery_preview_body(screen, &local);
 
     update_time_ui(local);
-}
-
-static int preview_days_in_month(int year, int month)
-{
-    static const int days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
-    if (month == 2) {
-        bool leap = (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
-        return leap ? 29 : 28;
-    }
-    return days[month - 1];
-}
-
-static int preview_first_weekday(int year, int month)
-{
-    struct tm local = {};
-    local.tm_year = year - 1900;
-    local.tm_mon = month - 1;
-    local.tm_mday = 1;
-    local.tm_hour = 12;
-    mktime(&local);
-    return local.tm_wday;
-}
-
-static void draw_preview_calendar_text(lv_obj_t *canvas,
-                                       const char *text,
-                                       int x,
-                                       int y,
-                                       int w,
-                                       const lv_font_t *font,
-                                       lv_color_t color)
-{
-    lv_draw_label_dsc_t dsc;
-    lv_draw_label_dsc_init(&dsc);
-    dsc.color = color;
-    dsc.font = font;
-    dsc.align = LV_TEXT_ALIGN_CENTER;
-    lv_canvas_draw_text(canvas, x, y, w, &dsc, text);
 }
 
 static void build_calendar_preview_ui()
@@ -1100,72 +611,8 @@ static void build_calendar_preview_ui()
     set_obj_black(top_line, true);
     build_preview_day_progress(screen, local);
 
-    lv_obj_t *calendar = lv_canvas_create(screen);
-    lv_obj_clear_flag(calendar, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(calendar, 18, 60);
-    lv_obj_set_size(calendar, kCalendarCanvasW, kCalendarCanvasH);
-    lv_obj_set_style_border_width(calendar, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(calendar, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(calendar, g_calendar_canvas_pixels.data(), kCalendarCanvasW, kCalendarCanvasH, LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(calendar, lv_color_white(), LV_OPA_COVER);
-
-    static const char *const weekdays[] = {"日", "一", "二", "三", "四", "五", "六"};
-    static const char *const lunar_preview[] = {
-        "初一", "初二", "初三", "清明", "初五", "初六", "初七", "初八",
-        "初九", "初十", "十一", "十二", "十三", "十四", "十五", "十六",
-        "十七", "十八", "十九", "二十", "廿一", "廿二", "廿三", "廿四",
-        "廿五", "廿六", "廿七", "廿八", "廿九", "三十", "初一",
-    };
-    constexpr int cell_w = 52;
-    constexpr int cell_h = 41;
-    constexpr int header_h = 24;
-    canvas_fill_rect(calendar, 0, 2, cell_w, 18, lv_color_black());
-    canvas_fill_rect(calendar, cell_w * 6, 2, cell_w, 18, lv_color_black());
-    canvas_dot_rect(calendar, cell_w, 2, cell_w * 5, 18);
-    for (int col = 0; col < 7; ++col) {
-        int x = col * cell_w;
-        if (col == 0 || col == 6) {
-            draw_preview_calendar_text(calendar, weekdays[col], x, 2, cell_w, &zh_font_16, lv_color_white());
-        } else {
-            draw_preview_calendar_text(calendar, weekdays[col], x, 2, cell_w, &zh_font_16, lv_color_black());
-        }
-    }
-    int first = preview_first_weekday(local.tm_year + kPreviewTmYearOffset, local.tm_mon + kPreviewTmMonthOffset);
-    int days = preview_days_in_month(local.tm_year + kPreviewTmYearOffset, local.tm_mon + kPreviewTmMonthOffset);
-    for (int day = 1; day <= days; ++day) {
-        int idx = first + day - 1;
-        int col = idx % 7;
-        int row = idx / 7;
-        int x = col * cell_w;
-        int y = header_h + 5 + row * cell_h;
-        bool today = day == local.tm_mday;
-        if (today) {
-            canvas_fill_round_rect(calendar, x + 4, y + 3, cell_w - 8, cell_h - 5, 5, lv_color_black());
-        }
-        char day_text[4];
-        snprintf(day_text, sizeof(day_text), "%d", day);
-        draw_preview_calendar_text(calendar, day_text, x, y + 2, cell_w, &lv_font_montserrat_16, today ? lv_color_white() : lv_color_black());
-        draw_preview_calendar_text(calendar,
-                                   lunar_preview[(day - 1) % (int)(sizeof(lunar_preview) / sizeof(lunar_preview[0]))],
-                                   x,
-                                   y + 20,
-                                   cell_w,
-                                   &zh_font_16,
-                                   today ? lv_color_white() : lv_color_black());
-    }
-    lv_obj_invalidate(calendar);
-
+    build_calendar_preview_body(screen, &local);
     update_time_ui(local);
-}
-
-static void style_weather_preview_card(lv_obj_t *obj)
-{
-    lv_obj_clear_flag(obj, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_style_bg_color(obj, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(obj, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(obj, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(obj, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
 }
 
 static void build_weather_board_preview_ui()
@@ -1183,101 +630,8 @@ static void build_weather_board_preview_ui()
     set_obj_black(top_line, true);
     build_preview_day_progress(screen, local);
 
-    lv_obj_t *city = make_label(screen, 20, 66, 135, 24, "杭州");
-    lv_obj_t *temp = make_label_with_font(screen, 20, 86, 88, 54, "26", &lv_font_montserrat_48);
-    lv_obj_t *unit = make_label_with_font(screen, 88, 96, 24, 32, "C", &lv_font_montserrat_24);
-    (void)city;
-    (void)temp;
-    (void)unit;
-    lv_obj_t *icon = make_label(screen, 20, 143, 42, 40, weather_icon_text("100"));
-    lv_obj_set_style_text_font(icon, &qweather_icons_36, LV_PART_MAIN);
-    lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    make_label(screen, 62, 151, 92, 24, "晴");
-    make_label(screen, 20, 179, 134, 22, "今日 22/29C");
-
-    static const char *const days[] = {"周二\n23日", "周三\n24日", "周四\n25日", "周五\n26日", "周六\n27日", "周日\n28日"};
-    static const char *const texts[] = {"晴", "多云转晴", "小到中雨", "阴", "雨夹雪", "大到暴雨"};
-    static const char *const icons[] = {"100", "101", "305", "104", "404", "306"};
-    static const char *const ranges[] = {"22/29", "23/30", "-3/2", "22/28", "-8/-2", "18/24"};
-    static const int card_x[6] = {138, 180, 222, 264, 306, 348};
-    static const int card_y = 66;
-    for (int i = 0; i < 6; ++i) {
-        int x = card_x[i];
-        int y = card_y;
-        lv_obj_t *card = lv_obj_create(screen);
-        lv_obj_set_pos(card, x, y);
-        lv_obj_set_size(card, 34, 126);
-        style_weather_preview_card(card);
-        lv_obj_t *date = make_label_with_font(screen, x, y, 34, 30, days[i], &zh_font_16);
-        lv_label_set_long_mode(date, LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_align(date, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_t *small_icon = make_label(screen, x, y + 35, 34, 36, weather_icon_text(icons[i]));
-        lv_obj_set_style_text_font(small_icon, &qweather_icons_36, LV_PART_MAIN);
-        lv_obj_set_style_text_align(small_icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_t *text = make_label_with_font(screen, x, y + 72, 34, 34, texts[i], &zh_font_16);
-        lv_label_set_long_mode(text, LV_LABEL_LONG_WRAP);
-        lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_t *range = make_label_with_font(screen, x, y + 108, 34, 16, ranges[i], &lv_font_montserrat_12);
-        lv_obj_set_style_text_align(range, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        (void)date;
-        (void)text;
-        (void)range;
-    }
-
-    lv_obj_t *detail_line = make_bar(screen, 20, 196, 360, 2);
-    set_obj_black(detail_line, true);
-    make_label(screen, 20, 202, 110, 22, "AQI 42 优");
-    make_label(screen, 132, 202, 86, 22, "湿度 58%");
-    make_label(screen, 228, 202, 152, 22, "东北风 3级");
-    make_label(screen, 20, 224, 110, 20, "日出 05:01");
-    make_label(screen, 132, 224, 120, 20, "日落 19:06");
-    lv_obj_t *alert = make_label(screen, 20, 246, 360, 22, "预警 大风蓝 / 暴雨黄 / 雷电橙");
-    lv_obj_t *advice = make_label(screen, 20, 272, 360, 20, "天气平稳，适合轻装出行。");
-    lv_label_set_long_mode(advice, LV_LABEL_LONG_WRAP);
-
+    build_weather_board_preview_body(screen);
     update_time_ui(local);
-}
-
-static void draw_preview_flip_card(lv_obj_t *canvas, int value)
-{
-    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_COVER);
-    constexpr int scale_num = 3;
-    constexpr int scale_den = 4;
-    const DsegGlyph *tens = find_dseg_glyph(kDSEG84Font, (char)('0' + value / 10));
-    const DsegGlyph *ones = find_dseg_glyph(kDSEG84Font, (char)('0' + value % 10));
-    if (!tens || !ones) {
-        return;
-    }
-    auto draw_scaled = [&](const DsegGlyph *glyph, int origin_x, int origin_y) {
-        int dst_w = (glyph->width * scale_num + scale_den - 1) / scale_den;
-        int dst_h = (glyph->height * scale_num + scale_den - 1) / scale_den;
-        int dst_x = origin_x + (glyph->x_offset * scale_num) / scale_den;
-        int dst_y = origin_y + (glyph->y_offset * scale_num) / scale_den;
-        for (int yy = 0; yy < dst_h; ++yy) {
-            int src_y = (yy * glyph->height) / dst_h;
-            for (int xx = 0; xx < dst_w; ++xx) {
-                int src_x = (xx * glyph->width) / dst_w;
-                uint32_t bit = (uint32_t)src_y * glyph->width + src_x;
-                uint8_t byte = kDSEG84Font.bitmap[glyph->bitmap_offset + bit / 8];
-                if (byte & (0x80 >> (bit & 7))) {
-                    lv_canvas_set_px_color(canvas, dst_x + xx, dst_y + yy, lv_color_white());
-                }
-            }
-        }
-    };
-    DsegPairLayout layout = centered_dseg_pair_layout(kFlipCardW,
-                                                       scale_num,
-                                                       scale_den,
-                                                       tens->x_offset,
-                                                       tens->width,
-                                                       tens->x_advance,
-                                                       ones->x_offset,
-                                                       ones->width);
-    int baseline_y = 84;
-    draw_scaled(tens, layout.first_origin_x, baseline_y);
-    draw_scaled(ones, layout.second_origin_x, baseline_y);
-    apply_preview_card_rounding(canvas);
-    lv_obj_invalidate(canvas);
 }
 
 static void build_flip_clock_preview_ui()
@@ -1302,135 +656,7 @@ static void build_flip_clock_preview_ui()
     int last_day = -1;
     int seconds_of_day = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
     update_progress_canvas(day_progress, (seconds_of_day * 60) / (24 * 3600), &last_day);
-
-    static const int card_x[3] = {18, 144, 270};
-    int values[3] = {local.tm_hour, local.tm_min, local.tm_sec};
-    for (int i = 0; i < 3; ++i) {
-        lv_obj_t *card = lv_canvas_create(screen);
-        lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(card, card_x[i], 66);
-        lv_obj_set_size(card, kFlipCardW, kFlipCardH);
-        lv_obj_set_style_border_width(card, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(card, 0, LV_PART_MAIN);
-        lv_canvas_set_buffer(card, g_flip_card_pixels[i].data(), kFlipCardW, kFlipCardH, LV_IMG_CF_TRUE_COLOR);
-        draw_preview_flip_card(card, values[i]);
-    }
-    lv_obj_t *sensor_panel = make_bar(screen, 18, 198, 238, 88);
-    set_obj_black(sensor_panel, true);
-    lv_obj_set_style_radius(sensor_panel, 18, LV_PART_MAIN);
-    lv_obj_set_style_clip_corner(sensor_panel, true, LV_PART_MAIN);
-    lv_obj_t *temp = make_label_with_font(screen, 34, 204, 148, 36, "25.6C", &lv_font_montserrat_24);
-    lv_obj_set_style_text_align(temp, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-    lv_obj_set_style_text_color(temp, lv_color_white(), LV_PART_MAIN);
-    lv_obj_t *temp_bold = make_label_with_font(screen, 35, 204, 148, 36, "25.6C", &lv_font_montserrat_24);
-    lv_obj_set_style_text_align(temp_bold, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-    lv_obj_set_style_text_color(temp_bold, lv_color_white(), LV_PART_MAIN);
-    lv_obj_t *humi = make_label_with_font(screen, 34, 243, 148, 36, "46%", &lv_font_montserrat_24);
-    lv_obj_set_style_text_align(humi, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-    lv_obj_set_style_text_color(humi, lv_color_white(), LV_PART_MAIN);
-    lv_obj_t *humi_bold = make_label_with_font(screen, 35, 243, 148, 36, "46%", &lv_font_montserrat_24);
-    lv_obj_set_style_text_align(humi_bold, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-    lv_obj_set_style_text_color(humi_bold, lv_color_white(), LV_PART_MAIN);
-    lv_obj_t *temp_mood = lv_canvas_create(screen);
-    lv_obj_clear_flag(temp_mood, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(temp_mood, 200, 204);
-    lv_obj_set_size(temp_mood, FLIP_SENSOR_ICON_WIDTH, FLIP_SENSOR_ICON_HEIGHT);
-    lv_obj_set_style_border_width(temp_mood, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(temp_mood, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(temp_mood,
-                         g_flip_temp_mood_pixels.data(),
-                         FLIP_SENSOR_ICON_WIDTH,
-                         FLIP_SENSOR_ICON_HEIGHT,
-                         LV_IMG_CF_TRUE_COLOR);
-    draw_1bit_icon(temp_mood,
-                   FLIP_SENSOR_ICON_WIDTH,
-                   FLIP_SENSOR_ICON_HEIGHT,
-                   FLIP_SENSOR_ICON_BYTES_PER_ROW,
-                   flip_temp_comfort_icon_bits,
-                   lv_color_white(),
-                   lv_color_black());
-    lv_obj_t *humi_mood = lv_canvas_create(screen);
-    lv_obj_clear_flag(humi_mood, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(humi_mood, 200, 244);
-    lv_obj_set_size(humi_mood, FLIP_SENSOR_ICON_WIDTH, FLIP_SENSOR_ICON_HEIGHT);
-    lv_obj_set_style_border_width(humi_mood, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(humi_mood, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(humi_mood,
-                         g_flip_humi_mood_pixels.data(),
-                         FLIP_SENSOR_ICON_WIDTH,
-                         FLIP_SENSOR_ICON_HEIGHT,
-                         LV_IMG_CF_TRUE_COLOR);
-    draw_1bit_icon(humi_mood,
-                   FLIP_SENSOR_ICON_WIDTH,
-                   FLIP_SENSOR_ICON_HEIGHT,
-                   FLIP_SENSOR_ICON_BYTES_PER_ROW,
-                   flip_humi_comfort_icon_bits,
-                   lv_color_white(),
-                   lv_color_black());
-    lv_obj_t *date_panel = make_bar(screen, 270, 198, 112, 88);
-    set_obj_black(date_panel, true);
-    lv_obj_set_style_radius(date_panel, 18, LV_PART_MAIN);
-    lv_obj_set_style_clip_corner(date_panel, true, LV_PART_MAIN);
-    char day_text[8];
-    snprintf(day_text, sizeof(day_text), "%d", local.tm_mday);
-    lv_obj_t *day = make_label_with_font(screen, 270, 196, 112, 52, day_text, &lv_font_montserrat_48);
-    lv_obj_t *day_bold_x = make_label_with_font(screen, 271, 196, 112, 52, day_text, &lv_font_montserrat_48);
-    lv_obj_t *day_bold_y = make_label_with_font(screen, 270, 197, 112, 52, day_text, &lv_font_montserrat_48);
-    lv_obj_t *day_labels[] = {day, day_bold_x, day_bold_y};
-    for (lv_obj_t *label : day_labels) {
-        if (!label) {
-            continue;
-        }
-        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
-    }
-    lv_obj_t *lunar = make_label_with_font(screen, 270, 243, 112, 42, "初八", &zh_flip_lunar_22);
-    lv_obj_t *lunar_bold_x = make_label_with_font(screen, 271, 243, 112, 42, "初八", &zh_flip_lunar_22);
-    lv_obj_t *lunar_bold_y = make_label_with_font(screen, 270, 244, 112, 42, "初八", &zh_flip_lunar_22);
-    lv_obj_t *lunar_bold_xy = make_label_with_font(screen, 271, 244, 112, 42, "初八", &zh_flip_lunar_22);
-    lv_obj_t *lunar_labels[] = {lunar, lunar_bold_x, lunar_bold_y, lunar_bold_xy};
-    for (lv_obj_t *label : lunar_labels) {
-        if (!label) {
-            continue;
-        }
-        lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
-    }
-}
-
-static const char *latest_xiaozhi_preview_subtitle(const char *text)
-{
-    static char visible[192] = {};
-    const char *window_start = text ? text : "";
-    lv_point_t text_size = {};
-    lv_txt_get_size(&text_size,
-                    window_start,
-                    &zh_font_16,
-                    0,
-                    0,
-                    248,
-                    LV_TEXT_FLAG_NONE);
-    while (text_size.y > 58 && window_start[0] != '\0') {
-        uint32_t first_line_bytes = _lv_txt_get_next_line(window_start,
-                                                         &zh_font_16,
-                                                         0,
-                                                         248,
-                                                         nullptr,
-                                                         LV_TEXT_FLAG_NONE);
-        if (first_line_bytes == 0 || window_start[first_line_bytes] == '\0') {
-            break;
-        }
-        window_start += first_line_bytes;
-        lv_txt_get_size(&text_size,
-                        window_start,
-                        &zh_font_16,
-                        0,
-                        0,
-                        248,
-                        LV_TEXT_FLAG_NONE);
-    }
-    strlcpy(visible, window_start, sizeof(visible));
-    return visible;
+    build_flip_clock_preview_body(screen, &local);
 }
 
 static void build_xiaozhi_preview_ui(const char *preview_mode)
@@ -1443,12 +669,8 @@ static void build_xiaozhi_preview_ui(const char *preview_mode)
     time_t now = preview_time();
     struct tm local = {};
     localtime_r(&now, &local);
-    bool pomodoro_running = preview_mode_is(preview_mode, "xiaozhi_pomodoro");
-    bool pomodoro_final = preview_mode_is(preview_mode, "xiaozhi_pomodoro_final");
-    bool pomodoro_completed = preview_mode_is(preview_mode, "xiaozhi_pomodoro_done");
-    bool preparing = preview_mode_is(preview_mode, "xiaozhi_preparing");
-    bool pomodoro_visible = pomodoro_running || pomodoro_final || pomodoro_completed;
-    build_preview_work_status_bar(screen, local, pomodoro_visible, true);
+    XiaozhiPreviewMode mode = classify_xiaozhi_preview_mode(preview_mode);
+    build_preview_work_status_bar(screen, local, mode.pomodoro_visible(), true);
 
     lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
     set_obj_black(top_line, true);
@@ -1457,106 +679,7 @@ static void build_xiaozhi_preview_ui(const char *preview_mode)
     int last_day = -1;
     int seconds_of_day = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
     update_progress_canvas(day_progress, (seconds_of_day * 60) / (24 * 3600), &last_day);
-
-    static const int card_x[3] = {18, 144, 270};
-    int values[3] = {
-        local.tm_hour,
-        pomodoro_running ? 24 : (pomodoro_final || pomodoro_completed ? 0 : local.tm_min),
-        pomodoro_running ? 59 : (pomodoro_final ? 37 : (pomodoro_completed ? 0 : local.tm_sec)),
-    };
-    for (int i = 0; i < 3; ++i) {
-        lv_obj_t *card = lv_canvas_create(screen);
-        lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(card, card_x[i], 66);
-        lv_obj_set_size(card, kFlipCardW, kFlipCardH);
-        lv_obj_set_style_border_width(card, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(card, 0, LV_PART_MAIN);
-        lv_canvas_set_buffer(card, g_flip_card_pixels[i].data(), kFlipCardW, kFlipCardH, LV_IMG_CF_TRUE_COLOR);
-        if (i == 0 && pomodoro_visible) {
-            lv_canvas_fill_bg(card, lv_color_black(), LV_OPA_COVER);
-            apply_preview_card_rounding(card);
-            const char *state_text = pomodoro_completed ? "已完成" : "专注中";
-            const char *mode_text = pomodoro_completed
-                                        ? ""
-                                        : "分 / 秒";
-            lv_obj_t *title = make_label_with_font(card, 0, 8, kFlipCardW, 30, "番茄钟", &zh_pomodoro_title_24);
-            lv_obj_t *title_bold = make_label_with_font(card, 1, 8, kFlipCardW, 30, "番茄钟", &zh_pomodoro_title_24);
-            lv_obj_t *state = make_label_with_font(card, 0, 44, kFlipCardW, 24, state_text, &zh_font_16);
-            lv_obj_t *mode = make_label_with_font(card, 0, 76, kFlipCardW, 24, mode_text, &zh_font_16);
-            for (lv_obj_t *label : {title, title_bold, state, mode}) {
-                if (label) {
-                    lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
-                    lv_obj_set_style_text_color(label, lv_color_white(), LV_PART_MAIN);
-                    lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-                }
-            }
-        } else {
-            draw_preview_flip_card(card, values[i]);
-        }
-    }
-
-    lv_obj_t *panel = make_bar(screen, 18, 188, 364, 102);
-    set_obj_black(panel, true);
-    lv_obj_set_style_radius(panel, 18, LV_PART_MAIN);
-    lv_obj_set_style_clip_corner(panel, true, LV_PART_MAIN);
-
-    lv_obj_t *face = lv_canvas_create(screen);
-    lv_obj_clear_flag(face, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(face, 30, 201);
-    lv_obj_set_size(face, 76, 76);
-    lv_obj_set_style_border_width(face, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(face, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(face, g_xiaozhi_face_pixels.data(), 76, 76, LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(face, lv_color_black(), LV_OPA_COVER);
-    canvas_draw_filled_circle(face, 76, 76, 38, 38, 32, lv_color_white());
-    canvas_draw_filled_circle(face, 76, 76, 38, 38, 29, lv_color_black());
-    canvas_draw_line(face, 76, 76, 22, 31, 27, 27, lv_color_white());
-    canvas_draw_line(face, 76, 76, 27, 27, 32, 31, lv_color_white());
-    canvas_draw_line(face, 76, 76, 44, 31, 49, 27, lv_color_white());
-    canvas_draw_line(face, 76, 76, 49, 27, 54, 31, lv_color_white());
-    canvas_draw_filled_circle(face, 76, 76, 38, 51, 8, lv_color_white());
-    canvas_draw_filled_circle(face, 76, 76, 38, 51, 5, lv_color_black());
-
-    lv_obj_t *state = make_label_with_font(screen,
-                                           118,
-                                           196,
-                                           248,
-                                           28,
-                                           preparing ? "小智准备中" : "小智正在说话",
-                                           &zh_font_16);
-    lv_obj_t *preparing_dots = nullptr;
-    if (preparing) {
-        preparing_dots = lv_canvas_create(screen);
-        lv_obj_clear_flag(preparing_dots, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(preparing_dots, 218, 201);
-        lv_obj_set_size(preparing_dots, 48, 16);
-        lv_obj_set_style_border_width(preparing_dots, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(preparing_dots, 0, LV_PART_MAIN);
-        lv_canvas_set_buffer(preparing_dots,
-                             g_xiaozhi_preparing_pixels.data(),
-                             48,
-                             16,
-                             LV_IMG_CF_TRUE_COLOR);
-        lv_canvas_fill_bg(preparing_dots, lv_color_black(), LV_OPA_COVER);
-        for (int x : {6, 22, 38}) {
-            canvas_draw_filled_circle(preparing_dots, 48, 16, x, 8, 4, lv_color_white());
-        }
-    }
-    lv_obj_t *detail = make_label_with_font(screen,
-                                            118,
-                                            224,
-                                            248,
-                                            58,
-                                            preparing
-                                                ? "正在初始化网络和语音服务"
-                                                : latest_xiaozhi_preview_subtitle(
-                                                      "杭州今天白天多云，气温会逐渐升高，午后体感偏热。外出时建议带好饮用水并注意防晒，如果傍晚出门散步，最新预报显示风力会减弱，体感会更舒适。"),
-                                            &zh_font_16);
-    lv_obj_set_style_text_color(state, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_color(detail, lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_text_align(state, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-    lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-    lv_label_set_long_mode(detail, LV_LABEL_LONG_WRAP);
+    build_xiaozhi_preview_body(screen, &local, mode);
 }
 
 static void build_info_preview_ui()
@@ -1601,46 +724,17 @@ static void build_info_preview_ui()
     lv_obj_set_style_text_align(return_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 }
 
-static uint32_t weather_icon_codepoint(const char *code)
+static void prepare_clock_preview_screen(lv_obj_t *screen)
 {
-    int icon = atoi(code);
-    if (icon >= 100 && icon <= 104) return 0xF101 + (uint32_t)(icon - 100);
-    if (icon >= 150 && icon <= 153) return 0xF106 + (uint32_t)(icon - 150);
-    if (icon >= 300 && icon <= 318) return 0xF10A + (uint32_t)(icon - 300);
-    if (icon >= 350 && icon <= 351) return 0xF11D + (uint32_t)(icon - 350);
-    if (icon == 399) return 0xF11F;
-    if (icon >= 400 && icon <= 410) return 0xF120 + (uint32_t)(icon - 400);
-    if (icon >= 456 && icon <= 457) return 0xF12B + (uint32_t)(icon - 456);
-    if (icon == 499) return 0xF12D;
-    if (icon >= 500 && icon <= 504) return 0xF12E + (uint32_t)(icon - 500);
-    if (icon >= 507 && icon <= 515) return 0xF133 + (uint32_t)(icon - 507);
-    if (icon >= 800 && icon <= 807) return 0xF13C + (uint32_t)(icon - 800);
-    if (icon == 900) return 0xF144;
-    if (icon == 901) return 0xF145;
-    if (icon == 9999) return 0xF1CB;
-    return 0xF146;
-}
-
-static const char *weather_icon_text(const char *code)
-{
-    static char text[5];
-    uint32_t cp = weather_icon_codepoint(code);
-    text[0] = (char)(0xE0 | (cp >> 12));
-    text[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
-    text[2] = (char)(0x80 | (cp & 0x3F));
-    text[3] = '\0';
-    return text;
-}
-
-static void build_clock_ui()
-{
-    lv_obj_t *screen = lv_scr_act();
     g_last_status_gif_frame = -1;
     g_last_day_progress_filled = -1;
     g_last_second_progress_filled = -1;
     lv_obj_set_style_bg_color(screen, lv_color_white(), LV_PART_MAIN);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+}
 
+static void build_clock_status_header(lv_obj_t *screen)
+{
     g_date_label = make_label(screen, 198, 15, 182, 26, "----/--/-- / 星期-");
     lv_obj_set_style_text_align(g_date_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     build_battery_icon(screen);
@@ -1735,7 +829,10 @@ static void build_clock_ui()
                    alarm_status_icon_bits,
                    lv_color_black(),
                    lv_color_white());
+}
 
+static void build_clock_weather_summary(lv_obj_t *screen)
+{
     g_weather_city_label = make_label(screen, 14, 196, 76, 20, "--");
     remember_lower_panel_object(g_weather_city_label);
     lv_obj_set_style_text_align(g_weather_city_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -1755,7 +852,10 @@ static void build_clock_ui()
     remember_lower_panel_object(g_weather_humi_label);
     lv_obj_set_style_text_align(g_weather_temp_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_text_align(g_weather_humi_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+}
 
+static void build_clock_sensor_summary(lv_obj_t *screen)
+{
     g_temp_icon_canvas = lv_canvas_create(screen);
     lv_obj_clear_flag(g_temp_icon_canvas, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_pos(g_temp_icon_canvas, 153, 215);
@@ -1826,6 +926,10 @@ static void build_clock_ui()
     update_trend_icon(g_humi_trend_canvas, -1);
     remember_lower_panel_object(g_temp_trend_canvas);
     remember_lower_panel_object(g_humi_trend_canvas);
+}
+
+static void build_clock_time_and_progress(lv_obj_t *screen)
+{
     g_time_canvas = lv_canvas_create(screen);
     lv_obj_clear_flag(g_time_canvas, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_pos(g_time_canvas, 18, 76);
@@ -1891,7 +995,10 @@ static void build_clock_ui()
                    low_battery_icon_bits,
                    lv_color_black(),
                    lv_color_white());
+}
 
+static void build_clock_setup_status(lv_obj_t *screen)
+{
     static const int setup_y[] = {194, 212, 230, 248, 266, 284};
     static const char *setup_text[] = {
         "Setup Mode",
@@ -1905,6 +1012,17 @@ static void build_clock_ui()
         g_setup_status_labels[i] = make_label_with_font(screen, 26, setup_y[i], 348, 18, setup_text[i], &lv_font_montserrat_14);
         lv_obj_add_flag(g_setup_status_labels[i], LV_OBJ_FLAG_HIDDEN);
     }
+}
+
+static void build_clock_ui()
+{
+    lv_obj_t *screen = lv_scr_act();
+    prepare_clock_preview_screen(screen);
+    build_clock_status_header(screen);
+    build_clock_weather_summary(screen);
+    build_clock_sensor_summary(screen);
+    build_clock_time_and_progress(screen);
+    build_clock_setup_status(screen);
 }
 
 static void apply_low_battery_preview(bool low)
@@ -1972,14 +1090,23 @@ static time_t preview_time()
     return time(nullptr);
 }
 
-int main(int, char **)
-{
-    if (!sdl_preview_backend_init(&g_sdl_preview,
-                                  "WeatherClock LVGL SDL Preview",
-                                  kWindowScale)) {
-        return 1;
-    }
+struct PreviewSelection {
+    bool history = false;
+    bool gallery = false;
+    bool flip_clock = false;
+    bool xiaozhi = false;
+    bool calendar = false;
+    bool weather_board = false;
+    bool info = false;
 
+    bool alternate_work_page() const
+    {
+        return history || gallery || flip_clock || xiaozhi || calendar || weather_board || info;
+    }
+};
+
+static void init_lvgl_preview_display()
+{
     lv_init();
     static lv_color_t draw_buf_1[kDisplayWidth * 40];
     static lv_disp_draw_buf_t draw_buf;
@@ -1992,21 +1119,30 @@ int main(int, char **)
     disp_drv.flush_cb = flush_cb;
     disp_drv.draw_buf = &draw_buf;
     lv_disp_drv_register(&disp_drv);
+}
 
-    const char *screenshot_path = getenv("WEATHER_CLOCK_SDL_SCREENSHOT");
-    const char *preview_mode = getenv("WEATHER_CLOCK_SDL_MODE");
-
-    show_boot_screen();
-    if (screenshot_path && screenshot_path[0] && preview_mode_is(preview_mode, "boot")) {
-        for (int i = 0; i < 5; ++i) {
-            lv_tick_inc(16);
-            lv_timer_handler();
-            SDL_Delay(16);
-        }
-        sdl_preview_backend_save_ppm(&g_sdl_preview, screenshot_path);
-        sdl_preview_backend_cleanup(&g_sdl_preview);
-        return 0;
+static void settle_preview_frame()
+{
+    for (int i = 0; i < 5; ++i) {
+        lv_tick_inc(16);
+        lv_timer_handler();
+        SDL_Delay(16);
     }
+}
+
+static bool save_boot_preview_if_requested(const char *screenshot_path, const char *preview_mode)
+{
+    if (!screenshot_path || !screenshot_path[0] || !preview_mode_is(preview_mode, "boot")) {
+        return false;
+    }
+    settle_preview_frame();
+    sdl_preview_backend_save_ppm(&g_sdl_preview, screenshot_path);
+    sdl_preview_backend_cleanup(&g_sdl_preview);
+    return true;
+}
+
+static void run_boot_animation()
+{
     uint32_t boot_start = SDL_GetTicks();
     uint32_t boot_last_tick = boot_start;
     uint32_t boot_last_frame_tick = boot_start;
@@ -2028,26 +1164,32 @@ int main(int, char **)
     SDL_Delay(100);
     lv_obj_clean(lv_scr_act());
     g_boot_anim_canvas = nullptr;
-    bool history_preview = preview_mode_is(preview_mode, "history");
-    bool gallery_preview = preview_mode_is(preview_mode, "gallery");
-    bool flip_clock_preview = preview_mode_is(preview_mode, "flip_clock");
-    bool xiaozhi_preview = preview_mode_has_prefix(preview_mode, "xiaozhi");
-    bool calendar_preview = preview_mode_is(preview_mode, "calendar");
-    bool weather_board_preview = preview_mode_is(preview_mode, "weather_board");
-    bool info_preview = preview_mode_is(preview_mode, "info");
-    if (history_preview) {
+}
+
+static PreviewSelection build_selected_preview(const char *preview_mode)
+{
+    PreviewSelection selection = {
+        preview_mode_is(preview_mode, "history"),
+        preview_mode_is(preview_mode, "gallery"),
+        preview_mode_is(preview_mode, "flip_clock"),
+        preview_mode_has_prefix(preview_mode, "xiaozhi"),
+        preview_mode_is(preview_mode, "calendar"),
+        preview_mode_is(preview_mode, "weather_board"),
+        preview_mode_is(preview_mode, "info"),
+    };
+    if (selection.history) {
         build_history_preview_ui();
-    } else if (gallery_preview) {
+    } else if (selection.gallery) {
         build_gallery_preview_ui();
-    } else if (flip_clock_preview) {
+    } else if (selection.flip_clock) {
         build_flip_clock_preview_ui();
-    } else if (xiaozhi_preview) {
+    } else if (selection.xiaozhi) {
         build_xiaozhi_preview_ui(preview_mode);
-    } else if (calendar_preview) {
+    } else if (selection.calendar) {
         build_calendar_preview_ui();
-    } else if (weather_board_preview) {
+    } else if (selection.weather_board) {
         build_weather_board_preview_ui();
-    } else if (info_preview) {
+    } else if (selection.info) {
         build_info_preview_ui();
     } else {
         build_clock_ui();
@@ -2057,49 +1199,65 @@ int main(int, char **)
         set_label_text_if_changed(g_weather_info_label, "晴");
         set_label_text_if_changed(g_weather_temp_label, "26℃");
         set_label_text_if_changed(g_weather_humi_label, "58%");
-        set_label_text_if_changed(g_weather_icon_label, weather_icon_text("100"));
+        set_label_text_if_changed(g_weather_icon_label, preview_weather_icon_text("100"));
         update_battery_icon(76);
     }
+    return selection;
+}
 
-    if (screenshot_path && screenshot_path[0]) {
-        if (history_preview || gallery_preview || flip_clock_preview || xiaozhi_preview || calendar_preview || weather_board_preview || info_preview) {
+static bool settings_preview_mode(const char *preview_mode)
+{
+    return preview_mode_is(preview_mode, "settings") ||
+           preview_mode_has_prefix(preview_mode, "settings_");
+}
+
+static void apply_screenshot_preview_state(const char *preview_mode,
+                                           const PreviewSelection &selection)
+{
+    if (selection.alternate_work_page()) {
             // Alternate work pages are already built above.
-        } else if (preview_mode_is(preview_mode, "settings") || preview_mode_has_prefix(preview_mode, "settings_")) {
-            build_settings_preview_page(preview_mode);
-        } else if (preview_mode_is(preview_mode, "setup")) {
-            set_lower_panel_visible(false);
-            set_setup_panel_visible(true);
-            set_obj_visible(g_chime_status_icon_canvas, false);
-            set_obj_visible(g_wifi_status_icon_canvas, false);
-            set_obj_visible(g_alarm_status_icon_canvas, false);
-        } else if (preview_mode_is(preview_mode, "alert")) {
-            apply_alert_preview(true);
-        } else if (preview_mode_is(preview_mode, "low")) {
-            update_battery_icon(4);
-            apply_low_battery_preview(true);
-        }
-        time_t now = preview_time();
-        struct tm local;
-        localtime_r(&now, &local);
-        if (!history_preview && !gallery_preview && !flip_clock_preview && !xiaozhi_preview && !calendar_preview && !weather_board_preview &&
-            !info_preview &&
-            !preview_mode_is(preview_mode, "settings") &&
-            !preview_mode_has_prefix(preview_mode, "settings_")) {
-            update_time_ui(local);
-            if (preview_mode_is(preview_mode, "low")) {
-                apply_low_battery_preview(true);
-            }
-        }
-        for (int i = 0; i < 5; ++i) {
-            lv_tick_inc(16);
-            lv_timer_handler();
-            SDL_Delay(16);
-        }
-        sdl_preview_backend_save_ppm(&g_sdl_preview, screenshot_path);
-        sdl_preview_backend_cleanup(&g_sdl_preview);
-        return 0;
+    } else if (settings_preview_mode(preview_mode)) {
+        build_settings_preview_page(preview_mode);
+    } else if (preview_mode_is(preview_mode, "setup")) {
+        set_lower_panel_visible(false);
+        set_setup_panel_visible(true);
+        set_obj_visible(g_chime_status_icon_canvas, false);
+        set_obj_visible(g_wifi_status_icon_canvas, false);
+        set_obj_visible(g_alarm_status_icon_canvas, false);
+    } else if (preview_mode_is(preview_mode, "alert")) {
+        apply_alert_preview(true);
+    } else if (preview_mode_is(preview_mode, "low")) {
+        update_battery_icon(4);
+        apply_low_battery_preview(true);
     }
 
+    time_t now = preview_time();
+    struct tm local;
+    localtime_r(&now, &local);
+    if (!selection.alternate_work_page() && !settings_preview_mode(preview_mode)) {
+        update_time_ui(local);
+        if (preview_mode_is(preview_mode, "low")) {
+            apply_low_battery_preview(true);
+        }
+    }
+}
+
+static bool save_preview_if_requested(const char *screenshot_path,
+                                      const char *preview_mode,
+                                      const PreviewSelection &selection)
+{
+    if (!screenshot_path || !screenshot_path[0]) {
+        return false;
+    }
+    apply_screenshot_preview_state(preview_mode, selection);
+    settle_preview_frame();
+    sdl_preview_backend_save_ppm(&g_sdl_preview, screenshot_path);
+    sdl_preview_backend_cleanup(&g_sdl_preview);
+    return true;
+}
+
+static void run_interactive_preview()
+{
     uint32_t last_tick = SDL_GetTicks();
     time_t last_sec = 0;
     bool running = true;
@@ -2125,6 +1283,31 @@ int main(int, char **)
         lv_timer_handler();
         SDL_Delay(5);
     }
+}
+
+int main(int, char **)
+{
+    if (!sdl_preview_backend_init(&g_sdl_preview,
+                                  "WeatherClock LVGL SDL Preview",
+                                  kWindowScale)) {
+        return 1;
+    }
+
+    init_lvgl_preview_display();
+    const char *screenshot_path = getenv("WEATHER_CLOCK_SDL_SCREENSHOT");
+    const char *preview_mode = getenv("WEATHER_CLOCK_SDL_MODE");
+
+    show_boot_screen();
+    if (save_boot_preview_if_requested(screenshot_path, preview_mode)) {
+        return 0;
+    }
+    run_boot_animation();
+    PreviewSelection selection = build_selected_preview(preview_mode);
+    if (save_preview_if_requested(screenshot_path, preview_mode, selection)) {
+        return 0;
+    }
+
+    run_interactive_preview();
 
     sdl_preview_backend_cleanup(&g_sdl_preview);
     return 0;

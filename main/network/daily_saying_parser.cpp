@@ -3,6 +3,7 @@
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
+#include "network_json_root.h"
 #include "network_text.h"
 
 #include "cJSON.h"
@@ -25,35 +26,6 @@ constexpr const char *const kJsonFields[] = {
     "hitokoto",
     "quote",
     "data",
-};
-
-class JsonRoot {
-public:
-    explicit JsonRoot(const char *response)
-        : root_(cJSON_Parse(response))
-    {
-    }
-
-    ~JsonRoot()
-    {
-        cJSON_Delete(root_);
-    }
-
-    JsonRoot(const JsonRoot &) = delete;
-    JsonRoot &operator=(const JsonRoot &) = delete;
-
-    cJSON *get() const
-    {
-        return root_;
-    }
-
-    explicit operator bool() const
-    {
-        return root_ != nullptr;
-    }
-
-private:
-    cJSON *root_;
 };
 
 void copy_cstr(char *out, size_t out_len, const char *text)
@@ -92,7 +64,7 @@ bool copy_plain_text_candidate(const char *response, char *out, size_t out_len)
     return plain_text_candidate(out);
 }
 
-bool copy_json_field(cJSON *obj, char *out, size_t out_len, int depth)
+bool copy_json_field(const cJSON *obj, char *out, size_t out_len, int depth)
 {
     if (!obj || !app_text::output_buffer_available(out, out_len) || depth > kMaxJsonDepth) {
         return false;
@@ -104,7 +76,7 @@ bool copy_json_field(cJSON *obj, char *out, size_t out_len, int depth)
         return false;
     }
     for (const char *field : kJsonFields) {
-        cJSON *item = cJSON_GetObjectItem(obj, field);
+        const cJSON *item = cJSON_GetObjectItem(obj, field);
         if (!item) {
             continue;
         }
@@ -144,7 +116,7 @@ bool extract(const char *response, char *out, size_t out_len)
     if (!response) {
         return false;
     }
-    JsonRoot root(response);
+    NetworkJsonRoot root(response);
     if (root && copy_json_field(root.get(), out, out_len, 0)) {
         return true;
     }

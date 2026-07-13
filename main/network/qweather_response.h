@@ -2,6 +2,7 @@
 #pragma once
 
 #include "cJSON.h"
+#include "network_json_root.h"
 
 #include <stddef.h>
 
@@ -45,16 +46,16 @@ public:
 
     const cJSON *get() const
     {
-        return root_;
+        return root_.get();
     }
 
     explicit operator bool() const
     {
-        return root_ != nullptr;
+        return static_cast<bool>(root_);
     }
 
 private:
-    cJSON *root_ = nullptr;
+    NetworkJsonRoot root_;
 };
 
 const char *qweather_json_string_value(const cJSON *item);

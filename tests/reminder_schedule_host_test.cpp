@@ -25,6 +25,13 @@ int main()
     setenv("TZ", "Asia/Shanghai", 1);
     tzset();
 
+    assert(alarm_time_valid(0, 0));
+    assert(alarm_time_valid(23, 59));
+    assert(!alarm_time_valid(-1, 0));
+    assert(!alarm_time_valid(24, 0));
+    assert(!alarm_time_valid(0, -1));
+    assert(!alarm_time_valid(0, 60));
+
     int64_t now = local_time_ms(12, 58, 30, 500);
     assert(reminder_targets_same_local_minute(now, 13, 0, 90U * 1000U));
     assert(!reminder_targets_same_local_minute(now, 13, 1, 90U * 1000U));

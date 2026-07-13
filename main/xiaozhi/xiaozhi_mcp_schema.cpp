@@ -37,7 +37,7 @@ constexpr const char *kSetAlarmDescription =
 constexpr const char *kDisableAlarmDescription =
     "Disable or stop the local alarm.";
 constexpr const char *kSetCountdownDescription =
-    "Set a local countdown reminder in seconds.";
+    "Set a local countdown reminder in seconds. Never use this tool for requests containing focus, 专注, or 番茄钟; those requests MUST use self.pomodoro.control.";
 constexpr const char *kPomodoroControlDescription =
     "Control the focus Pomodoro timer. You MUST call this tool for every request containing focus, 专注, or 番茄钟, and MUST NOT claim that a timer started or changed unless the tool returned success. "
     "Use start to create or replace it, cancel to stop it, and status to query it. "

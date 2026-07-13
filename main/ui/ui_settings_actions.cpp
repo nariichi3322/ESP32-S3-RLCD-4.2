@@ -4,6 +4,7 @@
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "audio_services.h"
+#include "chime_settings.h"
 #include "network_services.h"
 #include "ota_services.h"
 #include "pomodoro_services.h"
@@ -12,10 +13,6 @@
 #include <cstdarg>
 
 namespace {
-constexpr int kChimeVolumeLevels[] = {20, 40, 60, 80, 100};
-
-constexpr int kChimeVolumeLevelCount = static_cast<int>(array_count(kChimeVolumeLevels));
-constexpr int kDefaultChimeVolumePercent = kChimeVolumeLevels[0];
 constexpr uint8_t kAllWorkPageMask = static_cast<uint8_t>((1U << kWorkPageCount) - 1);
 constexpr int kSettingsFeedbackDefaultMs = 2500;
 constexpr int kSettingsFeedbackBusyMs = 2000;
@@ -129,18 +126,6 @@ constexpr bool work_page_index_valid(int page)
     return page >= 0 && page < kWorkPageCount;
 }
 
-constexpr bool chime_volume_levels_ordered_and_bounded()
-{
-    int previous = 0;
-    for (int volume : kChimeVolumeLevels) {
-        if (volume <= 0 || volume > 100 || volume <= previous) {
-            return false;
-        }
-        previous = volume;
-    }
-    return true;
-}
-
 uint8_t toggled_work_page_mask(uint8_t current_mask, int page)
 {
     if (!work_page_index_valid(page)) {
@@ -184,11 +169,308 @@ void clear_inactive_settings_confirmation(int primary, int selected)
 static_assert(kWorkPageCount > 0 && kWorkPageCount <= 8,
               "work page mask in settings UI is stored as uint8_t");
 static_assert(kAllWorkPageMask != 0, "settings UI must have at least one work page bit");
-static_assert(array_count(kChimeVolumeLevels) > 0, "chime volume level list must not be empty");
-static_assert(chime_volume_levels_ordered_and_bounded(),
-              "chime volume levels must be ordered percentages in 1..100");
 static_assert(array_count(kSettingsActionTexts) > 0, "settings action text registry must not be empty");
 static_assert(cstr_array_nonempty(kSettingsActionTexts), "settings action texts must be non-empty");
+} // namespace
+
+namespace {
+void handle_page_order_settings_action()
+{
+    normalize_work_page_order();
+    int current = valid_enabled_work_page_order_index(g_settings_page_order_selection);
+    int next = next_enabled_work_page_order_index(current);
+    uint8_t tmp = g_work_page_order[current];
+    g_work_page_order[current] = g_work_page_order[next];
+    g_work_page_order[next] = tmp;
+    if (!work_page_order_has_valid_home()) {
+        tmp = g_work_page_order[current];
+        g_work_page_order[current] = g_work_page_order[next];
+        g_work_page_order[next] = tmp;
+        set_settings_feedback(kXiaozhiHomeBlockedFeedback, kSettingsFeedbackDefaultMs);
+        return;
+    }
+    g_settings_page_order_selection = next;
+    if (save_work_page_order()) {
+        g_active_work_page = first_enabled_work_page();
+        set_settings_feedback(kSettingsOrderSavedFeedback, kSettingsFeedbackSavedMs);
+    } else {
+        set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+    }
+}
+
+void handle_network_settings_action(int selected)
+{
+    if (selected == kNetworkSettingsWeatherCityItem) {
+        if (!g_has_manual_weather_city) {
+            set_settings_feedback(kManualWeatherCityEditFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        if (!g_weather_city_clear_confirm_pending) {
+            g_weather_city_clear_confirm_pending = true;
+            set_settings_feedback(kManualWeatherCityClearConfirmFeedback, kSettingsTimeoutMs);
+            return;
+        }
+        if (!clear_manual_weather_city()) {
+            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        g_weather_city_clear_confirm_pending = false;
+        if (g_offline_mode_ui_enabled) {
+            set_settings_feedback(kManualWeatherCityAutoFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        begin_settings_sync(kSettingsSyncWeather, kManualWeatherSyncFeedback);
+        ESP_LOGI(TAG, "%s", MANUAL_WEATHER_CITY_CLEARED_SYNC_LOG);
+        xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
+        return;
+    }
+    if (g_offline_mode_ui_enabled) {
+        set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
+        return;
+    }
+    if (selected == kNetworkSettingsNtpItem) {
+        begin_settings_sync(kSettingsSyncNtp, kManualNtpSyncFeedback);
+        ESP_LOGI(TAG, "%s", MANUAL_NTP_SYNC_REQUESTED_LOG);
+        xEventGroupSetBits(g_app_events, kManualNtpSyncBit);
+    } else if (selected == kNetworkSettingsWeatherItem) {
+        begin_settings_sync(kSettingsSyncWeather, kManualWeatherSyncFeedback);
+        ESP_LOGI(TAG, "%s", MANUAL_WEATHER_SYNC_REQUESTED_LOG);
+        xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
+    } else if (selected == kNetworkSettingsSayingItem) {
+        begin_settings_sync(kSettingsSyncSaying, kManualSayingSyncFeedback);
+        ESP_LOGI(TAG, "%s", MANUAL_SAYING_SYNC_REQUESTED_LOG);
+        xEventGroupSetBits(g_app_events, kManualSayingSyncBit);
+    }
+}
+
+void handle_sound_settings_action(int selected)
+{
+    if (selected == kSoundSettingsVolumeItem) {
+        int previous = g_chime_volume_percent;
+        int next = chime_settings::next_volume_percent(g_chime_volume_percent);
+        g_chime_volume_percent = next;
+        if (!save_hourly_chime_setting()) {
+            g_chime_volume_percent = previous;
+            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        set_formatted_settings_feedback(kSoundVolumeFeedbackFormat, g_chime_volume_percent);
+        request_settings_confirmation_chime();
+    } else if (selected == kSoundSettingsSoundItem) {
+        int previous = g_chime_sound_index;
+        g_chime_sound_index = (g_chime_sound_index + 1) % kChimeSoundCount;
+        if (!save_hourly_chime_setting()) {
+            g_chime_sound_index = previous;
+            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        set_formatted_settings_feedback(kSoundIndexFeedbackFormat, g_chime_sound_index + 1);
+        request_settings_confirmation_chime();
+    } else if (selected == kSoundSettingsHourlyItem) {
+        bool previous = g_hourly_chime_enabled;
+        g_hourly_chime_enabled = !g_hourly_chime_enabled;
+        if (!save_hourly_chime_setting()) {
+            g_hourly_chime_enabled = previous;
+            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        set_settings_feedback(g_hourly_chime_enabled ? kHourlyChimeEnabledFeedback : kHourlyChimeDisabledFeedback,
+                              kSettingsFeedbackDefaultMs);
+        ESP_LOGI(TAG,
+                 HOURLY_CHIME_SETTING_LOG_FORMAT,
+                 g_hourly_chime_enabled ? CHIME_SETTING_ENABLED_LOG_VALUE : CHIME_SETTING_DISABLED_LOG_VALUE);
+        if (g_hourly_chime_enabled) {
+            request_settings_confirmation_chime();
+        }
+    } else if (selected == kSoundSettingsAllDayItem) {
+        bool previous = g_hourly_chime_all_day;
+        g_hourly_chime_all_day = !g_hourly_chime_all_day;
+        if (!save_hourly_chime_setting()) {
+            g_hourly_chime_all_day = previous;
+            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        set_settings_feedback(g_hourly_chime_all_day ? kAllDayChimeEnabledFeedback : kAllDayChimeDisabledFeedback,
+                              kSettingsFeedbackDefaultMs);
+        ESP_LOGI(TAG,
+                 ALL_DAY_CHIME_SETTING_LOG_FORMAT,
+                 g_hourly_chime_all_day ? CHIME_SETTING_ENABLED_LOG_VALUE : CHIME_SETTING_DISABLED_LOG_VALUE);
+        if (g_hourly_chime_all_day) {
+            request_settings_confirmation_chime();
+        }
+    }
+}
+
+void handle_display_settings_action(int selected)
+{
+    if (g_settings_page_toggle_mode) {
+        int page = g_settings_selection;
+        if (!work_page_index_valid(page)) {
+            page = kWorkPageWeatherClock;
+        }
+        if (g_offline_mode_ui_enabled &&
+            !is_work_page_enabled(page) &&
+            work_page_requires_network(page)) {
+            set_settings_feedback(kOfflinePageUnavailableFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        uint8_t next_mask = toggled_work_page_mask(g_work_page_enabled_mask, page);
+        if (next_mask == 0) {
+            set_settings_feedback(kLastWorkPageFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        if (!work_page_mask_has_valid_home(next_mask)) {
+            set_settings_feedback(kXiaozhiNeedsHomeFeedback, kSettingsFeedbackInstructionMs);
+            return;
+        }
+        if (page == kWorkPageXiaozhiAI &&
+            is_work_page_enabled(page) &&
+            pomodoro_is_running()) {
+            set_settings_feedback(kPomodoroRunningFeedback, kSettingsFeedbackInstructionMs);
+            return;
+        }
+        uint8_t previous = g_work_page_enabled_mask;
+        g_work_page_enabled_mask = next_mask;
+        if (!save_work_page_settings()) {
+            g_work_page_enabled_mask = previous;
+            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        normalize_work_page_order();
+        ensure_active_work_page_enabled();
+        set_formatted_settings_feedback(kWorkPageFeedbackFormat,
+                                        work_page_name(page),
+                                        is_work_page_enabled(page) ? kWorkPageEnabledSuffix : kWorkPageDisabledSuffix);
+        return;
+    }
+    if (selected == kDisplaySettingsPageSwitchItem) {
+        g_settings_page_order_mode = false;
+        g_settings_page_toggle_mode = true;
+        g_settings_selection = 0;
+        set_settings_feedback(kPageSwitchInstructionFeedback, kSettingsFeedbackInstructionMs);
+        return;
+    }
+    if (selected == kDisplaySettingsOrderItem) {
+        g_settings_page_toggle_mode = false;
+        g_settings_page_order_mode = true;
+        normalize_work_page_order();
+        g_settings_page_order_selection = first_enabled_work_page_order_index();
+        set_settings_feedback(kPageOrderInstructionFeedback, kSettingsFeedbackInstructionMs);
+        return;
+    }
+    if (selected == kDisplaySettingsAlarmItem) {
+        if (!alarm_is_enabled()) {
+            set_settings_feedback(kAlarmSetByXiaozhiFeedback, kSettingsFeedbackInstructionMs);
+            return;
+        }
+        if (!alarm_disable()) {
+            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        set_settings_feedback(kAlarmDisabledFeedback, kSettingsFeedbackDefaultMs);
+        return;
+    }
+    if (selected == kDisplaySettingsXiaozhiAutoReturnItem) {
+        bool previous = g_xiaozhi_auto_return_enabled;
+        g_xiaozhi_auto_return_enabled = !g_xiaozhi_auto_return_enabled;
+        if (!save_xiaozhi_auto_return_setting()) {
+            g_xiaozhi_auto_return_enabled = previous;
+            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        set_settings_feedback(g_xiaozhi_auto_return_enabled
+                                  ? kXiaozhiAutoReturnEnabledFeedback
+                                  : kXiaozhiAutoReturnDisabledFeedback,
+                              kSettingsFeedbackDefaultMs);
+        return;
+    }
+    set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+}
+
+void handle_system_settings_action(int selected)
+{
+    if (selected == kSystemSettingsOfflineItem) {
+        if (!g_offline_mode_ui_enabled) {
+            if (!set_offline_mode_enabled(true)) {
+                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+                return;
+            }
+            g_offline_disable_confirm_pending = false;
+            set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        if (can_leave_offline_mode_without_setup()) {
+            if (!set_offline_mode_enabled(false)) {
+                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+                return;
+            }
+            g_offline_disable_confirm_pending = false;
+            set_settings_feedback(kSettingsOfflineDisabledFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        if (!g_offline_disable_confirm_pending) {
+            g_offline_disable_confirm_pending = true;
+            set_settings_feedback(kOfflineSetupConfirmFeedback, kSettingsTimeoutMs);
+            return;
+        }
+        if (!start_wifi_radio(true)) {
+            set_settings_feedback(kSetupStartFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        g_offline_disable_confirm_pending = false;
+        set_settings_feedback(kOfflineSetupInstructionFeedback, kSettingsFeedbackInstructionMs);
+    } else if (selected == kSystemSettingsNetworkDiagItem) {
+        if (g_offline_mode_ui_enabled) {
+            set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        begin_settings_sync(kSettingsSyncNetworkDiag, kNetworkDiagSyncFeedback);
+        ESP_LOGI(TAG, "%s", MANUAL_NETWORK_DIAG_REQUESTED_LOG);
+        network_diag_reset();
+        g_settings_requested = false;
+        g_network_diag_page_requested = true;
+        g_settings_focus_secondary = true;
+        g_settings_primary_selection = kSettingsPrimarySystem;
+        g_settings_selection = 0;
+        g_info_page_until_tick = 0;
+        xEventGroupSetBits(g_app_events, kNetworkDiagBit);
+    } else if (selected == kSystemSettingsFactoryResetItem) {
+        if (!g_factory_reset_confirm_pending) {
+            g_factory_reset_confirm_pending = true;
+            set_settings_feedback(kFactoryResetConfirmFeedback, kSettingsTimeoutMs);
+            ESP_LOGW(TAG, "%s", FACTORY_RESET_CONFIRM_REQUESTED_LOG);
+            return;
+        }
+        ESP_LOGW(TAG, "%s", FACTORY_RESET_REQUESTED_LOG);
+        if (!clear_saved_config()) {
+            set_settings_feedback(kFactoryResetFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        if (!start_wifi_radio(true)) {
+            set_settings_feedback(kSetupStartFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        g_settings_requested = false;
+        g_settings_page_toggle_mode = false;
+        g_settings_page_order_mode = false;
+        g_factory_reset_confirm_pending = false;
+        g_offline_disable_confirm_pending = false;
+    } else if (selected == kSystemSettingsInfoItem) {
+        g_settings_requested = false;
+        g_settings_page_toggle_mode = false;
+        g_settings_page_order_mode = false;
+        g_factory_reset_confirm_pending = false;
+        g_boot_info_requested = true;
+        g_info_page_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(kSettingsTimeoutMs);
+        ESP_LOGI(TAG, "%s", SYSTEM_INFO_REQUESTED_LOG);
+    } else if (selected == kSystemSettingsOtaItem) {
+        if (g_offline_mode_ui_enabled) {
+            set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        ota_handle_info_key();
+    }
+}
 } // namespace
 
 void handle_settings_action()
@@ -204,26 +486,7 @@ void handle_settings_action()
     g_settings_selection = selected;
     g_settings_last_activity_tick = xTaskGetTickCount();
     if (g_settings_page_order_mode) {
-        normalize_work_page_order();
-        int current = valid_enabled_work_page_order_index(g_settings_page_order_selection);
-        int next = next_enabled_work_page_order_index(current);
-        uint8_t tmp = g_work_page_order[current];
-        g_work_page_order[current] = g_work_page_order[next];
-        g_work_page_order[next] = tmp;
-        if (!work_page_order_has_valid_home()) {
-            tmp = g_work_page_order[current];
-            g_work_page_order[current] = g_work_page_order[next];
-            g_work_page_order[next] = tmp;
-            set_settings_feedback(kXiaozhiHomeBlockedFeedback, kSettingsFeedbackDefaultMs);
-            return;
-        }
-        g_settings_page_order_selection = next;
-        if (save_work_page_order()) {
-            g_active_work_page = first_enabled_work_page();
-            set_settings_feedback(kSettingsOrderSavedFeedback, kSettingsFeedbackSavedMs);
-        } else {
-            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-        }
+        handle_page_order_settings_action();
         return;
     }
     if (!g_settings_focus_secondary) {
@@ -239,282 +502,12 @@ void handle_settings_action()
     }
     clear_inactive_settings_confirmation(primary, selected);
     if (primary == kSettingsPrimaryNetwork) {
-        if (selected == kNetworkSettingsWeatherCityItem) {
-            if (!g_has_manual_weather_city) {
-                set_settings_feedback(kManualWeatherCityEditFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            if (!g_weather_city_clear_confirm_pending) {
-                g_weather_city_clear_confirm_pending = true;
-                set_settings_feedback(kManualWeatherCityClearConfirmFeedback, kSettingsTimeoutMs);
-                return;
-            }
-            if (!clear_manual_weather_city()) {
-                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            g_weather_city_clear_confirm_pending = false;
-            if (g_offline_mode_ui_enabled) {
-                set_settings_feedback(kManualWeatherCityAutoFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            begin_settings_sync(kSettingsSyncWeather, kManualWeatherSyncFeedback);
-            ESP_LOGI(TAG, "%s", MANUAL_WEATHER_CITY_CLEARED_SYNC_LOG);
-            xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
-            return;
-        }
-        if (g_offline_mode_ui_enabled) {
-            set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
-            return;
-        }
-        if (selected == kNetworkSettingsNtpItem) {
-            begin_settings_sync(kSettingsSyncNtp, kManualNtpSyncFeedback);
-            ESP_LOGI(TAG, "%s", MANUAL_NTP_SYNC_REQUESTED_LOG);
-            xEventGroupSetBits(g_app_events, kManualNtpSyncBit);
-        } else if (selected == kNetworkSettingsWeatherItem) {
-            begin_settings_sync(kSettingsSyncWeather, kManualWeatherSyncFeedback);
-            ESP_LOGI(TAG, "%s", MANUAL_WEATHER_SYNC_REQUESTED_LOG);
-            xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
-        } else if (selected == kNetworkSettingsSayingItem) {
-            begin_settings_sync(kSettingsSyncSaying, kManualSayingSyncFeedback);
-            ESP_LOGI(TAG, "%s", MANUAL_SAYING_SYNC_REQUESTED_LOG);
-            xEventGroupSetBits(g_app_events, kManualSayingSyncBit);
-        }
-        return;
-    }
-    if (primary == kSettingsPrimarySound) {
-        if (selected == kSoundSettingsVolumeItem) {
-            int previous = g_chime_volume_percent;
-            int next = kDefaultChimeVolumePercent;
-            for (int i = 0; i < kChimeVolumeLevelCount; ++i) {
-                if (g_chime_volume_percent < kChimeVolumeLevels[i]) {
-                    next = kChimeVolumeLevels[i];
-                    break;
-                }
-                if (g_chime_volume_percent == kChimeVolumeLevels[i]) {
-                    next = kChimeVolumeLevels[(i + 1) % kChimeVolumeLevelCount];
-                    break;
-                }
-            }
-            g_chime_volume_percent = next;
-            if (!save_hourly_chime_setting()) {
-                g_chime_volume_percent = previous;
-                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            set_formatted_settings_feedback(kSoundVolumeFeedbackFormat, g_chime_volume_percent);
-            request_settings_confirmation_chime();
-        } else if (selected == kSoundSettingsSoundItem) {
-            int previous = g_chime_sound_index;
-            g_chime_sound_index = (g_chime_sound_index + 1) % kChimeSoundCount;
-            if (!save_hourly_chime_setting()) {
-                g_chime_sound_index = previous;
-                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            set_formatted_settings_feedback(kSoundIndexFeedbackFormat, g_chime_sound_index + 1);
-            request_settings_confirmation_chime();
-        } else if (selected == kSoundSettingsHourlyItem) {
-            bool previous = g_hourly_chime_enabled;
-            g_hourly_chime_enabled = !g_hourly_chime_enabled;
-            if (!save_hourly_chime_setting()) {
-                g_hourly_chime_enabled = previous;
-                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            set_settings_feedback(g_hourly_chime_enabled ? kHourlyChimeEnabledFeedback : kHourlyChimeDisabledFeedback,
-                                  kSettingsFeedbackDefaultMs);
-            ESP_LOGI(TAG,
-                     HOURLY_CHIME_SETTING_LOG_FORMAT,
-                     g_hourly_chime_enabled ? CHIME_SETTING_ENABLED_LOG_VALUE : CHIME_SETTING_DISABLED_LOG_VALUE);
-            if (g_hourly_chime_enabled) {
-                request_settings_confirmation_chime();
-            }
-        } else if (selected == kSoundSettingsAllDayItem) {
-            bool previous = g_hourly_chime_all_day;
-            g_hourly_chime_all_day = !g_hourly_chime_all_day;
-            if (!save_hourly_chime_setting()) {
-                g_hourly_chime_all_day = previous;
-                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            set_settings_feedback(g_hourly_chime_all_day ? kAllDayChimeEnabledFeedback : kAllDayChimeDisabledFeedback,
-                                  kSettingsFeedbackDefaultMs);
-            ESP_LOGI(TAG,
-                     ALL_DAY_CHIME_SETTING_LOG_FORMAT,
-                     g_hourly_chime_all_day ? CHIME_SETTING_ENABLED_LOG_VALUE : CHIME_SETTING_DISABLED_LOG_VALUE);
-            if (g_hourly_chime_all_day) {
-                request_settings_confirmation_chime();
-            }
-        }
-        return;
-    }
-    if (primary == kSettingsPrimaryDisplay) {
-        if (g_settings_page_toggle_mode) {
-            int page = g_settings_selection;
-            if (!work_page_index_valid(page)) {
-                page = kWorkPageWeatherClock;
-            }
-            if (g_offline_mode_ui_enabled &&
-                !is_work_page_enabled(page) &&
-                work_page_requires_network(page)) {
-                set_settings_feedback(kOfflinePageUnavailableFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            uint8_t next_mask = toggled_work_page_mask(g_work_page_enabled_mask, page);
-            if (next_mask == 0) {
-                set_settings_feedback(kLastWorkPageFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            if (!work_page_mask_has_valid_home(next_mask)) {
-                set_settings_feedback(kXiaozhiNeedsHomeFeedback, kSettingsFeedbackInstructionMs);
-                return;
-            }
-            if (page == kWorkPageXiaozhiAI &&
-                is_work_page_enabled(page) &&
-                pomodoro_is_running()) {
-                set_settings_feedback(kPomodoroRunningFeedback, kSettingsFeedbackInstructionMs);
-                return;
-            }
-            uint8_t previous = g_work_page_enabled_mask;
-            g_work_page_enabled_mask = next_mask;
-            if (!save_work_page_settings()) {
-                g_work_page_enabled_mask = previous;
-                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            normalize_work_page_order();
-            ensure_active_work_page_enabled();
-            set_formatted_settings_feedback(kWorkPageFeedbackFormat,
-                                            work_page_name(page),
-                                            is_work_page_enabled(page) ? kWorkPageEnabledSuffix : kWorkPageDisabledSuffix);
-            return;
-        }
-        if (selected == kDisplaySettingsPageSwitchItem) {
-            g_settings_page_order_mode = false;
-            g_settings_page_toggle_mode = true;
-            g_settings_selection = 0;
-            set_settings_feedback(kPageSwitchInstructionFeedback, kSettingsFeedbackInstructionMs);
-            return;
-        }
-        if (selected == kDisplaySettingsOrderItem) {
-            g_settings_page_toggle_mode = false;
-            g_settings_page_order_mode = true;
-            normalize_work_page_order();
-            g_settings_page_order_selection = first_enabled_work_page_order_index();
-            set_settings_feedback(kPageOrderInstructionFeedback, kSettingsFeedbackInstructionMs);
-            return;
-        }
-        if (selected == kDisplaySettingsAlarmItem) {
-            if (!alarm_is_enabled()) {
-                set_settings_feedback(kAlarmSetByXiaozhiFeedback, kSettingsFeedbackInstructionMs);
-                return;
-            }
-            if (!alarm_disable()) {
-                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            set_settings_feedback(kAlarmDisabledFeedback, kSettingsFeedbackDefaultMs);
-            return;
-        }
-        if (selected == kDisplaySettingsXiaozhiAutoReturnItem) {
-            bool previous = g_xiaozhi_auto_return_enabled;
-            g_xiaozhi_auto_return_enabled = !g_xiaozhi_auto_return_enabled;
-            if (!save_xiaozhi_auto_return_setting()) {
-                g_xiaozhi_auto_return_enabled = previous;
-                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            set_settings_feedback(g_xiaozhi_auto_return_enabled
-                                      ? kXiaozhiAutoReturnEnabledFeedback
-                                      : kXiaozhiAutoReturnDisabledFeedback,
-                                  kSettingsFeedbackDefaultMs);
-            return;
-        }
-        set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-        return;
-    }
-    if (primary == kSettingsPrimarySystem) {
-        if (selected == kSystemSettingsOfflineItem) {
-            if (!g_offline_mode_ui_enabled) {
-                if (!set_offline_mode_enabled(true)) {
-                    set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-                    return;
-                }
-                g_offline_disable_confirm_pending = false;
-                set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            if (can_leave_offline_mode_without_setup()) {
-                if (!set_offline_mode_enabled(false)) {
-                    set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-                    return;
-                }
-                g_offline_disable_confirm_pending = false;
-                set_settings_feedback(kSettingsOfflineDisabledFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            if (!g_offline_disable_confirm_pending) {
-                g_offline_disable_confirm_pending = true;
-                set_settings_feedback(kOfflineSetupConfirmFeedback, kSettingsTimeoutMs);
-                return;
-            }
-            if (!start_wifi_radio(true)) {
-                set_settings_feedback(kSetupStartFailedFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            g_offline_disable_confirm_pending = false;
-            set_settings_feedback(kOfflineSetupInstructionFeedback, kSettingsFeedbackInstructionMs);
-        } else if (selected == kSystemSettingsNetworkDiagItem) {
-            if (g_offline_mode_ui_enabled) {
-                set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            begin_settings_sync(kSettingsSyncNetworkDiag, kNetworkDiagSyncFeedback);
-            ESP_LOGI(TAG, "%s", MANUAL_NETWORK_DIAG_REQUESTED_LOG);
-            network_diag_reset();
-            g_settings_requested = false;
-            g_network_diag_page_requested = true;
-            g_settings_focus_secondary = true;
-            g_settings_primary_selection = kSettingsPrimarySystem;
-            g_settings_selection = 0;
-            g_info_page_until_tick = 0;
-            xEventGroupSetBits(g_app_events, kNetworkDiagBit);
-        } else if (selected == kSystemSettingsFactoryResetItem) {
-            if (!g_factory_reset_confirm_pending) {
-                g_factory_reset_confirm_pending = true;
-                set_settings_feedback(kFactoryResetConfirmFeedback, kSettingsTimeoutMs);
-                ESP_LOGW(TAG, "%s", FACTORY_RESET_CONFIRM_REQUESTED_LOG);
-                return;
-            }
-            ESP_LOGW(TAG, "%s", FACTORY_RESET_REQUESTED_LOG);
-            if (!clear_saved_config()) {
-                set_settings_feedback(kFactoryResetFailedFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            if (!start_wifi_radio(true)) {
-                set_settings_feedback(kSetupStartFailedFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            g_settings_requested = false;
-            g_settings_page_toggle_mode = false;
-            g_settings_page_order_mode = false;
-            g_factory_reset_confirm_pending = false;
-            g_offline_disable_confirm_pending = false;
-        } else if (selected == kSystemSettingsInfoItem) {
-            g_settings_requested = false;
-            g_settings_page_toggle_mode = false;
-            g_settings_page_order_mode = false;
-            g_factory_reset_confirm_pending = false;
-            g_boot_info_requested = true;
-            g_info_page_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(kSettingsTimeoutMs);
-            ESP_LOGI(TAG, "%s", SYSTEM_INFO_REQUESTED_LOG);
-        } else if (selected == kSystemSettingsOtaItem) {
-            if (g_offline_mode_ui_enabled) {
-                set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
-                return;
-            }
-            ota_handle_info_key();
-        }
+        handle_network_settings_action(selected);
+    } else if (primary == kSettingsPrimarySound) {
+        handle_sound_settings_action(selected);
+    } else if (primary == kSettingsPrimaryDisplay) {
+        handle_display_settings_action(selected);
+    } else if (primary == kSettingsPrimarySystem) {
+        handle_system_settings_action(selected);
     }
 }

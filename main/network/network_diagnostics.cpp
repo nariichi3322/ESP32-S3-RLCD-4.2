@@ -3,6 +3,7 @@
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
+#include "network_json_root.h"
 #include "ui_views.h"
 
 #include "lwip/netdb.h"
@@ -221,35 +222,6 @@ private:
     size_t size_;
 };
 
-class NetworkDiagJsonRoot {
-public:
-    explicit NetworkDiagJsonRoot(char *response)
-        : root_(cJSON_Parse(response))
-    {
-    }
-
-    ~NetworkDiagJsonRoot()
-    {
-        cJSON_Delete(root_);
-    }
-
-    NetworkDiagJsonRoot(const NetworkDiagJsonRoot &) = delete;
-    NetworkDiagJsonRoot &operator=(const NetworkDiagJsonRoot &) = delete;
-
-    cJSON *get() const
-    {
-        return root_;
-    }
-
-    explicit operator bool() const
-    {
-        return root_ != nullptr;
-    }
-
-private:
-    cJSON *root_;
-};
-
 void diag_count(bool ok)
 {
     g_network_diag_total = g_network_diag_total + 1;
@@ -296,7 +268,7 @@ bool http_probe_ok(const char *url, size_t buffer_len = kNetworkDiagDefaultProbe
     return http_get_text(url, response.get(), response.size(), nullptr) == ESP_OK;
 }
 
-bool copy_json_string_value(cJSON *item, char *out, size_t out_len)
+bool copy_json_string_value(const cJSON *item, char *out, size_t out_len)
 {
     if (!cJSON_IsString(item) || !item->valuestring || !app_text::output_buffer_available(out, out_len)) {
         return false;
@@ -305,7 +277,11 @@ bool copy_json_string_value(cJSON *item, char *out, size_t out_len)
     return true;
 }
 
-bool find_json_string_recursive(cJSON *node, const char *name, char *out, size_t out_len, int depth = 0)
+bool find_json_string_recursive(const cJSON *node,
+                                const char *name,
+                                char *out,
+                                size_t out_len,
+                                int depth = 0)
 {
     if (!node || !name || !app_text::output_buffer_available(out, out_len)) {
         return false;
@@ -314,7 +290,7 @@ bool find_json_string_recursive(cJSON *node, const char *name, char *out, size_t
         return false;
     }
     if (cJSON_IsObject(node)) {
-        cJSON *item = cJSON_GetObjectItemCaseSensitive(node, name);
+        const cJSON *item = cJSON_GetObjectItemCaseSensitive(node, name);
         if (copy_json_string_value(item, out, out_len)) {
             return true;
         }
@@ -325,7 +301,7 @@ bool find_json_string_recursive(cJSON *node, const char *name, char *out, size_t
             }
         }
     } else if (cJSON_IsArray(node)) {
-        cJSON *item = nullptr;
+        const cJSON *item = nullptr;
         cJSON_ArrayForEach(item, node)
         {
             if (find_json_string_recursive(item, name, out, out_len, depth + 1)) {
@@ -380,7 +356,7 @@ bool lookup_public_ip(char *out, size_t out_len)
                       response.get(),
                       response.size(),
                       nullptr) == ESP_OK) {
-        NetworkDiagJsonRoot root(response.get());
+        NetworkJsonRoot root(response.get());
         if (root) {
             ok = find_json_string_recursive(root.get(), kNetworkDiagPublicIpJsonKey, out, out_len);
         }

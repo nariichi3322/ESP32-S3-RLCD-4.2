@@ -1,5 +1,6 @@
 // 处理固件更新检查、下载、校验、写入和重启提示流程。
 #include "ota_services.h"
+#include "ota_manifest_parser.h"
 #include "ota_validation.h"
 
 #include "app_constexpr.h"
@@ -14,14 +15,6 @@
 #include "esp_heap_caps.h"
 #include "esp_task_wdt.h"
 #include "display_bsp.h"
-
-struct OtaManifest {
-    char version[kOtaVersionLen] = {};
-    char url[kOtaUrlLen] = {};
-    char sha256[kOtaSha256Len] = {};
-    char notes[kOtaNotesLen] = {};
-    int size = 0;
-};
 
 struct OtaCrashBreadcrumb {
     uint32_t magic = 0;
@@ -94,11 +87,6 @@ static constexpr const char *kOtaStatusInstallingBackup = "Installing backup 0%"
 static constexpr const char *kOtaStatusInstallingProgressFormat = "Installing %d%%  %dKB/s";
 static constexpr const char *kOtaStatusNewVersionFormat = "New version %s";
 static constexpr const char *kOtaStatusFallbackError = "OTA status error";
-static constexpr const char *kOtaManifestJsonVersionField = "version";
-static constexpr const char *kOtaManifestJsonUrlField = "url";
-static constexpr const char *kOtaManifestJsonSha256Field = "sha256";
-static constexpr const char *kOtaManifestJsonSizeField = "size";
-static constexpr const char *kOtaManifestJsonNotesField = "notes";
 static constexpr const char *kOtaManifestSourceR2 = "R2";
 static constexpr const char *kOtaManifestSourceGithub = "GitHub";
 static constexpr const char *kOtaManifestSourceCustom = "Custom";
@@ -171,11 +159,6 @@ static constexpr const char *kOtaStatusTexts[] = {
     kOtaStatusFallbackError,
 };
 static constexpr const char *kOtaManifestTexts[] = {
-    kOtaManifestJsonVersionField,
-    kOtaManifestJsonUrlField,
-    kOtaManifestJsonSha256Field,
-    kOtaManifestJsonSizeField,
-    kOtaManifestJsonNotesField,
     kOtaManifestSourceR2,
     kOtaManifestSourceGithub,
     kOtaManifestSourceCustom,
@@ -222,21 +205,9 @@ static constexpr const char *kOtaLogTexts[] = {
     kOtaPrimaryDownloadRetryBackupLog,
 };
 
-constexpr size_t cstr_len(const char *text)
-{
-    size_t len = 0;
-    if (!text) {
-        return 0;
-    }
-    while (text[len] != '\0') {
-        ++len;
-    }
-    return len;
-}
-
 constexpr bool ota_manifest_source_name_fits(const char *text)
 {
-    return cstr_nonempty(text) && cstr_len(text) < kOtaManifestSourceNameLen;
+    return cstr_nonempty(text) && cstr_length(text) < kOtaManifestSourceNameLen;
 }
 
 static const char *ota_request_name_or_fallback(const char *name)
@@ -400,35 +371,6 @@ public:
 private:
     char *data_ = nullptr;
     size_t size_ = 0;
-};
-
-class OtaJsonRoot {
-public:
-    explicit OtaJsonRoot(const char *json)
-        : root_(cJSON_Parse(json))
-    {
-    }
-
-    ~OtaJsonRoot()
-    {
-        cJSON_Delete(root_);
-    }
-
-    OtaJsonRoot(const OtaJsonRoot &) = delete;
-    OtaJsonRoot &operator=(const OtaJsonRoot &) = delete;
-
-    cJSON *get() const
-    {
-        return root_;
-    }
-
-    explicit operator bool() const
-    {
-        return root_ != nullptr;
-    }
-
-private:
-    cJSON *root_ = nullptr;
 };
 
 class OtaDownloadBuffer {
@@ -676,49 +618,27 @@ void ota_mark_running_app_valid()
 
 static bool parse_ota_manifest(const char *json, OtaManifest *manifest)
 {
-    if (!json || !manifest) {
+    OtaManifestParseResult result = ota_parse_manifest_json(json, manifest);
+    switch (result.status) {
+    case kOtaManifestParseOk:
+        return true;
+    case kOtaManifestParseInvalidArgument:
         ESP_LOGW(TAG, "%s", kOtaManifestParseInvalidArgLog);
-        return false;
-    }
-    OtaJsonRoot root(json);
-    if (!root) {
+        break;
+    case kOtaManifestParseInvalidJson:
         ESP_LOGW(TAG, "%s", kOtaManifestJsonParseFailedLog);
-        return false;
-    }
-    bool have_version = json_copy_string(root.get(),
-                                         kOtaManifestJsonVersionField,
-                                         manifest->version,
-                                         sizeof(manifest->version)) &&
-                        manifest->version[0] != '\0';
-    bool have_url = json_copy_string(root.get(),
-                                     kOtaManifestJsonUrlField,
-                                     manifest->url,
-                                     sizeof(manifest->url)) &&
-                    manifest->url[0] != '\0';
-    bool have_sha = json_copy_string(root.get(),
-                                     kOtaManifestJsonSha256Field,
-                                     manifest->sha256,
-                                     sizeof(manifest->sha256));
-    cJSON *size = cJSON_GetObjectItem(root.get(), kOtaManifestJsonSizeField);
-    if (cJSON_IsNumber(size)) {
-        manifest->size = size->valueint;
-    }
-    (void)json_copy_string(root.get(),
-                           kOtaManifestJsonNotesField,
-                           manifest->notes,
-                           sizeof(manifest->notes));
-    if (!have_version || !have_url || !have_sha) {
+        break;
+    case kOtaManifestParseMissingRequiredFields:
         ESP_LOGW(TAG, OTA_MANIFEST_MISSING_REQUIRED_FIELDS_FORMAT,
-                 have_version,
-                 have_url,
-                 have_sha);
-        return false;
+                 result.have_version,
+                 result.have_url,
+                 result.have_sha256);
+        break;
+    case kOtaManifestParseInvalidSha256:
+        ESP_LOGW(TAG, OTA_MANIFEST_SHA_INVALID_FORMAT, (unsigned)result.sha256_length);
+        break;
     }
-    if (!ota_valid_sha256_string(manifest->sha256)) {
-        ESP_LOGW(TAG, OTA_MANIFEST_SHA_INVALID_FORMAT, (unsigned)strlen(manifest->sha256));
-        return false;
-    }
-    return true;
+    return false;
 }
 
 static bool ota_manifest_source_name_valid(const OtaManifestSource &source)

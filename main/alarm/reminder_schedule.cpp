@@ -9,12 +9,6 @@ constexpr int kHoursPerDay = 24;
 constexpr int kMinutesPerHour = 60;
 constexpr int64_t kMillisecondsPerSecond = 1000;
 
-bool valid_alarm_time(int hour, int minute)
-{
-    return hour >= 0 && hour < kHoursPerDay &&
-           minute >= 0 && minute < kMinutesPerHour;
-}
-
 bool same_local_minute(time_t left, time_t right)
 {
     struct tm left_local = {};
@@ -49,12 +43,18 @@ time_t next_alarm_minute(time_t now, int hour, int minute)
 }
 } // namespace
 
+bool alarm_time_valid(int hour, int minute)
+{
+    return hour >= 0 && hour < kHoursPerDay &&
+           minute >= 0 && minute < kMinutesPerHour;
+}
+
 bool reminder_targets_same_local_minute(int64_t now_ms,
                                         int alarm_hour,
                                         int alarm_minute,
                                         uint32_t delay_ms)
 {
-    if (now_ms < 0 || delay_ms == 0 || !valid_alarm_time(alarm_hour, alarm_minute)) {
+    if (now_ms < 0 || delay_ms == 0 || !alarm_time_valid(alarm_hour, alarm_minute)) {
         return false;
     }
     time_t now = static_cast<time_t>(now_ms / kMillisecondsPerSecond);

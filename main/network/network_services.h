@@ -2,8 +2,10 @@
 #pragma once
 #include "app_state.h"
 #include "network_form.h"
+#include "network_gzip.h"
 #include "network_json.h"
 #include "network_text.h"
+#include "network_url.h"
 #include "qweather_alert_text.h"
 #include "qweather_icons.h"
 #include "wifi_portal_pages.h"
@@ -64,12 +66,9 @@ bool init_network_http_transaction_lock();
 bool acquire_network_http_transaction_lock(TickType_t timeout);
 void release_network_http_transaction_lock();
 esp_err_t http_event_handler(esp_http_client_event_t *evt);
-bool gzip_payload_range(const uint8_t *data, size_t len, size_t *payload_offset, size_t *payload_len);
 esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len);
 esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *api_key = nullptr);
 const char *qweather_api_host();
-bool url_is_unreserved(char ch);
-bool url_encode_component(const char *in, char *out, size_t out_len);
 void log_response_preview(const char *stage, const char *response);
 bool ip_geolocation_lookup(char *location, size_t location_len, char *city, size_t city_len);
 enum QweatherCityLookupStatus {

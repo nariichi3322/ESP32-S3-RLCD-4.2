@@ -1,4 +1,4 @@
-// 提供 HTTPS 文本请求、gzip 解码、URL 编码和 JSON 字段读取工具。
+// 提供 HTTPS 文本请求、gzip 解码和响应日志预览工具。
 #include "network_services.h"
 
 #include "app_constexpr.h"
@@ -6,27 +6,12 @@
 #include "qweather_ca.h"
 
 namespace {
-constexpr uint8_t kGzipMagic0 = 0x1F;
-constexpr uint8_t kGzipMagic1 = 0x8B;
-constexpr uint8_t kGzipDeflateMethod = 8;
-constexpr uint8_t kGzipFlagHeaderCrc = 0x02;
-constexpr uint8_t kGzipFlagExtra = 0x04;
-constexpr uint8_t kGzipFlagName = 0x08;
-constexpr uint8_t kGzipFlagComment = 0x10;
-constexpr size_t kGzipMinSize = 18;
-constexpr size_t kGzipBaseHeaderSize = 10;
-constexpr size_t kGzipTrailerSize = 8;
-constexpr size_t kGzipExtraLengthFieldSize = 2;
-constexpr size_t kGzipMagicPrefixSize = 2;
 constexpr size_t kGzipHeaderProbeSize = 3;
 constexpr int kHttpStatusOkMin = 200;
 constexpr int kHttpStatusOkMax = 300;
 constexpr size_t kHttpPreviewMaxChars = 120;
 constexpr size_t kCStringTerminatorSize = 1;
 constexpr size_t kHttpPreviewBufferSize = kHttpPreviewMaxChars + kCStringTerminatorSize;
-constexpr size_t kUrlEncodedPlainCharSize = 1;
-constexpr size_t kUrlEncodedEscapedCharSize = 3;
-constexpr const char *kUrlHexDigits = "0123456789ABCDEF";
 constexpr const char *kHttpAcceptHeaderName = "Accept";
 constexpr const char *kHttpAcceptHeader = "application/json,text/plain,*/*";
 constexpr const char *kHttpAcceptEncodingHeaderName = "Accept-Encoding";
@@ -42,43 +27,13 @@ constexpr const char *kHttpClientInitFailedLog = "http client init failed";
 constexpr const char *kHttpTransactionMutexCreateFailedLog = "http transaction mutex create failed";
 constexpr const char *kHttpTransactionLockTimeoutLog = "http transaction deferred: TLS session is busy";
 SemaphoreHandle_t s_http_transaction_mutex = nullptr;
-constexpr bool gzip_flag_bits_valid()
-{
-    constexpr uint8_t flags[] = {
-        kGzipFlagHeaderCrc,
-        kGzipFlagExtra,
-        kGzipFlagName,
-        kGzipFlagComment,
-    };
-    uint8_t combined = 0;
-    for (uint8_t flag : flags) {
-        if (flag == 0 || (combined & flag) != 0) {
-            return false;
-        }
-        combined |= flag;
-    }
-    return true;
-}
-
-static_assert(kGzipMagicPrefixSize == 2, "gzip magic prefix must contain two bytes");
-static_assert(kGzipMagic0 == 0x1F && kGzipMagic1 == 0x8B, "gzip magic bytes must remain RFC1952 values");
-static_assert(kGzipDeflateMethod == 8, "gzip compression method must remain deflate");
 static_assert(kGzipHeaderProbeSize >= 3, "gzip header probe must cover magic and compression method");
-static_assert(kGzipBaseHeaderSize > kGzipHeaderProbeSize, "gzip base header must include fixed fields after method");
-static_assert(kGzipMinSize >= kGzipBaseHeaderSize + kGzipTrailerSize,
-              "gzip minimum size must cover base header and trailer");
-static_assert(kGzipExtraLengthFieldSize == 2, "gzip extra length field is two bytes");
-static_assert(gzip_flag_bits_valid(), "gzip optional header flags must be nonzero and non-overlapping");
 static_assert(kHttpStatusOkMin >= 100 && kHttpStatusOkMin < kHttpStatusOkMax,
               "HTTP success lower bound must be a valid status below upper bound");
 static_assert(kHttpStatusOkMax <= 600, "HTTP success upper bound must stay within valid status space");
 static_assert(kCStringTerminatorSize == 1, "C string terminator reservation must be one byte");
 static_assert(kHttpPreviewBufferSize == kHttpPreviewMaxChars + kCStringTerminatorSize,
               "HTTP preview buffer must include NUL terminator space");
-static_assert(kUrlEncodedPlainCharSize == 1, "URL unreserved characters encode to one byte");
-static_assert(kUrlEncodedEscapedCharSize == 3, "URL escaped characters encode as %XX");
-static_assert(kUrlEncodedEscapedCharSize == 1 + 2 * kUrlEncodedPlainCharSize,
-              "URL escaped characters must reserve percent plus two hex digits");
 #define HTTP_TEMP_BUFFER_ALLOC_FAILED_FORMAT "http temp buffer alloc failed len=%u"
 #define HTTP_GZIP_HEADER_INVALID_FORMAT "gzip response header invalid len=%u"
 #define HTTP_GZIP_DECOMPRESS_FAILED_FORMAT "gzip response decompress failed payload_len=%u"
@@ -105,20 +60,6 @@ constexpr const char *const kHttpLogTexts[] = {
     HTTP_SET_HEADER_FAILED_FORMAT,
 };
 
-constexpr size_t cstr_len(const char *text)
-{
-    size_t len = 0;
-    if (!text) {
-        return 0;
-    }
-    while (text[len] != '\0') {
-        ++len;
-    }
-    return len;
-}
-
-static_assert(cstr_nonempty(kUrlHexDigits), "URL hex digit table must be non-empty");
-static_assert(cstr_len(kUrlHexDigits) == 16, "URL hex digit table must contain 16 characters");
 static_assert(cstr_nonempty(kHttpAcceptHeaderName), "HTTP Accept header name must be non-empty");
 static_assert(cstr_nonempty(kHttpAcceptHeader), "HTTP Accept header value must be non-empty");
 static_assert(cstr_nonempty(kHttpAcceptEncodingHeaderName),
@@ -203,13 +144,6 @@ bool is_qweather_url(const char *url)
             strstr(url, kQweatherDevHost));
 }
 
-bool has_gzip_magic_prefix(const char *data, size_t len)
-{
-    return data && len >= kGzipMagicPrefixSize &&
-           (uint8_t)data[0] == kGzipMagic0 &&
-           (uint8_t)data[1] == kGzipMagic1;
-}
-
 bool http_status_ok(int status)
 {
     return status >= kHttpStatusOkMin && status < kHttpStatusOkMax;
@@ -237,26 +171,6 @@ bool compute_http_timeout_ms(int *timeout_ms)
         *timeout_ms = remaining_ms;
     }
     return true;
-}
-
-bool advance_gzip_pos(size_t *pos, size_t amount, size_t len)
-{
-    if (!pos || amount > len || *pos > len - amount) {
-        return false;
-    }
-    *pos += amount;
-    return true;
-}
-
-bool skip_gzip_zero_terminated_field(const uint8_t *data, size_t len, size_t *pos)
-{
-    if (!data || !pos) {
-        return false;
-    }
-    while (*pos < len && data[*pos] != 0) {
-        ++(*pos);
-    }
-    return advance_gzip_pos(pos, 1, len);
 }
 
 bool decode_http_body_args_valid(char *out, size_t out_len, const size_t *body_len)
@@ -390,50 +304,14 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-bool gzip_payload_range(const uint8_t *data, size_t len, size_t *payload_offset, size_t *payload_len)
-{
-    if (!data || !payload_offset || !payload_len) {
-        return false;
-    }
-    if (len < kGzipMinSize || data[0] != kGzipMagic0 || data[1] != kGzipMagic1 || data[2] != kGzipDeflateMethod) {
-        return false;
-    }
-
-    uint8_t flags = data[3];
-    size_t pos = kGzipBaseHeaderSize;
-    if (flags & kGzipFlagExtra) {
-        if (pos + kGzipExtraLengthFieldSize > len) return false;
-        size_t extra_len = data[pos] | (data[pos + 1] << 8);
-        if (!advance_gzip_pos(&pos, kGzipExtraLengthFieldSize, len) ||
-            !advance_gzip_pos(&pos, extra_len, len)) {
-            return false;
-        }
-    }
-    if (flags & kGzipFlagName) {
-        if (!skip_gzip_zero_terminated_field(data, len, &pos)) return false;
-    }
-    if (flags & kGzipFlagComment) {
-        if (!skip_gzip_zero_terminated_field(data, len, &pos)) return false;
-    }
-    if (flags & kGzipFlagHeaderCrc) {
-        if (!advance_gzip_pos(&pos, kGzipExtraLengthFieldSize, len)) return false;
-    }
-    if (pos + kGzipTrailerSize > len) {
-        return false;
-    }
-
-    *payload_offset = pos;
-    *payload_len = len - pos - kGzipTrailerSize;
-    return true;
-}
-
 esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len)
 {
     if (!decode_http_body_args_valid(out, out_len, body_len)) {
         ESP_LOGW(TAG, "%s", kHttpDecodeInvalidArgLog);
         return ESP_ERR_INVALID_ARG;
     }
-    if (*body_len < kGzipHeaderProbeSize || !has_gzip_magic_prefix(out, *body_len)) {
+    if (*body_len < kGzipHeaderProbeSize ||
+        !network_gzip_detail::has_magic_prefix(out, *body_len)) {
         return ESP_OK;
     }
 
@@ -556,53 +434,8 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
     ESP_LOGI(TAG, HTTP_GET_OK_FORMAT,
              status,
              (unsigned)buffer.len,
-             has_gzip_magic_prefix(out, buffer.len));
+             network_gzip_detail::has_magic_prefix(out, buffer.len));
     return decode_http_body(out, out_len, &buffer.len);
-}
-
-bool json_copy_string(const cJSON *obj, const char *name, char *out, size_t out_len)
-{
-    if (!obj || !name || !app_text::output_buffer_available(out, out_len)) {
-        return false;
-    }
-    const cJSON *item = cJSON_GetObjectItem(obj, name);
-    if (!cJSON_IsString(item) || !item->valuestring) {
-        return false;
-    }
-    strlcpy(out, item->valuestring, out_len);
-    return true;
-}
-
-bool url_is_unreserved(char ch)
-{
-    return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
-           (ch >= '0' && ch <= '9') || ch == '-' || ch == '_' ||
-           ch == '.' || ch == '~';
-}
-
-bool url_encode_component(const char *in, char *out, size_t out_len)
-{
-    if (!in || !app_text::output_buffer_available(out, out_len)) {
-        return false;
-    }
-    size_t pos = 0;
-    for (const unsigned char *p = (const unsigned char *)in; *p; ++p) {
-        if (url_is_unreserved((char)*p)) {
-            if (pos + kUrlEncodedPlainCharSize >= out_len) {
-                return false;
-            }
-            out[pos++] = (char)*p;
-        } else {
-            if (pos + kUrlEncodedEscapedCharSize >= out_len) {
-                return false;
-            }
-            out[pos++] = '%';
-            out[pos++] = kUrlHexDigits[*p >> 4];
-            out[pos++] = kUrlHexDigits[*p & 0x0F];
-        }
-    }
-    out[pos] = '\0';
-    return true;
 }
 
 void log_response_preview(const char *stage, const char *response)

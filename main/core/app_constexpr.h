@@ -34,6 +34,18 @@ constexpr const char *cstr_or_empty(const char *text)
     return text ? text : "";
 }
 
+constexpr size_t cstr_length(const char *text)
+{
+    size_t length = 0;
+    if (!text) {
+        return 0;
+    }
+    while (text[length] != '\0') {
+        ++length;
+    }
+    return length;
+}
+
 template <typename T, size_t N>
 constexpr bool cstr_array_nonempty(const T (&items)[N])
 {

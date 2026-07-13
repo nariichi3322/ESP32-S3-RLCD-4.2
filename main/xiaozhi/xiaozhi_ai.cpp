@@ -8,20 +8,18 @@
 #include "network_services.h"
 #include "sensor_services.h"
 #include "ui_views.h"
+#include "xiaozhi_activation_client.h"
+#include "xiaozhi_activation_storage.h"
 #include "xiaozhi_mcp.h"
+#include "xiaozhi_conversation_policy.h"
 #include "xiaozhi_protocol_utils.h"
 #include "xiaozhi_voice.h"
 #include "weather_city_mcp.h"
 
 #include <cJSON.h>
-#include <esp_app_desc.h>
-#include <esp_chip_info.h>
 #include <esp_crt_bundle.h>
-#include <esp_flash.h>
 #include <esp_heap_caps.h>
-#include <esp_http_client.h>
 #include <esp_log.h>
-#include <esp_mac.h>
 #include <esp_transport.h>
 #include <esp_transport_ssl.h>
 #include <esp_transport_tcp.h>
@@ -30,21 +28,15 @@
 #include <esp_opus_dec.h>
 #include <esp_opus_enc.h>
 #include <freertos/stream_buffer.h>
-#include <nvs.h>
-
 #include <arpa/inet.h>
 #include <atomic>
 #include <string.h>
 
 namespace {
-constexpr size_t kActivationResponseSize = 3072;
-constexpr size_t kActivationRequestSize = 1536;
-constexpr size_t kDeviceIdSize = 18;
-constexpr size_t kClientIdSize = 37;
 constexpr uint32_t kWifiWaitMs = 30000;
 constexpr uint32_t kActivationRetryMs = 15000;
-constexpr uint32_t kActivationHttpTimeoutMs = 12000;
 constexpr uint32_t kLoopIdleMs = 500;
+constexpr uint32_t kWakeAudioPerformanceSettleMs = 40;
 constexpr uint32_t kWebsocketTimeoutMs = 12000;
 constexpr uint32_t kConversationIdleTimeoutMs = 30000;
 constexpr uint32_t kExitReplyTimeoutMs = 15000;
@@ -74,14 +66,6 @@ constexpr uint32_t kBindingVoiceTaskStackBytes = 6144;
 constexpr UBaseType_t kBindingVoiceTaskPriority = 3;
 constexpr int kTtsPlaybackStopRetryCount = 200;
 constexpr uint32_t kTtsPlaybackStopRetryDelayMs = 10;
-constexpr const char *kNvsNamespace = "xiaozhi";
-constexpr const char *kWebsocketUrlKey = "ws_url";
-constexpr const char *kWebsocketTokenKey = "ws_token";
-constexpr const char *kWebsocketVersionKey = "ws_ver";
-constexpr const char *kActivationChallengeKey = "act_chal";
-constexpr const char *kClientIdKey = "client_id";
-constexpr const char *kBindingConfirmedKey = "bound_v1";
-constexpr const char *kActivationUrl = CONFIG_XIAOZHI_AI_OTA_URL;
 constexpr const char *kOfficialUserAgent = "ESP32-S3-RLCD-4.2/xiaozhi";
 constexpr const char *kDefaultStatus = "小智准备中";
 constexpr const char *kWifiStatus = "正在连接Wi-Fi";
@@ -104,21 +88,7 @@ constexpr EventBits_t kAiWakeBit = BIT1;
 #define XIAOZHI_TTS_STREAM_CREATE_FAILED_LOG "xiaozhi TTS stream buffer creation failed"
 #define XIAOZHI_TTS_TASK_CREATE_FAILED_LOG "xiaozhi TTS playback task creation failed"
 #define XIAOZHI_STATE_INIT_FAILED_LOG "Xiaozhi AI state initialization failed"
-#define XIAOZHI_NVS_CLEAR_OPEN_FAILED_FORMAT "xiaozhi activation NVS open for clear failed: %s"
-#define XIAOZHI_NVS_CLEAR_ERASE_FAILED_FORMAT "xiaozhi activation NVS erase failed: %s"
-#define XIAOZHI_NVS_CLEAR_COMMIT_FAILED_FORMAT "xiaozhi activation NVS clear commit failed: %s"
-#define XIAOZHI_ACTIVATION_NVS_OPEN_FAILED_FORMAT "xiaozhi activation NVS open failed: %s"
-#define XIAOZHI_ACTIVATION_NVS_SAVE_FAILED_FORMAT "xiaozhi activation NVS save failed: %s"
-#define XIAOZHI_CLIENT_ID_NVS_OPEN_FAILED_FORMAT "xiaozhi client id NVS open failed: %s"
-#define XIAOZHI_CLIENT_ID_NVS_SAVE_FAILED_FORMAT "xiaozhi client id NVS save failed: %s"
-#define XIAOZHI_ACTIVATION_HEADER_FAILED_FORMAT "xiaozhi activation header %s failed: %s"
-#define XIAOZHI_ACTIVATION_BODY_FAILED_FORMAT "xiaozhi activation body failed: %s"
 #define XIAOZHI_WEBSOCKET_OPTION_FAILED_FORMAT "xiaozhi websocket option %s failed: %s"
-
-struct ActivationBuffer {
-    char data[kActivationResponseSize] = {};
-    size_t len = 0;
-};
 
 struct VoiceIoBuffers {
     char incoming[kIncomingAudioBufferSize] = {};
@@ -139,8 +109,10 @@ std::atomic<bool> s_task_exited{true};
 std::atomic<bool> s_alarm_suspended{false};
 static_assert(kXiaozhiTaskStackSize % sizeof(StackType_t) == 0,
               "Xiaozhi task stack must align to StackType_t");
-static_assert(kActivationHttpTimeoutMs > 0 && kBindingVoiceTaskStackBytes > 0,
-              "Xiaozhi activation timeout and binding task stack must be positive");
+static_assert(kBindingVoiceTaskStackBytes > 0,
+              "Xiaozhi binding task stack must be positive");
+static_assert(kWakeAudioPerformanceSettleMs > 0,
+              "Xiaozhi wake audio performance settle time must be positive");
 static_assert(kTtsPlaybackStopRetryCount > 0 && kTtsPlaybackStopRetryDelayMs > 0,
               "Xiaozhi TTS stop retry settings must be positive");
 static_assert(kTtsFinalFrameGraceMs > kTtsPlaybackTailSettleMs,
@@ -251,8 +223,10 @@ struct WebsocketSession {
     bool exit_reply_deadline_set = false;
     bool user_text_hold_set = false;
     bool peer_disconnected = false;
+    bool tts_started_tick_set = false;
     TickType_t tts_stop_received_tick = 0;
     TickType_t last_tts_audio_tick = 0;
+    TickType_t tts_started_tick = 0;
     TickType_t exit_reply_deadline = 0;
     TickType_t user_text_hold_until = 0;
     char pending_assistant_text[192] = {};
@@ -262,9 +236,6 @@ void snapshot_set(XiaozhiAiState state, const char *status, const char *detail, 
 void snapshot_set_status_preserving_detail(XiaozhiAiState state, const char *status);
 void snapshot_mark_user_activity();
 void snapshot_set_emotion(const char *emotion);
-void format_device_id(char *out, size_t out_len);
-bool load_or_create_client_id(char *out, size_t out_len);
-bool load_websocket_config(char *url, size_t url_len, char *token, size_t token_len, int32_t *version);
 
 void binding_id_voice_task(void *arg)
 {
@@ -455,10 +426,10 @@ bool open_websocket(WebsocketSession *session, const char *url, const char *toke
         close_websocket(session);
         return false;
     }
-    char device_id[kDeviceIdSize] = {};
-    char client_id[kClientIdSize] = {};
-    format_device_id(device_id, sizeof(device_id));
-    if (!load_or_create_client_id(client_id, sizeof(client_id))) {
+    char device_id[kXiaozhiDeviceIdSize] = {};
+    char client_id[kXiaozhiClientIdSize] = {};
+    xiaozhi_format_device_id(device_id, sizeof(device_id));
+    if (!xiaozhi_load_or_create_client_id(client_id, sizeof(client_id))) {
         close_websocket(session);
         return false;
     }
@@ -604,6 +575,8 @@ void update_incoming_text(WebsocketSession *session, const char *json, size_t le
             session->exit_reply_started = session->exit_after_reply_requested;
             session->resume_listening_pending = false;
             session->discard_tts_audio = false;
+            session->tts_started_tick = xTaskGetTickCount();
+            session->tts_started_tick_set = true;
             session->tts_stop_received_tick = 0;
             session->last_tts_audio_tick = 0;
             ESP_LOGI(TAG, "Xiaozhi TTS started");
@@ -628,6 +601,10 @@ void update_incoming_text(WebsocketSession *session, const char *json, size_t le
         } else if (strcmp(state->valuestring, "sentence_start") == 0 && cJSON_IsString(text)) {
             session->server_speaking = true;
             session->exit_reply_started = session->exit_after_reply_requested;
+            if (!session->tts_started_tick_set) {
+                session->tts_started_tick = xTaskGetTickCount();
+                session->tts_started_tick_set = true;
+            }
             ESP_LOGI(TAG, "Xiaozhi assistant text (%u bytes): %.160s",
                      static_cast<unsigned>(strlen(text->valuestring)),
                      text->valuestring);
@@ -993,7 +970,7 @@ bool run_voice_conversation()
     char url[256] = {};
     char token[256] = {};
     int32_t version = 1;
-    if (!load_websocket_config(url, sizeof(url), token, sizeof(token), &version)) {
+    if (!xiaozhi_load_websocket_config(url, sizeof(url), token, sizeof(token), &version)) {
         return false;
     }
     WebsocketSession session = {};
@@ -1102,8 +1079,27 @@ bool run_voice_conversation()
     while (ready && (xEventGroupGetBits(s_events) & kAiPageActiveBit) != 0 &&
            (xTaskGetTickCount() - last_activity) < pdMS_TO_TICKS(kConversationIdleTimeoutMs)) {
         publish_pending_assistant_text(&session);
-        bool wake_interrupt = !session.peer_disconnected && xiaozhi_voice_take_wake_word();
-        if (session.server_speaking && wake_interrupt) {
+        bool wake_detected = !session.peer_disconnected && xiaozhi_voice_take_wake_word();
+        TickType_t wake_tick = xTaskGetTickCount();
+        uint32_t speaking_elapsed_ms = session.tts_started_tick_set
+                                           ? static_cast<uint32_t>(
+                                                 (static_cast<uint64_t>(wake_tick - session.tts_started_tick) *
+                                                  1000U) /
+                                                 configTICK_RATE_HZ)
+                                           : 0U;
+        bool wake_interrupt = wake_detected &&
+                              xiaozhi_wake_interrupt_allowed(
+                                  session.server_speaking,
+                                  session.resume_listening_pending,
+                                  session.tts_started_tick_set,
+                                  speaking_elapsed_ms);
+        if (wake_detected && session.server_speaking && !wake_interrupt) {
+            ESP_LOGI(TAG,
+                     "Xiaozhi wake ignored during TTS guard: elapsed=%u stop_pending=%d",
+                     static_cast<unsigned>(speaking_elapsed_ms),
+                     session.resume_listening_pending ? 1 : 0);
+        }
+        if (wake_interrupt) {
             bool abort_sent = websocket_send_wake_abort(&session);
             stop_tts_playback();
             abort_xiaozhi_speaker_playback();
@@ -1111,10 +1107,12 @@ bool run_voice_conversation()
             session.server_speaking = false;
             session.resume_listening_pending = false;
             session.discard_tts_audio = true;
+            session.tts_started_tick = 0;
+            session.tts_started_tick_set = false;
             session.tts_stop_received_tick = 0;
             session.last_tts_audio_tick = 0;
             bool listen_sent = websocket_send_listen_start(&session);
-            (void)play_xiaozhi_wake_feedback();
+            bool wake_feedback_played = play_xiaozhi_wake_feedback();
             bool playback_restarted = start_tts_playback();
             xiaozhi_voice_set_streaming(true);
             session.user_text_hold_until = 0;
@@ -1122,11 +1120,12 @@ bool run_voice_conversation()
             session.pending_assistant_text[0] = '\0';
             snapshot_set(kXiaozhiAiListening, "已打断", "请继续说话");
             ESP_LOGI(TAG,
-                     "Xiaozhi wake interrupt: abort=%d listen=%d playback=%d",
+                     "Xiaozhi wake interrupt: abort=%d listen=%d feedback=%d playback=%d",
                      abort_sent,
                      listen_sent,
+                     wake_feedback_played,
                      playback_restarted);
-            if (!playback_restarted) {
+            if (!wake_feedback_played || !playback_restarted) {
                 ready = false;
                 break;
             }
@@ -1238,6 +1237,8 @@ bool run_voice_conversation()
             session.resume_listening_pending = false;
             session.server_speaking = false;
             session.discard_tts_audio = false;
+            session.tts_started_tick = 0;
+            session.tts_started_tick_set = false;
             session.tts_stop_received_tick = 0;
             session.last_tts_audio_tick = 0;
             last_activity = xTaskGetTickCount();
@@ -1330,278 +1331,7 @@ void snapshot_mark_user_activity()
     notify_ui_task();
 }
 
-bool nvs_read_string(nvs_handle_t nvs, const char *key, char *out, size_t out_len)
-{
-    if (!key || !xiaozhi_protocol::output_buffer_available(out, out_len)) {
-        return false;
-    }
-    size_t len = out_len;
-    if (nvs_get_str(nvs, key, out, &len) != ESP_OK || out[0] == '\0') {
-        out[0] = '\0';
-        return false;
-    }
-    return true;
-}
-
-bool load_websocket_config(char *url, size_t url_len, char *token, size_t token_len, int32_t *version)
-{
-    if (!xiaozhi_protocol::output_buffer_available(url, url_len) ||
-        !xiaozhi_protocol::output_buffer_available(token, token_len) || !version) {
-        return false;
-    }
-    nvs_handle_t nvs;
-    if (nvs_open(kNvsNamespace, NVS_READONLY, &nvs) != ESP_OK) {
-        return false;
-    }
-    uint8_t binding_confirmed = 0;
-    bool present = nvs_get_u8(nvs, kBindingConfirmedKey, &binding_confirmed) == ESP_OK &&
-                   binding_confirmed == 1 &&
-                   nvs_read_string(nvs, kWebsocketUrlKey, url, url_len);
-    nvs_read_string(nvs, kWebsocketTokenKey, token, token_len);
-    if (nvs_get_i32(nvs, kWebsocketVersionKey, version) != ESP_OK || *version <= 0) {
-        *version = 1;
-    }
-    nvs_close(nvs);
-    return present;
-}
-
-bool save_activation_config(cJSON *websocket, const char *challenge)
-{
-    if (!cJSON_IsObject(websocket)) {
-        return false;
-    }
-    cJSON *url = cJSON_GetObjectItem(websocket, "url");
-    cJSON *token = cJSON_GetObjectItem(websocket, "token");
-    cJSON *version = cJSON_GetObjectItem(websocket, "version");
-    if (!cJSON_IsString(url) || !url->valuestring || url->valuestring[0] == '\0') {
-        return false;
-    }
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &nvs);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, XIAOZHI_ACTIVATION_NVS_OPEN_FAILED_FORMAT, esp_err_to_name(err));
-        return false;
-    }
-    err = nvs_set_str(nvs, kWebsocketUrlKey, url->valuestring);
-    if (err == ESP_OK && cJSON_IsString(token) && token->valuestring) {
-        err = nvs_set_str(nvs, kWebsocketTokenKey, token->valuestring);
-    }
-    if (err == ESP_OK) {
-        err = nvs_set_i32(nvs, kWebsocketVersionKey, cJSON_IsNumber(version) ? version->valueint : 1);
-    }
-    if (err == ESP_OK) {
-        err = nvs_set_u8(nvs, kBindingConfirmedKey, 1);
-    }
-    if (err == ESP_OK && challenge && challenge[0] != '\0') {
-        err = nvs_set_str(nvs, kActivationChallengeKey, challenge);
-    }
-    if (err == ESP_OK) {
-        err = nvs_commit(nvs);
-    }
-    nvs_close(nvs);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, XIAOZHI_ACTIVATION_NVS_SAVE_FAILED_FORMAT, esp_err_to_name(err));
-    }
-    return err == ESP_OK;
-}
-
-void format_device_id(char *out, size_t out_len)
-{
-    uint8_t mac[6] = {};
-    if (!xiaozhi_protocol::output_buffer_available(out, out_len) ||
-        esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) {
-        if (out && out_len > 0) {
-            out[0] = '\0';
-        }
-        return;
-    }
-    snprintf(out, out_len, "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-}
-
-bool load_or_create_client_id(char *out, size_t out_len)
-{
-    if (!xiaozhi_protocol::output_buffer_available(out, out_len) || out_len < kClientIdSize) {
-        return false;
-    }
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &nvs);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, XIAOZHI_CLIENT_ID_NVS_OPEN_FAILED_FORMAT, esp_err_to_name(err));
-        return false;
-    }
-    size_t stored_len = out_len;
-    if (nvs_get_str(nvs, kClientIdKey, out, &stored_len) == ESP_OK && strlen(out) == kClientIdSize - 1) {
-        nvs_close(nvs);
-        return true;
-    }
-    uint8_t uuid[16] = {};
-    esp_fill_random(uuid, sizeof(uuid));
-    uuid[6] = (uuid[6] & 0x0F) | 0x40;
-    uuid[8] = (uuid[8] & 0x3F) | 0x80;
-    snprintf(out,
-             out_len,
-             "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-             uuid[0], uuid[1], uuid[2], uuid[3],
-             uuid[4], uuid[5], uuid[6], uuid[7],
-             uuid[8], uuid[9], uuid[10], uuid[11],
-             uuid[12], uuid[13], uuid[14], uuid[15]);
-    err = nvs_set_str(nvs, kClientIdKey, out);
-    if (err == ESP_OK) {
-        err = nvs_commit(nvs);
-    }
-    nvs_close(nvs);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, XIAOZHI_CLIENT_ID_NVS_SAVE_FAILED_FORMAT, esp_err_to_name(err));
-    }
-    return err == ESP_OK;
-}
-
-esp_err_t activation_http_event(esp_http_client_event_t *event)
-{
-    if (!event || event->event_id != HTTP_EVENT_ON_DATA || !event->user_data || !event->data || event->data_len <= 0) {
-        return ESP_OK;
-    }
-    ActivationBuffer *buffer = static_cast<ActivationBuffer *>(event->user_data);
-    size_t room = sizeof(buffer->data) - buffer->len - 1;
-    size_t copy_len = static_cast<size_t>(event->data_len) < room ? static_cast<size_t>(event->data_len) : room;
-    if (copy_len > 0) {
-        memcpy(buffer->data + buffer->len, event->data, copy_len);
-        buffer->len += copy_len;
-        buffer->data[buffer->len] = '\0';
-    }
-    return ESP_OK;
-}
-
-bool set_activation_http_header(esp_http_client_handle_t client,
-                                const char *name,
-                                const char *value)
-{
-    esp_err_t err = esp_http_client_set_header(client, name, value);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, XIAOZHI_ACTIVATION_HEADER_FAILED_FORMAT, name, esp_err_to_name(err));
-        return false;
-    }
-    return true;
-}
-
-bool configure_activation_http_request(esp_http_client_handle_t client,
-                                       const char *user_agent,
-                                       const char *device_id,
-                                       const char *client_id,
-                                       const char *body)
-{
-    if (!set_activation_http_header(client, "Content-Type", "application/json") ||
-        !set_activation_http_header(client, "Accept-Language", "zh-CN") ||
-        !set_activation_http_header(client, "User-Agent", user_agent) ||
-        !set_activation_http_header(client, "Activation-Version", "1") ||
-        !set_activation_http_header(client, "Device-Id", device_id) ||
-        !set_activation_http_header(client, "Client-Id", client_id)) {
-        return false;
-    }
-    esp_err_t err = esp_http_client_set_post_field(client, body, strlen(body));
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, XIAOZHI_ACTIVATION_BODY_FAILED_FORMAT, esp_err_to_name(err));
-        return false;
-    }
-    return true;
-}
-
-bool request_activation(ActivationBuffer *response)
-{
-    if (!response) {
-        return false;
-    }
-    char device_id[kDeviceIdSize] = {};
-    char client_id[kClientIdSize] = {};
-    format_device_id(device_id, sizeof(device_id));
-    if (!load_or_create_client_id(client_id, sizeof(client_id))) {
-        return false;
-    }
-    char *body = static_cast<char *>(
-        heap_caps_calloc(1, kActivationRequestSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    if (!body) {
-        return false;
-    }
-    uint32_t flash_size = 0;
-    (void)esp_flash_get_size(nullptr, &flash_size);
-    esp_chip_info_t chip_info = {};
-    esp_chip_info(&chip_info);
-    const esp_app_desc_t *app = esp_app_get_description();
-    const esp_partition_t *running = esp_ota_get_running_partition();
-    int written = snprintf(
-        body,
-        kActivationRequestSize,
-        "{\"version\":2,\"language\":\"zh-CN\",\"flash_size\":%lu,"
-        "\"minimum_free_heap_size\":\"%lu\",\"mac_address\":\"%s\",\"uuid\":\"%s\","
-        "\"chip_model_name\":\"esp32s3\",\"chip_info\":{\"model\":%d,\"cores\":%d,\"revision\":%d,\"features\":%lu},"
-        "\"application\":{\"name\":\"%s\",\"version\":\"%s\",\"compile_time\":\"%sT%sZ\",\"idf_version\":\"%s\"},"
-        "\"ota\":{\"label\":\"%s\"},\"display\":{\"monochrome\":true,\"width\":%d,\"height\":%d},"
-        "\"board\":{\"type\":\"wifi\",\"name\":\"s3-rlcd-4.2\",\"mac\":\"%s\"}}",
-        static_cast<unsigned long>(flash_size),
-        static_cast<unsigned long>(esp_get_minimum_free_heap_size()),
-        device_id,
-        client_id,
-        static_cast<int>(chip_info.model),
-        static_cast<int>(chip_info.cores),
-        static_cast<int>(chip_info.revision),
-        static_cast<unsigned long>(chip_info.features),
-        app ? app->project_name : "weather_clock",
-        app ? app->version : APP_VERSION,
-        app ? app->date : __DATE__,
-        app ? app->time : __TIME__,
-        app ? app->idf_ver : "unknown",
-        running ? running->label : "ota_0",
-        kDisplayWidth,
-        kDisplayHeight,
-        device_id);
-    if (written < 0 || static_cast<size_t>(written) >= kActivationRequestSize) {
-        free(body);
-        return false;
-    }
-    esp_http_client_config_t config = {};
-    config.url = kActivationUrl;
-    config.method = HTTP_METHOD_POST;
-    config.timeout_ms = kActivationHttpTimeoutMs;
-    config.event_handler = activation_http_event;
-    config.user_data = response;
-    config.crt_bundle_attach = esp_crt_bundle_attach;
-    if (!acquire_network_http_transaction_lock(pdMS_TO_TICKS(config.timeout_ms))) {
-        ESP_LOGW(TAG, "xiaozhi activation deferred: TLS session is busy");
-        free(body);
-        return false;
-    }
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (!client) {
-        release_network_http_transaction_lock();
-        free(body);
-        return false;
-    }
-    char user_agent[64] = {};
-    snprintf(user_agent, sizeof(user_agent), "s3-rlcd-4.2/%s", app ? app->version : APP_VERSION);
-    if (!configure_activation_http_request(client, user_agent, device_id, client_id, body)) {
-        esp_http_client_cleanup(client);
-        release_network_http_transaction_lock();
-        free(body);
-        return false;
-    }
-    esp_err_t err = ESP_FAIL;
-    {
-        NetworkDisplayDmaGuard display_guard(true);
-        err = esp_http_client_perform(client);
-    }
-    int status = esp_http_client_get_status_code(client);
-    esp_http_client_cleanup(client);
-    release_network_http_transaction_lock();
-    free(body);
-    ESP_LOGI(TAG,
-             "xiaozhi activation result: status=%d err=%s response_len=%u",
-             status,
-             esp_err_to_name(err),
-             static_cast<unsigned>(response->len));
-    return err == ESP_OK && status == 200 && response->len > 0;
-}
-
-bool parse_activation_response(const ActivationBuffer &response)
+bool parse_activation_response(const XiaozhiActivationResponse &response)
 {
     cJSON *root = cJSON_ParseWithLength(response.data, response.len);
     if (!root) {
@@ -1624,7 +1354,7 @@ bool parse_activation_response(const ActivationBuffer &response)
         cJSON_Delete(root);
         return true;
     }
-    bool configured = save_activation_config(websocket, challenge_text);
+    bool configured = xiaozhi_save_activation_config(websocket, challenge_text);
     if (configured) {
         snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
         ESP_LOGI(TAG, "xiaozhi device binding confirmed");
@@ -1638,18 +1368,20 @@ void activate_or_restore_session()
     char url[256] = {};
     char token[256] = {};
     int32_t version = 1;
-    if (load_websocket_config(url, sizeof(url), token, sizeof(token), &version)) {
+    if (xiaozhi_load_websocket_config(url, sizeof(url), token, sizeof(token), &version)) {
         snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
         return;
     }
     snapshot_set(kXiaozhiAiActivating, kActivatingStatus, "正在请求设备绑定信息");
-    ActivationBuffer *response = static_cast<ActivationBuffer *>(
-        heap_caps_calloc(1, sizeof(ActivationBuffer), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    XiaozhiActivationResponse *response = static_cast<XiaozhiActivationResponse *>(
+        heap_caps_calloc(1,
+                         sizeof(XiaozhiActivationResponse),
+                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (!response) {
         snapshot_set(kXiaozhiAiError, kErrorStatus, "小智内存不足，请稍后重试");
         return;
     }
-    bool activated = request_activation(response) && parse_activation_response(*response);
+    bool activated = xiaozhi_request_activation(response) && parse_activation_response(*response);
     free(response);
     if (!activated) {
         snapshot_set(kXiaozhiAiError, kErrorStatus, kActivationFailureDetail);
@@ -1800,8 +1532,17 @@ void xiaozhi_ai_task(void *)
             // The audio session stays owned by the existing audio service;
             // protocol I/O cannot create a competing I2S or Wi-Fi stack.
             set_idle_low_power(false);
+            // 待唤醒阶段会释放 CPU MAX 锁。恢复实时模式后给 APB/I2S/PA
+            // 一个短稳定窗口，再打开扬声器，避免首段提示音偶发失真。
+            vTaskDelay(pdMS_TO_TICKS(kWakeAudioPerformanceSettleMs));
             snapshot_mark_user_activity();
-            (void)play_xiaozhi_wake_feedback();
+            if (!play_xiaozhi_wake_feedback()) {
+                ESP_LOGW(TAG, "Xiaozhi wake feedback failed; rebuilding voice session");
+                xiaozhi_voice_stop();
+                s_voice_started = false;
+                snapshot_set(kXiaozhiAiError, kErrorStatus, "音频状态异常，正在重试");
+                continue;
+            }
             snapshot_set(kXiaozhiAiListening, "已唤醒", "正在连接语音会话");
             bool conversation_ok = run_voice_conversation();
             bool weather_city_pending = weather_city_mcp_save_pending();
@@ -1964,20 +1705,5 @@ void xiaozhi_ai_get_snapshot(XiaozhiAiSnapshot *out)
 void xiaozhi_ai_clear_activation()
 {
     release_realtime_network();
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &nvs);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, XIAOZHI_NVS_CLEAR_OPEN_FAILED_FORMAT, esp_err_to_name(err));
-        return;
-    }
-    err = nvs_erase_all(nvs);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, XIAOZHI_NVS_CLEAR_ERASE_FAILED_FORMAT, esp_err_to_name(err));
-    } else {
-        err = nvs_commit(nvs);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, XIAOZHI_NVS_CLEAR_COMMIT_FAILED_FORMAT, esp_err_to_name(err));
-        }
-    }
-    nvs_close(nvs);
+    (void)xiaozhi_clear_activation_storage();
 }

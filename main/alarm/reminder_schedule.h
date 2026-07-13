@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+bool alarm_time_valid(int hour, int minute);
 bool reminder_targets_same_local_minute(int64_t now_ms,
                                         int alarm_hour,
                                         int alarm_minute,

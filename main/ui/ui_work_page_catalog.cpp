@@ -197,6 +197,18 @@ bool work_page_requires_network(int page)
     return is_work_page_index(page) && (kNetworkWorkPageMask & work_page_mask(page)) != 0;
 }
 
+uint8_t normalize_work_page_enabled_mask(uint8_t page_mask)
+{
+    page_mask &= kAllWorkPageMask;
+    if (page_mask == 0) {
+        return kAllWorkPageMask;
+    }
+    if (!page_mask_has_non_xiaozhi_page(page_mask)) {
+        page_mask |= work_page_mask(kWorkPageWeatherClock);
+    }
+    return page_mask;
+}
+
 uint8_t work_page_mask_for_offline_mode(uint8_t page_mask)
 {
     uint8_t local_mask = static_cast<uint8_t>(page_mask & kLocalWorkPageMask);

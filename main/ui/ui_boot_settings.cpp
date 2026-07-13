@@ -354,31 +354,11 @@ void build_settings_page()
     warn_if_center_align_failed(hint, "settings hint label create failed");
 }
 
-bool update_settings_page()
+namespace {
+void populate_settings_secondary_items(
+    int primary,
+    char secondary_items[][kSettingsSecondaryTextSize])
 {
-    ota_reset_status_if_idle();
-    bool changed = false;
-    static lv_obj_t *last_settings_root = nullptr;
-    static int last_primary = -1;
-    static int last_selected = -1;
-    static bool last_focus_secondary = false;
-    static int last_ota_state = -1;
-    static int last_ota_progress = -2;
-    static int last_ota_speed = -2;
-
-    char secondary_items[kSettingsSecondaryMaxCount][kSettingsSecondaryTextSize] = {};
-    int primary = clamp_settings_primary(g_settings_primary_selection);
-    int selected = clamp_settings_selection_for_mode(primary,
-                                                     g_settings_selection,
-                                                     g_settings_page_toggle_mode);
-    g_settings_primary_selection = primary;
-    g_settings_selection = selected;
-    if (g_settings_page_order_mode) {
-        normalize_work_page_order();
-        g_settings_page_order_selection =
-            valid_enabled_work_page_order_index(g_settings_page_order_selection);
-    }
-
     if (primary == kSettingsPrimaryNetwork) {
         set_secondary_text(secondary_items, kNetworkSettingsNtpItem, kSettingsNetworkSyncTimeText);
         set_secondary_text(secondary_items, kNetworkSettingsWeatherItem, kSettingsNetworkSyncWeatherText);
@@ -432,6 +412,17 @@ bool update_settings_page()
         set_secondary_text(secondary_items, kSystemSettingsInfoItem, kSettingsSystemInfoText);
         set_secondary_text(secondary_items, kSystemSettingsOtaItem, kSettingsCheckUpdateText);
     }
+}
+
+bool settings_render_selection_changed(int primary, int selected)
+{
+    static lv_obj_t *last_settings_root = nullptr;
+    static int last_primary = -1;
+    static int last_selected = -1;
+    static bool last_focus_secondary = false;
+    static int last_ota_state = -1;
+    static int last_ota_progress = -2;
+    static int last_ota_speed = -2;
     static bool last_page_order_mode = false;
     static bool last_page_toggle_mode = false;
     static int last_page_order_selection = -1;
@@ -446,7 +437,6 @@ bool update_settings_page()
                              g_ota_progress != last_ota_progress ||
                              g_ota_speed_kbps != last_ota_speed;
     if (selection_changed) {
-        changed = true;
         last_settings_root = g_settings_root;
         last_selected = selected;
         last_primary = primary;
@@ -458,6 +448,12 @@ bool update_settings_page()
         last_ota_progress = g_ota_progress;
         last_ota_speed = g_ota_speed_kbps;
     }
+    return selection_changed;
+}
+
+bool update_settings_primary_items(int primary, bool selection_changed)
+{
+    bool changed = false;
     for (int i = 0; i < kSettingsPrimaryCount; ++i) {
         if (g_settings_labels[i]) {
             changed |= set_label_text_if_changed(g_settings_labels[i], kSettingsPrimaryItems[i]);
@@ -466,6 +462,140 @@ bool update_settings_page()
             }
         }
     }
+    return changed;
+}
+
+bool layout_settings_secondary_slot(
+    int index,
+    int primary,
+    int visible_order_count,
+    const int *visible_order_indices,
+    char secondary_items[][kSettingsSecondaryTextSize])
+{
+    int slot = kSettingsPrimaryCount + index;
+    if (g_settings_page_order_mode || g_settings_page_toggle_mode) {
+        int manager_item_count = g_settings_page_order_mode ? visible_order_count : kWorkPageCount;
+        if (index >= manager_item_count) {
+            set_obj_visible(g_settings_labels[slot], false);
+            hide_settings_switch_slot(index);
+            return false;
+        }
+        SettingsGridCell cell = settings_grid_cell(index);
+        lv_obj_set_pos(g_settings_labels[slot], cell.x, cell.y);
+        lv_obj_set_size(g_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
+        if (g_settings_page_order_mode) {
+            int order_index = visible_order_indices[index];
+            format_secondary_text(secondary_items,
+                                  index,
+                                  kSettingsPageOrderEntryFormat,
+                                  index + 1,
+                                  work_page_name(g_work_page_order[order_index]));
+            hide_settings_switch_slot(index);
+        } else {
+            set_secondary_text(secondary_items, index, work_page_name(index));
+            if (g_settings_switch_dots[index]) {
+                lv_obj_set_pos(g_settings_switch_dots[index],
+                               cell.x + kSettingsGridSwitchDotXOffset,
+                               cell.y + kSettingsGridSwitchDotYOffset);
+            }
+        }
+    } else if (primary == kSettingsPrimarySystem) {
+        bool grid_item = index < kSystemSettingsGridItemCount;
+        if (grid_item) {
+            SettingsGridCell cell = settings_grid_cell(index);
+            lv_obj_set_pos(g_settings_labels[slot], cell.x, cell.y);
+            lv_obj_set_size(g_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
+            if (g_settings_switch_dots[index]) {
+                lv_obj_set_pos(g_settings_switch_dots[index],
+                               cell.x + kSettingsGridSwitchDotXOffset,
+                               cell.y + kSettingsGridSwitchDotYOffset);
+            }
+            if (g_settings_switch_texts[index]) {
+                SettingsGridSwitchTextLayout text_layout = settings_grid_switch_text_layout(primary);
+                lv_obj_set_pos(g_settings_switch_texts[index],
+                               cell.x + text_layout.x_offset,
+                               cell.y + kSettingsGridSwitchTextYOffset);
+                lv_obj_set_size(g_settings_switch_texts[index], text_layout.w, kSettingsSwitchTextH);
+            }
+        } else {
+            lv_obj_set_pos(g_settings_labels[slot],
+                           kSettingsSecondaryX,
+                           settings_long_item_y(primary));
+            lv_obj_set_size(g_settings_labels[slot], kSettingsSecondaryW, kSettingsSecondaryH);
+            hide_settings_switch_slot(index);
+        }
+    } else {
+        lv_obj_set_pos(g_settings_labels[slot], kSettingsSecondaryX, kSettingsListRowY[index]);
+        lv_obj_set_size(g_settings_labels[slot], kSettingsSecondaryW, kSettingsSecondaryH);
+        if (g_settings_switch_dots[index]) {
+            lv_obj_set_pos(g_settings_switch_dots[index],
+                           kSettingsSwitchDotX,
+                           kSettingsListRowY[index] + kSettingsSwitchDotYOffset);
+        }
+        if (g_settings_switch_texts[index]) {
+            lv_obj_set_pos(g_settings_switch_texts[index],
+                           kSettingsSwitchTextX,
+                           kSettingsListRowY[index] + kSettingsSwitchTextYOffset);
+            lv_obj_set_size(g_settings_switch_texts[index], kSettingsSwitchTextW, kSettingsSwitchTextH);
+        }
+    }
+    return true;
+}
+
+void update_settings_switch_slot(int index, int primary, int selected, bool visible)
+{
+    bool dot_visible = false;
+    bool dot_on = false;
+    bool switch_text_visible = false;
+    const char *switch_text = "";
+    if (visible && primary == kSettingsPrimarySound) {
+        if (index >= kSoundSettingsHourlyItem) {
+            dot_visible = true;
+            dot_on = index == kSoundSettingsHourlyItem ? g_hourly_chime_enabled : g_hourly_chime_all_day;
+        }
+    } else if (visible &&
+               primary == kSettingsPrimaryDisplay &&
+               g_settings_page_toggle_mode) {
+        dot_visible = true;
+        dot_on = is_work_page_enabled(index);
+    } else if (visible &&
+               primary == kSettingsPrimaryDisplay &&
+               !g_settings_page_toggle_mode &&
+               !g_settings_page_order_mode &&
+               (index == kDisplaySettingsAlarmItem ||
+                index == kDisplaySettingsXiaozhiAutoReturnItem)) {
+        dot_visible = true;
+        dot_on = index == kDisplaySettingsAlarmItem
+                     ? alarm_is_enabled()
+                     : g_xiaozhi_auto_return_enabled;
+    }
+    if (g_settings_switch_dots[index]) {
+        set_obj_visible(g_settings_switch_dots[index], dot_visible);
+        if (dot_visible) {
+            style_settings_switch_dot(g_settings_switch_dots[index],
+                                      dot_on,
+                                      g_settings_focus_secondary && index == selected);
+        }
+    }
+    if (g_settings_switch_texts[index]) {
+        set_obj_visible(g_settings_switch_texts[index], switch_text_visible);
+        if (switch_text_visible) {
+            set_label_text_if_changed(g_settings_switch_texts[index], switch_text);
+            bool selected_item = g_settings_focus_secondary && index == selected;
+            lv_obj_set_style_text_color(g_settings_switch_texts[index],
+                                        selected_item ? lv_color_white() : lv_color_black(),
+                                        LV_PART_MAIN);
+        }
+    }
+}
+
+bool update_settings_secondary_items(
+    int primary,
+    int selected,
+    bool selection_changed,
+    char secondary_items[][kSettingsSecondaryTextSize])
+{
+    bool changed = false;
     int secondary_count = settings_secondary_count(primary);
     int visible_order_indices[kWorkPageCount] = {};
     int visible_order_count = g_settings_page_order_mode
@@ -477,71 +607,12 @@ bool update_settings_page()
         if (!g_settings_labels[slot]) {
             continue;
         }
-        if (g_settings_page_order_mode || g_settings_page_toggle_mode) {
-            int manager_item_count = g_settings_page_order_mode ? visible_order_count : kWorkPageCount;
-            if (i >= manager_item_count) {
-                set_obj_visible(g_settings_labels[slot], false);
-                hide_settings_switch_slot(i);
-                continue;
-            }
-            SettingsGridCell cell = settings_grid_cell(i);
-            lv_obj_set_pos(g_settings_labels[slot], cell.x, cell.y);
-            lv_obj_set_size(g_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
-            if (g_settings_page_order_mode) {
-                int order_index = visible_order_indices[i];
-                format_secondary_text(secondary_items,
-                                      i,
-                                      kSettingsPageOrderEntryFormat,
-                                      i + 1,
-                                      work_page_name(g_work_page_order[order_index]));
-                hide_settings_switch_slot(i);
-            } else {
-                set_secondary_text(secondary_items, i, work_page_name(i));
-                if (g_settings_switch_dots[i]) {
-                    lv_obj_set_pos(g_settings_switch_dots[i],
-                                   cell.x + kSettingsGridSwitchDotXOffset,
-                                   cell.y + kSettingsGridSwitchDotYOffset);
-                }
-            }
-        } else if (primary == kSettingsPrimarySystem) {
-            bool grid_item = i < kSystemSettingsGridItemCount;
-            if (grid_item) {
-                SettingsGridCell cell = settings_grid_cell(i);
-                lv_obj_set_pos(g_settings_labels[slot], cell.x, cell.y);
-                lv_obj_set_size(g_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
-                if (g_settings_switch_dots[i]) {
-                    lv_obj_set_pos(g_settings_switch_dots[i],
-                                   cell.x + kSettingsGridSwitchDotXOffset,
-                                   cell.y + kSettingsGridSwitchDotYOffset);
-                }
-                if (g_settings_switch_texts[i]) {
-                    SettingsGridSwitchTextLayout text_layout = settings_grid_switch_text_layout(primary);
-                    lv_obj_set_pos(g_settings_switch_texts[i],
-                                   cell.x + text_layout.x_offset,
-                                   cell.y + kSettingsGridSwitchTextYOffset);
-                    lv_obj_set_size(g_settings_switch_texts[i], text_layout.w, kSettingsSwitchTextH);
-                }
-            } else {
-                lv_obj_set_pos(g_settings_labels[slot],
-                               kSettingsSecondaryX,
-                               settings_long_item_y(primary));
-                lv_obj_set_size(g_settings_labels[slot], kSettingsSecondaryW, kSettingsSecondaryH);
-                hide_settings_switch_slot(i);
-            }
-        } else {
-            lv_obj_set_pos(g_settings_labels[slot], kSettingsSecondaryX, kSettingsListRowY[i]);
-            lv_obj_set_size(g_settings_labels[slot], kSettingsSecondaryW, kSettingsSecondaryH);
-            if (g_settings_switch_dots[i]) {
-                lv_obj_set_pos(g_settings_switch_dots[i],
-                               kSettingsSwitchDotX,
-                               kSettingsListRowY[i] + kSettingsSwitchDotYOffset);
-            }
-            if (g_settings_switch_texts[i]) {
-                lv_obj_set_pos(g_settings_switch_texts[i],
-                               kSettingsSwitchTextX,
-                               kSettingsListRowY[i] + kSettingsSwitchTextYOffset);
-                lv_obj_set_size(g_settings_switch_texts[i], kSettingsSwitchTextW, kSettingsSwitchTextH);
-            }
+        if (!layout_settings_secondary_slot(i,
+                                            primary,
+                                            visible_order_count,
+                                            visible_order_indices,
+                                            secondary_items)) {
+            continue;
         }
         bool visible = i < secondary_count;
         if (g_settings_page_order_mode) {
@@ -564,60 +635,53 @@ bool update_settings_page()
                 }
             }
         }
-        bool dot_visible = false;
-        bool dot_on = false;
-        bool switch_text_visible = false;
-        const char *switch_text = "";
-        if (visible && primary == kSettingsPrimarySound) {
-            if (i >= kSoundSettingsHourlyItem) {
-                dot_visible = true;
-                dot_on = i == kSoundSettingsHourlyItem ? g_hourly_chime_enabled : g_hourly_chime_all_day;
-            }
-        } else if (visible &&
-                   primary == kSettingsPrimaryDisplay &&
-                   g_settings_page_toggle_mode) {
-            dot_visible = true;
-            dot_on = is_work_page_enabled(i);
-        } else if (visible &&
-                   primary == kSettingsPrimaryDisplay &&
-                   !g_settings_page_toggle_mode &&
-                   !g_settings_page_order_mode &&
-                   (i == kDisplaySettingsAlarmItem ||
-                    i == kDisplaySettingsXiaozhiAutoReturnItem)) {
-            dot_visible = true;
-            dot_on = i == kDisplaySettingsAlarmItem
-                         ? alarm_is_enabled()
-                         : g_xiaozhi_auto_return_enabled;
-        }
-        if (g_settings_switch_dots[i]) {
-            set_obj_visible(g_settings_switch_dots[i], dot_visible);
-            if (dot_visible) {
-                style_settings_switch_dot(g_settings_switch_dots[i], dot_on, g_settings_focus_secondary && i == selected);
-            }
-        }
-        if (g_settings_switch_texts[i]) {
-            set_obj_visible(g_settings_switch_texts[i], switch_text_visible);
-            if (switch_text_visible) {
-                set_label_text_if_changed(g_settings_switch_texts[i], switch_text);
-                bool selected_item = g_settings_focus_secondary && i == selected;
-                lv_obj_set_style_text_color(g_settings_switch_texts[i],
-                                            selected_item ? lv_color_white() : lv_color_black(),
-                                            LV_PART_MAIN);
-            }
-        }
+        update_settings_switch_slot(i, primary, selected, visible);
     }
+    return changed;
+}
+
+bool update_settings_feedback_label()
+{
+    if (!g_settings_feedback_label) {
+        return false;
+    }
+    TickType_t now = xTaskGetTickCount();
+    if (g_settings_feedback[0] &&
+        g_settings_feedback_until_tick != 0 &&
+        app_tick_deadline_pending(now, g_settings_feedback_until_tick)) {
+        return set_label_text_if_changed(g_settings_feedback_label, g_settings_feedback);
+    }
+    g_settings_feedback[0] = '\0';
+    return set_label_text_if_changed(g_settings_feedback_label, "");
+}
+} // namespace
+
+bool update_settings_page()
+{
+    ota_reset_status_if_idle();
+    char secondary_items[kSettingsSecondaryMaxCount][kSettingsSecondaryTextSize] = {};
+    int primary = clamp_settings_primary(g_settings_primary_selection);
+    int selected = clamp_settings_selection_for_mode(primary,
+                                                     g_settings_selection,
+                                                     g_settings_page_toggle_mode);
+    g_settings_primary_selection = primary;
+    g_settings_selection = selected;
+    if (g_settings_page_order_mode) {
+        normalize_work_page_order();
+        g_settings_page_order_selection =
+            valid_enabled_work_page_order_index(g_settings_page_order_selection);
+    }
+
+    populate_settings_secondary_items(primary, secondary_items);
+    bool selection_changed = settings_render_selection_changed(primary, selected);
+    bool changed = selection_changed;
+    changed |= update_settings_primary_items(primary, selection_changed);
+    changed |= update_settings_secondary_items(primary,
+                                               selected,
+                                               selection_changed,
+                                               secondary_items);
     bool ota_panel_visible = primary == kSettingsPrimarySystem && selected == kSystemSettingsOtaItem;
     changed |= update_settings_ota_panel(ota_panel_visible);
-    if (g_settings_feedback_label) {
-        TickType_t now = xTaskGetTickCount();
-        if (g_settings_feedback[0] &&
-            g_settings_feedback_until_tick != 0 &&
-            app_tick_deadline_pending(now, g_settings_feedback_until_tick)) {
-            changed |= set_label_text_if_changed(g_settings_feedback_label, g_settings_feedback);
-        } else {
-            g_settings_feedback[0] = '\0';
-            changed |= set_label_text_if_changed(g_settings_feedback_label, "");
-        }
-    }
+    changed |= update_settings_feedback_label();
     return changed;
 }

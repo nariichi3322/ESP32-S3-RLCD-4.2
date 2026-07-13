@@ -54,18 +54,6 @@ constexpr const char *kCaptiveDnsTexts[] = {
     CAPTIVE_DNS_TASK_START_FAILED_LOG,
 };
 
-constexpr size_t cstr_len(const char *text)
-{
-    size_t len = 0;
-    if (!text) {
-        return 0;
-    }
-    while (text[len] != '\0') {
-        ++len;
-    }
-    return len;
-}
-
 static_assert(kCaptiveDnsPort > 0, "captive DNS port must be positive");
 static_assert(kCaptiveDnsSocketTimeoutSec > 0, "captive DNS socket timeout must be positive");
 static_assert(kCaptiveDnsStopWaitAttempts > 0, "captive DNS stop wait attempts must be positive");
@@ -74,7 +62,7 @@ static_assert(kCaptiveDnsStopWaitDelay > 0, "captive DNS stop wait delay must be
 static_assert(kCaptiveDnsTaskStack > 0, "captive DNS task stack must be positive");
 static_assert(kCaptiveDnsTaskPriority > tskIDLE_PRIORITY, "captive DNS task priority must exceed idle");
 static_assert(kCaptiveDnsTaskCore >= 0, "captive DNS task core must be non-negative");
-static_assert(kCaptivePortalUriSize > cstr_len(kSetupPortalUrl),
+static_assert(kCaptivePortalUriSize > cstr_length(kSetupPortalUrl),
               "mutable captive portal URI must fit setup portal URL and NUL");
 static_assert(array_count(kCaptiveDnsTexts) > 0, "captive DNS text registry must not be empty");
 static_assert(cstr_array_nonempty(kCaptiveDnsTexts), "captive DNS texts must be non-empty");

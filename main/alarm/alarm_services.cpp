@@ -22,8 +22,6 @@ constexpr const char *kAlarmEnabledKey = "enabled";
 constexpr const char *kAlarmHourKey = "hour";
 constexpr const char *kAlarmMinuteKey = "minute";
 constexpr int kAlarmSoundIndex = 1; // 设置页“声音选择 2”。
-constexpr int kAlarmHoursPerDay = 24;
-constexpr int kAlarmMinutesPerHour = 60;
 constexpr uint32_t kAlarmMaximumRingMs = 60U * 1000U;
 constexpr uint32_t kAlarmRepeatPauseMs = 5U * 1000U;
 constexpr uint32_t kAlarmTaskPollMs = 1000U;
@@ -47,12 +45,6 @@ TaskHandle_t s_alarm_task_handle = nullptr;
 std::atomic<bool> s_stop_requested{false};
 std::atomic<bool> s_save_pending{false};
 AlarmReplacementConfirmation s_replacement_confirmation = {};
-
-bool valid_alarm_time(int hour, int minute)
-{
-    return hour >= 0 && hour < kAlarmHoursPerDay &&
-           minute >= 0 && minute < kAlarmMinutesPerHour;
-}
 
 bool conflicts_with_running_pomodoro(int hour, int minute)
 {
@@ -163,7 +155,7 @@ bool load_alarm()
         return true;
     }
     if (enabled_err != ESP_OK || hour_err != ESP_OK || minute_err != ESP_OK ||
-        enabled > 1 || !valid_alarm_time(hour, minute)) {
+        enabled > 1 || !alarm_time_valid(hour, minute)) {
         ESP_LOGW(TAG, "alarm NVS state invalid, disabling alarm");
         (void)persist_alarm(false, 0, 0);
         publish_alarm_state(false, false, 0, 0);
@@ -240,7 +232,7 @@ void run_alarm_ring()
 bool mcp_set_alarm(const XiaozhiMcpAlarmRequest &request, char *result, size_t result_len)
 {
     AlarmSnapshot snapshot = {};
-    if (!valid_alarm_time(request.hour, request.minute)) {
+    if (!alarm_time_valid(request.hour, request.minute)) {
         if (result && result_len > 0) {
             strlcpy(result, "alarm rejected", result_len);
         }
@@ -378,7 +370,7 @@ bool alarm_set_once(int hour, int minute)
 {
     AlarmSnapshot snapshot = {};
     alarm_get_snapshot(&snapshot);
-    if (snapshot.ringing || !valid_alarm_time(hour, minute) ||
+    if (snapshot.ringing || !alarm_time_valid(hour, minute) ||
         conflicts_with_running_pomodoro(hour, minute) ||
         !persist_alarm(true, hour, minute)) {
         return false;

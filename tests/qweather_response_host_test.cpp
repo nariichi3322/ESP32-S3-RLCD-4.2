@@ -35,6 +35,13 @@ void test_json_root_rejects_invalid_input()
     assert(!invalid_root);
 }
 
+void test_json_root_accepts_read_only_text()
+{
+    NetworkJsonRoot root(R"({"code":"200"})");
+    assert(root);
+    assert(qweather_code_ok(cJSON_GetObjectItem(root.get(), "code")));
+}
+
 void test_success_object_and_array()
 {
     char json[] = R"({"code":"200","now":{"temp":"26"},"daily":[{"fxDate":"2026-07-13"}]})";
@@ -86,6 +93,7 @@ int main()
 {
     test_stage_and_response_buffer();
     test_json_root_rejects_invalid_input();
+    test_json_root_accepts_read_only_text();
     test_success_object_and_array();
     test_failed_and_missing_business_code();
     return 0;

@@ -10,6 +10,9 @@ int main()
     assert(ota_compare_versions("1.5.5", "v1.5.5") == 0);
     assert(ota_compare_versions("v1.4.9", "v1.5.0") < 0);
     assert(ota_compare_versions(nullptr, "v1.5.5") == 0);
+    assert(ota_compare_versions("v999999999999999999999.0.0", "v1.5.5") > 0);
+    assert(ota_compare_versions("v999999999999999999999.1.0",
+                                "v999999999999999999999.0.9") > 0);
 
     constexpr const char *kLowerSha =
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";

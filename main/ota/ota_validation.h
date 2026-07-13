@@ -1,6 +1,7 @@
 // 声明 OTA 版本比较、SHA256 文本校验和十六进制转换接口。
 #pragma once
 
+#include <limits.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
@@ -27,7 +28,12 @@ inline int parse_semver_component(const char **cursor)
     }
     int value = 0;
     while (**cursor >= '0' && **cursor <= '9') {
-        value = value * 10 + (**cursor - '0');
+        int digit = **cursor - '0';
+        if (value <= (INT_MAX - digit) / 10) {
+            value = value * 10 + digit;
+        } else {
+            value = INT_MAX;
+        }
         ++(*cursor);
     }
     if (**cursor == '.') {
@@ -38,6 +44,7 @@ inline int parse_semver_component(const char **cursor)
 
 static_assert(kSemverComponentCount == 3,
               "OTA semantic version comparison expects three components");
+static_assert(INT_MAX >= 9999, "OTA semantic version component range is unexpectedly small");
 static_assert(kOtaSha256ByteCount == 32, "OTA SHA256 byte count must remain 32");
 static_assert(kOtaSha256HexLen == kOtaSha256ByteCount * 2,
               "OTA SHA256 hex text must use two characters per byte");

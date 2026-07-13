@@ -13,6 +13,7 @@
 #include "sensor_services.h"
 #include "ui_battery.h"
 #include "ui_battery_blink.h"
+#include "ui_loop_schedule.h"
 #include "ui_setup_status.h"
 #include "ui_text_format.h"
 #include "ui_visible_cache.h"
@@ -30,13 +31,6 @@ constexpr int kUiNetworkDiagIdlePollMs = 500;
 constexpr int kUiSettingsPollMs = 100;
 constexpr int kUiPostPageSwitchPollMs = 250;
 constexpr int kUiLvglLockTimeoutMs = 80;
-constexpr int kUiFlipClockPollMs = 200;
-constexpr int64_t kUiUsPerSecond = 1000000;
-constexpr int kUiMsPerSecond = 1000;
-constexpr int kUiSecondsPerMinute = 60;
-constexpr int kUiBoundaryWakeSlackMs = 5;
-constexpr int kUiNextSecondDelayMinMs = 10;
-constexpr int kUiNextSecondDelayMaxMs = kUiMsPerSecond + kUiBoundaryWakeSlackMs;
 constexpr size_t kUiSensorValueTextSize = 32;
 constexpr size_t kUiWeatherCityTextSize = 48;
 constexpr size_t kUiWeatherValueTextSize = 24;
@@ -72,18 +66,6 @@ constexpr const char *kUiLogTexts[] = {
     UI_XIAOZHI_AUTO_RETURN_LOG,
 };
 
-constexpr size_t cstr_len(const char *text)
-{
-    size_t len = 0;
-    if (!text) {
-        return 0;
-    }
-    while (text[len] != '\0') {
-        ++len;
-    }
-    return len;
-}
-
 bool settings_timeout_elapsed(TickType_t last_activity)
 {
     if (last_activity == 0) {
@@ -102,22 +84,14 @@ static_assert(kUiNetworkDiagIdlePollMs >= kUiNetworkDiagRunningPollMs,
 static_assert(kUiSettingsPollMs > 0, "settings poll interval must be positive");
 static_assert(kUiPostPageSwitchPollMs > 0, "post page switch poll interval must be positive");
 static_assert(kUiLvglLockTimeoutMs > 0, "UI LVGL lock timeout must be positive");
-static_assert(kUiFlipClockPollMs > 0 && kUiFlipClockPollMs <= kUiMsPerSecond,
-              "flip clock poll interval must stay within one second");
-static_assert(kUiUsPerSecond == 1000LL * kUiMsPerSecond,
-              "UI microsecond and millisecond constants must stay consistent");
-static_assert(kUiBoundaryWakeSlackMs >= 0, "UI boundary wake slack must be non-negative");
-static_assert(kUiNextSecondDelayMinMs > 0, "next-second delay minimum must be positive");
-static_assert(kUiNextSecondDelayMaxMs >= kUiMsPerSecond,
-              "next-second delay maximum must cover one second");
-static_assert(kUiNextSecondDelayMaxMs >= kUiMsPerSecond + kUiBoundaryWakeSlackMs,
-              "next-second delay maximum must include boundary wake slack");
+static_assert(sizeof(TickType_t) == sizeof(uint32_t),
+              "UI delay candidates require 32-bit FreeRTOS ticks");
 static_assert(kUiSensorValueTextSize > 1, "sensor status text buffer must fit text and NUL");
 static_assert(kUiWeatherCityTextSize > 1, "weather city status text buffer must fit text and NUL");
 static_assert(kUiWeatherValueTextSize > 1, "weather value status text buffer must fit text and NUL");
-static_assert(cstr_len(kUiSensorTempPlaceholder) + 1 <= kUiSensorValueTextSize,
+static_assert(cstr_length(kUiSensorTempPlaceholder) + 1 <= kUiSensorValueTextSize,
               "sensor temperature placeholder must fit status text buffer");
-static_assert(cstr_len(kUiSensorHumidityPlaceholder) + 1 <= kUiSensorValueTextSize,
+static_assert(cstr_length(kUiSensorHumidityPlaceholder) + 1 <= kUiSensorValueTextSize,
               "sensor humidity placeholder must fit status text buffer");
 static_assert(array_count(kUiFormatTexts) > 0, "UI format text registry must not be empty");
 static_assert(array_count(kUiLogTexts) > 0, "UI log text registry must not be empty");
@@ -186,24 +160,12 @@ bool update_clock_weather_panel_text(const char *city,
 
 TickType_t next_second_delay_ticks()
 {
-    int64_t us = esp_timer_get_time();
-    int64_t until_next = kUiUsPerSecond - (us % kUiUsPerSecond);
-    int delay_ms = (int)(until_next / kUiMsPerSecond) + kUiBoundaryWakeSlackMs;
-    if (delay_ms < kUiNextSecondDelayMinMs) {
-        delay_ms = kUiNextSecondDelayMinMs;
-    } else if (delay_ms > kUiNextSecondDelayMaxMs) {
-        delay_ms = kUiNextSecondDelayMaxMs;
-    }
-    return pdMS_TO_TICKS(delay_ms);
+    return pdMS_TO_TICKS(ui_next_second_delay_ms(esp_timer_get_time()));
 }
 
 TickType_t next_minute_delay_ticks(const struct tm &local)
 {
-    int seconds_to_next = kUiSecondsPerMinute - local.tm_sec;
-    if (seconds_to_next <= 0 || seconds_to_next > kUiSecondsPerMinute) {
-        seconds_to_next = kUiSecondsPerMinute;
-    }
-    return pdMS_TO_TICKS(seconds_to_next * kUiMsPerSecond + kUiBoundaryWakeSlackMs);
+    return pdMS_TO_TICKS(ui_next_minute_delay_ms(local.tm_sec));
 }
 
 bool weather_cache_stale(time_t now_value)
@@ -315,14 +277,12 @@ TickType_t next_ui_loop_delay_ticks(const struct tm &local, bool battery_blink_v
     bool history_idle = low_refresh_work_page_idle(kWorkPageHistory, local);
     bool calendar_idle = low_refresh_work_page_idle(kWorkPageCalendar, local);
     bool weather_board_idle = low_refresh_work_page_idle(kWorkPageWeatherBoard, local);
-    TickType_t delay_ticks = (low_idle || gallery_idle || history_idle || calendar_idle || weather_board_idle)
-                                 ? next_minute_delay_ticks(local)
-                                 : next_second_delay_ticks();
+    uint32_t delay_candidates[5] = {};
+    delay_candidates[0] = (low_idle || gallery_idle || history_idle || calendar_idle || weather_board_idle)
+                              ? next_minute_delay_ticks(local)
+                              : next_second_delay_ticks();
     if (flip_clock_fast_poll_active(local)) {
-        TickType_t flip_poll_ticks = pdMS_TO_TICKS(kUiFlipClockPollMs);
-        if (flip_poll_ticks < delay_ticks) {
-            delay_ticks = flip_poll_ticks;
-        }
+        delay_candidates[1] = pdMS_TO_TICKS(kUiLoopFlipClockPollMs);
     }
     if (normal_work_page_active(kWorkPageXiaozhiAI)) {
         PomodoroSnapshot pomodoro = {};
@@ -330,33 +290,20 @@ TickType_t next_ui_loop_delay_ticks(const struct tm &local, bool battery_blink_v
         if (pomodoro.state == kPomodoroRunning) {
             uint32_t boundary_ms = pomodoro_next_display_boundary_ms(pomodoro.remaining_ms);
             if (boundary_ms > 0) {
-                TickType_t boundary_ticks = pdMS_TO_TICKS(boundary_ms + kUiBoundaryWakeSlackMs);
-                if (boundary_ticks == 0) {
-                    boundary_ticks = 1;
-                }
-                if (boundary_ticks < delay_ticks) {
-                    delay_ticks = boundary_ticks;
-                }
+                delay_candidates[2] = ui_nonzero_delay_ticks(
+                    pdMS_TO_TICKS(ui_pomodoro_boundary_delay_ms(boundary_ms)));
             }
         }
         uint32_t subtitle_delay_ms = xiaozhi_subtitle_animation_delay_ms();
         if (subtitle_delay_ms > 0) {
-            TickType_t subtitle_delay_ticks = pdMS_TO_TICKS(subtitle_delay_ms);
-            if (subtitle_delay_ticks == 0) {
-                subtitle_delay_ticks = 1;
-            }
-            if (subtitle_delay_ticks < delay_ticks) {
-                delay_ticks = subtitle_delay_ticks;
-            }
+            delay_candidates[3] = ui_nonzero_delay_ticks(pdMS_TO_TICKS(subtitle_delay_ms));
         }
     }
     if (battery_blink_visible) {
-        TickType_t blink_ticks = next_second_delay_ticks();
-        if (blink_ticks < delay_ticks) {
-            delay_ticks = blink_ticks;
-        }
+        delay_candidates[4] = next_second_delay_ticks();
     }
-    return delay_ticks;
+    return static_cast<TickType_t>(
+        ui_shortest_delay_ticks(delay_candidates, array_count(delay_candidates)));
 }
 } // namespace
 

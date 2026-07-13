@@ -13,7 +13,7 @@
 static constexpr int kCalendarCanvasW = 364;
 static constexpr int kCalendarCanvasH = 228;
 static constexpr int kCalendarCanvasX = 18;
-static constexpr int kCalendarCanvasY = 60;
+static constexpr int kCalendarCanvasY = 63;
 static constexpr int kCalendarTopLineX = 18;
 static constexpr int kCalendarTopLineY = 54;
 static constexpr int kCalendarTopLineW = 364;
@@ -22,7 +22,7 @@ static constexpr int kCalendarSundayColumn = 0;
 static constexpr int kCalendarSaturdayColumn = kCalendarWeekdayCount - 1;
 static constexpr int kCalendarHeaderY = 2;
 static constexpr int kCalendarHeaderH = 18;
-static constexpr int kCalendarCellY = 29;
+static constexpr int kCalendarCellY = 27;
 static constexpr int kCalendarCellW = 52;
 static constexpr int kCalendarCellH = 41;
 static constexpr int kCalendarGridX = 0;

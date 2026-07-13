@@ -190,22 +190,27 @@ void CodecPort::CodecPort_SetMicGain(float db_value) {
 	esp_codec_dev_set_in_gain(record, db_value);
 }
 
-void CodecPort::CodecPort_CloseSpeaker(void) {
-    if (!initialized || !playback || !speaker_open) return;
+bool CodecPort::CodecPort_CloseSpeaker(void) {
+    if (!initialized || !playback || !speaker_open) return true;
 	int ret = esp_codec_dev_close(playback);
     if (ret != ESP_CODEC_DEV_OK) {
         ESP_LOGW(TAG, "speaker close failed: %d", ret);
+        return false;
     }
     speaker_open = false;
+    speaker_sample_rate = 0;
+    return true;
 }
 
-void CodecPort::CodecPort_CloseMic(void) {
-    if (!initialized || !record || !mic_open) return;
+bool CodecPort::CodecPort_CloseMic(void) {
+    if (!initialized || !record || !mic_open) return true;
 	int ret = esp_codec_dev_close(record);
     if (ret != ESP_CODEC_DEV_OK) {
         ESP_LOGW(TAG, "mic close failed: %d", ret);
+        return false;
     }
     mic_open = false;
+    return true;
 }
 
 int CodecPort::CodecPort_PlayWrite(void *ptr,int ptr_len) {
@@ -240,8 +245,11 @@ bool CodecPort::CodecPort_OpenXiaozhiSpeaker(int sample_rate) {
     if (sample_rate <= 0) {
         return false;
     }
-    if (speaker_open) {
+    if (speaker_open && speaker_sample_rate == sample_rate) {
         return true;
+    }
+    if (speaker_open && !CodecPort_CloseSpeaker()) {
+        return false;
     }
     bool opened = CodecPort_SetInfo(kCodecNameEs8311,
                                     1,
@@ -249,6 +257,7 @@ bool CodecPort::CodecPort_OpenXiaozhiSpeaker(int sample_rate) {
                                     1,
                                     kCodecPcmPlaybackBitsPerSample);
     if (opened) {
+        speaker_sample_rate = sample_rate;
         CodecPort_SetSpeakerVol(kCodecXiaozhiSpeakerVolume);
         ESP_LOGI(TAG, "Xiaozhi speaker opened: %d Hz volume=%d%%",
                  sample_rate,
@@ -257,37 +266,46 @@ bool CodecPort::CodecPort_OpenXiaozhiSpeaker(int sample_rate) {
     return opened;
 }
 
-bool CodecPort::CodecPort_SetInfo(const char *strName,int open_en,int sample_rate,int channel,int bits_per_sample) {
+bool CodecPort::CodecPort_SetInfo(const char *strName,
+                                  int open_en,
+                                  int sample_rate,
+                                  int channel,
+                                  int bits_per_sample)
+{
     esp_codec_dev_sample_info_t fs = {};
-    	fs.sample_rate = sample_rate;
-    	fs.channel = channel;
-    	fs.bits_per_sample = bits_per_sample;
-        if (channel == kCodecTdmChannelCount) {
-            fs.channel_mask = kCodecTdmChannelMask;
-            fs.mclk_multiple = kCodecTdmMclkMultiple;
+    fs.sample_rate = sample_rate;
+    fs.channel = channel;
+    fs.bits_per_sample = bits_per_sample;
+    if (channel == kCodecTdmChannelCount) {
+        fs.channel_mask = kCodecTdmChannelMask;
+        fs.mclk_multiple = kCodecTdmMclkMultiple;
+    }
+    if (open_en) {
+        if (!initialized) {
+            return false;
         }
-	if(open_en) {
-        if (!initialized) return false;
         int ret = ESP_CODEC_DEV_OK;
-		if(!strcmp(strName,kCodecNameEs8311)) {
-			ret = esp_codec_dev_open(playback, &fs);
+        if (!strcmp(strName, kCodecNameEs8311)) {
+            ret = esp_codec_dev_open(playback, &fs);
             speaker_open = ret == ESP_CODEC_DEV_OK;
-		} else if(!strcmp(strName,kCodecNameEs7210)) {
-			ret = esp_codec_dev_open(record, &fs);
+            speaker_sample_rate = speaker_open ? sample_rate : 0;
+        } else if (!strcmp(strName, kCodecNameEs7210)) {
+            ret = esp_codec_dev_open(record, &fs);
             mic_open = ret == ESP_CODEC_DEV_OK;
-		} else {
-			ret = esp_codec_dev_open(playback, &fs);
+        } else {
+            ret = esp_codec_dev_open(playback, &fs);
             speaker_open = ret == ESP_CODEC_DEV_OK;
+            speaker_sample_rate = speaker_open ? sample_rate : 0;
             if (ret == ESP_CODEC_DEV_OK) {
                 ret = esp_codec_dev_open(record, &fs);
                 mic_open = ret == ESP_CODEC_DEV_OK;
             }
-		}
+        }
         if (ret != ESP_CODEC_DEV_OK) {
             ESP_LOGW(TAG, "codec open failed: %d", ret);
             return false;
         }
-	}
+    }
     return true;
 }
 

@@ -22,14 +22,14 @@ constexpr TickType_t kBatteryChargingSampleDelay = pdMS_TO_TICKS(kBatteryChargin
 static_assert(kHousekeepingOtaPauseDelayMs > 0, "housekeeping OTA pause delay must be positive");
 static_assert(kHousekeepingFallbackDelayMs > 0, "housekeeping fallback delay must be positive");
 static_assert(kBatteryChargingSampleMs > 0, "battery charging sample delay must be positive");
-static_assert(kBatteryChargeProbeSampleMs > 0, "battery charge probe delay must be positive");
 static_assert(kUnknownTimeSensorSampleMs > 0, "unknown-time sensor sample interval must be positive");
 static_assert(kSensorSampleDayMinutes > 0, "day sensor sample interval must be positive");
 static_assert(kSensorSampleNightMinutes > 0, "night sensor sample interval must be positive");
 static_assert(kSensorSampleNightMinutes >= kSensorSampleDayMinutes,
               "night sensor sample interval must not be faster than day interval");
-static_assert(kBatteryChargingSampleMs < kBatteryChargeProbeSampleMs,
-              "confirmed charging samples should be faster than charge probes");
+static_assert(kBatteryChargingSampleMs <
+                  kSensorSampleDayMinutes * kSecondsPerMinute * kMillisecondsPerSecond,
+              "confirmed charging samples should be faster than idle samples");
 static_assert(kHousekeepingOtaPauseDelayMs >= kHousekeepingFallbackDelayMs,
               "housekeeping OTA pause delay should not be shorter than fallback delay");
 static_assert(kHousekeepingOtaPauseDelay > 0, "housekeeping OTA pause tick delay must be positive");
@@ -105,13 +105,11 @@ TickType_t next_sensor_sample_tick(TickType_t now)
 
 TickType_t next_battery_sample_tick(TickType_t now)
 {
-    TickType_t normal_sample = next_periodic_sample_tick(
+    return next_periodic_sample_tick(
         now,
-        kBatterySampleDayMinutes,
-        kBatterySampleNightMinutes,
-        kBatterySampleUnknownTimeMinutes * kSecondsPerMinute * kMillisecondsPerSecond);
-    TickType_t charge_probe = now + pdMS_TO_TICKS(kBatteryChargeProbeSampleMs);
-    return app_tick_earlier_deadline(now, charge_probe, normal_sample);
+        kSensorSampleDayMinutes,
+        kSensorSampleNightMinutes,
+        kUnknownTimeSensorSampleMs);
 }
 
 void housekeeping_task(void *)

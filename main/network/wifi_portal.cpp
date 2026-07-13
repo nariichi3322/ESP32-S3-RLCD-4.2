@@ -67,18 +67,6 @@ constexpr PortalHttpRoute kPortalHttpRoutes[] = {
     {kPortalAppleTouchIconPrecomposedUri, HTTP_GET, empty_asset_handler},
     {kPortalWildcardUri, HTTP_GET, captive_portal_handler},
 };
-constexpr size_t cstr_len(const char *text)
-{
-    size_t len = 0;
-    if (!text) {
-        return 0;
-    }
-    while (text[len] != '\0') {
-        ++len;
-    }
-    return len;
-}
-
 constexpr bool portal_http_routes_valid()
 {
     for (const PortalHttpRoute &route : kPortalHttpRoutes) {
@@ -98,7 +86,8 @@ static_assert(kPortalRequestBufferSize > kPortalSubmitSsidFieldSize,
 static_assert(kPortalWeatherCityIdSize > 1, "portal weather city id buffer must fit text and NUL");
 static_assert(kPortalWeatherCityNameSize > 1, "portal weather city name buffer must fit text and NUL");
 static_assert(kPortalSaveWifiConnectWaitMs > 0, "portal save Wi-Fi wait must be positive");
-static_assert(cstr_len(kSetupApSsidFallback) < sizeof(g_ap_ssid), "setup AP SSID fallback must fit global buffer");
+static_assert(cstr_length(kSetupApSsidFallback) < sizeof(g_ap_ssid),
+              "setup AP SSID fallback must fit global buffer");
 static_assert(cstr_nonempty(kSetupApSsidFormat), "setup AP SSID format must be non-empty");
 static_assert(array_count(kPortalFixedTexts) > 0,
               "portal fixed text registry must not be empty");

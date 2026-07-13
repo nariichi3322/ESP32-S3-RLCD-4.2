@@ -5,6 +5,7 @@
 
 bool is_work_page_enabled(int page);
 bool work_page_requires_network(int page);
+uint8_t normalize_work_page_enabled_mask(uint8_t page_mask);
 uint8_t work_page_mask_for_offline_mode(uint8_t page_mask);
 const char *work_page_name(int page);
 int display_settings_item_work_page(int item);

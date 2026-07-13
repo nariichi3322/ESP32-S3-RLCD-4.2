@@ -7,8 +7,8 @@
 #include "sensor_services.h"
 #include "ui_battery.h"
 #include "ui_clock_time.h"
-#include "ui_dseg_layout.h"
 #include "ui_flip_sensor_mood.h"
+#include "ui_inverted_clock_card.h"
 #include "ui_text_format.h"
 
 #define FLIP_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT "flip clock card %d canvas create failed"
@@ -20,10 +20,9 @@
 namespace {
 
 static constexpr int kCardCount = 3;
-static constexpr int kCardW = 112;
-static constexpr int kCardH = 112;
+static constexpr int kCardW = inverted_clock_card::kWidth;
+static constexpr int kCardH = inverted_clock_card::kHeight;
 static constexpr int kCardY = 66;
-static constexpr int kCardRadius = 8;
 static constexpr int kCardX[kCardCount] = {18, 144, 270};
 static constexpr int kHourCardIndex = 0;
 static constexpr int kMinuteCardIndex = 1;
@@ -32,9 +31,6 @@ static constexpr int kFlipTopLineX = 18;
 static constexpr int kFlipTopLineY = 54;
 static constexpr int kFlipTopLineW = 364;
 static constexpr int kFlipTopLineH = 4;
-static constexpr int kDigitScaleNumerator = 3;
-static constexpr int kDigitScaleDenominator = 4;
-static constexpr int kDigitBaselineY = 84;
 static constexpr int kFlipSensorPanelX = kCardX[kHourCardIndex];
 static constexpr int kFlipSensorPanelY = 198;
 static constexpr int kFlipSensorPanelW = kCardX[kMinuteCardIndex] + kCardW - kFlipSensorPanelX;
@@ -85,118 +81,10 @@ static_assert(kFlipSensorPanelX == kCardX[kHourCardIndex] &&
                   kFlipSensorPanelX + kFlipSensorPanelW == kCardX[kMinuteCardIndex] + kCardW &&
                   kFlipDatePanelW == kCardW,
               "flip clock sensor panel must span hour and minute cards");
-static_assert(kCardRadius > 0 && kCardRadius * 2 <= kCardW && kCardRadius * 2 <= kCardH,
-              "flip clock card radius must fit card");
-static_assert(kDigitScaleNumerator > 0 && kDigitScaleDenominator > 0,
-              "flip clock digit scale must be positive");
 static_assert(kFlipTrendIconX >= 0 && kFlipTrendIconY >= 0 &&
                   kFlipTrendIconX + TREND_ICON_WIDTH <= kFlipTrendCanvasW &&
                   kFlipTrendIconY + TREND_ICON_HEIGHT <= kFlipTrendCanvasH,
               "flip clock trend icon must fit canvas");
-
-void apply_card_rounding(lv_obj_t *canvas)
-{
-    if (!canvas) {
-        return;
-    }
-    int radius = kCardRadius;
-    int r2 = radius * radius;
-    for (int y = 0; y < radius; ++y) {
-        for (int x = 0; x < radius; ++x) {
-            int dx = radius - 1 - x;
-            int dy = radius - 1 - y;
-            if (dx * dx + dy * dy > r2) {
-                canvas_set_px_safe(canvas, x, y, kCardW, kCardH, lv_color_white());
-                canvas_set_px_safe(canvas, kCardW - 1 - x, y, kCardW, kCardH, lv_color_white());
-                canvas_set_px_safe(canvas, x, kCardH - 1 - y, kCardW, kCardH, lv_color_white());
-                canvas_set_px_safe(canvas, kCardW - 1 - x, kCardH - 1 - y, kCardW, kCardH, lv_color_white());
-            }
-        }
-    }
-}
-
-bool dseg_pixel_on(const DsegFont &font, const DsegGlyph *glyph, int x, int y)
-{
-    uint32_t bit = (uint32_t)y * glyph->width + x;
-    return packed_1bit_bit_is_set(font.bitmap + glyph->bitmap_offset, bit);
-}
-
-void draw_scaled_dseg_digit(lv_obj_t *canvas,
-                            const DsegGlyph *glyph,
-                            int origin_x,
-                            int origin_y,
-                            int scale_num,
-                            int scale_den,
-                            int clip_y0 = 0,
-                            int clip_y1 = kCardH)
-{
-    if (!canvas || !glyph || scale_num <= 0 || scale_den <= 0) {
-        return;
-    }
-    int dst_w = (glyph->width * scale_num + scale_den - 1) / scale_den;
-    int dst_h = (glyph->height * scale_num + scale_den - 1) / scale_den;
-    int dst_x = origin_x + (glyph->x_offset * scale_num) / scale_den;
-    int dst_y = origin_y + (glyph->y_offset * scale_num) / scale_den;
-    for (int y = 0; y < dst_h; ++y) {
-        int src_y = (y * glyph->height) / dst_h;
-        for (int x = 0; x < dst_w; ++x) {
-            int src_x = (x * glyph->width) / dst_w;
-            int py = dst_y + y;
-            if (py >= clip_y0 && py < clip_y1 && dseg_pixel_on(kDSEG84Font, glyph, src_x, src_y)) {
-                canvas_set_px_safe(canvas, dst_x + x, dst_y + y, kCardW, kCardH, lv_color_white());
-            }
-        }
-    }
-}
-
-void draw_card_shell(lv_obj_t *canvas)
-{
-    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_COVER);
-}
-
-void draw_card_digits(lv_obj_t *canvas, int value, int clip_y0 = 0, int clip_y1 = kCardH)
-{
-    const DsegGlyph *tens = find_dseg_glyph(kDSEG84Font, (char)('0' + value / 10));
-    const DsegGlyph *ones = find_dseg_glyph(kDSEG84Font, (char)('0' + value % 10));
-    if (!tens || !ones) {
-        return;
-    }
-    DsegPairLayout layout = centered_dseg_pair_layout(kCardW,
-                                                       kDigitScaleNumerator,
-                                                       kDigitScaleDenominator,
-                                                       tens->x_offset,
-                                                       tens->width,
-                                                       tens->x_advance,
-                                                       ones->x_offset,
-                                                       ones->width);
-    draw_scaled_dseg_digit(canvas,
-                           tens,
-                           layout.first_origin_x,
-                           kDigitBaselineY,
-                           kDigitScaleNumerator,
-                           kDigitScaleDenominator,
-                           clip_y0,
-                           clip_y1);
-    draw_scaled_dseg_digit(canvas,
-                           ones,
-                           layout.second_origin_x,
-                           kDigitBaselineY,
-                           kDigitScaleNumerator,
-                           kDigitScaleDenominator,
-                           clip_y0,
-                           clip_y1);
-}
-
-void draw_flip_card(lv_obj_t *canvas, int value)
-{
-    if (!canvas) {
-        return;
-    }
-    draw_card_shell(canvas);
-    draw_card_digits(canvas, value);
-    apply_card_rounding(canvas);
-    lv_obj_invalidate(canvas);
-}
 
 const uint8_t *sensor_mood_icon_bits(int mood,
                                      const uint8_t *comfort_bits,
@@ -713,12 +601,7 @@ bool update_inverted_clock_cards(const struct tm &local,
 
 void clear_inverted_clock_card(lv_obj_t *card_canvas)
 {
-    if (!card_canvas) {
-        return;
-    }
-    draw_card_shell(card_canvas);
-    apply_card_rounding(card_canvas);
-    lv_obj_invalidate(card_canvas);
+    inverted_clock_card::clear(card_canvas);
 }
 
 bool update_inverted_clock_card_value(lv_obj_t *card_canvas,
@@ -729,7 +612,7 @@ bool update_inverted_clock_card_value(lv_obj_t *card_canvas,
         return false;
     }
     *last_value = value;
-    draw_flip_card(card_canvas, value);
+    inverted_clock_card::render(card_canvas, value);
     return true;
 }
 

@@ -3,9 +3,7 @@
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "qweather_forecast_parser.h"
-#include "qweather_location_text.h"
 #include "qweather_response.h"
-#include "weather_state.h"
 
 #include <stdarg.h>
 
@@ -31,8 +29,6 @@ constexpr size_t kQweatherAlertUrlSize = 256;
 constexpr size_t kWeatherAlertEventNameSize = 24;
 constexpr size_t kWeatherAlertColorCodeSize = 16;
 constexpr size_t kWeatherAlertHeadlineSize = 64;
-constexpr size_t kQweatherCityIdSize = 24;
-constexpr size_t kWeatherCityNameSize = 32;
 static_assert(kQweatherCityResponseBufferSize > 1, "QWeather city response buffer must fit text and NUL");
 static_assert(kQweatherNowResponseBufferSize > 1, "QWeather now response buffer must fit text and NUL");
 static_assert(kQweatherAlertResponseBufferSize > kQweatherNowResponseBufferSize,
@@ -50,9 +46,6 @@ static_assert(kWeatherAlertEventNameSize > 1, "weather alert event name buffer m
 static_assert(kWeatherAlertColorCodeSize > 1, "weather alert color code buffer must fit text and NUL");
 static_assert(kWeatherAlertHeadlineSize <= kWeatherAlertTitleLen,
               "temporary alert headline must fit final alert title storage");
-static_assert(kQweatherCityIdSize > 1, "QWeather city id buffer must fit text and NUL");
-static_assert(kWeatherCityNameSize <= kManualWeatherCityLen,
-              "QWeather city name must fit manual weather city storage");
 constexpr int kQweatherDaily3DayEndpointDays = 3;
 constexpr int kQweatherDaily7DayEndpointDays = 7;
 static_assert(kQweatherDaily7DayEndpointDays > kQweatherDaily3DayEndpointDays,
@@ -160,13 +153,6 @@ constexpr const char *kQweatherAirLocationTooLongLog = "qweather air location to
 #define QWEATHER_AIR_LOOKUP_FORMAT "qweather air lookup: %s via %s"
 #define QWEATHER_AIR_HTTP_FAILED_FORMAT "qweather air http failed err=%s"
 #define QWEATHER_AIR_FAILED_FORMAT "qweather air failed code=%s"
-#define WEATHER_UPDATE_MANUAL_CITY_FORMAT "weather update using manual city: %s"
-#define WEATHER_MANUAL_CITY_LOOKUP_FAILED_FORMAT "manual weather city lookup failed: %s"
-#define WEATHER_MANUAL_CITY_UPDATE_FAILED_FORMAT "weather update failed for manual city: %s"
-#define WEATHER_RETRY_IP_CITY_LOOKUP_FORMAT "retry qweather city lookup by ip city: %s"
-#define WEATHER_USING_IP_COORDINATES_FORMAT "using ip coordinates for weather now: %s"
-constexpr const char *kWeatherIpLookupUpdateFailedLog = "weather update failed after ip lookup";
-constexpr const char *kWeatherIpGeolocationLookupFailedLog = "ip geolocation lookup failed";
 constexpr const char *kQweatherFixedWarningTexts[] = {
     kQweatherCityInvalidArgLog,
     kQweatherCityLocationTooLongLog,
@@ -194,8 +180,6 @@ constexpr const char *kQweatherStageAndStatusTexts[] = {
     kQweatherPreviewDailyLabel,
     kQweatherPreviewAirLabel,
     kQweatherUnknownStage,
-    kWeatherIpLookupUpdateFailedLog,
-    kWeatherIpGeolocationLookupFailedLog,
 };
 
 static_assert(array_count(kQweatherJsonFieldTexts) > 0,
@@ -383,25 +367,6 @@ bool qweather_lookup_city(const char *location,
                                        lat_len,
                                        lon_out,
                                        lon_len) == kQweatherCityLookupOk;
-}
-
-static bool lookup_weather_city(const char *location,
-                                char *city_id,
-                                char *city_name,
-                                WeatherData *weather)
-{
-    if (!city_id || !city_name || !weather) {
-        return false;
-    }
-    return qweather_lookup_city(location,
-                                city_id,
-                                kQweatherCityIdSize,
-                                city_name,
-                                kWeatherCityNameSize,
-                                weather->lat,
-                                sizeof(weather->lat),
-                                weather->lon,
-                                sizeof(weather->lon));
 }
 
 static void parse_weather_alert_item(const cJSON *item, WeatherAlertData *alert)
@@ -656,91 +621,4 @@ bool qweather_fetch_air(const char *city_id, WeatherAirData *air)
         ESP_LOGW(TAG, QWEATHER_AIR_FAILED_FORMAT, qweather_code_text(code));
     }
     return ok;
-}
-
-static bool fetch_and_commit_weather(const char *city_id, WeatherData *next)
-{
-    if (!city_id || !next) {
-        return false;
-    }
-    if (!qweather_fetch_now(city_id, next)) {
-        return false;
-    }
-
-    WeatherAlertData next_alert = {};
-    WeatherForecastData next_forecast = {};
-    WeatherAirData next_air = {};
-    (void)qweather_fetch_alert(next->lat, next->lon, &next_alert);
-    bool forecast_ok = qweather_fetch_daily(city_id, &next_forecast);
-    bool air_ok = qweather_fetch_air(city_id, &next_air);
-    commit_weather_update_snapshot(*next, next_alert, next_forecast, next_air, forecast_ok, air_ok);
-    return true;
-}
-
-static bool update_weather_by_manual_city(const char *manual_city)
-{
-    char city_id[kQweatherCityIdSize] = {};
-    char lookup_city[kWeatherCityNameSize] = {};
-    WeatherData next = {};
-
-    ESP_LOGI(TAG, WEATHER_UPDATE_MANUAL_CITY_FORMAT, manual_city);
-    bool have_city_id = lookup_weather_city(manual_city, city_id, lookup_city, &next);
-    if (!have_city_id) {
-        ESP_LOGW(TAG, WEATHER_MANUAL_CITY_LOOKUP_FAILED_FORMAT, manual_city);
-        return false;
-    }
-    copy_first_nonempty_text(next.city, sizeof(next.city), lookup_city, manual_city);
-    if (fetch_and_commit_weather(city_id, &next)) {
-        return true;
-    }
-    ESP_LOGW(TAG, WEATHER_MANUAL_CITY_UPDATE_FAILED_FORMAT, manual_city);
-    return false;
-}
-
-static bool update_weather_by_ip_location()
-{
-    char location[kWeatherLocationTextSize] = {};
-    char city_id[kQweatherCityIdSize] = {};
-    char ip_city[kWeatherCityNameSize] = {};
-    char lookup_city[kWeatherCityNameSize] = {};
-    WeatherData next = {};
-
-    if (!ip_geolocation_lookup(location, sizeof(location), ip_city, sizeof(ip_city))) {
-        log_qweather_fixed_warning(kWeatherIpGeolocationLookupFailedLog);
-        return false;
-    }
-    trim_ascii(location);
-    bool have_city_id = lookup_weather_city(location, city_id, lookup_city, &next);
-    if (!have_city_id && ip_city[0] != '\0') {
-        ESP_LOGW(TAG, WEATHER_RETRY_IP_CITY_LOOKUP_FORMAT, ip_city);
-        have_city_id = lookup_weather_city(ip_city, city_id, lookup_city, &next);
-    }
-    copy_first_nonempty_text(next.city, sizeof(next.city), ip_city, lookup_city, location);
-    if (!have_city_id) {
-        copy_ip_coordinate_location(location, city_id, sizeof(city_id), &next);
-        ESP_LOGW(TAG, WEATHER_USING_IP_COORDINATES_FORMAT, city_id);
-    }
-    if (fetch_and_commit_weather(city_id, &next)) {
-        return true;
-    }
-    log_qweather_fixed_warning(kWeatherIpLookupUpdateFailedLog);
-    return false;
-}
-
-bool perform_weather_update()
-{
-    if (!g_have_weather_key || g_low_battery_mode) {
-        clear_weather_ready_event();
-        return false;
-    }
-
-    char manual_city[kManualWeatherCityLen] = {};
-    if (g_has_manual_weather_city) {
-        strlcpy(manual_city, g_manual_weather_city, sizeof(manual_city));
-        trim_ascii(manual_city);
-    }
-    if (manual_city[0] != '\0') {
-        return update_weather_by_manual_city(manual_city);
-    }
-    return update_weather_by_ip_location();
 }

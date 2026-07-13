@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "alarm_services.h"
+#include "chime_settings.h"
 #include "network_config_nvs.h"
 #include "network_config_internal.h"
 #include "weather_city_text.h"
@@ -11,15 +12,14 @@
 #include "custom_assets.h"
 #include "ui_views.h"
 
-using network_config_nvs::close_nvs_save_ok;
 using network_config_nvs::commit_nvs_if_changed;
 using network_config_nvs::commit_nvs_if_ok;
 using network_config_nvs::erase_nvs_key_if_present;
 using network_config_nvs::nvs_string_matches;
 using network_config_nvs::nvs_u8_matches;
-using network_config_nvs::open_wifi_nvs;
 using network_config_nvs::read_nvs_string;
 using network_config_nvs::read_nvs_u8_or_default;
+using network_config_nvs::ScopedNvsHandle;
 using network_config_nvs::set_nvs_str_if_ok;
 using network_config_nvs::set_nvs_u8_if_ok;
 using network_config_nvs::write_changed_nvs_u8;
@@ -48,8 +48,6 @@ constexpr const char *kPageOrderV3Key = "page_order_v3";
 constexpr const char *kPageOrderV4Key = "page_order_v4";
 constexpr const char *kPageOrderV5Key = "page_order_v5";
 constexpr const char *kXiaozhiAutoReturnKey = "xz_auto_ret_v1";
-constexpr uint8_t kDefaultChimeVolumePercent = 80;
-constexpr uint8_t kValidChimeVolumePercent[] = {20, 40, 60, 80, 100};
 constexpr uint8_t work_page_mask_bit(int page)
 {
     return static_cast<uint8_t>(1U << page);
@@ -58,11 +56,6 @@ constexpr uint8_t work_page_mask_bit(int page)
 constexpr uint8_t all_work_page_mask()
 {
     return static_cast<uint8_t>((1U << kWorkPageCount) - 1);
-}
-
-constexpr bool work_page_mask_has_enabled_page(uint8_t page_mask)
-{
-    return (page_mask & all_work_page_mask()) != 0;
 }
 
 constexpr uint8_t kPageMaskV4KnownBits = static_cast<uint8_t>((1U << (kWorkPageHistory + 1)) - 1U);
@@ -109,31 +102,7 @@ constexpr const char *kOfflinePageMaskPersistFailedLog = "failed to persist offl
 #define NVS_SAVE_XIAOZHI_AUTO_RETURN_FAILED_FORMAT "nvs save Xiaozhi auto return failed: %s"
 #define NVS_ERASE_KEY_CLEARING_CONFIG_FAILED_FORMAT "nvs erase key %s failed while clearing config: %s"
 #define NVS_CLEAR_CONFIG_FAILED_FORMAT "nvs clear config failed: %s"
-constexpr const char *kNvsConfigTexts[] = {
-    kWifiSsidKey,
-    kWifiPassKey,
-    kWeatherApiKeyKey,
-    kManualWeatherCityKey,
-    kIgnoredAssetWeatherCityKey,
-    kLegacyApiHostKey,
-    kOfflineModeKey,
-    kHourlyChimeKey,
-    kHourlyAllDayKey,
-    kChimeVolumeKey,
-    kChimeSoundKey,
-    kPageMaskV1Key,
-    kPageMaskV2Key,
-    kPageMaskV3Key,
-    kPageMaskV4Key,
-    kPageMaskV5Key,
-    kPageOrderV1Key,
-    kPageOrderV2Key,
-    kPageOrderV3Key,
-    kPageOrderV4Key,
-    kPageOrderV5Key,
-    kXiaozhiAutoReturnKey,
-};
-constexpr const char *kClearConfigKeys[] = {
+constexpr const char *kSavedConfigKeys[] = {
     kWifiSsidKey,
     kWifiPassKey,
     kWeatherApiKeyKey,
@@ -186,7 +155,7 @@ struct LoadedNetworkConfig {
     esp_err_t key_err = ESP_FAIL;
     uint8_t chime = 0;
     uint8_t all_day = 0;
-    uint8_t volume = kDefaultChimeVolumePercent;
+    uint8_t volume = chime_settings::kDefaultVolumePercent;
     uint8_t sound = 0;
     uint8_t page_mask = kPageMaskV5KnownBits;
     uint8_t offline = 0;
@@ -195,60 +164,32 @@ struct LoadedNetworkConfig {
     bool have_page_order = false;
 };
 
-constexpr bool valid_chime_volumes_include_default()
-{
-    for (uint8_t volume : kValidChimeVolumePercent) {
-        if (volume == kDefaultChimeVolumePercent) {
-            return true;
-        }
-    }
-    return false;
-}
-
-constexpr bool valid_chime_volumes_ordered_and_bounded()
-{
-    uint8_t previous = 0;
-    for (uint8_t volume : kValidChimeVolumePercent) {
-        if (volume == 0 || volume > 100 || volume <= previous) {
-            return false;
-        }
-        previous = volume;
-    }
-    return true;
-}
-
-static_assert(array_count(kNvsConfigTexts) > 0, "NVS config text registry must not be empty");
-static_assert(cstr_array_nonempty(kNvsConfigTexts),
-              "NVS namespace and config keys must be non-empty");
-static_assert(array_count(kValidChimeVolumePercent) > 0, "valid chime volume list must not be empty");
-static_assert(valid_chime_volumes_ordered_and_bounded(),
-              "valid chime volumes must be ordered percentages in 1..100");
-static_assert(valid_chime_volumes_include_default(), "default chime volume must be selectable");
-static_assert(array_count(kClearConfigKeys) > 0, "clear config key list must not be empty");
-static_assert(cstr_array_nonempty(kClearConfigKeys), "clear config keys must be non-empty");
-static_assert(cstr_array_unique(kClearConfigKeys), "factory reset config keys must be unique");
-static_assert(cstr_array_contains(kClearConfigKeys, kWifiSsidKey), "factory reset must clear Wi-Fi SSID");
-static_assert(cstr_array_contains(kClearConfigKeys, kWifiPassKey), "factory reset must clear Wi-Fi password");
-static_assert(cstr_array_contains(kClearConfigKeys, kWeatherApiKeyKey), "factory reset must clear weather API key");
-static_assert(cstr_array_contains(kClearConfigKeys, kManualWeatherCityKey),
+static_assert(array_count(kSavedConfigKeys) > 0, "NVS config key registry must not be empty");
+static_assert(cstr_array_nonempty(kSavedConfigKeys),
+              "NVS config keys must be non-empty");
+static_assert(cstr_array_unique(kSavedConfigKeys), "factory reset config keys must be unique");
+static_assert(cstr_array_contains(kSavedConfigKeys, kWifiSsidKey), "factory reset must clear Wi-Fi SSID");
+static_assert(cstr_array_contains(kSavedConfigKeys, kWifiPassKey), "factory reset must clear Wi-Fi password");
+static_assert(cstr_array_contains(kSavedConfigKeys, kWeatherApiKeyKey), "factory reset must clear weather API key");
+static_assert(cstr_array_contains(kSavedConfigKeys, kManualWeatherCityKey),
               "factory reset must clear manual weather city");
-static_assert(cstr_array_contains(kClearConfigKeys, kIgnoredAssetWeatherCityKey),
+static_assert(cstr_array_contains(kSavedConfigKeys, kIgnoredAssetWeatherCityKey),
               "factory reset must clear ignored asset weather city");
-static_assert(cstr_array_contains(kClearConfigKeys, kLegacyApiHostKey), "factory reset must clear legacy API host");
-static_assert(cstr_array_contains(kClearConfigKeys, kOfflineModeKey), "factory reset must clear offline mode");
-static_assert(cstr_array_contains(kClearConfigKeys, kHourlyChimeKey),
+static_assert(cstr_array_contains(kSavedConfigKeys, kLegacyApiHostKey), "factory reset must clear legacy API host");
+static_assert(cstr_array_contains(kSavedConfigKeys, kOfflineModeKey), "factory reset must clear offline mode");
+static_assert(cstr_array_contains(kSavedConfigKeys, kHourlyChimeKey),
               "factory reset must clear hourly reminder");
-static_assert(cstr_array_contains(kClearConfigKeys, kHourlyAllDayKey),
+static_assert(cstr_array_contains(kSavedConfigKeys, kHourlyAllDayKey),
               "factory reset must clear all-day reminder");
-static_assert(cstr_array_contains(kClearConfigKeys, kChimeVolumeKey),
+static_assert(cstr_array_contains(kSavedConfigKeys, kChimeVolumeKey),
               "factory reset must clear reminder volume");
-static_assert(cstr_array_contains(kClearConfigKeys, kChimeSoundKey),
+static_assert(cstr_array_contains(kSavedConfigKeys, kChimeSoundKey),
               "factory reset must clear reminder sound");
-static_assert(cstr_array_contains(kClearConfigKeys, kPageMaskV5Key),
+static_assert(cstr_array_contains(kSavedConfigKeys, kPageMaskV5Key),
               "factory reset must clear current page mask");
-static_assert(cstr_array_contains(kClearConfigKeys, kPageOrderV5Key),
+static_assert(cstr_array_contains(kSavedConfigKeys, kPageOrderV5Key),
               "factory reset must clear current page order");
-static_assert(cstr_array_contains(kClearConfigKeys, kXiaozhiAutoReturnKey),
+static_assert(cstr_array_contains(kSavedConfigKeys, kXiaozhiAutoReturnKey),
               "factory reset must clear Xiaozhi auto-return setting");
 static_assert(array_count(kConfigEventReasonTexts) > 0, "config event reason registry must not be empty");
 static_assert(array_count(kNvsActionTexts) > 0, "NVS action text registry must not be empty");
@@ -264,17 +205,12 @@ static_assert((kPageMaskV4KnownBits & work_page_mask_bit(kWorkPageXiaozhiAI)) ==
 static_assert(kPageMaskV5KnownBits == all_work_page_mask(),
               "page mask v5 must cover every current work page");
 static_assert((kDefaultWorkPageMask & kPageMaskV5KnownBits) == kDefaultWorkPageMask &&
-                  work_page_mask_has_enabled_page(kDefaultWorkPageMask),
+                  kDefaultWorkPageMask != 0,
               "default work page mask must enable at least one known page");
 static_assert((kPageMaskV5KnownBits & kWeatherBoardPageMask) == kWeatherBoardPageMask,
               "weather board page must be covered by the current page mask");
 static_assert((kPageMaskV5KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
               "flip clock page must be covered by the current page mask");
-
-uint8_t normalize_chime_volume(uint8_t volume)
-{
-    return volume <= 100 ? volume : kDefaultChimeVolumePercent;
-}
 
 uint8_t normalize_chime_sound_index(uint8_t sound)
 {
@@ -410,26 +346,15 @@ bool manual_weather_city_matches_nvs(nvs_handle_t nvs, const char *city)
     return nvs_string_matches(nvs, kManualWeatherCityKey, city, saved_city, sizeof(saved_city));
 }
 
-uint8_t normalize_work_page_mask(uint8_t page_mask)
-{
-    page_mask &= kPageMaskV5KnownBits;
-    if (!work_page_mask_has_enabled_page(page_mask)) {
-        return kDefaultWorkPageMask;
-    }
-    if (!work_page_mask_has_valid_home(page_mask)) {
-        page_mask |= work_page_mask_bit(kWorkPageWeatherClock);
-    }
-    return page_mask;
-}
-
 uint8_t read_saved_page_mask(nvs_handle_t nvs)
 {
     uint8_t page_mask = kDefaultWorkPageMask;
     if (nvs_get_u8(nvs, kPageMaskV5Key, &page_mask) == ESP_OK) {
-        return normalize_work_page_mask(page_mask);
+        return normalize_work_page_enabled_mask(page_mask);
     }
     if (nvs_get_u8(nvs, kPageMaskV4Key, &page_mask) == ESP_OK) {
-        return normalize_work_page_mask(static_cast<uint8_t>(page_mask | work_page_mask_bit(kWorkPageXiaozhiAI)));
+        return normalize_work_page_enabled_mask(
+            static_cast<uint8_t>(page_mask | work_page_mask_bit(kWorkPageXiaozhiAI)));
     }
     return page_mask;
 }
@@ -489,7 +414,7 @@ esp_err_t erase_saved_config_keys(nvs_handle_t nvs)
 {
     bool erased = false;
     esp_err_t err = ESP_OK;
-    for (const char *key : kClearConfigKeys) {
+    for (const char *key : kSavedConfigKeys) {
         bool key_erased = false;
         err = erase_nvs_key_if_present(nvs, key, &key_erased);
         if (err != ESP_OK) {
@@ -503,13 +428,13 @@ esp_err_t erase_saved_config_keys(nvs_handle_t nvs)
 
 bool clear_saved_config_nvs()
 {
-    nvs_handle_t nvs;
-    esp_err_t open_err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionClearingConfig);
+    ScopedNvsHandle nvs;
+    esp_err_t open_err = nvs.open(NVS_READWRITE, kNvsActionClearingConfig);
     if (open_err != ESP_OK) {
         return false;
     }
-    esp_err_t err = erase_saved_config_keys(nvs);
-    nvs_close(nvs);
+    esp_err_t err = erase_saved_config_keys(nvs.get());
+    nvs.close();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, NVS_CLEAR_CONFIG_FAILED_FORMAT, esp_err_to_name(err));
         return false;
@@ -546,7 +471,7 @@ void load_saved_manual_weather_city(nvs_handle_t nvs)
 
 bool apply_loaded_page_config(uint8_t page_mask, const uint8_t *page_order, bool have_page_order)
 {
-    g_work_page_enabled_mask = normalize_work_page_mask(page_mask);
+    g_work_page_enabled_mask = normalize_work_page_enabled_mask(page_mask);
     if (have_page_order && page_order) {
         memcpy(g_work_page_order, page_order, sizeof(g_work_page_order));
     }
@@ -567,7 +492,9 @@ LoadedNetworkConfig read_loaded_network_config(nvs_handle_t nvs)
     loaded.key_err = read_nvs_string(nvs, kWeatherApiKeyKey, g_weather_api_key, sizeof(g_weather_api_key));
     loaded.chime = read_nvs_u8_or_default(nvs, kHourlyChimeKey, 0);
     loaded.all_day = read_nvs_u8_or_default(nvs, kHourlyAllDayKey, 0);
-    loaded.volume = read_nvs_u8_or_default(nvs, kChimeVolumeKey, kDefaultChimeVolumePercent);
+    loaded.volume = read_nvs_u8_or_default(nvs,
+                                           kChimeVolumeKey,
+                                           chime_settings::kDefaultVolumePercent);
     loaded.sound = read_nvs_u8_or_default(nvs, kChimeSoundKey, 0);
     loaded.page_mask = read_saved_page_mask(nvs);
     loaded.offline = read_nvs_u8_or_default(nvs, kOfflineModeKey, 0);
@@ -585,7 +512,7 @@ bool apply_loaded_network_config(const LoadedNetworkConfig &loaded)
     g_hourly_chime_all_day = nvs_u8_to_bool(loaded.all_day);
     g_offline_mode_ui_enabled = nvs_u8_to_bool(loaded.offline);
     g_xiaozhi_auto_return_enabled = nvs_u8_to_bool(loaded.xiaozhi_auto_return);
-    g_chime_volume_percent = normalize_chime_volume(loaded.volume);
+    g_chime_volume_percent = chime_settings::normalize_stored_volume(loaded.volume);
     g_chime_sound_index = normalize_chime_sound_index(loaded.sound);
     return apply_loaded_page_config(loaded.page_mask, loaded.page_order, loaded.have_page_order);
 }
@@ -593,13 +520,13 @@ bool apply_loaded_network_config(const LoadedNetworkConfig &loaded)
 
 bool load_saved_config()
 {
-    nvs_handle_t nvs;
-    esp_err_t open_err = open_wifi_nvs(NVS_READONLY, &nvs, kNvsActionLoadingConfig, false);
+    ScopedNvsHandle nvs;
+    esp_err_t open_err = nvs.open(NVS_READONLY, kNvsActionLoadingConfig, false);
     if (open_err != ESP_OK) {
         return false;
     }
-    LoadedNetworkConfig loaded = read_loaded_network_config(nvs);
-    nvs_close(nvs);
+    LoadedNetworkConfig loaded = read_loaded_network_config(nvs.get());
+    nvs.close();
     bool offline_page_mask_changed = apply_loaded_network_config(loaded);
     if (offline_page_mask_changed && !save_work_page_settings()) {
         ESP_LOGW(TAG, "%s", kOfflinePageMaskPersistFailedLog);
@@ -614,8 +541,8 @@ void clear_network_request_bits()
 
 bool set_offline_mode_enabled(bool enabled)
 {
-    nvs_handle_t nvs;
-    esp_err_t err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionSavingOfflineMode);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingOfflineMode);
     if (err != ESP_OK) {
         return false;
     }
@@ -625,12 +552,12 @@ bool set_offline_mode_enabled(bool enabled)
                                  : g_work_page_enabled_mask;
     bool offline_changed = false;
     bool page_mask_changed = false;
-    err = write_changed_nvs_u8(nvs, err, kOfflineModeKey, next_value, &offline_changed);
+    err = write_changed_nvs_u8(nvs.get(), err, kOfflineModeKey, next_value, &offline_changed);
     if (enabled) {
-        err = write_changed_nvs_u8(nvs, err, kPageMaskV5Key, next_page_mask, &page_mask_changed);
+        err = write_changed_nvs_u8(nvs.get(), err, kPageMaskV5Key, next_page_mask, &page_mask_changed);
     }
-    err = commit_nvs_if_changed(nvs, err, offline_changed || page_mask_changed);
-    if (!close_nvs_save_ok(nvs, err)) {
+    err = commit_nvs_if_changed(nvs.get(), err, offline_changed || page_mask_changed);
+    if (!nvs.close_save_ok(err)) {
         ESP_LOGW(TAG, NVS_SAVE_OFFLINE_MODE_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
@@ -675,13 +602,13 @@ void set_manual_weather_city_state(const char *city)
     g_has_manual_weather_city = g_manual_weather_city[0] != '\0';
 }
 
-bool finish_manual_weather_city_save(nvs_handle_t nvs,
+bool finish_manual_weather_city_save(ScopedNvsHandle &nvs,
                                      esp_err_t err,
                                      const char *city,
                                      bool changed)
 {
-    err = commit_nvs_if_changed(nvs, err, changed);
-    nvs_close(nvs);
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
+    nvs.close();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, NVS_SAVE_WEATHER_CITY_FAILED_FORMAT, esp_err_to_name(err));
         return false;
@@ -741,7 +668,7 @@ void reset_saved_config_runtime_state()
     g_xiaozhi_auto_return_enabled = false;
     g_hourly_chime_enabled = false;
     g_hourly_chime_all_day = false;
-    g_chime_volume_percent = kDefaultChimeVolumePercent;
+    g_chime_volume_percent = chime_settings::kDefaultVolumePercent;
     g_chime_sound_index = 0;
     g_work_page_enabled_mask = kDefaultWorkPageMask;
     reset_work_page_order();
@@ -809,14 +736,14 @@ bool save_config(const char *ssid, const char *pass, const char *api_key, const 
         ESP_LOGW(TAG, "%s", kInvalidWeatherCitySaveLog);
         return false;
     }
-    nvs_handle_t nvs;
-    esp_err_t err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionSavingConfig);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingConfig);
     if (err != ESP_OK) {
         return false;
     }
-    err = write_saved_config_nvs(nvs, ssid, pass, api_key, city);
-    err = commit_nvs_if_ok(nvs, err);
-    nvs_close(nvs);
+    err = write_saved_config_nvs(nvs.get(), ssid, pass, api_key, city);
+    err = commit_nvs_if_ok(nvs.get(), err);
+    nvs.close();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, NVS_SAVE_CONFIG_FAILED_FORMAT, esp_err_to_name(err));
         return false;
@@ -837,27 +764,27 @@ bool save_manual_weather_city(const char *city)
         ESP_LOGW(TAG, "%s", kInvalidWeatherCitySaveLog);
         return false;
     }
-    nvs_handle_t nvs;
-    esp_err_t err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionSavingWeatherCity);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingWeatherCity);
     if (err != ESP_OK) {
         return false;
     }
     bool changed = false;
-    err = write_manual_weather_city_save_nvs(nvs, next, &changed);
+    err = write_manual_weather_city_save_nvs(nvs.get(), next, &changed);
     return finish_manual_weather_city_save(nvs, err, next, changed);
 }
 
 bool clear_manual_weather_city()
 {
-    nvs_handle_t nvs;
-    esp_err_t err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionClearingWeatherCity);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionClearingWeatherCity);
     if (err != ESP_OK) {
         return false;
     }
     bool changed = false;
-    err = clear_manual_weather_city_nvs(nvs, &changed);
-    err = commit_nvs_if_changed(nvs, err, changed);
-    nvs_close(nvs);
+    err = clear_manual_weather_city_nvs(nvs.get(), &changed);
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
+    nvs.close();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, NVS_CLEAR_WEATHER_CITY_FAILED_FORMAT, esp_err_to_name(err));
         return false;
@@ -868,8 +795,8 @@ bool clear_manual_weather_city()
 
 bool save_hourly_chime_setting()
 {
-    nvs_handle_t nvs;
-    esp_err_t err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionSavingHourlyReminder);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingHourlyReminder);
     if (err != ESP_OK) {
         return false;
     }
@@ -878,9 +805,15 @@ bool save_hourly_chime_setting()
     uint8_t next_volume = (uint8_t)g_chime_volume_percent;
     uint8_t next_sound = (uint8_t)g_chime_sound_index;
     bool changed = false;
-    err = write_hourly_chime_settings_nvs(nvs, err, next_chime, next_all_day, next_volume, next_sound, &changed);
-    err = commit_nvs_if_changed(nvs, err, changed);
-    if (!close_nvs_save_ok(nvs, err)) {
+    err = write_hourly_chime_settings_nvs(nvs.get(),
+                                          err,
+                                          next_chime,
+                                          next_all_day,
+                                          next_volume,
+                                          next_sound,
+                                          &changed);
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
+    if (!nvs.close_save_ok(err)) {
         ESP_LOGW(TAG, NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
@@ -889,16 +822,16 @@ bool save_hourly_chime_setting()
 
 bool save_work_page_settings()
 {
-    nvs_handle_t nvs;
-    esp_err_t err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionSavingPageSettings);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingPageSettings);
     if (err != ESP_OK) {
         return false;
     }
-    uint8_t mask = normalize_work_page_mask(g_work_page_enabled_mask);
+    uint8_t mask = normalize_work_page_enabled_mask(g_work_page_enabled_mask);
     bool changed = false;
-    err = write_changed_nvs_u8(nvs, err, kPageMaskV5Key, mask, &changed);
-    err = commit_nvs_if_changed(nvs, err, changed);
-    if (!close_nvs_save_ok(nvs, err)) {
+    err = write_changed_nvs_u8(nvs.get(), err, kPageMaskV5Key, mask, &changed);
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
+    if (!nvs.close_save_ok(err)) {
         ESP_LOGW(TAG, NVS_SAVE_PAGE_SETTINGS_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
@@ -909,15 +842,19 @@ bool save_work_page_settings()
 bool save_work_page_order()
 {
     normalize_work_page_order();
-    nvs_handle_t nvs;
-    esp_err_t err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionSavingPageOrder);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingPageOrder);
     if (err != ESP_OK) {
         return false;
     }
     bool changed = false;
-    err = write_work_page_order_nvs(nvs, err, g_work_page_order, sizeof(g_work_page_order), &changed);
-    err = commit_nvs_if_changed(nvs, err, changed);
-    if (!close_nvs_save_ok(nvs, err)) {
+    err = write_work_page_order_nvs(nvs.get(),
+                                    err,
+                                    g_work_page_order,
+                                    sizeof(g_work_page_order),
+                                    &changed);
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
+    if (!nvs.close_save_ok(err)) {
         ESP_LOGW(TAG, NVS_SAVE_PAGE_ORDER_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
@@ -926,19 +863,19 @@ bool save_work_page_order()
 
 bool save_xiaozhi_auto_return_setting()
 {
-    nvs_handle_t nvs;
-    esp_err_t err = open_wifi_nvs(NVS_READWRITE, &nvs, kNvsActionSavingXiaozhiAutoReturn);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingXiaozhiAutoReturn);
     if (err != ESP_OK) {
         return false;
     }
     bool changed = false;
-    err = write_changed_nvs_u8(nvs,
+    err = write_changed_nvs_u8(nvs.get(),
                                err,
                                kXiaozhiAutoReturnKey,
                                bool_to_nvs_u8(g_xiaozhi_auto_return_enabled),
                                &changed);
-    err = commit_nvs_if_changed(nvs, err, changed);
-    if (!close_nvs_save_ok(nvs, err)) {
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
+    if (!nvs.close_save_ok(err)) {
         ESP_LOGW(TAG, NVS_SAVE_XIAOZHI_AUTO_RETURN_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }

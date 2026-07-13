@@ -1,8 +1,9 @@
 // 定义天气时钟全局运行状态、版本信息和跨模块共享对象。
 #include "app_state.h"
+#include "chime_settings.h"
 
 const char *const TAG = "WeatherClock";
-const char *const APP_VERSION = "v1.5.6";
+const char *const APP_VERSION = "v1.5.7";
 #ifndef WEATHER_CLOCK_BUILD_DATE
 #define WEATHER_CLOCK_BUILD_DATE "unknown"
 #endif
@@ -45,7 +46,7 @@ bool g_hourly_chime_enabled = false;
 bool g_hourly_chime_all_day = false;
 bool g_offline_mode_ui_enabled = false;
 bool g_xiaozhi_auto_return_enabled = false;
-int g_chime_volume_percent = 80;
+int g_chime_volume_percent = chime_settings::kDefaultVolumePercent;
 int g_chime_sound_index = 0;
 bool g_ntp_started = false;
 bool g_wifi_radio_on = false;

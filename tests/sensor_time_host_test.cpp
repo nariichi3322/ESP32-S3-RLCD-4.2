@@ -58,8 +58,15 @@ int main()
     assert(!is_night_slow_window(local_value(2026, 7, 12, 21, 59, 59)));
     assert(periodic_sample_minutes(local_value(2026, 7, 12, 23, 0, 0), 1, 2) == 2);
     assert(periodic_sample_minutes(local_value(2026, 7, 12, 12, 0, 0), 1, 2) == 1);
+    int night_sample_seconds = periodic_sample_minutes(
+        local_value(2026, 7, 12, 22, 0, 0), 1, 2) * 60;
+    assert(seconds_until_next_periodic_sample(
+               local_value(2026, 7, 12, 22, 0, 0), night_sample_seconds) == 120);
+    assert(seconds_until_next_periodic_sample(
+               local_value(2026, 7, 12, 22, 1, 30), night_sample_seconds) == 30);
     assert(seconds_until_next_periodic_sample(local_value(2026, 7, 12, 12, 0, 0), 60) == 60);
     assert(seconds_until_next_periodic_sample(local_value(2026, 7, 12, 12, 0, 1), 60) == 59);
+    assert(seconds_until_next_periodic_sample(local_value(2026, 7, 12, 12, 0, 30), 60) == 30);
     assert(seconds_until_next_periodic_sample(local_value(2026, 7, 12, 12, 1, 59), 60) == 1);
     assert(seconds_until_next_periodic_sample(local_value(2026, 7, 12, 12, 5, 0), 120) == 60);
     assert(seconds_until_next_periodic_sample(local_value(2026, 7, 12, 12, 5, 0), 0) == 60);

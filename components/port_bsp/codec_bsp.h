@@ -13,6 +13,7 @@ private:
     bool initialized = false;
     bool speaker_open = false;
     bool mic_open = false;
+    int speaker_sample_rate = 0;
     I2cMasterBus& i2cbus_;
     i2c_master_dev_handle_t I2c_DevEs8311 = nullptr;
     i2c_master_dev_handle_t I2c_DevEs7210 = nullptr;
@@ -31,8 +32,8 @@ public:
     void CodecPort_SetSpeakerVol(int vol);
     void CodecPort_SetMicGain(float db_value);
 
-    void CodecPort_CloseSpeaker(void);
-    void CodecPort_CloseMic(void);
+    bool CodecPort_CloseSpeaker(void);
+    bool CodecPort_CloseMic(void);
 
     int CodecPort_PlayWrite(void *ptr,int ptr_len);
     int CodecPort_EchoRead(void *ptr,int ptr_len);

@@ -18,6 +18,9 @@ int main()
     static_assert(cstr_equal("same", "same"));
     static_assert(!cstr_equal("same", "different"));
     static_assert(!cstr_equal(nullptr, nullptr));
+    static_assert(cstr_length(nullptr) == 0);
+    static_assert(cstr_length("") == 0);
+    static_assert(cstr_length("length") == 6);
     static_assert(cstr_array_nonempty(valid_texts));
     static_assert(!cstr_array_nonempty(empty_texts));
     static_assert(cstr_array_contains(valid_texts, "beta"));

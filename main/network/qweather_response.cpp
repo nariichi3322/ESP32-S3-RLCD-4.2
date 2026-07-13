@@ -59,14 +59,11 @@ QweatherResponseBuffer::~QweatherResponseBuffer()
 }
 
 QweatherJsonRoot::QweatherJsonRoot(char *response)
-    : root_(response ? cJSON_Parse(response) : nullptr)
+    : root_(response)
 {
 }
 
-QweatherJsonRoot::~QweatherJsonRoot()
-{
-    cJSON_Delete(root_);
-}
+QweatherJsonRoot::~QweatherJsonRoot() = default;
 
 const char *qweather_json_string_value(const cJSON *item)
 {

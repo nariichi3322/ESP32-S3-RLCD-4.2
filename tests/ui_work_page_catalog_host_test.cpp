@@ -57,6 +57,16 @@ int main()
     assert(!work_page_requires_network(kWorkPageHistory));
     assert(!work_page_requires_network(-1));
 
+    const uint8_t all_pages = static_cast<uint8_t>((1U << kWorkPageCount) - 1U);
+    assert(normalize_work_page_enabled_mask(all_pages) == all_pages);
+    assert(normalize_work_page_enabled_mask(0) == all_pages);
+    assert(normalize_work_page_enabled_mask(0x80) == all_pages);
+    assert(normalize_work_page_enabled_mask(page_bit(kWorkPageXiaozhiAI)) ==
+           (page_bit(kWorkPageWeatherClock) | page_bit(kWorkPageXiaozhiAI)));
+    assert(normalize_work_page_enabled_mask(page_bit(kWorkPageCalendar) |
+                                            page_bit(kWorkPageXiaozhiAI)) ==
+           (page_bit(kWorkPageCalendar) | page_bit(kWorkPageXiaozhiAI)));
+
     const uint8_t local_pages = page_bit(kWorkPageFlipClock) |
                                 page_bit(kWorkPageCalendar);
     assert(work_page_mask_for_offline_mode(g_work_page_enabled_mask) ==

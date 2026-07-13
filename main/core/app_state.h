@@ -182,10 +182,6 @@ inline constexpr int kBatteryChargingStopSamples = 5;
 inline constexpr int kBatteryChargingAnimationStopPercent = 96;
 inline constexpr int kBatteryChargingAnimationIdleMs = 10 * kAppMsPerMinute;
 inline constexpr int kBatteryChargingSampleMs = kAppMsPerSecond;
-inline constexpr int kBatteryChargeProbeSampleMs = 5 * kAppMsPerSecond;
-inline constexpr int kBatterySampleUnknownTimeMinutes = 10;
-inline constexpr int kBatterySampleDayMinutes = 10;
-inline constexpr int kBatterySampleNightMinutes = 20;
 
 static_assert(kWorkPageCount == kWorkPageXiaozhiAI + 1, "work page count must match the last work page id");
 static_assert(kXiaozhiAutoReturnTimeoutMs > 0, "Xiaozhi auto-return timeout must be positive");

@@ -126,6 +126,19 @@ const cJSON *tool_by_name(const cJSON *tools, const char *name)
     return nullptr;
 }
 
+void expect_tool_description_contains(const cJSON *tools,
+                                      const char *name,
+                                      const char *expected_fragment)
+{
+    const cJSON *tool = tool_by_name(tools, name);
+    const cJSON *description = cJSON_IsObject(tool)
+                                   ? cJSON_GetObjectItem(tool, "description")
+                                   : nullptr;
+    expect(cJSON_IsString(description) && expected_fragment &&
+               std::strstr(description->valuestring, expected_fragment) != nullptr,
+           "MCP tool description missing routing rule");
+}
+
 void expect_tool_name_at(const cJSON *tools, int index, const char *expected)
 {
     const cJSON *tool = cJSON_IsArray(tools) ? cJSON_GetArrayItem(tools, index) : nullptr;
@@ -318,6 +331,10 @@ void test_reserved_handlers()
     expect(tools_contains(tools, "self.timer.set_countdown"), "registered countdown tool missing");
     expect(tools_contains(tools, "self.pomodoro.control"), "registered pomodoro tool missing");
     expect(tools_contains(tools, "self.weather.set_city"), "registered weather city tool missing");
+    expect_tool_description_contains(tools,
+                                     "self.timer.set_countdown",
+                                     "self.pomodoro.control");
+    expect_tool_description_contains(tools, "self.pomodoro.control", "专注");
     const cJSON *alarm_tool = tool_by_name(tools, "self.alarm.set");
     const cJSON *alarm_schema = alarm_tool ? cJSON_GetObjectItem(alarm_tool, "inputSchema") : nullptr;
     const cJSON *alarm_required = cJSON_IsObject(alarm_schema)
