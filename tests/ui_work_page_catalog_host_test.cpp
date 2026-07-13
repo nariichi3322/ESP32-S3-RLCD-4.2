@@ -57,6 +57,15 @@ int main()
     assert(!work_page_requires_network(kWorkPageHistory));
     assert(!work_page_requires_network(-1));
 
+    assert(!work_page_uses_low_refresh_idle(kWorkPageWeatherClock));
+    assert(work_page_uses_low_refresh_idle(kWorkPageGallery));
+    assert(work_page_uses_low_refresh_idle(kWorkPageWeatherBoard));
+    assert(!work_page_uses_low_refresh_idle(kWorkPageFlipClock));
+    assert(work_page_uses_low_refresh_idle(kWorkPageCalendar));
+    assert(work_page_uses_low_refresh_idle(kWorkPageHistory));
+    assert(!work_page_uses_low_refresh_idle(kWorkPageXiaozhiAI));
+    assert(!work_page_uses_low_refresh_idle(-1));
+
     const uint8_t all_pages = static_cast<uint8_t>((1U << kWorkPageCount) - 1U);
     assert(normalize_work_page_enabled_mask(all_pages) == all_pages);
     assert(normalize_work_page_enabled_mask(0) == all_pages);

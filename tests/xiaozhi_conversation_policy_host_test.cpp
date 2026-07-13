@@ -17,5 +17,16 @@ int main()
                                            kXiaozhiWakeInterruptArmDelayMs));
     assert(!xiaozhi_wake_interrupt_allowed(true, false, true, 5000));
     assert(!xiaozhi_wake_interrupt_allowed(true, true, true, 5000));
+
+    assert(!xiaozhi_user_requested_exit(nullptr));
+    assert(!xiaozhi_user_requested_exit(""));
+    assert(xiaozhi_user_requested_exit("关闭小智吧"));
+    assert(xiaozhi_user_requested_exit("请停止对话"));
+    assert(xiaozhi_user_requested_exit("退下吧。"));
+    assert(xiaozhi_user_requested_exit("你退下吧！"));
+    assert(!xiaozhi_user_requested_exit("关闭闹钟"));
+    assert(!xiaozhi_user_requested_exit("停止番茄钟"));
+    assert(!xiaozhi_user_requested_exit("结束今天的闹钟"));
+    assert(!xiaozhi_user_requested_exit("退出设置页面"));
     return 0;
 }

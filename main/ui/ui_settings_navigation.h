@@ -8,5 +8,6 @@ int clamp_settings_primary(int primary);
 int clamp_settings_secondary(int primary, int selected);
 int clamp_settings_selection_for_mode(int primary, int selected, bool page_toggle_mode);
 void reset_settings_confirmation();
+void reset_settings_navigation_state();
 void handle_settings_key_short();
 void handle_settings_key_long();

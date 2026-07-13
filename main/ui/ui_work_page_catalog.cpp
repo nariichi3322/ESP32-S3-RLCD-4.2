@@ -63,6 +63,10 @@ constexpr uint8_t kNetworkWorkPageMask = work_page_mask(kWorkPageWeatherClock) |
                                          work_page_mask(kWorkPageGallery) |
                                          work_page_mask(kWorkPageWeatherBoard) |
                                          work_page_mask(kWorkPageXiaozhiAI);
+constexpr uint8_t kLowRefreshIdleWorkPageMask = work_page_mask(kWorkPageGallery) |
+                                                work_page_mask(kWorkPageWeatherBoard) |
+                                                work_page_mask(kWorkPageCalendar) |
+                                                work_page_mask(kWorkPageHistory);
 constexpr uint8_t kLocalWorkPageMask = static_cast<uint8_t>(~kNetworkWorkPageMask) & kAllWorkPageMask;
 
 bool page_mask_has_non_xiaozhi_page(uint8_t page_mask)
@@ -170,6 +174,10 @@ static_assert(kWorkPageCount <= static_cast<int>(sizeof(uint8_t) * 8),
 static_assert(kLocalWorkPageMask != 0, "offline mode requires at least one local work page");
 static_assert((kLocalWorkPageMask & kNetworkWorkPageMask) == 0,
               "local and network work page masks must not overlap");
+static_assert(kLowRefreshIdleWorkPageMask != 0,
+              "low-refresh idle page mask must not be empty");
+static_assert((kLowRefreshIdleWorkPageMask & ~kAllWorkPageMask) == 0,
+              "low-refresh idle page mask must only contain work pages");
 static_assert(array_count(kDefaultWorkPageOrder) == kWorkPageCount,
               "default work page order must cover every work page");
 static_assert(array_count(kDisplaySettingPages) == kDisplaySettingsPageItemCount,
@@ -195,6 +203,12 @@ bool is_work_page_enabled(int page)
 bool work_page_requires_network(int page)
 {
     return is_work_page_index(page) && (kNetworkWorkPageMask & work_page_mask(page)) != 0;
+}
+
+bool work_page_uses_low_refresh_idle(int page)
+{
+    return is_work_page_index(page) &&
+           (kLowRefreshIdleWorkPageMask & work_page_mask(page)) != 0;
 }
 
 uint8_t normalize_work_page_enabled_mask(uint8_t page_mask)

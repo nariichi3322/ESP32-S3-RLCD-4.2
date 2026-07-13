@@ -53,6 +53,14 @@ void reset_settings_confirmation()
     g_weather_city_clear_confirm_pending = false;
 }
 
+void reset_settings_navigation_state()
+{
+    g_settings_focus_secondary = false;
+    g_settings_page_toggle_mode = false;
+    g_settings_page_order_mode = false;
+    reset_settings_confirmation();
+}
+
 int clamp_settings_primary(int primary)
 {
     if (primary < 0 || primary >= kSettingsPrimaryCount) {
@@ -137,10 +145,7 @@ void handle_settings_key_long()
         }
         s_settings_primary_exit_block_until = 0;
         g_settings_requested = false;
-        g_settings_page_toggle_mode = false;
-        g_settings_page_order_mode = false;
-        g_settings_focus_secondary = false;
-        reset_settings_confirmation();
+        reset_settings_navigation_state();
         g_settings_feedback[0] = '\0';
         notify_ui_task();
         return;

@@ -35,6 +35,19 @@ constexpr const char *kClockComponentTime = "time";
 constexpr const char *kClockComponentSecond = "second";
 constexpr const char *kClockComponentStatusGif = "status_gif";
 constexpr const char *kClockComponentLowBatteryIcon = "low_battery_icon";
+lv_color_t *s_temp_icon_canvas_buffer;
+lv_color_t *s_humi_icon_canvas_buffer;
+lv_color_t *s_temp_trend_canvas_buffer;
+lv_color_t *s_humi_trend_canvas_buffer;
+lv_color_t *s_alert_icon_canvas_buffer;
+lv_color_t *s_chime_status_icon_canvas_buffer;
+lv_color_t *s_wifi_status_icon_canvas_buffer;
+lv_color_t *s_alarm_status_icon_canvas_buffer;
+lv_color_t *s_low_battery_icon_canvas_buffer;
+lv_color_t *s_time_canvas_buffer;
+lv_color_t *s_second_canvas_buffer;
+lv_color_t *s_status_gif_canvas_buffer;
+lv_color_t *s_second_progress_canvas_buffer;
 constexpr const char *kClockLogTexts[] = {
     CLOCK_DATE_LABEL_CREATE_FAILED_LOG,
     CLOCK_ALERT_PILL_CREATE_FAILED_LOG,
@@ -316,11 +329,11 @@ void build_clock_header(lv_obj_t *screen)
     if (g_alert_pill) {
         configure_clock_alert_pill(g_alert_pill);
 
-        if (prepare_clock_canvas_buffer(&g_alert_icon_canvas_buf, WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT)) {
+        if (prepare_clock_canvas_buffer(&s_alert_icon_canvas_buffer, WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT)) {
             g_alert_icon_canvas = lv_canvas_create(g_alert_pill);
             if (g_alert_icon_canvas) {
                 configure_canvas_base(g_alert_icon_canvas,
-                                      g_alert_icon_canvas_buf,
+                                      s_alert_icon_canvas_buffer,
                                       kClockAlertIconX,
                                       kClockAlertIconY,
                                       WARNING_ICON_WIDTH,
@@ -356,7 +369,7 @@ void build_clock_header(lv_obj_t *screen)
 
     build_clock_status_icon(screen,
                             &g_chime_status_icon_canvas,
-                            &g_chime_status_icon_canvas_buf,
+                            &s_chime_status_icon_canvas_buffer,
                             kClockChimeStatusIconX,
                             kClockChimeStatusIconY,
                             CHIME_STATUS_ICON_WIDTH,
@@ -365,7 +378,7 @@ void build_clock_header(lv_obj_t *screen)
                             chime_status_icon_bits);
     build_clock_status_icon(screen,
                             &g_wifi_status_icon_canvas,
-                            &g_wifi_status_icon_canvas_buf,
+                            &s_wifi_status_icon_canvas_buffer,
                             kClockWifiStatusIconX,
                             kClockWifiStatusIconY,
                             WIFI_STATUS_ICON_WIDTH,
@@ -374,7 +387,7 @@ void build_clock_header(lv_obj_t *screen)
                             wifi_status_icon_bits);
     build_clock_status_icon(screen,
                             &g_alarm_status_icon_canvas,
-                            &g_alarm_status_icon_canvas_buf,
+                            &s_alarm_status_icon_canvas_buffer,
                             kClockAlarmStatusIconX,
                             kClockAlarmStatusIconY,
                             ALARM_STATUS_ICON_WIDTH,
@@ -440,7 +453,7 @@ void build_clock_local_sensor_panel(lv_obj_t *screen)
 {
     build_clock_lower_icon(screen,
                            &g_temp_icon_canvas,
-                           &g_temp_icon_canvas_buf,
+                           &s_temp_icon_canvas_buffer,
                            kClockTempIconX,
                            kClockTempIconY,
                            TEMP_ICON_WIDTH,
@@ -450,7 +463,7 @@ void build_clock_local_sensor_panel(lv_obj_t *screen)
                            kClockComponentTempIcon);
     build_clock_lower_icon(screen,
                            &g_humi_icon_canvas,
-                           &g_humi_icon_canvas_buf,
+                           &s_humi_icon_canvas_buffer,
                            kClockHumiIconX,
                            kClockHumiIconY,
                            HUMI_ICON_WIDTH,
@@ -483,14 +496,14 @@ void build_clock_local_sensor_panel(lv_obj_t *screen)
                                                        &initial_humidity_trend);
     build_clock_trend_canvas(screen,
                              &g_temp_trend_canvas,
-                             &g_temp_trend_canvas_buf,
+                             &s_temp_trend_canvas_buffer,
                              kClockTrendCanvasX,
                              kClockTempTrendCanvasY,
                              initial_sensor_ok ? initial_temperature_trend : 0,
                              kClockComponentTempTrend);
     build_clock_trend_canvas(screen,
                              &g_humi_trend_canvas,
-                             &g_humi_trend_canvas_buf,
+                             &s_humi_trend_canvas_buffer,
                              kClockTrendCanvasX,
                              kClockHumiTrendCanvasY,
                              initial_sensor_ok ? initial_humidity_trend : 0,
@@ -503,7 +516,7 @@ void build_clock_time_canvases(lv_obj_t *screen)
 {
     build_clock_fill_canvas(screen,
                             &g_time_canvas,
-                            &g_time_canvas_buf,
+                            &s_time_canvas_buffer,
                             kClockTimeCanvasX,
                             kClockTimeCanvasY,
                             kClockTimeCanvasWidth,
@@ -511,7 +524,7 @@ void build_clock_time_canvases(lv_obj_t *screen)
                             kClockComponentTime);
     build_clock_fill_canvas(screen,
                             &g_second_canvas,
-                            &g_second_canvas_buf,
+                            &s_second_canvas_buffer,
                             kClockSecondCanvasX,
                             kClockSecondCanvasY,
                             kClockSecondCanvasWidth,
@@ -519,14 +532,14 @@ void build_clock_time_canvases(lv_obj_t *screen)
                             kClockComponentSecond);
     build_clock_fill_canvas(screen,
                             &g_status_gif_canvas,
-                            &g_status_gif_canvas_buf,
+                            &s_status_gif_canvas_buffer,
                             kClockStatusGifCanvasX,
                             kClockStatusGifCanvasY,
                             STATUS_GIF_WIDTH,
                             STATUS_GIF_HEIGHT,
                             kClockComponentStatusGif);
     remember_lower_panel_object(g_status_gif_canvas);
-    if (g_status_gif_canvas_buf) {
+    if (s_status_gif_canvas_buffer) {
         draw_status_gif_frame(0);
     }
 }
@@ -546,7 +559,7 @@ void build_clock_dividers_and_progress(lv_obj_t *screen)
     build_work_page_day_progress(screen, kWorkPageWeatherClock);
     build_progress_canvas(screen,
                           &g_second_progress_canvas,
-                          &g_second_progress_canvas_buf,
+                          &s_second_progress_canvas_buffer,
                           kClockSecondProgressCanvasY);
     g_panel_sep_a = make_bar(screen,
                              kClockLowerPanelSeparatorAX,
@@ -583,7 +596,7 @@ void build_clock_ui()
 
     build_clock_lower_icon(screen,
                            &g_low_battery_icon_canvas,
-                           &g_low_battery_icon_canvas_buf,
+                           &s_low_battery_icon_canvas_buffer,
                            kClockLowBatteryIconX,
                            kClockLowBatteryIconY,
                            LOW_BATTERY_ICON_WIDTH,
@@ -596,28 +609,6 @@ void build_clock_ui()
     }
 
     build_setup_status_panel(screen);
-}
-
-lv_obj_t *work_page_date_label(int page)
-{
-    switch (page) {
-    case kWorkPageWeatherClock:
-        return g_date_label;
-    case kWorkPageHistory:
-        return g_history_date_label;
-    case kWorkPageGallery:
-        return g_gallery_date_label;
-    case kWorkPageCalendar:
-        return g_calendar_date_label;
-    case kWorkPageWeatherBoard:
-        return g_weather_board_date_label;
-    case kWorkPageFlipClock:
-        return g_flip_clock_date_label;
-    case kWorkPageXiaozhiAI:
-        return g_xiaozhi_date_label;
-    default:
-        return nullptr;
-    }
 }
 
 bool update_time_ui(const struct tm &local, bool clock_page_active, int active_work_page)
@@ -644,7 +635,8 @@ bool update_time_ui(const struct tm &local, bool clock_page_active, int active_w
     if (time_snapshot.date_key != g_last_ui_date_key || date_page != g_last_ui_date_page) {
         char date[kClockDateTextSize] = {};
         format_clock_date_text(date, sizeof(date), local, time_snapshot.weekday);
-        changed |= set_label_text_if_changed(work_page_date_label(date_page), date);
+        WorkPageStatusLabels labels = get_work_page_status_labels(date_page);
+        changed |= set_label_text_if_changed(labels.date, date);
         g_last_ui_date_key = time_snapshot.date_key;
         g_last_ui_date_page = date_page;
     }

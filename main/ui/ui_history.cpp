@@ -59,6 +59,7 @@ constexpr const char *kHistoryTimePlaceholder = "--:--";
 constexpr const char *kHistoryAxisPlaceholder = "--";
 constexpr const char *kHistoryTempTitle = "温度";
 constexpr const char *kHistoryHumiTitle = "湿度";
+lv_color_t *s_history_chart_canvas_buffer;
 static_assert(kHoursPerDay > 0, "Hours per day must be positive");
 static_assert(kHistoryTopLineW > 0 && kHistoryTopLineH > 0, "History top separator size must be positive");
 static_assert(kHistoryTitleW > 0 && kHistoryTitleH > 0, "History title size must be positive");
@@ -476,16 +477,16 @@ static void build_history_chart_area(lv_obj_t *screen)
                                               kHistoryHumiTitle,
                                               HISTORY_HUMI_TITLE_CREATE_FAILED_LOG);
 
-    if (!g_history_chart_canvas_buf) {
-        g_history_chart_canvas_buf = alloc_canvas_buffer(kHistoryCanvasW, kHistoryCanvasH);
+    if (!s_history_chart_canvas_buffer) {
+        s_history_chart_canvas_buffer = alloc_canvas_buffer(kHistoryCanvasW, kHistoryCanvasH);
     }
-    if (g_history_chart_canvas_buf) {
+    if (s_history_chart_canvas_buffer) {
         g_history_chart_canvas = lv_canvas_create(screen);
         if (!g_history_chart_canvas) {
             ESP_LOGW(TAG, "%s", HISTORY_CHART_CANVAS_CREATE_FAILED_LOG);
         } else {
             configure_canvas_base(g_history_chart_canvas,
-                                  g_history_chart_canvas_buf,
+                                  s_history_chart_canvas_buffer,
                                   kHistoryChartCanvasX,
                                   kHistoryChartCanvasY,
                                   kHistoryCanvasW,

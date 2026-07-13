@@ -170,10 +170,6 @@ void clear_aux_page_root_refs()
 void clear_system_info_refs()
 {
     clear_pointer_array(g_info_labels);
-    g_info_ota_label = nullptr;
-    g_info_ota_hint_label = nullptr;
-    g_info_ota_bar_frame = nullptr;
-    g_info_ota_bar_fill = nullptr;
 }
 
 void clear_network_diag_refs()
@@ -187,7 +183,6 @@ void clear_settings_page_refs()
 {
     clear_pointer_array(g_settings_labels);
     clear_pointer_array(g_settings_switch_dots);
-    clear_pointer_array(g_settings_switch_texts);
     g_settings_feedback_label = nullptr;
     g_settings_ota_status_label = nullptr;
     g_settings_ota_hint_label = nullptr;

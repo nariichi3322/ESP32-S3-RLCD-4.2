@@ -43,7 +43,6 @@ constexpr const char *kUiWeatherHumidityFormat = "%s%%";
 constexpr const char *kUiDatePlaceholder = "----/--/-- / 星期-";
 constexpr const char *kUiTimePlaceholder = "--:--";
 #define UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT "weather clock visible with %s weather, requesting sync"
-#define UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT "settings manual sync timeout: op=%d"
 #define UI_SETTINGS_TIMEOUT_RETURN_LOG "settings timeout, returning to clock"
 #define UI_GALLERY_SAYING_SYNC_REQUEST_LOG "gallery visible with missing/stale daily saying, requesting sync"
 #define UI_XIAOZHI_AUTO_RETURN_LOG "Xiaozhi idle timeout, returning to home page=%d"
@@ -60,7 +59,6 @@ constexpr const char *kUiFormatTexts[] = {
 };
 constexpr const char *kUiLogTexts[] = {
     UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT,
-    UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT,
     UI_SETTINGS_TIMEOUT_RETURN_LOG,
     UI_GALLERY_SAYING_SYNC_REQUEST_LOG,
     UI_XIAOZHI_AUTO_RETURN_LOG,
@@ -195,43 +193,15 @@ bool weather_board_details_missing()
            !air.ready;
 }
 
-bool update_invalid_date_time_labels(lv_obj_t *date_label, lv_obj_t *time_label)
+bool update_invalid_time_labels_for_active_page(int active_work_page)
 {
-    bool changed = set_label_text_if_changed(date_label, kUiDatePlaceholder);
-    changed |= set_label_text_if_changed(time_label, kUiTimePlaceholder);
+    int status_page = (g_low_battery_mode || g_setup_portal_active)
+                          ? kWorkPageWeatherClock
+                          : active_work_page;
+    WorkPageStatusLabels labels = get_work_page_status_labels(status_page);
+    bool changed = set_label_text_if_changed(labels.date, kUiDatePlaceholder);
+    changed |= set_label_text_if_changed(labels.time, kUiTimePlaceholder);
     return changed;
-}
-
-bool update_invalid_time_labels_for_active_page(bool clock_page_active,
-                                                bool history_page_active,
-                                                bool gallery_page_active,
-                                                bool calendar_page_active,
-                                                bool weather_board_page_active,
-                                                bool flip_clock_page_active,
-                                                bool xiaozhi_page_active)
-{
-    if (clock_page_active || g_low_battery_mode || g_setup_portal_active) {
-        return set_label_text_if_changed(g_date_label, kUiDatePlaceholder);
-    }
-    if (history_page_active) {
-        return update_invalid_date_time_labels(g_history_date_label, g_history_status_time_label);
-    }
-    if (gallery_page_active) {
-        return set_label_text_if_changed(g_gallery_date_label, kUiDatePlaceholder);
-    }
-    if (calendar_page_active) {
-        return update_invalid_date_time_labels(g_calendar_date_label, g_calendar_status_time_label);
-    }
-    if (weather_board_page_active) {
-        return update_invalid_date_time_labels(g_weather_board_date_label, g_weather_board_status_time_label);
-    }
-    if (flip_clock_page_active) {
-        return set_label_text_if_changed(g_flip_clock_date_label, kUiDatePlaceholder);
-    }
-    if (xiaozhi_page_active) {
-        return update_invalid_date_time_labels(g_xiaozhi_date_label, g_xiaozhi_status_time_label);
-    }
-    return false;
 }
 
 bool auxiliary_page_requested()
@@ -241,9 +211,9 @@ bool auxiliary_page_requested()
            g_network_diag_page_requested;
 }
 
-bool low_refresh_work_page_idle(int page, const struct tm &local)
+bool low_refresh_work_page_idle(const struct tm &local)
 {
-    return g_active_work_page == page &&
+    return work_page_uses_low_refresh_idle(g_active_work_page) &&
            !g_low_battery_mode &&
            !g_battery_charging &&
            !g_setup_portal_active &&
@@ -273,12 +243,9 @@ TickType_t next_ui_loop_delay_ticks(const struct tm &local, bool battery_blink_v
                     !g_battery_charging &&
                     !auxiliary_page_requested() &&
                     is_tm_plausible(local);
-    bool gallery_idle = low_refresh_work_page_idle(kWorkPageGallery, local);
-    bool history_idle = low_refresh_work_page_idle(kWorkPageHistory, local);
-    bool calendar_idle = low_refresh_work_page_idle(kWorkPageCalendar, local);
-    bool weather_board_idle = low_refresh_work_page_idle(kWorkPageWeatherBoard, local);
+    bool low_refresh_page_idle = low_refresh_work_page_idle(local);
     uint32_t delay_candidates[5] = {};
-    delay_candidates[0] = (low_idle || gallery_idle || history_idle || calendar_idle || weather_board_idle)
+    delay_candidates[0] = (low_idle || low_refresh_page_idle)
                               ? next_minute_delay_ticks(local)
                               : next_second_delay_ticks();
     if (flip_clock_fast_poll_active(local)) {
@@ -305,6 +272,43 @@ TickType_t next_ui_loop_delay_ticks(const struct tm &local, bool battery_blink_v
     return static_cast<TickType_t>(
         ui_shortest_delay_ticks(delay_candidates, array_count(delay_candidates)));
 }
+
+void update_xiaozhi_auto_return_state(TickType_t tick_now,
+                                      TickType_t &last_activity_tick,
+                                      uint32_t &last_activity_sequence)
+{
+    if (g_active_work_page == kWorkPageXiaozhiAI &&
+        !g_low_battery_mode &&
+        !g_setup_portal_active &&
+        !auxiliary_page_requested()) {
+        XiaozhiAiSnapshot snapshot = {};
+        xiaozhi_ai_get_snapshot(&snapshot);
+        bool conversation_active = snapshot.state == kXiaozhiAiListening ||
+                                   snapshot.state == kXiaozhiAiSpeaking;
+        XiaozhiAutoReturnDecision auto_return = xiaozhi_auto_return_decision(
+            tick_now,
+            last_activity_tick,
+            pdMS_TO_TICKS(kXiaozhiAutoReturnTimeoutMs),
+            g_xiaozhi_auto_return_enabled,
+            pomodoro_is_running(),
+            conversation_active,
+            snapshot.activity_sequence != last_activity_sequence);
+        if (auto_return.record_activity) {
+            last_activity_tick = tick_now;
+            last_activity_sequence = snapshot.activity_sequence;
+        } else if (auto_return.return_home) {
+            int home_page = first_enabled_work_page();
+            if (home_page != kWorkPageXiaozhiAI) {
+                ESP_LOGI(TAG, UI_XIAOZHI_AUTO_RETURN_LOG, home_page);
+                g_active_work_page = home_page;
+            }
+            last_activity_tick = tick_now;
+        }
+    } else if (g_active_work_page != kWorkPageXiaozhiAI) {
+        last_activity_tick = 0;
+        last_activity_sequence = 0;
+    }
+}
 } // namespace
 
 void ui_task(void *)
@@ -327,19 +331,6 @@ void ui_task(void *)
     VisibleSyncRetryState<TickType_t> saying_sync_retry;
     TickType_t xiaozhi_last_activity_tick = 0;
     uint32_t last_xiaozhi_activity_sequence = 0;
-
-    auto reset_weather_sync_request = [&]() {
-        weather_sync_retry.reset_request();
-    };
-    auto reset_weather_sync_state = [&]() {
-        weather_sync_retry.reset();
-    };
-    auto reset_saying_sync_request = [&]() {
-        saying_sync_retry.reset_request();
-    };
-    auto reset_saying_sync_state = [&]() {
-        saying_sync_retry.reset();
-    };
 
     auto request_weather_sync_if_needed = [&](TickType_t tick_value, bool sync_in_flight, const char *reason) {
         if (weather_sync_retry.request_if_due(tick_value,
@@ -439,6 +430,7 @@ void ui_task(void *)
                 g_boot_info_requested = false;
                 g_network_diag_page_requested = false;
                 g_settings_requested = false;
+                reset_settings_navigation_state();
                 g_info_page_until_tick = 0;
                 info_requested = false;
                 network_diag_requested = false;
@@ -550,29 +542,8 @@ void ui_task(void *)
                         continue;
                     }
                 }
-                if (settings_requested && is_settings_sync_busy()) {
-                    TickType_t deadline = g_settings_sync_deadline_tick;
-                    if (deadline != 0 && app_tick_deadline_reached(tick_now, deadline)) {
-                        int op = g_settings_sync_op;
-                        ESP_LOGW(TAG, UI_SETTINGS_MANUAL_SYNC_TIMEOUT_FORMAT, op);
-                        if (op == kSettingsSyncNtp) {
-                            xEventGroupClearBits(g_app_events, kManualNtpSyncBit);
-                            finish_settings_sync(kSettingsSyncNtp, "时间同步超时");
-                            settings_changed = true;
-                        } else if (op == kSettingsSyncWeather) {
-                            xEventGroupClearBits(g_app_events, kManualWeatherSyncBit);
-                            finish_settings_sync(kSettingsSyncWeather, "天气同步超时");
-                            settings_changed = true;
-                        } else if (op == kSettingsSyncSaying) {
-                            xEventGroupClearBits(g_app_events, kManualSayingSyncBit);
-                            finish_settings_sync(kSettingsSyncSaying, "一言更新超时");
-                            settings_changed = true;
-                        } else {
-                            g_settings_sync_op = kSettingsSyncNone;
-                            g_settings_sync_deadline_tick = 0;
-                            settings_changed = true;
-                        }
-                    }
+                if (settings_requested && finish_settings_sync_if_timed_out(tick_now)) {
+                    settings_changed = true;
                 }
                 if (settings_requested) {
                     TickType_t last_activity = g_settings_last_activity_tick;
@@ -589,11 +560,7 @@ void ui_task(void *)
                             }
                         }
                         g_settings_requested = false;
-                        g_settings_focus_secondary = false;
-                        g_settings_page_toggle_mode = false;
-                        g_settings_page_order_mode = false;
-                        g_factory_reset_confirm_pending = false;
-                        g_offline_disable_confirm_pending = false;
+                        reset_settings_navigation_state();
                         settings_requested = false;
                     }
                 }
@@ -619,37 +586,9 @@ void ui_task(void *)
             } else {
                 ensure_active_work_page_enabled();
             }
-            if (g_active_work_page == kWorkPageXiaozhiAI &&
-                !g_low_battery_mode &&
-                !g_setup_portal_active &&
-                !auxiliary_page_requested()) {
-                XiaozhiAiSnapshot snapshot = {};
-                xiaozhi_ai_get_snapshot(&snapshot);
-                bool conversation_active = snapshot.state == kXiaozhiAiListening ||
-                                           snapshot.state == kXiaozhiAiSpeaking;
-                XiaozhiAutoReturnDecision auto_return = xiaozhi_auto_return_decision(
-                    tick_now,
-                    xiaozhi_last_activity_tick,
-                    pdMS_TO_TICKS(kXiaozhiAutoReturnTimeoutMs),
-                    g_xiaozhi_auto_return_enabled,
-                    pomodoro_is_running(),
-                    conversation_active,
-                    snapshot.activity_sequence != last_xiaozhi_activity_sequence);
-                if (auto_return.record_activity) {
-                    xiaozhi_last_activity_tick = tick_now;
-                    last_xiaozhi_activity_sequence = snapshot.activity_sequence;
-                } else if (auto_return.return_home) {
-                    int home_page = first_enabled_work_page();
-                    if (home_page != kWorkPageXiaozhiAI) {
-                        ESP_LOGI(TAG, UI_XIAOZHI_AUTO_RETURN_LOG, home_page);
-                        g_active_work_page = home_page;
-                    }
-                    xiaozhi_last_activity_tick = tick_now;
-                }
-            } else if (g_active_work_page != kWorkPageXiaozhiAI) {
-                xiaozhi_last_activity_tick = 0;
-                last_xiaozhi_activity_sequence = 0;
-            }
+            update_xiaozhi_auto_return_state(tick_now,
+                                              xiaozhi_last_activity_tick,
+                                              last_xiaozhi_activity_sequence);
             if (visible_work_page != g_active_work_page) {
                 show_active_work_page();
                 visible_work_page = g_active_work_page;
@@ -675,17 +614,18 @@ void ui_task(void *)
             bool xiaozhi_page_active = normal_work_page_active(kWorkPageXiaozhiAI);
             bool clock_page_active = g_active_work_page == kWorkPageWeatherClock;
             bool weather_data_page_active = clock_page_active || weather_board_page_active;
-            if (!weather_data_page_active) {
-                reset_weather_sync_request();
-            } else if (!g_have_weather_key || g_offline_mode_ui_enabled || ota_flow_active()) {
-                reset_weather_sync_request();
+            if (!weather_data_page_active ||
+                !g_have_weather_key ||
+                g_offline_mode_ui_enabled ||
+                ota_flow_active()) {
+                weather_sync_retry.reset_request();
             } else {
                 EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
                 bool weather_ready = (sync_bits & kWeatherReadyBit) != 0;
                 bool sync_in_flight = (sync_bits & (kManualWeatherSyncBit | kProvisioningSyncBit)) != 0;
                 bool details_missing = weather_board_page_active && weather_board_details_missing();
                 if (weather_ready && !weather_cache_stale(now) && !details_missing) {
-                    reset_weather_sync_state();
+                    weather_sync_retry.reset();
                 } else {
                     request_weather_sync_if_needed(tick_now,
                                                    sync_in_flight,
@@ -696,9 +636,9 @@ void ui_task(void *)
                                              !g_offline_mode_ui_enabled &&
                                              saying_cache_stale(local, now);
             if (!gallery_page_active) {
-                reset_saying_sync_request();
+                saying_sync_retry.reset_request();
             } else if (!gallery_saying_needs_sync) {
-                reset_saying_sync_state();
+                saying_sync_retry.reset();
             } else {
                 EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
                 bool sync_in_flight = (sync_bits & (kManualSayingSyncBit | kProvisioningSyncBit)) != 0;
@@ -761,13 +701,7 @@ void ui_task(void *)
                     refresh_now = true;
                 }
             } else {
-                refresh_now |= update_invalid_time_labels_for_active_page(clock_page_active,
-                                                                          history_page_active,
-                                                                          gallery_page_active,
-                                                                          calendar_page_active,
-                                                                          weather_board_page_active,
-                                                                          flip_clock_page_active,
-                                                                          xiaozhi_page_active);
+                refresh_now |= update_invalid_time_labels_for_active_page(g_active_work_page);
                 g_last_ui_date_key = -1;
                 g_last_ui_date_page = -1;
                 update_alert_pill(false);
@@ -838,7 +772,7 @@ void ui_task(void *)
                                                                            weather_humi,
                                                                            weather.icon);
                         if (!weather_cache_stale(now)) {
-                            reset_weather_sync_state();
+                            weather_sync_retry.reset();
                         } else if (g_have_weather_key && !g_offline_mode_ui_enabled) {
                             EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
                             bool sync_in_flight = (sync_bits & (kManualWeatherSyncBit | kProvisioningSyncBit)) != 0;
@@ -855,14 +789,14 @@ void ui_task(void *)
                                                                            kClockWeatherHumidityPlaceholder,
                                                                            kClockWeatherUnknownIconCode);
                     } else if (g_offline_mode_ui_enabled) {
-                        reset_weather_sync_state();
+                        weather_sync_retry.reset();
                         content_changed |= update_clock_weather_panel_text(kClockWeatherCityPlaceholder,
                                                                            kClockWeatherInfoWaitingText,
                                                                            kClockWeatherTempPlaceholder,
                                                                            kClockWeatherHumidityPlaceholder,
                                                                            kClockWeatherUnknownIconCode);
                     } else {
-                        reset_weather_sync_state();
+                        weather_sync_retry.reset();
                         content_changed |= update_clock_weather_panel_text(kClockWeatherCityPlaceholder,
                                                                            kClockWeatherInfoMissingApiKeyText,
                                                                            kClockWeatherTempPlaceholder,
@@ -885,8 +819,7 @@ void ui_task(void *)
                         content_changed |= update_non_clock_work_page_sensor_status(g_active_work_page);
                     }
                     if (clock_page_active) {
-                        update_top_status_icons(alert_visible);
-                        content_changed = true;
+                        content_changed |= update_top_status_icons(alert_visible);
                     } else {
                         content_changed |= update_work_page_status_icons(g_active_work_page);
                     }

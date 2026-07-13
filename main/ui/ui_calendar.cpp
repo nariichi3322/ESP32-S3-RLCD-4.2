@@ -43,6 +43,7 @@ static constexpr int kTmYearOffset = 1900;
 static constexpr int kTmMonthOffset = 1;
 static constexpr int kCalendarDayTextSize = 4; // "31" plus terminator, with one byte spare.
 static constexpr const char *kCalendarWeekdays[kCalendarWeekdayCount] = {"日", "一", "二", "三", "四", "五", "六"};
+static lv_color_t *s_calendar_canvas_buffer;
 
 static_assert(array_count(kCalendarWeekdays) == kCalendarWeekdayCount,
               "calendar weekday label table must match weekday count");
@@ -313,10 +314,10 @@ void build_calendar_page()
     set_obj_black(top_line, true);
     build_work_page_day_progress(screen, kWorkPageCalendar);
 
-    if (!g_calendar_canvas_buf) {
-        g_calendar_canvas_buf = alloc_canvas_buffer(kCalendarCanvasW, kCalendarCanvasH);
+    if (!s_calendar_canvas_buffer) {
+        s_calendar_canvas_buffer = alloc_canvas_buffer(kCalendarCanvasW, kCalendarCanvasH);
     }
-    if (!g_calendar_canvas_buf) {
+    if (!s_calendar_canvas_buffer) {
         lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
         update_battery_segments(g_calendar_battery_segments, g_battery_percent);
         return;
@@ -326,7 +327,7 @@ void build_calendar_page()
         ESP_LOGW(TAG, "%s", CALENDAR_CANVAS_CREATE_FAILED_LOG);
     } else {
         configure_canvas_base(g_calendar_canvas,
-                              g_calendar_canvas_buf,
+                              s_calendar_canvas_buffer,
                               kCalendarCanvasX,
                               kCalendarCanvasY,
                               kCalendarCanvasW,

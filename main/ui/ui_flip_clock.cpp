@@ -72,6 +72,11 @@ static constexpr const char *kFlipDayPlaceholder = "--";
 static constexpr const char *kFlipTempFormat = "%.1fC";
 static constexpr const char *kFlipHumiFormat = "%.0f%%";
 static constexpr const char *kFlipDayFormat = "%d";
+lv_color_t *s_flip_clock_card_canvas_buffer[kCardCount];
+lv_color_t *s_flip_clock_temp_mood_canvas_buffer;
+lv_color_t *s_flip_clock_humi_mood_canvas_buffer;
+lv_color_t *s_flip_clock_temp_trend_canvas_buffer;
+lv_color_t *s_flip_clock_humi_trend_canvas_buffer;
 
 static_assert(array_count(kCardX) == kCardCount,
               "flip clock card X table must match card count");
@@ -472,12 +477,12 @@ void build_flip_sensor_panel(lv_obj_t *screen)
                                    FLIP_CLOCK_HUMIDITY_LABEL_CREATE_FAILED_LOG);
     build_flip_mood_canvas(screen,
                            &g_flip_clock_temp_mood_canvas,
-                           &g_flip_clock_temp_mood_canvas_buf,
+                           &s_flip_clock_temp_mood_canvas_buffer,
                            kFlipTempMoodCanvasY,
                            "temperature");
     build_flip_mood_canvas(screen,
                            &g_flip_clock_humi_mood_canvas,
-                           &g_flip_clock_humi_mood_canvas_buf,
+                           &s_flip_clock_humi_mood_canvas_buffer,
                            kFlipHumiMoodCanvasY,
                            "humidity");
 
@@ -489,13 +494,13 @@ void build_flip_sensor_panel(lv_obj_t *screen)
                                                        &initial_humidity_trend);
     build_flip_trend_canvas(screen,
                             &g_flip_clock_temp_trend_canvas,
-                            &g_flip_clock_temp_trend_canvas_buf,
+                            &s_flip_clock_temp_trend_canvas_buffer,
                             kFlipTempTrendCanvasY,
                             initial_sensor_ok ? initial_temperature_trend : 0,
                             "temperature");
     build_flip_trend_canvas(screen,
                             &g_flip_clock_humi_trend_canvas,
-                            &g_flip_clock_humi_trend_canvas_buf,
+                            &s_flip_clock_humi_trend_canvas_buffer,
                             kFlipHumiTrendCanvasY,
                             initial_sensor_ok ? initial_humidity_trend : 0,
                             "humidity");
@@ -646,7 +651,7 @@ void build_flip_clock_page()
 
     build_inverted_clock_cards(screen,
                                g_flip_clock_card_canvas,
-                               g_flip_clock_card_canvas_buf);
+                               s_flip_clock_card_canvas_buffer);
     build_flip_sensor_panel(screen);
     build_flip_date_panel(screen);
 

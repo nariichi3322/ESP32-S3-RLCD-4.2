@@ -2,20 +2,13 @@
 #include "network_services.h"
 #include "app_constexpr.h"
 #include "app_text_format.h"
+#include "qweather_alert_parser.h"
+#include "qweather_alert_text.h"
+#include "qweather_city_parser.h"
+#include "qweather_current_parser.h"
 #include "qweather_forecast_parser.h"
 #include "qweather_response.h"
-
-#include <stdarg.h>
-
-namespace {
-constexpr const char *kQweatherApiHost = "devapi.qweather.com";
-constexpr const char *kQweatherGeoApiHost = "geoapi.qweather.com";
-}
-
-const char *qweather_api_host()
-{
-    return kQweatherApiHost;
-}
+#include "qweather_url.h"
 
 namespace {
 constexpr size_t kQweatherCityResponseBufferSize = 8192;
@@ -23,12 +16,8 @@ constexpr size_t kQweatherNowResponseBufferSize = 8192;
 constexpr size_t kQweatherAlertResponseBufferSize = 16384;
 constexpr size_t kQweatherDailyResponseBufferSize = 24576;
 constexpr size_t kQweatherAirResponseBufferSize = 8192;
-constexpr size_t kQweatherEncodedLocationSize = 128;
 constexpr size_t kQweatherApiUrlSize = 512;
 constexpr size_t kQweatherAlertUrlSize = 256;
-constexpr size_t kWeatherAlertEventNameSize = 24;
-constexpr size_t kWeatherAlertColorCodeSize = 16;
-constexpr size_t kWeatherAlertHeadlineSize = 64;
 static_assert(kQweatherCityResponseBufferSize > 1, "QWeather city response buffer must fit text and NUL");
 static_assert(kQweatherNowResponseBufferSize > 1, "QWeather now response buffer must fit text and NUL");
 static_assert(kQweatherAlertResponseBufferSize > kQweatherNowResponseBufferSize,
@@ -42,35 +31,12 @@ static_assert(kQweatherApiUrlSize > kQweatherEncodedLocationSize,
               "general QWeather API URL buffer must fit encoded location text");
 static_assert(kQweatherApiUrlSize > kQweatherAlertUrlSize,
               "general QWeather API URL buffer must stay larger than alert URL buffer");
-static_assert(kWeatherAlertEventNameSize > 1, "weather alert event name buffer must fit text and NUL");
-static_assert(kWeatherAlertColorCodeSize > 1, "weather alert color code buffer must fit text and NUL");
-static_assert(kWeatherAlertHeadlineSize <= kWeatherAlertTitleLen,
-              "temporary alert headline must fit final alert title storage");
 constexpr int kQweatherDaily3DayEndpointDays = 3;
 constexpr int kQweatherDaily7DayEndpointDays = 7;
 static_assert(kQweatherDaily7DayEndpointDays > kQweatherDaily3DayEndpointDays,
               "QWeather 7-day endpoint must cover more days than 3-day endpoint");
 static_assert(kWeatherForecastDays <= kQweatherDaily7DayEndpointDays,
               "stored forecast day count must fit the preferred QWeather endpoint");
-constexpr const char *kQweatherCityLookupUrlFormat =
-    "https://geoapi.qweather.com/v2/city/lookup?location=%s&number=1&range=cn&lang=zh";
-constexpr const char *kQweatherAlertUrlFormat =
-    "https://%s/weatheralert/v1/current/%s/%s?lang=zh&localTime=true";
-constexpr const char *kQweatherNowUrlFormat =
-    "https://%s/v7/weather/now?location=%s&lang=zh&unit=m";
-constexpr const char *kQweatherDailyUrlFormat =
-    "https://%s/v7/weather/%dd?location=%s&lang=zh&unit=m";
-constexpr const char *kQweatherAirUrlFormat =
-    "https://%s/v7/air/now?location=%s&lang=zh";
-constexpr const char *kQweatherEndpointTexts[] = {
-    kQweatherApiHost,
-    kQweatherGeoApiHost,
-    kQweatherCityLookupUrlFormat,
-    kQweatherAlertUrlFormat,
-    kQweatherNowUrlFormat,
-    kQweatherDailyUrlFormat,
-    kQweatherAirUrlFormat,
-};
 constexpr const char *kQweatherStageCity = "city";
 constexpr const char *kQweatherStageAlert = "alert";
 constexpr const char *kQweatherStageNow = "now";
@@ -83,48 +49,14 @@ constexpr const char *kQweatherPreviewDailyLabel = "qweather daily";
 constexpr const char *kQweatherPreviewAirLabel = "qweather air";
 constexpr const char *kQweatherUnknownStage = "unknown";
 constexpr const char *kQweatherJsonLocationField = "location";
-constexpr const char *kQweatherJsonIdField = "id";
-constexpr const char *kQweatherJsonNameField = "name";
-constexpr const char *kQweatherJsonLatField = "lat";
-constexpr const char *kQweatherJsonLonField = "lon";
 constexpr const char *kQweatherJsonNowField = "now";
-constexpr const char *kQweatherNowJsonTextField = "text";
-constexpr const char *kQweatherNowJsonIconField = "icon";
-constexpr const char *kQweatherNowJsonTempField = "temp";
-constexpr const char *kQweatherNowJsonHumidityField = "humidity";
 constexpr const char *kQweatherAlertJsonAlertsField = "alerts";
-constexpr const char *kQweatherAlertJsonEventTypeField = "eventType";
-constexpr const char *kQweatherAlertJsonColorField = "color";
-constexpr const char *kQweatherAlertJsonEventNameField = "name";
-constexpr const char *kQweatherAlertJsonColorCodeField = "code";
-constexpr const char *kQweatherAlertJsonHeadlineField = "headline";
 constexpr const char *kQweatherDailyJsonDailyField = "daily";
-constexpr const char *kQweatherAirJsonAqiField = "aqi";
-constexpr const char *kQweatherAirJsonCategoryField = "category";
-constexpr const char *kQweatherAirJsonPrimaryField = "primary";
-constexpr const char *kQweatherAirJsonPm25Field = "pm2p5";
 constexpr const char *kQweatherJsonFieldTexts[] = {
     kQweatherJsonLocationField,
-    kQweatherJsonIdField,
-    kQweatherJsonNameField,
-    kQweatherJsonLatField,
-    kQweatherJsonLonField,
     kQweatherJsonNowField,
-    kQweatherNowJsonTextField,
-    kQweatherNowJsonIconField,
-    kQweatherNowJsonTempField,
-    kQweatherNowJsonHumidityField,
     kQweatherAlertJsonAlertsField,
-    kQweatherAlertJsonEventTypeField,
-    kQweatherAlertJsonColorField,
-    kQweatherAlertJsonEventNameField,
-    kQweatherAlertJsonColorCodeField,
-    kQweatherAlertJsonHeadlineField,
     kQweatherDailyJsonDailyField,
-    kQweatherAirJsonAqiField,
-    kQweatherAirJsonCategoryField,
-    kQweatherAirJsonPrimaryField,
-    kQweatherAirJsonPm25Field,
 };
 #define QWEATHER_URL_INVALID_ARG_FORMAT "qweather url invalid arg stage=%s"
 #define QWEATHER_URL_TOO_LONG_FORMAT "qweather %s url too long"
@@ -190,85 +122,27 @@ static_assert(array_count(kQweatherStageAndStatusTexts) > 0,
               "QWeather stage/status guard must cover stage and status text");
 static_assert(array_count(kQweatherFixedWarningTexts) > 0,
               "QWeather fixed warning guard must cover fixed warning text");
-static_assert(array_count(kQweatherEndpointTexts) > 0,
-              "QWeather endpoint guard must cover endpoint text");
 static_assert(cstr_array_nonempty(kQweatherStageAndStatusTexts),
               "QWeather stage, preview, status and fixed log texts must be non-empty");
 static_assert(cstr_array_nonempty(kQweatherFixedWarningTexts),
               "QWeather fixed warning texts must be non-empty");
-static_assert(cstr_array_nonempty(kQweatherEndpointTexts),
-              "QWeather endpoint, location and alert texts must be non-empty");
-
 void log_qweather_fixed_warning(const char *message);
 
-bool format_qweather_url(char *out, size_t out_len, const char *stage, const char *fmt, ...)
+bool qweather_url_ready(QweatherUrlStatus status,
+                        const char *stage,
+                        const char *location_warning = nullptr)
 {
-    if (!app_text::output_buffer_available(out, out_len) || !fmt) {
-        ESP_LOGW(TAG, QWEATHER_URL_INVALID_ARG_FORMAT, qweather_stage_text(stage));
-        return false;
-    }
-    va_list args;
-    va_start(args, fmt);
-    int written = vsnprintf(out, out_len, fmt, args);
-    va_end(args);
-    if (app_text::format_failed(written, out_len)) {
-        out[0] = '\0';
-        ESP_LOGW(TAG, QWEATHER_URL_TOO_LONG_FORMAT, qweather_stage_text(stage));
-        return false;
-    }
-    return true;
-}
-
-bool encode_qweather_location_or_warn(const char *location, char *out, size_t out_len, const char *warning)
-{
-    if (url_encode_component(location, out, out_len)) {
+    if (status == kQweatherUrlOk) {
         return true;
     }
-    log_qweather_fixed_warning(warning);
+    if (status == kQweatherUrlLocationTooLong) {
+        log_qweather_fixed_warning(location_warning);
+    } else if (status == kQweatherUrlInvalidArgument) {
+        ESP_LOGW(TAG, QWEATHER_URL_INVALID_ARG_FORMAT, qweather_stage_text(stage));
+    } else {
+        ESP_LOGW(TAG, QWEATHER_URL_TOO_LONG_FORMAT, qweather_stage_text(stage));
+    }
     return false;
-}
-
-bool format_qweather_api_url_for_city(char *url,
-                                      size_t url_len,
-                                      const char *stage,
-                                      const char *url_format,
-                                      const char *city_id,
-                                      const char *location_warning)
-{
-    char encoded_location[kQweatherEncodedLocationSize] = {};
-    if (!encode_qweather_location_or_warn(city_id,
-                                          encoded_location,
-                                          sizeof(encoded_location),
-                                          location_warning)) {
-        return false;
-    }
-    return format_qweather_url(url,
-                               url_len,
-                               stage,
-                               url_format,
-                               qweather_api_host(),
-                               encoded_location);
-}
-
-bool format_qweather_daily_url_for_city(char *url,
-                                        size_t url_len,
-                                        const char *city_id,
-                                        int days)
-{
-    char encoded_location[kQweatherEncodedLocationSize] = {};
-    if (!encode_qweather_location_or_warn(city_id,
-                                          encoded_location,
-                                          sizeof(encoded_location),
-                                          kQweatherDailyLocationTooLongLog)) {
-        return false;
-    }
-    return format_qweather_url(url,
-                               url_len,
-                               kQweatherStageDaily,
-                               kQweatherDailyUrlFormat,
-                               qweather_api_host(),
-                               days,
-                               encoded_location);
 }
 
 void log_qweather_fixed_warning(const char *message)
@@ -294,23 +168,16 @@ QweatherCityLookupStatus qweather_lookup_city_status(const char *location,
         log_qweather_fixed_warning(kQweatherCityInvalidArgLog);
         return kQweatherCityLookupError;
     }
-    char encoded_location[kQweatherEncodedLocationSize] = {};
-    if (!encode_qweather_location_or_warn(location,
-                                          encoded_location,
-                                          sizeof(encoded_location),
-                                          kQweatherCityLocationTooLongLog)) {
-        return kQweatherCityLookupNotFound;
-    }
-
     char url[kQweatherApiUrlSize] = {};
-    if (!format_qweather_url(url,
-                             sizeof(url),
-                             kQweatherStageCity,
-                             kQweatherCityLookupUrlFormat,
-                             encoded_location)) {
-        return kQweatherCityLookupError;
+    QweatherUrlStatus url_status = build_qweather_city_lookup_url(url, sizeof(url), location);
+    if (!qweather_url_ready(url_status,
+                            kQweatherStageCity,
+                            kQweatherCityLocationTooLongLog)) {
+        return url_status == kQweatherUrlLocationTooLong
+                   ? kQweatherCityLookupNotFound
+                   : kQweatherCityLookupError;
     }
-    ESP_LOGI(TAG, QWEATHER_CITY_LOOKUP_FORMAT, location, kQweatherGeoApiHost);
+    ESP_LOGI(TAG, QWEATHER_CITY_LOOKUP_FORMAT, location, qweather_geo_api_host());
     QweatherResponseBuffer response(kQweatherStageCity, kQweatherCityResponseBufferSize);
     if (!response) {
         return kQweatherCityLookupError;
@@ -330,15 +197,16 @@ QweatherCityLookupStatus qweather_lookup_city_status(const char *location,
     const cJSON *locations = qweather_success_array(root.get(), kQweatherJsonLocationField, &code);
     const cJSON *first = cJSON_IsArray(locations) ? cJSON_GetArrayItem(locations, 0) : nullptr;
     if (cJSON_IsObject(first)) {
-        ok = json_copy_string(first, kQweatherJsonIdField, city_id, city_id_len) &&
-             json_copy_string(first, kQweatherJsonNameField, city_name, city_name_len);
+        ok = parse_qweather_city_location(first,
+                                          city_id,
+                                          city_id_len,
+                                          city_name,
+                                          city_name_len,
+                                          lat_out,
+                                          lat_len,
+                                          lon_out,
+                                          lon_len);
         if (ok) {
-            if (lat_out && lat_len > 0) {
-                json_copy_string(first, kQweatherJsonLatField, lat_out, lat_len);
-            }
-            if (lon_out && lon_len > 0) {
-                json_copy_string(first, kQweatherJsonLonField, lon_out, lon_len);
-            }
             ESP_LOGI(TAG, QWEATHER_CITY_RESOLVED_FORMAT, city_name, city_id);
         }
         status = ok ? kQweatherCityLookupOk : kQweatherCityLookupError;
@@ -369,32 +237,6 @@ bool qweather_lookup_city(const char *location,
                                        lon_len) == kQweatherCityLookupOk;
 }
 
-static void parse_weather_alert_item(const cJSON *item, WeatherAlertData *alert)
-{
-    if (!cJSON_IsObject(item) || !alert) {
-        return;
-    }
-    char event_name[kWeatherAlertEventNameSize] = {};
-    char color_code[kWeatherAlertColorCodeSize] = {};
-    char headline[kWeatherAlertHeadlineSize] = {};
-    const cJSON *event = cJSON_GetObjectItem(item, kQweatherAlertJsonEventTypeField);
-    const cJSON *color = cJSON_GetObjectItem(item, kQweatherAlertJsonColorField);
-    if (event) {
-        json_copy_string(event, kQweatherAlertJsonEventNameField, event_name, sizeof(event_name));
-    }
-    if (color) {
-        json_copy_string(color, kQweatherAlertJsonColorCodeField, color_code, sizeof(color_code));
-    }
-    json_copy_string(item, kQweatherAlertJsonHeadlineField, headline, sizeof(headline));
-
-    int rank = warning_color_rank(color_code);
-    char title[kWeatherAlertTitleLen] = {};
-    if (!build_weather_alert_title(title, sizeof(title), event_name, color_code, headline)) {
-        log_qweather_fixed_warning(kQweatherAlertTitleFormatFailedLog);
-    }
-    add_weather_alert_title(alert, title, rank);
-}
-
 bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *alert)
 {
     if (!alert) {
@@ -408,13 +250,8 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
 
     const char *host = qweather_api_host();
     char url[kQweatherAlertUrlSize] = {};
-    if (!format_qweather_url(url,
-                             sizeof(url),
-                             kQweatherStageAlert,
-                             kQweatherAlertUrlFormat,
-                             host,
-                             lat,
-                             lon)) {
+    if (!qweather_url_ready(build_qweather_alert_url(url, sizeof(url), lat, lon),
+                            kQweatherStageAlert)) {
         return false;
     }
     ESP_LOGI(TAG, QWEATHER_ALERT_LOOKUP_FORMAT, lat, lon, host);
@@ -440,24 +277,20 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
         if (!cJSON_IsObject(item)) {
             continue;
         }
-        parse_weather_alert_item(item, &next);
+        QweatherAlertItem parsed = {};
+        if (!parse_qweather_alert_item(item, &parsed)) {
+            continue;
+        }
+        if (!parsed.title_format_ok) {
+            log_qweather_fixed_warning(kQweatherAlertTitleFormatFailedLog);
+        }
+        add_weather_alert_title(&next, parsed.title, parsed.rank);
     }
     next.active = next.count > 0;
     time(&next.updated_at);
     *alert = next;
 
     return true;
-}
-
-static bool parse_weather_now(const cJSON *now, WeatherData *weather)
-{
-    if (!cJSON_IsObject(now) || !weather) {
-        return false;
-    }
-    return json_copy_string(now, kQweatherNowJsonTextField, weather->text, sizeof(weather->text)) &&
-           json_copy_string(now, kQweatherNowJsonIconField, weather->icon, sizeof(weather->icon)) &&
-           json_copy_string(now, kQweatherNowJsonTempField, weather->temp, sizeof(weather->temp)) &&
-           json_copy_string(now, kQweatherNowJsonHumidityField, weather->humidity, sizeof(weather->humidity));
 }
 
 bool qweather_fetch_now(const char *city_id, WeatherData *weather)
@@ -468,12 +301,9 @@ bool qweather_fetch_now(const char *city_id, WeatherData *weather)
     }
     const char *host = qweather_api_host();
     char url[kQweatherApiUrlSize] = {};
-    if (!format_qweather_api_url_for_city(url,
-                                          sizeof(url),
-                                          kQweatherStageNow,
-                                          kQweatherNowUrlFormat,
-                                          city_id,
-                                          kQweatherNowLocationTooLongLog)) {
+    if (!qweather_url_ready(build_qweather_now_url(url, sizeof(url), city_id),
+                            kQweatherStageNow,
+                            kQweatherNowLocationTooLongLog)) {
         return false;
     }
     ESP_LOGI(TAG, QWEATHER_NOW_LOOKUP_FORMAT, city_id, host);
@@ -494,7 +324,7 @@ bool qweather_fetch_now(const char *city_id, WeatherData *weather)
     const cJSON *code = nullptr;
     const cJSON *now = qweather_success_object(root.get(), kQweatherJsonNowField, &code);
     if (now) {
-        ok = parse_weather_now(now, weather);
+        ok = parse_qweather_current_weather(now, weather);
     } else {
         ESP_LOGW(TAG, QWEATHER_NOW_FAILED_FORMAT, qweather_code_text(code));
     }
@@ -510,7 +340,9 @@ static bool qweather_fetch_daily_days(const char *city_id, int days, WeatherFore
     }
     const char *host = qweather_api_host();
     char url[kQweatherApiUrlSize] = {};
-    if (!format_qweather_daily_url_for_city(url, sizeof(url), city_id, days)) {
+    if (!qweather_url_ready(build_qweather_daily_url(url, sizeof(url), city_id, days),
+                            kQweatherStageDaily,
+                            kQweatherDailyLocationTooLongLog)) {
         return false;
     }
     ESP_LOGI(TAG, QWEATHER_DAILY_LOOKUP_FORMAT, city_id, days, host);
@@ -552,28 +384,6 @@ bool qweather_fetch_daily(const char *city_id, WeatherForecastData *forecast)
     return qweather_fetch_daily_days(city_id, kQweatherDaily3DayEndpointDays, forecast);
 }
 
-static bool copy_weather_air_required_fields(const cJSON *now, WeatherAirData *air)
-{
-    return json_copy_string(now, kQweatherAirJsonAqiField, air->aqi, sizeof(air->aqi)) &&
-           json_copy_string(now, kQweatherAirJsonCategoryField, air->category, sizeof(air->category));
-}
-
-static void copy_weather_air_optional_fields(const cJSON *now, WeatherAirData *air)
-{
-    json_copy_string(now, kQweatherAirJsonPrimaryField, air->primary, sizeof(air->primary));
-    json_copy_string(now, kQweatherAirJsonPm25Field, air->pm2p5, sizeof(air->pm2p5));
-}
-
-static bool parse_weather_air(const cJSON *now, WeatherAirData *air)
-{
-    if (!cJSON_IsObject(now) || !air) {
-        return false;
-    }
-    bool ok = copy_weather_air_required_fields(now, air);
-    copy_weather_air_optional_fields(now, air);
-    return ok;
-}
-
 bool qweather_fetch_air(const char *city_id, WeatherAirData *air)
 {
     if (!city_id || !air) {
@@ -582,12 +392,9 @@ bool qweather_fetch_air(const char *city_id, WeatherAirData *air)
     }
     const char *host = qweather_api_host();
     char url[kQweatherApiUrlSize] = {};
-    if (!format_qweather_api_url_for_city(url,
-                                          sizeof(url),
-                                          kQweatherStageAir,
-                                          kQweatherAirUrlFormat,
-                                          city_id,
-                                          kQweatherAirLocationTooLongLog)) {
+    if (!qweather_url_ready(build_qweather_air_url(url, sizeof(url), city_id),
+                            kQweatherStageAir,
+                            kQweatherAirLocationTooLongLog)) {
         return false;
     }
     ESP_LOGI(TAG, QWEATHER_AIR_LOOKUP_FORMAT, city_id, host);
@@ -611,7 +418,7 @@ bool qweather_fetch_air(const char *city_id, WeatherAirData *air)
     const cJSON *code = nullptr;
     const cJSON *now = qweather_success_object(root.get(), kQweatherJsonNowField, &code);
     if (now) {
-        ok = parse_weather_air(now, &next);
+        ok = parse_qweather_current_air(now, &next);
         next.ready = ok;
         if (ok) {
             time(&next.updated_at);

@@ -15,6 +15,8 @@
 static int s_last_gallery_image_index = -1;
 static int s_last_gallery_time_key = -1;
 static uint8_t s_custom_gallery_image[CLOCK_GALLERY_IMAGE_BYTES_PER_ROW * CLOCK_GALLERY_IMAGE_HEIGHT];
+static lv_color_t *s_gallery_image_canvas_buffer;
+static lv_color_t *s_gallery_time_canvas_buffer;
 
 static constexpr int kGalleryTopLineX = 18;
 static constexpr int kGalleryTopLineY = 54;
@@ -115,7 +117,7 @@ static void draw_block_number(lv_obj_t *canvas, int value, int y)
 
 static bool update_gallery_time_labels(const struct tm &local)
 {
-    if (!g_gallery_time_canvas || !g_gallery_time_canvas_buf) {
+    if (!g_gallery_time_canvas || !s_gallery_time_canvas_buffer) {
         return false;
     }
     lv_canvas_fill_bg(g_gallery_time_canvas, lv_color_white(), LV_OPA_COVER);
@@ -174,7 +176,7 @@ static void build_gallery_canvas(lv_obj_t *screen,
 
 static bool update_gallery_image_for_date(const struct tm &local)
 {
-    if (!g_gallery_image_canvas || !g_gallery_image_canvas_buf) {
+    if (!g_gallery_image_canvas || !s_gallery_image_canvas_buffer) {
         return false;
     }
     int custom_count = custom_assets_gallery_count();
@@ -252,7 +254,7 @@ void build_gallery_page()
 
     build_gallery_canvas(screen,
                          &g_gallery_image_canvas,
-                         &g_gallery_image_canvas_buf,
+                         &s_gallery_image_canvas_buffer,
                          kGalleryImageCanvasX,
                          kGalleryImageCanvasY,
                          CLOCK_GALLERY_IMAGE_WIDTH,
@@ -267,7 +269,7 @@ void build_gallery_page()
     set_obj_black(divider, true);
     build_gallery_canvas(screen,
                          &g_gallery_time_canvas,
-                         &g_gallery_time_canvas_buf,
+                         &s_gallery_time_canvas_buffer,
                          kGalleryTimeCanvasX,
                          kGalleryTimeCanvasY,
                          kGalleryTimeCanvasW,

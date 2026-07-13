@@ -24,6 +24,9 @@ static constexpr int kStatusWifiX = 90;
 static constexpr int kStatusAlarmX = 116;
 static constexpr int kStatusIconY = 15;
 static constexpr int kStatusFirstWorkPage = kWorkPageWeatherClock;
+lv_color_t *s_chime_icon_canvas_buffers[kWorkPageCount];
+lv_color_t *s_wifi_icon_canvas_buffers[kWorkPageCount];
+lv_color_t *s_alarm_icon_canvas_buffers[kWorkPageCount];
 static constexpr const char *kStatusDatePlaceholder = "----/--/-- / 星期-";
 static constexpr const char *kStatusSummaryPlaceholder = "--C --%";
 static constexpr size_t kStatusSensorSummaryTextSize = 32;
@@ -106,19 +109,6 @@ void build_status_icon(lv_obj_t *screen,
     configure_canvas_base(*canvas, *buffer, x, y, width, height);
     draw_1bit_icon(*canvas, width, height, bytes_per_row, bits, lv_color_black(), lv_color_white());
     lv_obj_add_flag(*canvas, LV_OBJ_FLAG_HIDDEN);
-}
-
-bool set_status_icon_visible_if_changed(lv_obj_t *icon, bool visible)
-{
-    if (!icon) {
-        return false;
-    }
-    bool already_visible = !lv_obj_has_flag(icon, LV_OBJ_FLAG_HIDDEN);
-    if (already_visible == visible) {
-        return false;
-    }
-    set_obj_visible(icon, visible);
-    return true;
 }
 
 void log_status_label_create_failed(StatusLabelKind kind, int page)
@@ -220,7 +210,7 @@ void build_work_page_status_bar(lv_obj_t *screen,
     if (is_status_icon_page(page)) {
         build_status_icon(screen,
                           &g_work_status_chime_icon_canvas[page],
-                          &g_work_status_chime_icon_canvas_buf[page],
+                          &s_chime_icon_canvas_buffers[page],
                           kStatusChimeX,
                           kStatusIconY,
                           CHIME_STATUS_ICON_WIDTH,
@@ -229,7 +219,7 @@ void build_work_page_status_bar(lv_obj_t *screen,
                           chime_status_icon_bits);
         build_status_icon(screen,
                           &g_work_status_wifi_icon_canvas[page],
-                          &g_work_status_wifi_icon_canvas_buf[page],
+                          &s_wifi_icon_canvas_buffers[page],
                           kStatusWifiX,
                           kStatusIconY,
                           WIFI_STATUS_ICON_WIDTH,
@@ -238,13 +228,37 @@ void build_work_page_status_bar(lv_obj_t *screen,
                           wifi_status_icon_bits);
         build_status_icon(screen,
                           &g_work_status_alarm_icon_canvas[page],
-                          &g_work_status_alarm_icon_canvas_buf[page],
+                          &s_alarm_icon_canvas_buffers[page],
                           kStatusAlarmX,
                           kStatusIconY,
                           ALARM_STATUS_ICON_WIDTH,
                           ALARM_STATUS_ICON_HEIGHT,
                           ALARM_STATUS_ICON_BYTES_PER_ROW,
                           alarm_status_icon_bits);
+    }
+}
+
+WorkPageStatusLabels get_work_page_status_labels(int page)
+{
+    switch (page) {
+    case kWorkPageWeatherClock:
+        return {g_date_label, nullptr, nullptr};
+    case kWorkPageGallery:
+        return {g_gallery_date_label, g_gallery_summary_label, nullptr};
+    case kWorkPageWeatherBoard:
+        return {g_weather_board_date_label,
+                g_weather_board_summary_label,
+                g_weather_board_status_time_label};
+    case kWorkPageFlipClock:
+        return {g_flip_clock_date_label, nullptr, nullptr};
+    case kWorkPageCalendar:
+        return {g_calendar_date_label, g_calendar_summary_label, g_calendar_status_time_label};
+    case kWorkPageHistory:
+        return {g_history_date_label, g_history_summary_label, g_history_status_time_label};
+    case kWorkPageXiaozhiAI:
+        return {g_xiaozhi_date_label, g_xiaozhi_summary_label, g_xiaozhi_status_time_label};
+    default:
+        return {nullptr, nullptr, nullptr};
     }
 }
 
@@ -286,22 +300,10 @@ bool update_work_page_sensor_summary(lv_obj_t *label)
 
 bool update_non_clock_work_page_sensor_status(int page)
 {
-    switch (page) {
-    case kWorkPageHistory:
-        return update_work_page_sensor_summary(g_history_summary_label);
-    case kWorkPageGallery:
-        return update_work_page_sensor_summary(g_gallery_summary_label);
-    case kWorkPageCalendar:
-        return update_work_page_sensor_summary(g_calendar_summary_label);
-    case kWorkPageWeatherBoard:
-        return update_work_page_sensor_summary(g_weather_board_summary_label);
-    case kWorkPageFlipClock:
+    if (page == kWorkPageFlipClock) {
         return update_flip_clock_sensor_status();
-    case kWorkPageXiaozhiAI:
-        return update_work_page_sensor_summary(g_xiaozhi_summary_label);
-    default:
-        return false;
     }
+    return update_work_page_sensor_summary(get_work_page_status_labels(page).summary);
 }
 
 void style_work_page_sensor_summary(lv_obj_t *label)
@@ -329,8 +331,8 @@ bool update_work_page_status_icons(int page)
     lv_obj_t *wifi = g_work_status_wifi_icon_canvas[page];
     lv_obj_t *alarm = g_work_status_alarm_icon_canvas[page];
     bool changed = false;
-    changed |= set_status_icon_visible_if_changed(chime, chime_visible);
-    changed |= set_status_icon_visible_if_changed(wifi, wifi_visible);
-    changed |= set_status_icon_visible_if_changed(alarm, allow && alarm_is_enabled());
+    changed |= set_obj_visible(chime, chime_visible);
+    changed |= set_obj_visible(wifi, wifi_visible);
+    changed |= set_obj_visible(alarm, allow && alarm_is_enabled());
     return changed;
 }

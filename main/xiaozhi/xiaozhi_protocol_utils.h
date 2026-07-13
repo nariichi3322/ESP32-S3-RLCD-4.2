@@ -1,7 +1,8 @@
-// 声明小智协议使用的 UTF-8 文本和 WebSocket URL 纯解析工具。
+// 声明小智协议使用的 UTF-8、WebSocket URL 和固定文本报文纯工具。
 #pragma once
 
 #include <cstddef>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -119,6 +120,74 @@ static __attribute__((noinline)) bool parse_websocket_url(const char *url,
     }
     strlcpy(path, path_start ? path_start : "/", path_len);
     return true;
+}
+
+static __attribute__((noinline)) void format_listen_start(char *out,
+                                                          size_t out_len,
+                                                          const char *session_id)
+{
+    if (!output_buffer_available(out, out_len) || !session_id) {
+        return;
+    }
+    snprintf(out,
+             out_len,
+             "{\"session_id\":\"%s\",\"type\":\"listen\",\"state\":\"start\",\"mode\":\"realtime\"}",
+             session_id);
+}
+
+static __attribute__((noinline)) void format_wake_abort(char *out,
+                                                        size_t out_len,
+                                                        const char *session_id)
+{
+    if (!output_buffer_available(out, out_len) || !session_id) {
+        return;
+    }
+    snprintf(out,
+             out_len,
+             "{\"session_id\":\"%s\",\"type\":\"abort\",\"reason\":\"wake_word_detected\"}",
+             session_id);
+}
+
+static __attribute__((noinline)) void format_websocket_headers(char *out,
+                                                               size_t out_len,
+                                                               int version,
+                                                               const char *device_id,
+                                                               const char *client_id)
+{
+    if (!output_buffer_available(out, out_len) || !device_id || !client_id) {
+        return;
+    }
+    snprintf(out,
+             out_len,
+             "Protocol-Version: %d\r\nDevice-Id: %s\r\nClient-Id: %s\r\n",
+             version,
+             device_id,
+             client_id);
+}
+
+static __attribute__((noinline)) void format_websocket_authorization(char *out,
+                                                                     size_t out_len,
+                                                                     const char *token)
+{
+    if (!output_buffer_available(out, out_len) || !token) {
+        return;
+    }
+    snprintf(out, out_len, "%s%s", strchr(token, ' ') ? "" : "Bearer ", token);
+}
+
+static __attribute__((noinline)) void format_client_hello(char *out,
+                                                          size_t out_len,
+                                                          int version)
+{
+    if (!output_buffer_available(out, out_len)) {
+        return;
+    }
+    snprintf(out,
+             out_len,
+             "{\"type\":\"hello\",\"version\":%d,\"features\":{\"mcp\":true},"
+             "\"transport\":\"websocket\",\"audio_params\":{\"format\":\"opus\","
+             "\"sample_rate\":16000,\"channels\":1,\"frame_duration\":60}}",
+             version);
 }
 
 } // namespace xiaozhi_protocol

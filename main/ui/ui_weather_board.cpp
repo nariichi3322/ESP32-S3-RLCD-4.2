@@ -175,15 +175,6 @@ void style_weather_card(lv_obj_t *obj)
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
 }
 
-void set_card_visible(ForecastCardUi &card, bool visible)
-{
-    set_obj_visible(card.box, visible);
-    set_obj_visible(card.date, visible);
-    set_obj_visible(card.icon, visible);
-    set_obj_visible(card.text, visible);
-    set_obj_visible(card.range, visible);
-}
-
 const char *weather_icon_or_default(const char *icon)
 {
     return weather_icon_text(icon && icon[0] ? icon : kWeatherBoardUnknownIcon);
@@ -420,7 +411,6 @@ bool update_forecast_cards(const WeatherForecastData &forecast)
     bool changed = false;
     for (int i = 0; i < kWeatherForecastDays; ++i) {
         const WeatherForecastDay *day = weather_board_forecast_day_or_null(forecast, i);
-        set_card_visible(s_cards[i], true);
         changed |= update_forecast_card(s_cards[i], day);
     }
     return changed;

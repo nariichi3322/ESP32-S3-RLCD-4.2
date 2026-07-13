@@ -1,5 +1,6 @@
 // 构建小智 MCP initialize 响应和工具 JSON schema，不执行具体工具业务。
 #include "xiaozhi_mcp_schema.h"
+#include "xiaozhi_mcp_json.h"
 
 #include <stdint.h>
 
@@ -49,10 +50,7 @@ constexpr int kMinutesPerHour = 60;
 constexpr uint32_t kMaxCountdownSeconds = 7U * 24U * 60U * 60U;
 constexpr uint32_t kMaxPomodoroSeconds = 99U * 60U + 59U;
 
-bool add_string(cJSON *object, const char *name, const char *value)
-{
-    return object && name && value && cJSON_AddStringToObject(object, name, value) != nullptr;
-}
+using xiaozhi_mcp_json::add_string;
 
 cJSON *create_object_schema()
 {

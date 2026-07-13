@@ -153,6 +153,27 @@ void set_formatted_settings_feedback(const char *format, ...)
     set_settings_feedback(feedback, kSettingsFeedbackDefaultMs);
 }
 
+template <typename T>
+bool save_chime_setting_or_restore(T &setting, T previous)
+{
+    if (save_hourly_chime_setting()) {
+        return true;
+    }
+    setting = previous;
+    set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+    return false;
+}
+
+void queue_manual_settings_sync(SettingsSyncOp op,
+                                const char *feedback,
+                                const char *log_message,
+                                EventBits_t event_bit)
+{
+    begin_settings_sync(op, feedback);
+    ESP_LOGI(TAG, "%s", log_message);
+    xEventGroupSetBits(g_app_events, event_bit);
+}
+
 void clear_inactive_settings_confirmation(int primary, int selected)
 {
     if (!(primary == kSettingsPrimarySystem && selected == kSystemSettingsFactoryResetItem)) {
@@ -219,9 +240,10 @@ void handle_network_settings_action(int selected)
             set_settings_feedback(kManualWeatherCityAutoFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        begin_settings_sync(kSettingsSyncWeather, kManualWeatherSyncFeedback);
-        ESP_LOGI(TAG, "%s", MANUAL_WEATHER_CITY_CLEARED_SYNC_LOG);
-        xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
+        queue_manual_settings_sync(kSettingsSyncWeather,
+                                   kManualWeatherSyncFeedback,
+                                   MANUAL_WEATHER_CITY_CLEARED_SYNC_LOG,
+                                   kManualWeatherSyncBit);
         return;
     }
     if (g_offline_mode_ui_enabled) {
@@ -229,17 +251,20 @@ void handle_network_settings_action(int selected)
         return;
     }
     if (selected == kNetworkSettingsNtpItem) {
-        begin_settings_sync(kSettingsSyncNtp, kManualNtpSyncFeedback);
-        ESP_LOGI(TAG, "%s", MANUAL_NTP_SYNC_REQUESTED_LOG);
-        xEventGroupSetBits(g_app_events, kManualNtpSyncBit);
+        queue_manual_settings_sync(kSettingsSyncNtp,
+                                   kManualNtpSyncFeedback,
+                                   MANUAL_NTP_SYNC_REQUESTED_LOG,
+                                   kManualNtpSyncBit);
     } else if (selected == kNetworkSettingsWeatherItem) {
-        begin_settings_sync(kSettingsSyncWeather, kManualWeatherSyncFeedback);
-        ESP_LOGI(TAG, "%s", MANUAL_WEATHER_SYNC_REQUESTED_LOG);
-        xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
+        queue_manual_settings_sync(kSettingsSyncWeather,
+                                   kManualWeatherSyncFeedback,
+                                   MANUAL_WEATHER_SYNC_REQUESTED_LOG,
+                                   kManualWeatherSyncBit);
     } else if (selected == kNetworkSettingsSayingItem) {
-        begin_settings_sync(kSettingsSyncSaying, kManualSayingSyncFeedback);
-        ESP_LOGI(TAG, "%s", MANUAL_SAYING_SYNC_REQUESTED_LOG);
-        xEventGroupSetBits(g_app_events, kManualSayingSyncBit);
+        queue_manual_settings_sync(kSettingsSyncSaying,
+                                   kManualSayingSyncFeedback,
+                                   MANUAL_SAYING_SYNC_REQUESTED_LOG,
+                                   kManualSayingSyncBit);
     }
 }
 
@@ -249,9 +274,7 @@ void handle_sound_settings_action(int selected)
         int previous = g_chime_volume_percent;
         int next = chime_settings::next_volume_percent(g_chime_volume_percent);
         g_chime_volume_percent = next;
-        if (!save_hourly_chime_setting()) {
-            g_chime_volume_percent = previous;
-            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+        if (!save_chime_setting_or_restore(g_chime_volume_percent, previous)) {
             return;
         }
         set_formatted_settings_feedback(kSoundVolumeFeedbackFormat, g_chime_volume_percent);
@@ -259,9 +282,7 @@ void handle_sound_settings_action(int selected)
     } else if (selected == kSoundSettingsSoundItem) {
         int previous = g_chime_sound_index;
         g_chime_sound_index = (g_chime_sound_index + 1) % kChimeSoundCount;
-        if (!save_hourly_chime_setting()) {
-            g_chime_sound_index = previous;
-            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+        if (!save_chime_setting_or_restore(g_chime_sound_index, previous)) {
             return;
         }
         set_formatted_settings_feedback(kSoundIndexFeedbackFormat, g_chime_sound_index + 1);
@@ -269,9 +290,7 @@ void handle_sound_settings_action(int selected)
     } else if (selected == kSoundSettingsHourlyItem) {
         bool previous = g_hourly_chime_enabled;
         g_hourly_chime_enabled = !g_hourly_chime_enabled;
-        if (!save_hourly_chime_setting()) {
-            g_hourly_chime_enabled = previous;
-            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+        if (!save_chime_setting_or_restore(g_hourly_chime_enabled, previous)) {
             return;
         }
         set_settings_feedback(g_hourly_chime_enabled ? kHourlyChimeEnabledFeedback : kHourlyChimeDisabledFeedback,
@@ -285,9 +304,7 @@ void handle_sound_settings_action(int selected)
     } else if (selected == kSoundSettingsAllDayItem) {
         bool previous = g_hourly_chime_all_day;
         g_hourly_chime_all_day = !g_hourly_chime_all_day;
-        if (!save_hourly_chime_setting()) {
-            g_hourly_chime_all_day = previous;
-            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+        if (!save_chime_setting_or_restore(g_hourly_chime_all_day, previous)) {
             return;
         }
         set_settings_feedback(g_hourly_chime_all_day ? kAllDayChimeEnabledFeedback : kAllDayChimeDisabledFeedback,

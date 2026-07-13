@@ -8,6 +8,7 @@
 #include "network_url.h"
 #include "qweather_alert_text.h"
 #include "qweather_icons.h"
+#include "qweather_url.h"
 #include "wifi_portal_pages.h"
 
 struct HttpBuffer {
@@ -68,7 +69,6 @@ void release_network_http_transaction_lock();
 esp_err_t http_event_handler(esp_http_client_event_t *evt);
 esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len);
 esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *api_key = nullptr);
-const char *qweather_api_host();
 void log_response_preview(const char *stage, const char *response);
 bool ip_geolocation_lookup(char *location, size_t location_len, char *city, size_t city_len);
 enum QweatherCityLookupStatus {
@@ -114,7 +114,9 @@ bool is_time_valid(struct tm *local_out = nullptr);
 void run_boot_connectivity_sync();
 void boot_connectivity_task(void *);
 void wait_for_network_sync_event(uint32_t timeout_ms);
-uint32_t network_idle_wait_ms(time_t now, time_t next_weather_at, time_t next_ntp_retry_at);
+uint32_t network_idle_wait_ms(time_t now,
+                              time_t next_boot_due_at,
+                              time_t next_ntp_retry_at);
 void network_diag_reset();
 void network_diag_begin();
 void network_diag_finish();

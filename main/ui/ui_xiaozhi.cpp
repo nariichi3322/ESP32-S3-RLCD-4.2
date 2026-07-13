@@ -69,6 +69,7 @@ enum FaceEmotion {
 
 lv_obj_t *s_clock_cards[kClockCardCount] = {};
 lv_color_t *s_clock_card_buffers[kClockCardCount] = {};
+lv_color_t *s_face_canvas_buffer = nullptr;
 int s_last_clock_values[kClockCardCount] = {-1, -1, -1};
 lv_obj_t *s_last_face_canvas = nullptr;
 XiaozhiAiState s_last_face_state = kXiaozhiAiInactive;
@@ -89,7 +90,6 @@ lv_obj_t *s_pomodoro_mode_label = nullptr;
 lv_obj_t *s_preparing_dots_canvas = nullptr;
 lv_color_t *s_preparing_dots_buffer = nullptr;
 PomodoroState s_last_pomodoro_state = kPomodoroIdle;
-bool s_preparing_dots_visible = false;
 int s_last_preparing_dot_count = -1;
 
 struct PomodoroDisplayValues {
@@ -179,20 +179,6 @@ void draw_preparing_dots(int count)
     }
     s_last_preparing_dot_count = count;
     lv_obj_invalidate(s_preparing_dots_canvas);
-}
-
-bool set_xiaozhi_status_time_visible(bool visible)
-{
-    if (!g_xiaozhi_status_time_label) {
-        return false;
-    }
-    const bool currently_visible =
-        !lv_obj_has_flag(g_xiaozhi_status_time_label, LV_OBJ_FLAG_HIDDEN);
-    if (currently_visible == visible) {
-        return false;
-    }
-    set_obj_visible(g_xiaozhi_status_time_label, visible);
-    return true;
 }
 
 bool update_xiaozhi_clock_or_pomodoro(const struct tm &local,
@@ -400,7 +386,7 @@ void draw_happy_mouth(lv_obj_t *canvas, bool inverted)
 
 void draw_expression(const XiaozhiAiSnapshot &snapshot)
 {
-    if (!g_xiaozhi_wave_canvas || !g_xiaozhi_wave_canvas_buf) {
+    if (!g_xiaozhi_wave_canvas || !s_face_canvas_buffer) {
         return;
     }
     bool animated = snapshot.state == kXiaozhiAiActivating ||
@@ -554,11 +540,11 @@ void build_xiaozhi_page()
         lv_obj_set_style_clip_corner(interaction_panel, true, LV_PART_MAIN);
     }
 
-    if (!g_xiaozhi_wave_canvas_buf) {
-        g_xiaozhi_wave_canvas_buf = alloc_canvas_buffer(kFaceW, kFaceH);
+    if (!s_face_canvas_buffer) {
+        s_face_canvas_buffer = alloc_canvas_buffer(kFaceW, kFaceH);
     }
     g_xiaozhi_wave_canvas = create_xiaozhi_canvas(g_xiaozhi_root,
-                                                   g_xiaozhi_wave_canvas_buf,
+                                                   s_face_canvas_buffer,
                                                    kFaceX,
                                                    kFaceY,
                                                    kFaceW,
@@ -594,7 +580,6 @@ void build_xiaozhi_page()
     if (s_preparing_dots_canvas) {
         set_obj_visible(s_preparing_dots_canvas, false);
     }
-    s_preparing_dots_visible = false;
     s_last_preparing_dot_count = -1;
     if (g_xiaozhi_detail_label) {
         lv_label_set_long_mode(g_xiaozhi_detail_label, LV_LABEL_LONG_WRAP);
@@ -630,20 +615,14 @@ bool update_xiaozhi_page(const struct tm &local)
             draw_preparing_dots(dots);
             changed = true;
         }
-        if (!s_preparing_dots_visible) {
-            set_obj_visible(s_preparing_dots_canvas, true);
-            s_preparing_dots_visible = true;
-            changed = true;
-        }
-    } else if (s_preparing_dots_visible) {
-        set_obj_visible(s_preparing_dots_canvas, false);
-        s_preparing_dots_visible = false;
-        changed = true;
+        changed |= set_obj_visible(s_preparing_dots_canvas, true);
+    } else {
+        changed |= set_obj_visible(s_preparing_dots_canvas, false);
     }
     changed |= set_label_text_if_changed(g_xiaozhi_state_label, display_status);
     changed |= set_label_text_if_changed(g_xiaozhi_detail_label, display_detail);
     const bool status_time_visible = pomodoro.state != kPomodoroIdle;
-    changed |= set_xiaozhi_status_time_visible(status_time_visible);
+    changed |= set_obj_visible(g_xiaozhi_status_time_label, status_time_visible);
     if (status_time_visible) {
         changed |= update_work_page_status_time(g_xiaozhi_status_time_label, local);
     }

@@ -32,3 +32,11 @@ struct NetworkSyncSchedule {
 
 NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInput &input);
 int network_boot_budget_remaining_ms(int64_t deadline_us, int64_t now_us);
+uint32_t network_idle_wait_ms(time_t now,
+                              time_t next_boot_due_at,
+                              time_t next_ntp_retry_at);
+bool network_cache_age_is_fresh(time_t now, time_t cached_at, time_t max_age);
+bool network_cache_local_hour_matches(const struct tm &now_local,
+                                      const struct tm &cached_local);
+bool network_cache_local_day_matches(const struct tm &now_local,
+                                     const struct tm &cached_local);

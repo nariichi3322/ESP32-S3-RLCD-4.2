@@ -32,6 +32,7 @@ constexpr const char *const kBootTexts[] = {
     BOOT_ANIM_DONE_EVENT_SKIPPED_LOG,
     BOOT_ANIM_CANVAS_CREATE_FAILED_LOG,
 };
+lv_color_t *s_boot_anim_canvas_buffer;
 
 static_assert(kBootContentX >= 0 && kBootContentW > 0,
               "boot screen content frame must be valid");
@@ -49,7 +50,7 @@ static_assert(cstr_array_nonempty(kBootTexts), "boot screen text registry must n
 
 void draw_boot_anim_frame_index(int frame)
 {
-    if (!g_boot_anim_canvas || !g_boot_anim_canvas_buf) {
+    if (!g_boot_anim_canvas || !s_boot_anim_canvas_buffer) {
         return;
     }
     if (frame < 0) {
@@ -118,11 +119,11 @@ void show_boot_screen()
     make_centered_label_with_font(screen, kBootContentX, kBootVersionY, kBootContentW, kBootVersionH,
                                   APP_VERSION, &lv_font_montserrat_16, "boot version label create failed");
 
-    if (!g_boot_anim_canvas_buf) {
-        g_boot_anim_canvas_buf = alloc_canvas_buffer(BOOT_ANIM_WIDTH, BOOT_ANIM_HEIGHT);
+    if (!s_boot_anim_canvas_buffer) {
+        s_boot_anim_canvas_buffer = alloc_canvas_buffer(BOOT_ANIM_WIDTH, BOOT_ANIM_HEIGHT);
     }
     g_boot_anim_canvas = nullptr;
-    if (g_boot_anim_canvas_buf) {
+    if (s_boot_anim_canvas_buffer) {
         g_boot_anim_canvas = lv_canvas_create(screen);
         if (!g_boot_anim_canvas) {
             ESP_LOGW(TAG, BOOT_ANIM_CANVAS_CREATE_FAILED_LOG);
@@ -130,7 +131,7 @@ void show_boot_screen()
     }
     if (g_boot_anim_canvas) {
         configure_canvas_base(g_boot_anim_canvas,
-                              g_boot_anim_canvas_buf,
+                              s_boot_anim_canvas_buffer,
                               kBootAnimCanvasX,
                               kBootAnimCanvasY,
                               BOOT_ANIM_WIDTH,

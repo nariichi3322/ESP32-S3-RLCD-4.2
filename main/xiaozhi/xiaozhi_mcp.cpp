@@ -1,6 +1,10 @@
 // 实现小智 WebSocket 上的轻量 MCP JSON-RPC 工具服务。
 #include "xiaozhi_mcp.h"
+#include "xiaozhi_mcp_arguments.h"
+#include "xiaozhi_mcp_json.h"
+#include "xiaozhi_mcp_request_parser.h"
 #include "xiaozhi_mcp_schema.h"
+#include "xiaozhi_json_owner.h"
 
 #ifdef XIAOZHI_MCP_HOST_TEST
 #include "xiaozhi_mcp_host_port.h"
@@ -12,7 +16,6 @@
 #endif
 
 #include <atomic>
-#include <cmath>
 #include <cstdio>
 #include <string.h>
 
@@ -24,22 +27,12 @@ constexpr const char *kMcpToolsListMethod = "tools/list";
 constexpr const char *kMcpToolsCallMethod = "tools/call";
 constexpr const char *kMcpNotificationPrefix = "notifications";
 constexpr const char *kJsonFieldType = "type";
-constexpr const char *kJsonFieldAction = "action";
-constexpr const char *kJsonFieldDurationSeconds = "duration_seconds";
 constexpr const char *kJsonFieldPayload = "payload";
-constexpr const char *kPomodoroActionStart = "start";
-constexpr const char *kPomodoroActionCancel = "cancel";
-constexpr const char *kPomodoroActionStatus = "status";
 constexpr int kJsonRpcInvalidRequest = -32600;
 constexpr int kJsonRpcMethodNotFound = -32601;
 constexpr int kJsonRpcInvalidParams = -32602;
 constexpr int kJsonRpcInternalError = -32603;
 constexpr size_t kToolResultTextLen = 256;
-constexpr int kHoursPerDay = 24;
-constexpr int kMinutesPerHour = 60;
-constexpr uint32_t kMaxCountdownSeconds = 7U * 24U * 60U * 60U;
-constexpr uint32_t kDefaultPomodoroSeconds = 25U * 60U;
-constexpr uint32_t kMaxPomodoroSeconds = 99U * 60U + 59U;
 
 using xiaozhi_mcp_schema::kDeviceStatusTool;
 using xiaozhi_mcp_schema::kDisableAlarmTool;
@@ -48,6 +41,7 @@ using xiaozhi_mcp_schema::kSetAlarmTool;
 using xiaozhi_mcp_schema::kSetCountdownTool;
 using xiaozhi_mcp_schema::kSetVolumeTool;
 using xiaozhi_mcp_schema::kSetWeatherCityTool;
+using xiaozhi_mcp_json::add_string;
 
 std::atomic<bool> s_volume_save_pending{false};
 XiaozhiMcpAlarmHandler s_alarm_handler = nullptr;
@@ -55,34 +49,6 @@ XiaozhiMcpAlarmDisableHandler s_alarm_disable_handler = nullptr;
 XiaozhiMcpCountdownHandler s_countdown_handler = nullptr;
 XiaozhiMcpPomodoroHandler s_pomodoro_handler = nullptr;
 XiaozhiMcpWeatherCityHandler s_weather_city_handler = nullptr;
-
-struct JsonOwner {
-    cJSON *value = nullptr;
-    ~JsonOwner()
-    {
-        cJSON_Delete(value);
-    }
-};
-
-bool contains_mcp_json_token(const char *message, size_t message_len)
-{
-    constexpr char kMcpJsonToken[] = "\"mcp\"";
-    constexpr size_t kMcpJsonTokenLen = sizeof(kMcpJsonToken) - 1;
-    if (!message || message_len < kMcpJsonTokenLen) {
-        return false;
-    }
-    for (size_t offset = 0; offset <= message_len - kMcpJsonTokenLen; ++offset) {
-        if (memcmp(message + offset, kMcpJsonToken, kMcpJsonTokenLen) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
-bool add_string(cJSON *object, const char *name, const char *value)
-{
-    return object && name && value && cJSON_AddStringToObject(object, name, value) != nullptr;
-}
 
 cJSON *create_tool_content(const char *text, bool is_error)
 {
@@ -108,27 +74,27 @@ cJSON *create_device_status_result()
     float temperature = 0.0f;
     float humidity = 0.0f;
     bool sensor_available = get_local_sensor_snapshot(&temperature, &humidity, nullptr, nullptr);
-    JsonOwner status{cJSON_CreateObject()};
-    if (!status.value) {
+    XiaozhiJsonOwner status{cJSON_CreateObject()};
+    if (!status) {
         return nullptr;
     }
-    cJSON_AddBoolToObject(status.value, "sensor_available", sensor_available);
+    cJSON_AddBoolToObject(status.get(), "sensor_available", sensor_available);
     if (sensor_available) {
-        cJSON_AddNumberToObject(status.value, "temperature_c", temperature);
-        cJSON_AddNumberToObject(status.value, "humidity_percent", humidity);
+        cJSON_AddNumberToObject(status.get(), "temperature_c", temperature);
+        cJSON_AddNumberToObject(status.get(), "humidity_percent", humidity);
     } else {
-        cJSON_AddNullToObject(status.value, "temperature_c");
-        cJSON_AddNullToObject(status.value, "humidity_percent");
+        cJSON_AddNullToObject(status.get(), "temperature_c");
+        cJSON_AddNullToObject(status.get(), "humidity_percent");
     }
     bool battery_available = g_battery_percent >= 0 && g_battery_percent <= 100;
-    cJSON_AddBoolToObject(status.value, "battery_available", battery_available);
+    cJSON_AddBoolToObject(status.get(), "battery_available", battery_available);
     if (battery_available) {
-        cJSON_AddNumberToObject(status.value, "battery_percent", g_battery_percent);
+        cJSON_AddNumberToObject(status.get(), "battery_percent", g_battery_percent);
     } else {
-        cJSON_AddNullToObject(status.value, "battery_percent");
+        cJSON_AddNullToObject(status.get(), "battery_percent");
     }
-    cJSON_AddNumberToObject(status.value, "volume_percent", g_chime_volume_percent);
-    char *status_text = cJSON_PrintUnformatted(status.value);
+    cJSON_AddNumberToObject(status.get(), "volume_percent", g_chime_volume_percent);
+    char *status_text = cJSON_PrintUnformatted(status.get());
     if (!status_text) {
         return nullptr;
     }
@@ -137,40 +103,10 @@ cJSON *create_device_status_result()
     return result;
 }
 
-bool json_integer_in_range(const cJSON *object,
-                           const char *name,
-                           int minimum,
-                           int maximum,
-                           int *value)
-{
-    const cJSON *item = cJSON_IsObject(object) ? cJSON_GetObjectItem(object, name) : nullptr;
-    if (!cJSON_IsNumber(item) || !std::isfinite(item->valuedouble) ||
-        item->valuedouble != static_cast<double>(item->valueint) ||
-        item->valueint < minimum || item->valueint > maximum) {
-        return false;
-    }
-    if (value) {
-        *value = item->valueint;
-    }
-    return true;
-}
-
-void copy_optional_label(const cJSON *arguments, char *label, size_t label_len)
-{
-    if (!label || label_len == 0) {
-        return;
-    }
-    label[0] = '\0';
-    const cJSON *item = cJSON_IsObject(arguments) ? cJSON_GetObjectItem(arguments, "label") : nullptr;
-    if (cJSON_IsString(item) && item->valuestring) {
-        strlcpy(label, item->valuestring, label_len);
-    }
-}
-
 cJSON *call_set_volume(const cJSON *arguments)
 {
     int volume = 0;
-    if (!json_integer_in_range(arguments, "volume", 0, 100, &volume)) {
+    if (!xiaozhi_mcp_arguments::parse_volume(arguments, &volume)) {
         return nullptr;
     }
     if (g_chime_volume_percent != volume) {
@@ -189,16 +125,9 @@ cJSON *call_alarm(const cJSON *arguments)
         return nullptr;
     }
     XiaozhiMcpAlarmRequest request = {};
-    if (!json_integer_in_range(arguments, "hour", 0, kHoursPerDay - 1, &request.hour) ||
-        !json_integer_in_range(arguments, "minute", 0, kMinutesPerHour - 1, &request.minute)) {
+    if (!xiaozhi_mcp_arguments::parse_alarm(arguments, &request)) {
         return nullptr;
     }
-    const cJSON *confirm_replace = cJSON_GetObjectItem(arguments, "confirm_replace");
-    if (confirm_replace && !cJSON_IsBool(confirm_replace)) {
-        return nullptr;
-    }
-    request.confirm_replace = cJSON_IsTrue(confirm_replace);
-    copy_optional_label(arguments, request.label, sizeof(request.label));
     char result[kToolResultTextLen] = {};
     return s_alarm_handler(request, result, sizeof(result))
                ? create_tool_content(result, false)
@@ -222,16 +151,9 @@ cJSON *call_countdown(const cJSON *arguments)
         return nullptr;
     }
     XiaozhiMcpCountdownRequest request = {};
-    int seconds = 0;
-    if (!json_integer_in_range(arguments,
-                               kJsonFieldDurationSeconds,
-                               1,
-                               static_cast<int>(kMaxCountdownSeconds),
-                               &seconds)) {
+    if (!xiaozhi_mcp_arguments::parse_countdown(arguments, &request)) {
         return nullptr;
     }
-    request.duration_seconds = static_cast<uint32_t>(seconds);
-    copy_optional_label(arguments, request.label, sizeof(request.label));
     char result[kToolResultTextLen] = {};
     return s_countdown_handler(request, result, sizeof(result))
                ? create_tool_content(result, false)
@@ -240,36 +162,11 @@ cJSON *call_countdown(const cJSON *arguments)
 
 cJSON *call_pomodoro(const cJSON *arguments)
 {
-    if (!s_pomodoro_handler || !cJSON_IsObject(arguments)) {
-        return nullptr;
-    }
-    const cJSON *action = cJSON_GetObjectItem(arguments, kJsonFieldAction);
-    const cJSON *duration = cJSON_GetObjectItem(arguments, kJsonFieldDurationSeconds);
-    if (!cJSON_IsString(action) || (duration && !cJSON_IsNumber(duration))) {
+    if (!s_pomodoro_handler) {
         return nullptr;
     }
     XiaozhiMcpPomodoroRequest request = {};
-    if (strcmp(action->valuestring, kPomodoroActionStart) == 0) {
-        request.action = kXiaozhiMcpPomodoroStart;
-        request.has_duration_seconds = duration != nullptr;
-        request.duration_seconds = request.has_duration_seconds
-                                       ? static_cast<uint32_t>(duration->valueint)
-                                       : kDefaultPomodoroSeconds;
-        if (request.duration_seconds == 0 || request.duration_seconds > kMaxPomodoroSeconds ||
-            (duration && duration->valuedouble != duration->valueint)) {
-            return nullptr;
-        }
-    } else if (strcmp(action->valuestring, kPomodoroActionCancel) == 0) {
-        if (duration) {
-            return nullptr;
-        }
-        request.action = kXiaozhiMcpPomodoroCancel;
-    } else if (strcmp(action->valuestring, kPomodoroActionStatus) == 0) {
-        if (duration) {
-            return nullptr;
-        }
-        request.action = kXiaozhiMcpPomodoroStatus;
-    } else {
+    if (!xiaozhi_mcp_arguments::parse_pomodoro(arguments, &request)) {
         return nullptr;
     }
     char result[kToolResultTextLen] = {};
@@ -280,16 +177,13 @@ cJSON *call_pomodoro(const cJSON *arguments)
 
 cJSON *call_weather_city(const cJSON *arguments)
 {
-    if (!s_weather_city_handler || !cJSON_IsObject(arguments)) {
+    if (!s_weather_city_handler) {
         return nullptr;
     }
     XiaozhiMcpWeatherCityRequest request = {};
-    const cJSON *city = cJSON_GetObjectItem(arguments, "city");
-    if (!cJSON_IsString(city) || !city->valuestring || city->valuestring[0] == '\0' ||
-        strlen(city->valuestring) >= sizeof(request.city)) {
+    if (!xiaozhi_mcp_arguments::parse_weather_city(arguments, &request)) {
         return nullptr;
     }
-    strlcpy(request.city, city->valuestring, sizeof(request.city));
     char result[kToolResultTextLen] = {};
     return s_weather_city_handler(request, result, sizeof(result))
                ? create_tool_content(result, false)
@@ -370,11 +264,11 @@ bool write_response(const char *session_id,
                     char *response,
                     size_t response_len)
 {
-    JsonOwner root{cJSON_CreateObject()};
+    XiaozhiJsonOwner root{cJSON_CreateObject()};
     cJSON *payload = cJSON_CreateObject();
-    if (!root.value || !payload || !response || response_len == 0 ||
-        !add_string(root.value, "session_id", session_id ? session_id : "") ||
-        !add_string(root.value, kJsonFieldType, kMcpType) ||
+    if (!root || !payload || !response || response_len == 0 ||
+        !add_string(root.get(), "session_id", session_id ? session_id : "") ||
+        !add_string(root.get(), kJsonFieldType, kMcpType) ||
         !add_string(payload, "jsonrpc", kMcpJsonRpcVersion)) {
         cJSON_Delete(payload);
         cJSON_Delete(result);
@@ -399,9 +293,9 @@ bool write_response(const char *session_id,
         }
         cJSON_AddItemToObject(payload, "error", error);
     }
-    cJSON_AddItemToObject(root.value, kJsonFieldPayload, payload);
+    cJSON_AddItemToObject(root.get(), kJsonFieldPayload, payload);
     response[0] = '\0';
-    return cJSON_PrintPreallocated(root.value,
+    return cJSON_PrintPreallocated(root.get(),
                                    response,
                                    static_cast<int>(response_len),
                                    false);
@@ -410,19 +304,14 @@ bool write_response(const char *session_id,
 
 bool xiaozhi_mcp_message_calls_weather_city(const char *message, size_t message_len)
 {
-    if (!message || message_len == 0 || !contains_mcp_json_token(message, message_len)) {
+    if (!message || message_len == 0 || !xiaozhi_mcp_json_token_present(message, message_len)) {
         return false;
     }
-    JsonOwner request{cJSON_ParseWithLength(message, message_len)};
-    const cJSON *type = request.value ? cJSON_GetObjectItem(request.value, kJsonFieldType) : nullptr;
-    const cJSON *payload = cJSON_IsString(type) && strcmp(type->valuestring, kMcpType) == 0
-                               ? cJSON_GetObjectItem(request.value, kJsonFieldPayload)
-                               : nullptr;
-    const cJSON *method = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "method") : nullptr;
-    const cJSON *params = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "params") : nullptr;
-    const cJSON *name = cJSON_IsObject(params) ? cJSON_GetObjectItem(params, "name") : nullptr;
-    return cJSON_IsString(method) && strcmp(method->valuestring, kMcpToolsCallMethod) == 0 &&
-           cJSON_IsString(name) && strcmp(name->valuestring, kSetWeatherCityTool) == 0;
+    XiaozhiMcpRequestDocument request;
+    return request.parse(message, message_len) &&
+           request.type() && strcmp(request.type(), kMcpType) == 0 &&
+           request.method() && strcmp(request.method(), kMcpToolsCallMethod) == 0 &&
+           request.tool_name() && strcmp(request.tool_name(), kSetWeatherCityTool) == 0;
 }
 
 XiaozhiMcpMessageResult xiaozhi_mcp_handle_message(const char *message,
@@ -437,46 +326,42 @@ XiaozhiMcpMessageResult xiaozhi_mcp_handle_message(const char *message,
     }
     // 普通 STT/TTS/LLM 文本占绝大多数，先做有界 token 筛选，避免每帧
     // 在 MCP 和原会话处理器中重复分配并解析两棵 cJSON 树。
-    if (!contains_mcp_json_token(message, message_len)) {
+    if (!xiaozhi_mcp_json_token_present(message, message_len)) {
         return kXiaozhiMcpNotHandled;
     }
-    JsonOwner request{cJSON_ParseWithLength(message, message_len)};
-    const cJSON *type = request.value ? cJSON_GetObjectItem(request.value, kJsonFieldType) : nullptr;
-    if (!cJSON_IsString(type) || strcmp(type->valuestring, kMcpType) != 0) {
+    XiaozhiMcpRequestDocument request;
+    if (!request.parse(message, message_len) || !request.type() ||
+        strcmp(request.type(), kMcpType) != 0) {
         return kXiaozhiMcpNotHandled;
     }
     if (response && response_len > 0) {
         response[0] = '\0';
     }
-    const cJSON *payload = cJSON_GetObjectItem(request.value, kJsonFieldPayload);
-    const cJSON *version = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "jsonrpc") : nullptr;
-    const cJSON *method = cJSON_IsObject(payload) ? cJSON_GetObjectItem(payload, "method") : nullptr;
-    if (!cJSON_IsString(version) || strcmp(version->valuestring, kMcpJsonRpcVersion) != 0 ||
-        !cJSON_IsString(method)) {
+    const char *version = request.version();
+    const char *method = request.method();
+    if (!version || strcmp(version, kMcpJsonRpcVersion) != 0 || !method) {
         return kXiaozhiMcpHandledWithoutResponse;
     }
-    if (strncmp(method->valuestring,
-                kMcpNotificationPrefix,
-                strlen(kMcpNotificationPrefix)) == 0) {
+    if (strncmp(method, kMcpNotificationPrefix, strlen(kMcpNotificationPrefix)) == 0) {
         return kXiaozhiMcpHandledWithoutResponse;
     }
-    const cJSON *id = cJSON_GetObjectItem(payload, "id");
+    const cJSON *id = request.id();
     if (!cJSON_IsNumber(id) && !cJSON_IsString(id)) {
         return kXiaozhiMcpHandledWithoutResponse;
     }
-    const cJSON *params = cJSON_GetObjectItem(payload, "params");
+    const cJSON *params = request.params();
     cJSON *result = nullptr;
     int error_code = kJsonRpcInvalidRequest;
     const char *error_message = "Invalid MCP request";
-    if (strcmp(method->valuestring, kMcpInitializeMethod) == 0) {
+    if (strcmp(method, kMcpInitializeMethod) == 0) {
         result = xiaozhi_mcp_schema::create_initialize_result(APP_VERSION);
-    } else if (strcmp(method->valuestring, kMcpToolsListMethod) == 0) {
+    } else if (strcmp(method, kMcpToolsListMethod) == 0) {
         result = xiaozhi_mcp_schema::create_tools_list_result(s_alarm_handler != nullptr,
                                                               s_alarm_disable_handler != nullptr,
                                                               s_countdown_handler != nullptr,
                                                               s_pomodoro_handler != nullptr,
                                                               s_weather_city_handler != nullptr);
-    } else if (strcmp(method->valuestring, kMcpToolsCallMethod) == 0) {
+    } else if (strcmp(method, kMcpToolsCallMethod) == 0) {
         result = create_tool_call_result(params,
                                          allow_alarm_disable,
                                          &error_code,

@@ -33,7 +33,6 @@ int collect_visible_work_page_order_indices(int *indices, size_t capacity)
 #define SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT "settings secondary label create failed index=%d"
 #define SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT "settings secondary text format failed index=%d"
 #define SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT "settings switch dot create failed index=%d"
-#define SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT "settings switch text create failed index=%d"
 
 constexpr int kSettingsPrimaryX = 12;
 constexpr int kSettingsPrimaryW = 112;
@@ -43,10 +42,6 @@ constexpr int kSettingsSecondaryH = 30;
 constexpr int kSettingsSwitchDotX = 362;
 constexpr int kSettingsSwitchDotYOffset = 8;
 constexpr int kSettingsSwitchDotSize = 12;
-constexpr int kSettingsSwitchTextX = 352;
-constexpr int kSettingsSwitchTextYOffset = 6;
-constexpr int kSettingsSwitchTextW = 28;
-constexpr int kSettingsSwitchTextH = 18;
 constexpr size_t kSettingsSecondaryTextSize = 56;
 constexpr int kSettingsListRowY[] = {66, 105, 144, 183, 222, 222, 222};
 constexpr int kSettingsGridRowY[] = {66, 105, 144, 183};
@@ -58,11 +53,6 @@ constexpr int kSettingsGridRightX = 267;
 constexpr int kSettingsGridColW = 111;
 constexpr int kSettingsGridSwitchDotXOffset = 92;
 constexpr int kSettingsGridSwitchDotYOffset = 9;
-constexpr int kSettingsGridSwitchTextSystemXOffset = 80;
-constexpr int kSettingsGridSwitchTextDisplayXOffset = 90;
-constexpr int kSettingsGridSwitchTextSystemW = 26;
-constexpr int kSettingsGridSwitchTextDisplayW = 30;
-constexpr int kSettingsGridSwitchTextYOffset = 7;
 constexpr int kSettingsSystemLongItemY = 144;
 constexpr int kSettingsDisplayLongItemY = 183;
 constexpr const char *kSettingsPrimaryItems[kSettingsPrimaryCount] = {"网络", "声音", "显示", "系统"};
@@ -127,7 +117,6 @@ constexpr const char *kBootSettingsLogTexts[] = {
     SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT,
     SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT,
     SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT,
-    SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT,
     SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT,
     SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT,
 };
@@ -137,9 +126,9 @@ struct SettingsGridCell {
     int y;
 };
 
-struct SettingsGridSwitchTextLayout {
-    int x_offset;
-    int w;
+enum SettingsMenuColumn {
+    kSettingsMenuPrimaryColumn,
+    kSettingsMenuSecondaryColumn,
 };
 
 SettingsGridCell settings_grid_cell(int index)
@@ -150,15 +139,6 @@ SettingsGridCell settings_grid_cell(int index)
         col == 0 ? kSettingsGridLeftX : kSettingsGridRightX,
         kSettingsGridRowY[row],
     };
-}
-
-SettingsGridSwitchTextLayout settings_grid_switch_text_layout(int primary)
-{
-    return primary == kSettingsPrimarySystem
-               ? SettingsGridSwitchTextLayout{kSettingsGridSwitchTextSystemXOffset,
-                                              kSettingsGridSwitchTextSystemW}
-               : SettingsGridSwitchTextLayout{kSettingsGridSwitchTextDisplayXOffset,
-                                              kSettingsGridSwitchTextDisplayW};
 }
 
 int settings_long_item_y(int primary)
@@ -178,8 +158,6 @@ static_assert(array_count(g_settings_labels) == kSettingsLabelCount,
               "settings label storage must match configured label count");
 static_assert(array_count(g_settings_switch_dots) == kSettingsSecondaryMaxCount,
               "settings switch dot storage must match secondary slot count");
-static_assert(array_count(g_settings_switch_texts) == kSettingsSecondaryMaxCount,
-              "settings switch text storage must match secondary slot count");
 static_assert(array_count(kSettingsSecondaryTexts) > 0, "settings secondary text registry must not be empty");
 static_assert(array_count(kSettingsFixedTexts) > 0, "settings fixed text registry must not be empty");
 static_assert(array_count(kBootSettingsLogTexts) > 0, "boot/settings log registry must not be empty");
@@ -236,9 +214,6 @@ void hide_settings_switch_slot(int index)
     if (g_settings_switch_dots[index]) {
         set_obj_visible(g_settings_switch_dots[index], false);
     }
-    if (g_settings_switch_texts[index]) {
-        set_obj_visible(g_settings_switch_texts[index], false);
-    }
 }
 
 void warn_if_center_align_failed(lv_obj_t *label, const char *message)
@@ -246,6 +221,32 @@ void warn_if_center_align_failed(lv_obj_t *label, const char *message)
     if (!center_align_label(label)) {
         ESP_LOGW(TAG, "%s", cstr_nonempty(message) ? message : kLabelCreateFailedLog);
     }
+}
+
+lv_obj_t *build_settings_menu_label(lv_obj_t *screen,
+                                    int x,
+                                    int y,
+                                    int width,
+                                    int index,
+                                    SettingsMenuColumn column)
+{
+    lv_obj_t *label = make_label(screen,
+                                 x,
+                                 y,
+                                 width,
+                                 kSettingsSecondaryH,
+                                 kSettingsLabelPlaceholder);
+    if (!label) {
+        if (column == kSettingsMenuPrimaryColumn) {
+            ESP_LOGW(TAG, SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT, index);
+        } else {
+            ESP_LOGW(TAG, SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT, index);
+        }
+        return nullptr;
+    }
+    lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
+    center_align_label(label);
+    return label;
 }
 
 }
@@ -298,25 +299,21 @@ void build_settings_page()
     make_black_bar(screen, 136, 62, 2, 174);
 
     for (int i = 0; i < kSettingsPrimaryCount; ++i) {
-        g_settings_labels[i] =
-            make_label(screen, kSettingsPrimaryX, kSettingsListRowY[i], kSettingsPrimaryW, kSettingsSecondaryH, kSettingsLabelPlaceholder);
-        if (g_settings_labels[i]) {
-            lv_label_set_long_mode(g_settings_labels[i], LV_LABEL_LONG_CLIP);
-            center_align_label(g_settings_labels[i]);
-        } else {
-            ESP_LOGW(TAG, SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT, i);
-        }
+        g_settings_labels[i] = build_settings_menu_label(screen,
+                                                         kSettingsPrimaryX,
+                                                         kSettingsListRowY[i],
+                                                         kSettingsPrimaryW,
+                                                         i,
+                                                         kSettingsMenuPrimaryColumn);
     }
     for (int i = 0; i < kSettingsSecondaryMaxCount; ++i) {
         int slot = kSettingsPrimaryCount + i;
-        g_settings_labels[slot] =
-            make_label(screen, kSettingsSecondaryX, kSettingsListRowY[i], kSettingsSecondaryW, kSettingsSecondaryH, kSettingsLabelPlaceholder);
-        if (g_settings_labels[slot]) {
-            lv_label_set_long_mode(g_settings_labels[slot], LV_LABEL_LONG_CLIP);
-            center_align_label(g_settings_labels[slot]);
-        } else {
-            ESP_LOGW(TAG, SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT, i);
-        }
+        g_settings_labels[slot] = build_settings_menu_label(screen,
+                                                            kSettingsSecondaryX,
+                                                            kSettingsListRowY[i],
+                                                            kSettingsSecondaryW,
+                                                            i,
+                                                            kSettingsMenuSecondaryColumn);
         g_settings_switch_dots[i] = lv_obj_create(screen);
         if (g_settings_switch_dots[i]) {
             lv_obj_clear_flag(g_settings_switch_dots[i], LV_OBJ_FLAG_SCROLLABLE);
@@ -328,21 +325,6 @@ void build_settings_page()
             lv_obj_add_flag(g_settings_switch_dots[i], LV_OBJ_FLAG_HIDDEN);
         } else {
             ESP_LOGW(TAG, SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT, i);
-        }
-        g_settings_switch_texts[i] =
-            make_label(screen,
-                       kSettingsSwitchTextX,
-                       kSettingsListRowY[i] + kSettingsSwitchTextYOffset,
-                       kSettingsSwitchTextW,
-                       kSettingsSwitchTextH,
-                       "");
-        if (g_settings_switch_texts[i]) {
-            center_align_label(g_settings_switch_texts[i]);
-            lv_obj_set_style_pad_all(g_settings_switch_texts[i], 0, LV_PART_MAIN);
-            lv_label_set_long_mode(g_settings_switch_texts[i], LV_LABEL_LONG_CLIP);
-            lv_obj_add_flag(g_settings_switch_texts[i], LV_OBJ_FLAG_HIDDEN);
-        } else {
-            ESP_LOGW(TAG, SETTINGS_SWITCH_TEXT_CREATE_FAILED_FORMAT, i);
         }
     }
     build_settings_ota_panel(screen, kSettingsSecondaryX, kSettingsSecondaryW);
@@ -510,13 +492,6 @@ bool layout_settings_secondary_slot(
                                cell.x + kSettingsGridSwitchDotXOffset,
                                cell.y + kSettingsGridSwitchDotYOffset);
             }
-            if (g_settings_switch_texts[index]) {
-                SettingsGridSwitchTextLayout text_layout = settings_grid_switch_text_layout(primary);
-                lv_obj_set_pos(g_settings_switch_texts[index],
-                               cell.x + text_layout.x_offset,
-                               cell.y + kSettingsGridSwitchTextYOffset);
-                lv_obj_set_size(g_settings_switch_texts[index], text_layout.w, kSettingsSwitchTextH);
-            }
         } else {
             lv_obj_set_pos(g_settings_labels[slot],
                            kSettingsSecondaryX,
@@ -532,12 +507,6 @@ bool layout_settings_secondary_slot(
                            kSettingsSwitchDotX,
                            kSettingsListRowY[index] + kSettingsSwitchDotYOffset);
         }
-        if (g_settings_switch_texts[index]) {
-            lv_obj_set_pos(g_settings_switch_texts[index],
-                           kSettingsSwitchTextX,
-                           kSettingsListRowY[index] + kSettingsSwitchTextYOffset);
-            lv_obj_set_size(g_settings_switch_texts[index], kSettingsSwitchTextW, kSettingsSwitchTextH);
-        }
     }
     return true;
 }
@@ -546,8 +515,6 @@ void update_settings_switch_slot(int index, int primary, int selected, bool visi
 {
     bool dot_visible = false;
     bool dot_on = false;
-    bool switch_text_visible = false;
-    const char *switch_text = "";
     if (visible && primary == kSettingsPrimarySound) {
         if (index >= kSoundSettingsHourlyItem) {
             dot_visible = true;
@@ -575,16 +542,6 @@ void update_settings_switch_slot(int index, int primary, int selected, bool visi
             style_settings_switch_dot(g_settings_switch_dots[index],
                                       dot_on,
                                       g_settings_focus_secondary && index == selected);
-        }
-    }
-    if (g_settings_switch_texts[index]) {
-        set_obj_visible(g_settings_switch_texts[index], switch_text_visible);
-        if (switch_text_visible) {
-            set_label_text_if_changed(g_settings_switch_texts[index], switch_text);
-            bool selected_item = g_settings_focus_secondary && index == selected;
-            lv_obj_set_style_text_color(g_settings_switch_texts[index],
-                                        selected_item ? lv_color_white() : lv_color_black(),
-                                        LV_PART_MAIN);
         }
     }
 }

@@ -151,16 +151,21 @@ void remember_lower_panel_object(lv_obj_t *obj)
     ESP_LOGW(TAG, "%s", LOWER_PANEL_OBJECT_LIST_FULL_LOG);
 }
 
-void set_obj_visible(lv_obj_t *obj, bool visible)
+bool set_obj_visible(lv_obj_t *obj, bool visible)
 {
     if (!obj) {
-        return;
+        return false;
+    }
+    bool already_visible = !lv_obj_has_flag(obj, LV_OBJ_FLAG_HIDDEN);
+    if (already_visible == visible) {
+        return false;
     }
     if (visible) {
         lv_obj_clear_flag(obj, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(obj, LV_OBJ_FLAG_HIDDEN);
     }
+    return true;
 }
 
 void set_lower_panel_visible(bool visible)
@@ -228,10 +233,15 @@ void update_alert_pill(bool show, int alert_index)
     }
 }
 
-void update_top_status_icons(bool alert_visible)
+bool update_top_status_icons(bool alert_visible)
 {
     bool allow = !alert_visible && !g_low_battery_mode && !g_setup_portal_active;
-    set_obj_visible(g_chime_status_icon_canvas, allow && (g_hourly_chime_enabled || g_hourly_chime_all_day));
-    set_obj_visible(g_wifi_status_icon_canvas, allow && wifi_connected_for_status_icon());
-    set_obj_visible(g_alarm_status_icon_canvas, allow && alarm_is_enabled());
+    bool changed = false;
+    changed |= set_obj_visible(g_chime_status_icon_canvas,
+                               allow && (g_hourly_chime_enabled || g_hourly_chime_all_day));
+    changed |= set_obj_visible(g_wifi_status_icon_canvas,
+                               allow && wifi_connected_for_status_icon());
+    changed |= set_obj_visible(g_alarm_status_icon_canvas,
+                               allow && alarm_is_enabled());
+    return changed;
 }

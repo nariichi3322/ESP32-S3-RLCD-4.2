@@ -37,6 +37,12 @@ void build_work_page_status_bar(lv_obj_t *screen,
                                 lv_obj_t **summary_label,
                                 lv_obj_t **time_label,
                                 bool show_time);
+struct WorkPageStatusLabels {
+    lv_obj_t *date;
+    lv_obj_t *summary;
+    lv_obj_t *time;
+};
+WorkPageStatusLabels get_work_page_status_labels(int page);
 bool update_work_page_status_time(lv_obj_t *label, const struct tm &local);
 bool update_work_page_sensor_summary(lv_obj_t *label);
 bool update_non_clock_work_page_sensor_status(int page);
@@ -50,11 +56,11 @@ void show_active_work_page();
 void remember_lower_panel_object(lv_obj_t *obj);
 void set_lower_panel_visible(bool visible);
 void set_setup_panel_visible(bool visible);
-void set_obj_visible(lv_obj_t *obj, bool visible);
+bool set_obj_visible(lv_obj_t *obj, bool visible);
 bool update_low_battery_state();
 void apply_clock_mode_visibility(bool setup_active);
 void update_alert_pill(bool show, int alert_index = 0);
-void update_top_status_icons(bool alert_visible);
+bool update_top_status_icons(bool alert_visible);
 void draw_boot_anim_frame_index(int frame);
 void boot_anim_task(void *);
 void finish_boot_anim_to_last_frame();

@@ -175,7 +175,7 @@ const cJSON *tools_from_response(const cJSON *root)
 
 void test_non_mcp_and_initialize()
 {
-    char response[64] = {};
+    char response[64] = "unchanged";
     constexpr char kNormalMessage[] = "{\"type\":\"stt\",\"text\":\"hello\"}";
     expect(xiaozhi_mcp_handle_message(kNormalMessage,
                                       sizeof(kNormalMessage) - 1,
@@ -183,6 +183,45 @@ void test_non_mcp_and_initialize()
                                       response,
                                       sizeof(response)) == kXiaozhiMcpNotHandled,
            "normal STT message was consumed as MCP");
+
+    constexpr char kSttWithMcpToken[] = "{\"type\":\"stt\",\"text\":\"mcp says \\\"mcp\\\"\"}";
+    expect(xiaozhi_mcp_handle_message(kSttWithMcpToken,
+                                      sizeof(kSttWithMcpToken) - 1,
+                                      "session-test",
+                                      response,
+                                      sizeof(response)) == kXiaozhiMcpNotHandled,
+           "STT text containing MCP token was consumed");
+    expect(std::strcmp(response, "unchanged") == 0,
+           "non-MCP message modified response buffer");
+
+    constexpr char kMalformedMcp[] = "{\"type\":\"mcp\"";
+    expect(xiaozhi_mcp_handle_message(kMalformedMcp,
+                                      sizeof(kMalformedMcp) - 1,
+                                      "session-test",
+                                      response,
+                                      sizeof(response)) == kXiaozhiMcpNotHandled,
+           "malformed MCP JSON was consumed");
+
+    constexpr char kNotification[] =
+        "{\"type\":\"mcp\",\"payload\":{\"jsonrpc\":\"2.0\","
+        "\"method\":\"notifications/initialized\"}}";
+    expect(xiaozhi_mcp_handle_message(kNotification,
+                                      sizeof(kNotification) - 1,
+                                      "session-test",
+                                      response,
+                                      sizeof(response)) == kXiaozhiMcpHandledWithoutResponse,
+           "MCP notification handling changed");
+    expect(response[0] == '\0', "MCP notification left stale response text");
+
+    constexpr char kInvalidId[] =
+        "{\"type\":\"mcp\",\"payload\":{\"jsonrpc\":\"2.0\","
+        "\"method\":\"initialize\",\"id\":{}}}";
+    expect(xiaozhi_mcp_handle_message(kInvalidId,
+                                      sizeof(kInvalidId) - 1,
+                                      "session-test",
+                                      response,
+                                      sizeof(response)) == kXiaozhiMcpHandledWithoutResponse,
+           "MCP object id handling changed");
 
     JsonOwner root = send_request(
         "{\"jsonrpc\":\"2.0\",\"method\":\"initialize\",\"params\":{},\"id\":1}");

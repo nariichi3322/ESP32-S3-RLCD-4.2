@@ -236,12 +236,9 @@ void build_boot_info_page()
         }
     }
     make_black_bar(screen, kAuxPageLineX, kInfoPageBottomLineY, kAuxPageLineW, kInfoPageBottomLineH);
-    g_info_ota_label = make_centered_label_with_font(screen, kInfoReturnHintX, kInfoReturnHintY,
-                                                     kInfoReturnHintW, kInfoReturnHintH, kInfoReturnHintText,
-                                                     &lv_font_montserrat_14, "system info return label create failed");
-    g_info_ota_hint_label = nullptr;
-    g_info_ota_bar_frame = nullptr;
-    g_info_ota_bar_fill = nullptr;
+    make_centered_label_with_font(screen, kInfoReturnHintX, kInfoReturnHintY,
+                                  kInfoReturnHintW, kInfoReturnHintH, kInfoReturnHintText,
+                                  &lv_font_montserrat_14, "system info return label create failed");
 }
 
 void update_boot_info_page()

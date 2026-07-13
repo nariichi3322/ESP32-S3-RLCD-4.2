@@ -2,6 +2,7 @@
 #include "alarm_services.h"
 
 #include "alarm_replacement_policy.h"
+#include "alarm_storage.h"
 #include "audio_services.h"
 #include "pomodoro_services.h"
 #include "reminder_schedule.h"
@@ -14,13 +15,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "nvs.h"
-
 namespace {
-constexpr const char *kAlarmNvsNamespace = "alarm_v1";
-constexpr const char *kAlarmEnabledKey = "enabled";
-constexpr const char *kAlarmHourKey = "hour";
-constexpr const char *kAlarmMinuteKey = "minute";
 constexpr int kAlarmSoundIndex = 1; // 设置页“声音选择 2”。
 constexpr uint32_t kAlarmMaximumRingMs = 60U * 1000U;
 constexpr uint32_t kAlarmRepeatPauseMs = 5U * 1000U;
@@ -106,25 +101,14 @@ void publish_alarm_state(bool enabled, bool ringing, int hour, int minute)
 
 bool persist_alarm(bool enabled, int hour, int minute)
 {
-    nvs_handle_t nvs = 0;
-    esp_err_t err = nvs_open(kAlarmNvsNamespace, NVS_READWRITE, &nvs);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "alarm NVS open failed: %s", esp_err_to_name(err));
+    alarm_storage::WriteResult result = alarm_storage::write(
+        enabled, static_cast<uint8_t>(hour), static_cast<uint8_t>(minute));
+    if (result.status == alarm_storage::WriteStatus::kOpenFailed) {
+        ESP_LOGW(TAG, "alarm NVS open failed: %s", esp_err_to_name(result.error));
         return false;
     }
-    err = nvs_set_u8(nvs, kAlarmEnabledKey, enabled ? 1 : 0);
-    if (err == ESP_OK) {
-        err = nvs_set_u8(nvs, kAlarmHourKey, static_cast<uint8_t>(hour));
-    }
-    if (err == ESP_OK) {
-        err = nvs_set_u8(nvs, kAlarmMinuteKey, static_cast<uint8_t>(minute));
-    }
-    if (err == ESP_OK) {
-        err = nvs_commit(nvs);
-    }
-    nvs_close(nvs);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "alarm NVS save failed: %s", esp_err_to_name(err));
+    if (result.status != alarm_storage::WriteStatus::kSaved) {
+        ESP_LOGW(TAG, "alarm NVS save failed: %s", esp_err_to_name(result.error));
         return false;
     }
     return true;
@@ -132,36 +116,22 @@ bool persist_alarm(bool enabled, int hour, int minute)
 
 bool load_alarm()
 {
-    nvs_handle_t nvs = 0;
-    esp_err_t err = nvs_open(kAlarmNvsNamespace, NVS_READONLY, &nvs);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
+    alarm_storage::ReadResult loaded = alarm_storage::read();
+    if (loaded.status == alarm_storage::ReadStatus::kEmpty) {
         return true;
     }
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "alarm NVS load open failed: %s", esp_err_to_name(err));
+    if (loaded.status == alarm_storage::ReadStatus::kOpenFailed) {
+        ESP_LOGW(TAG, "alarm NVS load open failed: %s", esp_err_to_name(loaded.error));
         return false;
     }
-    uint8_t enabled = 0;
-    uint8_t hour = 0;
-    uint8_t minute = 0;
-    esp_err_t enabled_err = nvs_get_u8(nvs, kAlarmEnabledKey, &enabled);
-    esp_err_t hour_err = nvs_get_u8(nvs, kAlarmHourKey, &hour);
-    esp_err_t minute_err = nvs_get_u8(nvs, kAlarmMinuteKey, &minute);
-    nvs_close(nvs);
-    bool missing = enabled_err == ESP_ERR_NVS_NOT_FOUND &&
-                   hour_err == ESP_ERR_NVS_NOT_FOUND &&
-                   minute_err == ESP_ERR_NVS_NOT_FOUND;
-    if (missing) {
-        return true;
-    }
-    if (enabled_err != ESP_OK || hour_err != ESP_OK || minute_err != ESP_OK ||
-        enabled > 1 || !alarm_time_valid(hour, minute)) {
+    if (loaded.status != alarm_storage::ReadStatus::kLoaded ||
+        loaded.enabled > 1 || !alarm_time_valid(loaded.hour, loaded.minute)) {
         ESP_LOGW(TAG, "alarm NVS state invalid, disabling alarm");
         (void)persist_alarm(false, 0, 0);
         publish_alarm_state(false, false, 0, 0);
         return false;
     }
-    publish_alarm_state(enabled != 0, false, hour, minute);
+    publish_alarm_state(loaded.enabled != 0, false, loaded.hour, loaded.minute);
     return true;
 }
 
@@ -417,23 +387,17 @@ bool alarm_clear_saved_state()
     clear_pending_alarm_replacement();
     s_stop_requested.store(true);
     s_save_pending.store(false);
-    nvs_handle_t nvs = 0;
-    esp_err_t err = nvs_open(kAlarmNvsNamespace, NVS_READWRITE, &nvs);
-    if (err == ESP_ERR_NVS_NOT_FOUND) {
+    alarm_storage::ClearResult result = alarm_storage::clear();
+    if (result.status == alarm_storage::ClearStatus::kAlreadyEmpty) {
         publish_alarm_state(false, false, 0, 0);
         return true;
     }
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "alarm NVS clear open failed: %s", esp_err_to_name(err));
+    if (result.status == alarm_storage::ClearStatus::kOpenFailed) {
+        ESP_LOGW(TAG, "alarm NVS clear open failed: %s", esp_err_to_name(result.error));
         return false;
     }
-    err = nvs_erase_all(nvs);
-    if (err == ESP_OK) {
-        err = nvs_commit(nvs);
-    }
-    nvs_close(nvs);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "alarm NVS clear failed: %s", esp_err_to_name(err));
+    if (result.status != alarm_storage::ClearStatus::kCleared) {
+        ESP_LOGW(TAG, "alarm NVS clear failed: %s", esp_err_to_name(result.error));
         return false;
     }
     publish_alarm_state(false, false, 0, 0);

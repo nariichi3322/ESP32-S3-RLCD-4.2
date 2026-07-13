@@ -27,33 +27,6 @@ constexpr uint64_t kButtonInputPinMask = kBootButtonPinMask | kKeyButtonPinMask;
 constexpr TickType_t kButtonDebounceTicks = pdMS_TO_TICKS(kButtonDebounceMs);
 constexpr TickType_t kButtonLongPressTicks = pdMS_TO_TICKS(kButtonLongPressMs);
 constexpr const char *kSettingsBusyFeedbackText = "请等待操作完成";
-constexpr int kLowRefreshButtonIdlePages[] = {
-    kWorkPageHistory,
-    kWorkPageGallery,
-    kWorkPageCalendar,
-    kWorkPageWeatherBoard,
-};
-
-constexpr bool work_page_id_valid(int page)
-{
-    return page >= kWorkPageWeatherClock && page < kWorkPageCount;
-}
-
-constexpr bool low_refresh_button_idle_pages_valid()
-{
-    for (size_t i = 0; i < array_count(kLowRefreshButtonIdlePages); ++i) {
-        int page = kLowRefreshButtonIdlePages[i];
-        if (!work_page_id_valid(page)) {
-            return false;
-        }
-        for (size_t j = i + 1; j < array_count(kLowRefreshButtonIdlePages); ++j) {
-            if (page == kLowRefreshButtonIdlePages[j]) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
 
 static_assert(kButtonDebounceMs > 0, "button debounce duration must be positive");
 static_assert(kButtonLongPressMs > kButtonDebounceMs,
@@ -69,10 +42,6 @@ static_assert(kButtonInputPinMask == (kBootButtonPinMask | kKeyButtonPinMask),
 static_assert(kButtonDebounceTicks > 0, "button debounce tick duration must be positive");
 static_assert(kButtonLongPressTicks > kButtonDebounceTicks,
               "button long-press tick duration must be longer than debounce duration");
-static_assert(array_count(kLowRefreshButtonIdlePages) > 0,
-              "low-refresh button idle page list must not be empty");
-static_assert(low_refresh_button_idle_pages_valid(),
-              "low-refresh button idle pages must be unique valid work pages");
 static_assert(kButtonIdlePollMs > 0, "button idle poll interval must be positive");
 static_assert(kButtonLowRefreshIdlePollMs > 0, "button low-refresh poll interval must be positive");
 static_assert(kButtonActivePollMs > 0, "button active poll interval must be positive");
@@ -95,16 +64,6 @@ bool button_press_is_long(TickType_t held)
     return held >= kButtonLongPressTicks;
 }
 
-bool is_low_refresh_button_idle_page(int page)
-{
-    for (int candidate : kLowRefreshButtonIdlePages) {
-        if (page == candidate) {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool low_refresh_button_idle_context()
 {
     if (g_battery_charging ||
@@ -120,7 +79,7 @@ bool low_refresh_button_idle_context()
     if (g_low_battery_mode) {
         return true;
     }
-    return is_low_refresh_button_idle_page(g_active_work_page);
+    return work_page_uses_low_refresh_idle(g_active_work_page);
 }
 
 void return_to_system_settings_item(int selection, TickType_t now)

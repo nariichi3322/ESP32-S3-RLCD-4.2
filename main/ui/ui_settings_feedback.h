@@ -7,3 +7,4 @@ void set_settings_feedback(const char *text, uint32_t duration_ms);
 bool is_settings_sync_busy();
 void begin_settings_sync(SettingsSyncOp op, const char *text);
 void finish_settings_sync(SettingsSyncOp op, const char *text);
+bool finish_settings_sync_if_timed_out(TickType_t now);

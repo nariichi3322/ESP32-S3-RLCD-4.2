@@ -3,6 +3,7 @@
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
+#include "sensor_history_format.h"
 #include "sensor_trend.h"
 
 #include "ui_views.h"
@@ -21,24 +22,10 @@ constexpr const char *kLegacyHourlyHistoryInvalidLog = "legacy hourly sensor his
 #define HOURLY_SLOT_SAVE_FAILED_LOG_FORMAT "save hourly sensor slot failed: %s"
 #define HOURLY_SNAPSHOT_INVALID_ARG_LOG "hourly sensor snapshot invalid arg"
 
-static constexpr uint16_t kHourlyHistoryMetaVersion = 2;
-static constexpr uint16_t kLegacyHourlyHistoryVersion = 1;
-
-struct HourlySensorHistoryMeta {
-    uint32_t magic = kHourlyHistoryMagic;
-    uint16_t version = kHourlyHistoryMetaVersion;
-    uint16_t count = kHourlyHistoryCount;
-    int64_t last_saved_at = 0;
-};
-
-struct LegacyHourlySensorHistoryBlob {
-    uint32_t magic = kHourlyHistoryMagic;
-    uint16_t version = kLegacyHourlyHistoryVersion;
-    uint16_t count = kLegacyHourlyHistoryCount;
-    HourlySensorSample samples[kLegacyHourlyHistoryCount] = {};
-};
-
 namespace {
+using sensor_history_format::HourlySensorHistoryMeta;
+using sensor_history_format::LegacyHourlySensorHistoryBlob;
+
 constexpr const char *kSensorNvsNamespace = "sensor";
 constexpr const char *kHourlyHistoryMetaKey = "hourmeta";
 constexpr const char *kLegacyHourlyHistoryKey = "hourly24";
@@ -48,7 +35,6 @@ constexpr int kMsPerSecond = 1000;
 constexpr int kUsPerMs = 1000;
 constexpr int kSecondsPerMinute = 60;
 constexpr int kMinutesPerHour = 60;
-constexpr int kSecondsPerHour = kMinutesPerHour * kSecondsPerMinute;
 constexpr int kSensorTrendWindowHours = 4;
 constexpr int64_t kSensorTrendWindowMs = (int64_t)kSensorTrendWindowHours * kMinutesPerHour * kSecondsPerMinute * kMsPerSecond;
 constexpr const char *kSensorHistoryTexts[] = {
@@ -78,7 +64,8 @@ static_assert(kLegacyHourlyHistoryCount > 0, "legacy hourly history must keep at
 static_assert(kHourlyHistoryCount <= 99, "hourly slot key format h%02d supports two-digit indexes");
 static_assert(kHourlyHistoryCount >= kLegacyHourlyHistoryCount,
               "new hourly history must cover legacy history samples");
-static_assert(kHourlyHistoryMetaVersion > kLegacyHourlyHistoryVersion,
+static_assert(sensor_history_format::kHourlyHistoryMetaVersion >
+                  sensor_history_format::kLegacyHourlyHistoryVersion,
               "hourly sensor history meta version must be newer than legacy blob version");
 static_assert(kHourlySlotKeyBufferSize >= sizeof("h00"), "hourly slot key buffer must fit hNN plus terminator");
 static_assert(array_count(kSensorHistoryTexts) > 0,
@@ -92,41 +79,9 @@ static_assert(kSensorTrendWindowHours > 0, "sensor trend window must be positive
 static_assert(kSensorTrendWindowMs > 0, "sensor trend window in ms must be positive");
 static_assert(kSensorHistoryMinutes >= (kSensorTrendWindowHours * kMinutesPerHour) / kSensorSampleDayMinutes,
               "sensor trend history must cover the full day-sampling trend window");
-static_assert(kSecondsPerHour > 0, "seconds per hour must be positive");
-
 bool should_log_nvs_read_error(esp_err_t err)
 {
     return err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND;
-}
-
-bool is_hourly_meta_valid(const HourlySensorHistoryMeta &meta, size_t meta_len)
-{
-    return meta_len == sizeof(meta) &&
-           meta.magic == kHourlyHistoryMagic &&
-           meta.version == kHourlyHistoryMetaVersion &&
-           meta.count == kHourlyHistoryCount;
-}
-
-bool is_legacy_hourly_history_valid(const LegacyHourlySensorHistoryBlob &legacy, size_t legacy_len)
-{
-    return legacy_len == sizeof(legacy) &&
-           legacy.magic == kHourlyHistoryMagic &&
-           legacy.version == kLegacyHourlyHistoryVersion &&
-           legacy.count == kLegacyHourlyHistoryCount;
-}
-
-bool is_hourly_history_index_valid(int index)
-{
-    return index >= 0 && index < kHourlyHistoryCount;
-}
-
-int hourly_slot_index_for_time(time_t hour_start)
-{
-    int index = (int)((hour_start / kSecondsPerHour) % kHourlyHistoryCount);
-    if (index < 0) {
-        index += kHourlyHistoryCount;
-    }
-    return index;
 }
 
 void store_loaded_hourly_sample(int index, const HourlySensorSample &sample, int64_t *newest_slot)
@@ -200,7 +155,7 @@ static bool hourly_slot_key(int index, char *out, size_t out_len)
     if (!app_text::output_buffer_available(out, out_len)) {
         return false;
     }
-    if (!is_hourly_history_index_valid(index)) {
+    if (!sensor_history_format::hourly_index_valid(index)) {
         out[0] = '\0';
         ESP_LOGW(TAG, HOURLY_SLOT_KEY_INDEX_INVALID_LOG_FORMAT, index);
         return false;
@@ -237,8 +192,8 @@ static bool load_hourly_sensor_slot(nvs_handle_t nvs, int index, int64_t *newest
     return false;
 }
 
-inline bool load_current_hourly_sensor_slots(nvs_handle_t nvs,
-                                             const HourlySensorHistoryMeta &meta)
+static inline bool load_current_hourly_sensor_slots(nvs_handle_t nvs,
+                                                    const HourlySensorHistoryMeta &meta)
 {
     int loaded = 0;
     int64_t newest_slot = 0;
@@ -257,8 +212,8 @@ inline bool load_current_hourly_sensor_slots(nvs_handle_t nvs,
     return true;
 }
 
-inline bool read_legacy_hourly_sensor_history(nvs_handle_t nvs,
-                                              LegacyHourlySensorHistoryBlob *legacy)
+static inline bool read_legacy_hourly_sensor_history(nvs_handle_t nvs,
+                                                     LegacyHourlySensorHistoryBlob *legacy)
 {
     if (!legacy) {
         return false;
@@ -271,7 +226,7 @@ inline bool read_legacy_hourly_sensor_history(nvs_handle_t nvs,
         }
         return false;
     }
-    if (!is_legacy_hourly_history_valid(*legacy, legacy_len)) {
+    if (!sensor_history_format::legacy_history_valid(*legacy, legacy_len)) {
         ESP_LOGW(TAG, "%s", kLegacyHourlyHistoryInvalidLog);
         return false;
     }
@@ -302,7 +257,7 @@ void reset_hourly_sensor_history()
     portENTER_CRITICAL(&s_hourly_history_mux);
     memset(&g_hourly_history, 0, sizeof(g_hourly_history));
     g_hourly_history.magic = kHourlyHistoryMagic;
-    g_hourly_history.version = kLegacyHourlyHistoryVersion;
+    g_hourly_history.version = sensor_history_format::kLegacyHourlyHistoryVersion;
     g_hourly_history.count = kHourlyHistoryCount;
     g_last_hourly_saved_at = 0;
     ++g_hourly_history_version;
@@ -323,7 +278,7 @@ void load_hourly_sensor_history()
     HourlySensorHistoryMeta meta = {};
     size_t meta_len = sizeof(meta);
     err = nvs_get_blob(nvs, kHourlyHistoryMetaKey, &meta, &meta_len);
-    bool meta_valid = err == ESP_OK && is_hourly_meta_valid(meta, meta_len);
+    bool meta_valid = err == ESP_OK && sensor_history_format::hourly_meta_valid(meta, meta_len);
     if (meta_valid && load_current_hourly_sensor_slots(nvs, meta)) {
         nvs_close(nvs);
         ++g_hourly_history_version;
@@ -349,7 +304,7 @@ static bool save_hourly_sensor_slot(int index,
                                     int64_t last_saved_at,
                                     const HourlySensorSample &sample)
 {
-    if (!is_hourly_history_index_valid(index)) {
+    if (!sensor_history_format::hourly_index_valid(index)) {
         ESP_LOGW(TAG, HOURLY_SLOT_INDEX_INVALID_LOG_FORMAT, index);
         return false;
     }
@@ -385,7 +340,7 @@ void record_hourly_sensor_sample(float temp, float humi)
     if (hour_start <= 0 || already_saved) {
         return;
     }
-    int index = hourly_slot_index_for_time(hour_start);
+    int index = sensor_history_format::hourly_slot_index_for_time(hour_start);
     HourlySensorSample sample = {};
     sample.timestamp = hour_start;
     sample.temperature = temp;

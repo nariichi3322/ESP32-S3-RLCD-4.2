@@ -198,7 +198,7 @@ void park_unused_audio_peripherals()
     configure_audio_idle_input(kAudioDinGpio);
 }
 
-bool try_mark_audio_playing()
+static bool try_mark_audio_playing()
 {
     bool acquired = false;
     portENTER_CRITICAL(&g_audio_state_mux);
@@ -210,7 +210,7 @@ bool try_mark_audio_playing()
     return acquired;
 }
 
-void clear_audio_playing()
+static void clear_audio_playing()
 {
     portENTER_CRITICAL(&g_audio_state_mux);
     g_audio_playing = false;
@@ -491,7 +491,7 @@ static const char *audio_text_or_default(const char *text, const char *fallback)
     return text ? text : fallback;
 }
 
-void settings_confirmation_chime_task(void *);
+static void settings_confirmation_chime_task(void *);
 
 static bool create_audio_task(TaskFunction_t task_fn,
                               const char *task_name,
@@ -593,7 +593,7 @@ void setup_prompt_task(void *)
     vTaskDelete(nullptr);
 }
 
-void settings_confirmation_chime_task(void *)
+static void settings_confirmation_chime_task(void *)
 {
     for (int attempt = 0; attempt < kSettingsChimeRetryAttempts; ++attempt) {
         if (start_chime_playback(g_chime_sound_index)) {

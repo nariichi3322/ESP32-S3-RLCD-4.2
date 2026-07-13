@@ -30,6 +30,37 @@ int main()
     assert(network_boot_budget_remaining_ms(static_cast<int64_t>(INT32_MAX) * 1000 + 2000,
                                              0) == INT32_MAX);
 
+    assert(network_idle_wait_ms(kNow, 0, 0) == 300000);
+    assert(network_idle_wait_ms(kNow, kNow + 10, 0) == 10000);
+    assert(network_idle_wait_ms(kNow, kNow + 10, kNow + 2) == 2000);
+    assert(network_idle_wait_ms(kNow, kNow, kNow - 1) == 300000);
+    assert(network_idle_wait_ms(kNow, kNow + 600, kNow + 700) == 300000);
+
+    assert(!network_cache_age_is_fresh(kNow, 0, 60));
+    assert(!network_cache_age_is_fresh(kNow, kNow - 1, 0));
+    assert(!network_cache_age_is_fresh(kNow, kNow + 1, 60));
+    assert(network_cache_age_is_fresh(kNow, kNow - 59, 60));
+    assert(!network_cache_age_is_fresh(kNow, kNow - 60, 60));
+
+    struct tm local = {};
+    local.tm_year = 126;
+    local.tm_yday = 193;
+    local.tm_hour = 11;
+    struct tm cached_local = local;
+    cached_local.tm_min = 1;
+    assert(network_cache_local_day_matches(local, cached_local));
+    assert(network_cache_local_hour_matches(local, cached_local));
+    cached_local.tm_hour = 10;
+    assert(network_cache_local_day_matches(local, cached_local));
+    assert(!network_cache_local_hour_matches(local, cached_local));
+    cached_local = local;
+    cached_local.tm_yday = 192;
+    assert(!network_cache_local_day_matches(local, cached_local));
+    assert(!network_cache_local_hour_matches(local, cached_local));
+    cached_local = local;
+    cached_local.tm_year = 125;
+    assert(!network_cache_local_day_matches(local, cached_local));
+
     NetworkSyncScheduleInput input = base_input();
     input.boot_weather_due = true;
     input.boot_saying_due = true;

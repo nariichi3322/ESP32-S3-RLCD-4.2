@@ -54,6 +54,15 @@ int settings_ota_progress_fill_width(int progress)
     return fill_w;
 }
 
+bool set_settings_ota_fill_width(int width)
+{
+    if (!g_settings_ota_bar_fill || lv_obj_get_width(g_settings_ota_bar_fill) == width) {
+        return false;
+    }
+    lv_obj_set_width(g_settings_ota_bar_fill, width);
+    return true;
+}
+
 static_assert(array_count(kSettingsOtaHintTexts) > 0, "settings OTA hint text registry must not be empty");
 static_assert(cstr_array_nonempty(kSettingsOtaHintTexts),
               "settings OTA status and hint texts must be non-empty");
@@ -165,12 +174,11 @@ bool update_settings_ota_panel(bool visible)
     if (g_settings_ota_hint_label) {
         changed |= set_label_text_if_changed(g_settings_ota_hint_label, ota_hint);
     }
-    if (g_settings_ota_bar_frame) {
-        set_obj_visible(g_settings_ota_bar_frame, visible && progress_visible);
-    }
+    bool show_progress = visible && progress_visible;
+    changed |= set_obj_visible(g_settings_ota_bar_frame, show_progress);
     if (g_settings_ota_bar_fill) {
-        lv_obj_set_width(g_settings_ota_bar_fill, settings_ota_progress_fill_width(progress));
-        set_obj_visible(g_settings_ota_bar_fill, visible && progress_visible);
+        changed |= set_settings_ota_fill_width(settings_ota_progress_fill_width(progress));
+        changed |= set_obj_visible(g_settings_ota_bar_fill, show_progress);
     }
     return changed;
 }

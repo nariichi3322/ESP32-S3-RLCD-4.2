@@ -2,6 +2,7 @@
 #include "xiaozhi_activation_storage.h"
 
 #include "app_state.h"
+#include "app_text_format.h"
 
 #include <cJSON.h>
 #include <esp_system.h>
@@ -30,14 +31,9 @@ constexpr const char *kBindingConfirmedKey = "bound_v1";
 static_assert(kXiaozhiClientIdSize == sizeof("00000000-0000-0000-0000-000000000000"),
               "Xiaozhi client ID buffer must fit one UUID plus terminator");
 
-bool output_buffer_available(const char *out, size_t out_len)
-{
-    return out && out_len > 0;
-}
-
 bool nvs_read_string(nvs_handle_t nvs, const char *key, char *out, size_t out_len)
 {
-    if (!key || !output_buffer_available(out, out_len)) {
+    if (!key || !app_text::output_buffer_available(out, out_len)) {
         return false;
     }
     size_t len = out_len;
@@ -55,8 +51,8 @@ bool xiaozhi_load_websocket_config(char *url,
                                     size_t token_len,
                                     int32_t *version)
 {
-    if (!output_buffer_available(url, url_len) ||
-        !output_buffer_available(token, token_len) || !version) {
+    if (!app_text::output_buffer_available(url, url_len) ||
+        !app_text::output_buffer_available(token, token_len) || !version) {
         return false;
     }
     nvs_handle_t nvs;
@@ -117,7 +113,7 @@ bool xiaozhi_save_activation_config(cJSON *websocket, const char *challenge)
 
 bool xiaozhi_load_or_create_client_id(char *out, size_t out_len)
 {
-    if (!output_buffer_available(out, out_len) || out_len < kXiaozhiClientIdSize) {
+    if (!app_text::output_buffer_available(out, out_len) || out_len < kXiaozhiClientIdSize) {
         return false;
     }
     nvs_handle_t nvs;
