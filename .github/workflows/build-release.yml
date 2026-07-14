@@ -63,11 +63,11 @@ jobs:
           target: esp32s3
           path: .
           command: >-
-            bash -lc 'set -euo pipefail;
+            set -euo pipefail;
             idf.py build;
             cp build/weather_clock.bin "weather_clock_${{ steps.version.outputs.version }}.bin";
             cd build;
-            esptool.py --chip esp32s3 merge_bin -o "../weather_clock_${{ steps.version.outputs.version }}_merged.bin" @flash_args'
+            esptool.py --chip esp32s3 merge_bin -o "../weather_clock_${{ steps.version.outputs.version }}_merged.bin" @flash_args
 
       - name: 校验构建产物
         env:
