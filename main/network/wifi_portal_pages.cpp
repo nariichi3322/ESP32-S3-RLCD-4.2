@@ -5,6 +5,7 @@
 #include "app_text_format.h"
 #include "app_state.h"
 #include "scoped_heap_buffer.h"
+#include "wifi_portal_state.h"
 
 #include <stdarg.h>
 
@@ -372,6 +373,7 @@ esp_err_t send_save_result_page(httpd_req_t *req, bool saved, bool connected, co
     char html[kPortalSaveResultHtmlSize] = {};
     const char *title = portal_save_result_title(saved, connected);
     const char *body = portal_save_result_body(saved, connected);
+    const int disconnect_reason = wifi_last_disconnect_reason();
     html_append(html, sizeof(html),
                 "%s"
                 "<title>天气时钟配网结果</title><style>"
@@ -391,7 +393,7 @@ esp_err_t send_save_result_page(httpd_req_t *req, bool saved, bool connected, co
                 safe_extra[0] ? "</div>" : "",
                 safe_ssid,
                 safe_city,
-                g_last_wifi_disconnect_reason);
+                disconnect_reason);
     return send_portal_html(req, html);
 }
 

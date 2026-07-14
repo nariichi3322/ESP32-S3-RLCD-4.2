@@ -5,6 +5,7 @@
 #include "app_constexpr.h"
 #include "app_tick_time.h"
 
+#include "ota_runtime_state.h"
 #include "ota_services.h"
 #include "ui_settings_content.h"
 #include "ui_settings_ota_panel.h"
@@ -265,6 +266,8 @@ bool settings_render_selection_changed(int primary, int selected)
     static bool last_page_order_mode = false;
     static bool last_page_toggle_mode = false;
     static int last_page_order_selection = -1;
+    OtaRuntimeSnapshot ota;
+    ota_runtime_snapshot_load(&ota);
     bool selection_changed = g_settings_root != last_settings_root ||
                              selected != last_selected ||
                              primary != last_primary ||
@@ -272,9 +275,9 @@ bool settings_render_selection_changed(int primary, int selected)
                              g_settings_page_toggle_mode != last_page_toggle_mode ||
                              g_settings_page_order_mode != last_page_order_mode ||
                              g_settings_page_order_selection != last_page_order_selection ||
-                             g_ota_state != last_ota_state ||
-                             g_ota_progress != last_ota_progress ||
-                             g_ota_speed_kbps != last_ota_speed;
+                             ota.state != last_ota_state ||
+                             ota.progress != last_ota_progress ||
+                             ota.speed_kbps != last_ota_speed;
     if (selection_changed) {
         last_settings_root = g_settings_root;
         last_selected = selected;
@@ -283,9 +286,9 @@ bool settings_render_selection_changed(int primary, int selected)
         last_page_toggle_mode = g_settings_page_toggle_mode;
         last_page_order_mode = g_settings_page_order_mode;
         last_page_order_selection = g_settings_page_order_selection;
-        last_ota_state = g_ota_state;
-        last_ota_progress = g_ota_progress;
-        last_ota_speed = g_ota_speed_kbps;
+        last_ota_state = ota.state;
+        last_ota_progress = ota.progress;
+        last_ota_speed = ota.speed_kbps;
     }
     return selection_changed;
 }
@@ -460,12 +463,10 @@ bool update_settings_feedback_label()
         return false;
     }
     TickType_t now = xTaskGetTickCount();
-    if (g_settings_feedback[0] &&
-        g_settings_feedback_until_tick != 0 &&
-        app_tick_deadline_pending(now, g_settings_feedback_until_tick)) {
-        return set_label_text_if_changed(g_settings_feedback_label, g_settings_feedback);
+    char feedback[kSettingsFeedbackTextLen] = {};
+    if (settings_feedback_copy_active(now, feedback, sizeof(feedback))) {
+        return set_label_text_if_changed(g_settings_feedback_label, feedback);
     }
-    g_settings_feedback[0] = '\0';
     return set_label_text_if_changed(g_settings_feedback_label, "");
 }
 } // namespace

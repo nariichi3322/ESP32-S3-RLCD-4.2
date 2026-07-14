@@ -3,6 +3,7 @@
 
 #include "app_constexpr.h"
 #include "app_state.h"
+#include "ota_runtime_state.h"
 
 namespace {
 constexpr uint32_t kDisplayFullReasonSingleWide = 1U << 0;
@@ -98,7 +99,7 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
     static TickType_t last_diag_tick = 0;
     static int last_diag_page = -1;
 
-    if (g_ota_reboot_pending) {
+    if (ota_runtime_reboot_pending_load()) {
         range_count = 0;
         force_full_refresh = false;
         full_reason_mask = 0;
@@ -169,14 +170,17 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
             }
         }
         TickType_t now_tick = xTaskGetTickCount();
-        bool page_changed = last_diag_page != g_active_work_page;
+        int active_page = active_work_page_load();
+        bool page_changed = last_diag_page != active_page;
         bool diag_due = last_diag_tick == 0 ||
                         now_tick - last_diag_tick >= pdMS_TO_TICKS(kDisplayFlushDiagIntervalMs) ||
                         page_changed;
-        if (diag_due && g_ota_state != kOtaUpdating && !g_ota_reboot_pending) {
+        OtaRuntimeSnapshot ota;
+        ota_runtime_snapshot_load(&ota);
+        if (diag_due && ota.state != kOtaUpdating && !ota.reboot_pending) {
             ESP_LOGI(TAG,
                      DISPLAY_FLUSH_DIAG_LOG_FORMAT,
-                     g_active_work_page,
+                     active_page,
                      (unsigned long)partial_cycles,
                      (unsigned long)partial_ranges,
                      (unsigned long)full_cycles,
@@ -190,7 +194,7 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
             full_covered_wide = 0;
             full_too_many_ranges = 0;
             last_diag_tick = now_tick;
-            last_diag_page = g_active_work_page;
+            last_diag_page = active_page;
         }
         range_count = 0;
         force_full_refresh = false;

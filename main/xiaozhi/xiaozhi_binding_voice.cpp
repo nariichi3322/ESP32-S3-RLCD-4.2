@@ -3,12 +3,12 @@
 
 #include "app_state.h"
 #include "audio_services.h"
+#include "scoped_heap_buffer.h"
 
+#include <esp_codec_dev_types.h>
 #include <esp_log.h>
 
 #include <cstdint>
-#include <cstdlib>
-#include <cstring>
 #include <string.h>
 
 namespace {
@@ -85,16 +85,13 @@ bool play_embedded_pcm(const EmbeddedPcm &pcm)
                                  kBindingPcmSampleRate) == ESP_CODEC_DEV_OK;
 }
 
-void binding_id_voice_task(void *arg)
+void play_binding_id_voice(char *raw_binding_code)
 {
-    char *binding_code = static_cast<char *>(arg);
+    ScopedHeapBuffer<char> binding_code(raw_binding_code, kBindingCodeStorageSize);
     if (!binding_code) {
-        vTaskDelete(nullptr);
         return;
     }
     if (!start_xiaozhi_audio_session()) {
-        free(binding_code);
-        vTaskDelete(nullptr);
         return;
     }
     bool played = play_embedded_pcm(kBindingPromptPcm);
@@ -104,7 +101,7 @@ void binding_id_voice_task(void *arg)
                                        kBindingPauseSamples,
                                        kBindingPcmSampleRate) == ESP_CODEC_DEV_OK;
     }
-    for (const char *cursor = binding_code; played && *cursor; ++cursor) {
+    for (const char *cursor = binding_code.data(); played && *cursor; ++cursor) {
         int index = xiaozhi_binding_voice::digit_index(*cursor);
         if (index < 0) {
             continue;
@@ -118,7 +115,11 @@ void binding_id_voice_task(void *arg)
     }
     ESP_LOGI(TAG, "xiaozhi binding code playback %s", played ? "complete" : "failed");
     stop_xiaozhi_audio_session();
-    free(binding_code);
+}
+
+void binding_id_voice_task(void *arg)
+{
+    play_binding_id_voice(static_cast<char *>(arg));
     vTaskDelete(nullptr);
 }
 } // namespace
@@ -129,22 +130,22 @@ void xiaozhi_announce_binding_id_once(const char *binding_code)
                                                 s_last_announced_binding_code)) {
         return;
     }
-    char *code_copy = static_cast<char *>(calloc(1, sizeof(s_last_announced_binding_code)));
+    ScopedHeapBuffer<char> code_copy(kBindingCodeStorageSize, HeapBufferInit::kZeroed);
     if (!code_copy) {
         ESP_LOGW(TAG, XIAOZHI_BINDING_COPY_ALLOC_FAILED_LOG);
         return;
     }
-    strlcpy(code_copy, binding_code, sizeof(s_last_announced_binding_code));
+    strlcpy(code_copy.data(), binding_code, code_copy.size());
     if (xTaskCreate(binding_id_voice_task,
                     "xiaozhi_bind",
                     kBindingVoiceTaskStackBytes,
-                    code_copy,
+                    code_copy.data(),
                     kBindingVoiceTaskPriority,
                     nullptr) != pdPASS) {
         ESP_LOGW(TAG, XIAOZHI_BINDING_TASK_CREATE_FAILED_LOG);
-        free(code_copy);
         return;
     }
+    (void)code_copy.release();
     strlcpy(s_last_announced_binding_code,
             binding_code,
             sizeof(s_last_announced_binding_code));

@@ -52,6 +52,13 @@ int main()
     assert(!ota_is_http_redirect_status(300));
     assert(!ota_is_http_redirect_status(304));
 
+    assert(!ota_is_http_success_status(199));
+    assert(ota_is_http_success_status(200));
+    assert(ota_is_http_success_status(204));
+    assert(ota_is_http_success_status(299));
+    assert(!ota_is_http_success_status(300));
+    assert(!ota_is_http_success_status(302));
+
     assert(ota_backup_manifest_metadata_matches("v1.5.5", kLowerSha, 1234,
                                                 "v1.5.5", kUpperSha, 1234));
     assert(ota_backup_manifest_metadata_matches("v1.5.5", kLowerSha, 0,

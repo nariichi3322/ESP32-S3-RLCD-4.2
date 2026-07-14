@@ -2,14 +2,15 @@
 #include "ui_views.h"
 
 #include "app_constexpr.h"
+#include "network_diagnostics_catalog.h"
+#include "network_diagnostics_state.h"
+#include "network_services.h"
 #include "ota_services.h"
 #include "ui_text_format.h"
 
 namespace {
-constexpr int kNetworkDiagLocalIpLine = 0;
-constexpr int kNetworkDiagPublicIpLine = 1;
-constexpr int kNetworkDiagGridFirstLine = 2;
-constexpr int kNetworkDiagWideLine = kNetworkDiagLineCount - 1;
+constexpr int kNetworkDiagGridFirstLine = kNetworkDiagIpLocationLine;
+constexpr int kNetworkDiagWideLine = kNetworkDiagOtaLine;
 constexpr int kNetworkDiagGridColumns = 2;
 constexpr int kNetworkDiagWideX = 30;
 constexpr int kNetworkDiagWideW = 340;
@@ -184,15 +185,17 @@ void set_info_string_label(size_t index, const char *format, const char *value)
 
 void set_info_battery_label()
 {
+    BatteryRuntimeSnapshot battery;
+    battery_runtime_snapshot_load(&battery);
     char line[kInfoLineTextSize] = {};
     char charge_time[kInfoTimeTextSize] = {};
-    format_time_or_dash(g_last_charge_time, charge_time, sizeof(charge_time));
-    if (g_battery_percent >= 0 && g_battery_voltage >= 0.0f) {
+    format_time_or_dash(battery.last_charge_time, charge_time, sizeof(charge_time));
+    if (battery.percent >= 0 && battery.voltage >= 0.0f) {
         ui_text::format_or_fallback(line, sizeof(line), kInfoBatteryPlaceholder, kInfoBatteryFullFormat,
-                                    g_battery_percent, g_battery_voltage, charge_time);
-    } else if (g_battery_percent >= 0) {
+                                    battery.percent, battery.voltage, charge_time);
+    } else if (battery.percent >= 0) {
         ui_text::format_or_fallback(line, sizeof(line), kInfoBatteryPlaceholder, kInfoBatteryPercentOnlyFormat,
-                                    g_battery_percent, charge_time);
+                                    battery.percent, charge_time);
     } else {
         ui_text::copy(line, sizeof(line), kInfoBatteryPlaceholder);
     }
@@ -243,9 +246,11 @@ void build_boot_info_page()
 
 void update_boot_info_page()
 {
-    set_info_time_label(kInfoNtpLabelIndex, kInfoLastNtpFormat, g_last_ntp_sync_time);
+    set_info_time_label(kInfoNtpLabelIndex, kInfoLastNtpFormat, get_last_ntp_sync_time());
     set_info_string_label(kInfoWifiLabelIndex, kInfoWifiFormat, g_wifi_ssid[0] ? g_wifi_ssid : "--");
-    set_info_time_label(kInfoWeatherLabelIndex, kInfoLastWeatherFormat, g_last_weather_sync_time);
+    set_info_time_label(kInfoWeatherLabelIndex,
+                        kInfoLastWeatherFormat,
+                        get_last_weather_sync_time());
     set_info_battery_label();
     set_info_version_label();
     set_info_string_label(kInfoSourceLabelIndex, kInfoSourceFormat, kProjectSourceUrl);
@@ -290,10 +295,12 @@ void build_network_diag_page()
 bool update_network_diag_page()
 {
     bool changed = false;
+    NetworkDiagnosticsSnapshot snapshot;
+    network_diag_snapshot_load(&snapshot);
     char summary[kNetworkDiagSummaryTextSize] = {};
-    if (g_network_diag_state == kNetworkDiagRunning) {
+    if (snapshot.state == kNetworkDiagRunning) {
         ui_text::copy(summary, sizeof(summary), kNetworkDiagSummaryRunning);
-    } else if (g_network_diag_state == kNetworkDiagDone) {
+    } else if (snapshot.state == kNetworkDiagDone) {
         ui_text::copy(summary, sizeof(summary), kNetworkDiagSummaryDone);
     } else {
         ui_text::copy(summary, sizeof(summary), kNetworkDiagSummaryIdle);
@@ -301,11 +308,11 @@ bool update_network_diag_page()
     changed |= set_label_text_if_changed(g_network_diag_summary_label, summary);
     for (int i = 0; i < kNetworkDiagLineCount; ++i) {
         changed |= set_label_text_if_changed(g_network_diag_labels[i],
-                                             g_network_diag_lines[i][0] ? g_network_diag_lines[i] :
-                                                                          kNetworkDiagLinePlaceholder);
+                                             snapshot.lines[i][0] ? snapshot.lines[i] :
+                                                                    kNetworkDiagLinePlaceholder);
     }
     changed |= set_label_text_if_changed(g_network_diag_hint_label,
-                                         g_network_diag_state == kNetworkDiagRunning ? kNetworkDiagHintRunning :
-                                                                                       kNetworkDiagHintIdle);
+                                         snapshot.state == kNetworkDiagRunning ? kNetworkDiagHintRunning :
+                                                                                kNetworkDiagHintIdle);
     return changed;
 }

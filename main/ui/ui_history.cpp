@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "sensor_services.h"
 #include "ui_battery.h"
+#include "ui_draw_cache.h"
 #include "ui_history_chart.h"
 #include "ui_history_window.h"
 
@@ -39,6 +40,8 @@ constexpr const char *kHistoryTimePlaceholder = "--:--";
 constexpr const char *kHistoryTempTitle = "温度";
 constexpr const char *kHistoryHumiTitle = "湿度";
 lv_color_t *s_history_chart_canvas_buffer;
+uint32_t s_last_history_drawn_version = static_cast<uint32_t>(-1);
+int s_last_history_drawn_hour = -1;
 static_assert(kHoursPerDay > 0, "Hours per day must be positive");
 static_assert(kHistoryTopLineW > 0 && kHistoryTopLineH > 0, "History top separator size must be positive");
 static_assert(kHistoryTitleW > 0 && kHistoryTitleH > 0, "History title size must be positive");
@@ -74,6 +77,12 @@ bool history_window_args_valid(const HourlySensorSample *out, const int *out_cou
     return out && out_count;
 }
 } // namespace
+
+void invalidate_history_draw_cache()
+{
+    s_last_history_drawn_version = static_cast<uint32_t>(-1);
+    s_last_history_drawn_hour = -1;
+}
 
 enum class HistoryLabelLogKind {
     kTime,
@@ -184,12 +193,12 @@ bool update_history_page(const struct tm &local)
     if (!get_hourly_sensor_history_snapshot(&history, &history_version)) {
         return changed;
     }
-    if (g_last_history_drawn_version == history_version &&
-        g_last_history_drawn_hour == hour_key) {
+    if (s_last_history_drawn_version == history_version &&
+        s_last_history_drawn_hour == hour_key) {
         return changed;
     }
-    g_last_history_drawn_version = history_version;
-    g_last_history_drawn_hour = hour_key;
+    s_last_history_drawn_version = history_version;
+    s_last_history_drawn_hour = hour_key;
 
     lv_canvas_fill_bg(g_history_chart_canvas, lv_color_white(), LV_OPA_COVER);
 
@@ -341,5 +350,5 @@ void build_history_page()
     build_history_value_badges(screen);
 
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
-    update_battery_segments(g_history_battery_segments, g_battery_percent);
+    update_battery_segments(g_history_battery_segments, battery_percent_load());
 }

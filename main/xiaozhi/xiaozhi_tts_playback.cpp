@@ -3,7 +3,9 @@
 
 #include "app_state.h"
 #include "audio_services.h"
+#include "checked_size.h"
 
+#include <esp_codec_dev_types.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <freertos/FreeRTOS.h>
@@ -26,6 +28,10 @@ constexpr const char *kStreamCreateFailedLog =
     "xiaozhi TTS stream buffer creation failed";
 constexpr const char *kTaskCreateFailedLog =
     "xiaozhi TTS playback task creation failed";
+constexpr const char *kSampleCountOverflowLog =
+    "xiaozhi TTS sample count overflow";
+#define XIAOZHI_TTS_TASK_STOP_TIMEOUT_FORMAT \
+    "xiaozhi TTS playback task stop timeout: retries=%d delay_ms=%u"
 
 std::atomic<bool> s_running{false};
 std::atomic<bool> s_exited{true};
@@ -125,6 +131,12 @@ void xiaozhi_tts_playback_stop()
          ++retry) {
         vTaskDelay(pdMS_TO_TICKS(kStopRetryDelayMs));
     }
+    if (s_task && !s_exited.load()) {
+        ESP_LOGW(TAG,
+                 XIAOZHI_TTS_TASK_STOP_TIMEOUT_FORMAT,
+                 kStopRetryCount,
+                 static_cast<unsigned>(kStopRetryDelayMs));
+    }
     if (s_task) {
         vTaskDelete(s_task);
         s_task = nullptr;
@@ -194,7 +206,11 @@ bool xiaozhi_tts_playback_enqueue(const int16_t *samples, size_t sample_count)
         !s_stream || s_failed.load()) {
         return false;
     }
-    size_t bytes = sample_count * sizeof(int16_t);
+    size_t bytes = 0;
+    if (!app_memory::checked_size_multiply(sample_count, sizeof(int16_t), &bytes)) {
+        ESP_LOGW(TAG, "%s", kSampleCountOverflowLog);
+        return false;
+    }
     size_t sent = xStreamBufferSend(s_stream,
                                     samples,
                                     bytes,

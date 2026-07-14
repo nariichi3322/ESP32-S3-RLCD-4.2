@@ -1,4 +1,4 @@
-// 提供仅负责 malloc/calloc 与 free 的不可复制字节缓冲区所有权。
+// 提供负责 malloc/calloc/兼容 heap_caps 分配与 free 的不可复制字节缓冲区所有权。
 #pragma once
 
 #include <stddef.h>
@@ -25,9 +25,17 @@ public:
         }
     }
 
+    // 接管由 malloc/calloc/heap_caps_* 分配且可由 free() 释放的既有缓冲区。
+    ScopedHeapBuffer(Byte *data, size_t size)
+        : data_(data),
+          size_(size)
+    {
+        static_assert(sizeof(Byte) == 1, "ScopedHeapBuffer only owns byte-sized elements");
+    }
+
     ~ScopedHeapBuffer()
     {
-        free(data_);
+        reset();
     }
 
     ScopedHeapBuffer(const ScopedHeapBuffer &) = delete;
@@ -46,6 +54,21 @@ public:
     size_t size() const
     {
         return size_;
+    }
+
+    Byte *release()
+    {
+        Byte *data = data_;
+        data_ = nullptr;
+        size_ = 0;
+        return data;
+    }
+
+    void reset()
+    {
+        free(data_);
+        data_ = nullptr;
+        size_ = 0;
     }
 
     void clear() const

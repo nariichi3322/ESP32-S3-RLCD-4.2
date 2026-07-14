@@ -2,7 +2,11 @@
 #include "sensor_services.h"
 
 #include "app_constexpr.h"
+#include "app_time_constants.h"
 #include "battery_charging_state.h"
+#include "esp_adc/adc_cali.h"
+#include "esp_adc/adc_cali_scheme.h"
+#include "esp_adc/adc_oneshot.h"
 #include "ui_views.h"
 
 #define BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT "battery adc calibration release failed: %s"
@@ -36,6 +40,10 @@ static constexpr const char *const kBatteryLogTexts[] = {
     BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT,
     BATTERY_CHARGING_STOPPED_LOG_FORMAT,
 };
+static adc_oneshot_unit_handle_t s_battery_adc = nullptr;
+static adc_cali_handle_t s_battery_adc_cali = nullptr;
+static bool s_battery_adc_ready = false;
+static bool s_battery_adc_cali_ready = false;
 static constexpr float kBatteryVoltageDivider = 3.0f;
 static constexpr float kBatteryMillivoltsToVolts = 0.001f;
 static constexpr int kBatteryChargingStopAdcSteps = 2;
@@ -54,7 +62,6 @@ static constexpr int kBatteryAdcRawMax = 4095;
 static constexpr int kBatteryPercentMin = 0;
 static constexpr int kBatteryPercentMax = 100;
 static constexpr int kBatteryPercentUnknown = -1;
-static constexpr int kTmYearOffset = 1900;
 static constexpr int kBatteryMinValidYear = 2023;
 static constexpr int kBatteryMinValidTmYear = kBatteryMinValidYear - kTmYearOffset;
 static constexpr uint32_t kBatteryChargingAnimationIdleTicks =
@@ -67,6 +74,11 @@ static constexpr BatteryChargingPolicy kBatteryChargingPolicy = {
     kBatteryChargingStopSamples,
     kBatteryChargingAnimationStopPercent,
     kBatteryChargingAnimationIdleTicks,
+};
+
+struct BatteryReading {
+    int percent = kBatteryPercentUnknown;
+    float voltage = 0.0f;
 };
 
 static_assert(kBatteryVoltageDivider > 0.0f, "battery voltage divider must be positive");
@@ -130,56 +142,57 @@ static bool battery_time_valid(time_t value)
     return localtime_r(&value, &local) && local.tm_year >= kBatteryMinValidTmYear;
 }
 
-static void update_last_charge_time_if_needed()
+static time_t last_charge_time_after_unplug(time_t previous)
 {
     time_t now = 0;
     time(&now);
     if (battery_time_valid(now)) {
-        g_last_charge_time = now;
+        return now;
     }
+    return previous;
 }
 
 void release_battery_gauge()
 {
-    if (g_battery_adc_cali_ready && g_battery_adc_cali) {
-        esp_err_t err = adc_cali_delete_scheme_curve_fitting(g_battery_adc_cali);
+    if (s_battery_adc_cali_ready && s_battery_adc_cali) {
+        esp_err_t err = adc_cali_delete_scheme_curve_fitting(s_battery_adc_cali);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT, esp_err_to_name(err));
         }
     }
-    g_battery_adc_cali = nullptr;
-    g_battery_adc_cali_ready = false;
+    s_battery_adc_cali = nullptr;
+    s_battery_adc_cali_ready = false;
 
-    if (g_battery_adc) {
-        esp_err_t err = adc_oneshot_del_unit(g_battery_adc);
+    if (s_battery_adc) {
+        esp_err_t err = adc_oneshot_del_unit(s_battery_adc);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, BATTERY_ADC_UNIT_RELEASE_FAILED_LOG_FORMAT, esp_err_to_name(err));
         }
     }
-    g_battery_adc = nullptr;
-    g_battery_adc_ready = false;
+    s_battery_adc = nullptr;
+    s_battery_adc_ready = false;
 }
 
 bool init_battery_gauge()
 {
-    if (g_battery_adc_ready) {
-        if (!g_battery_adc) {
+    if (s_battery_adc_ready) {
+        if (!s_battery_adc) {
             ESP_LOGW(TAG, BATTERY_ADC_READY_WITHOUT_HANDLE_LOG_FORMAT);
             release_battery_gauge();
             return false;
         }
-        if (g_battery_adc_cali_ready && !g_battery_adc_cali) {
+        if (s_battery_adc_cali_ready && !s_battery_adc_cali) {
             ESP_LOGW(TAG, "%s", BATTERY_ADC_CALIBRATION_READY_WITHOUT_HANDLE_LOG);
-            g_battery_adc_cali_ready = false;
+            s_battery_adc_cali_ready = false;
         }
         return true;
     }
 
     adc_oneshot_unit_init_cfg_t init_config = {};
     init_config.unit_id = kBatteryAdcUnit;
-    esp_err_t err = adc_oneshot_new_unit(&init_config, &g_battery_adc);
+    esp_err_t err = adc_oneshot_new_unit(&init_config, &s_battery_adc);
     if (err != ESP_OK) {
-        g_battery_adc = nullptr;
+        s_battery_adc = nullptr;
         ESP_LOGW(TAG, BATTERY_ADC_INIT_FAILED_LOG_FORMAT, esp_err_to_name(err));
         return false;
     }
@@ -187,7 +200,7 @@ bool init_battery_gauge()
     adc_oneshot_chan_cfg_t chan_config = {};
     chan_config.bitwidth = kBatteryAdcBitwidth;
     chan_config.atten = kBatteryAdcAtten;
-    err = adc_oneshot_config_channel(g_battery_adc, kBatteryAdcChannel, &chan_config);
+    err = adc_oneshot_config_channel(s_battery_adc, kBatteryAdcChannel, &chan_config);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, BATTERY_ADC_CHANNEL_CONFIG_FAILED_LOG_FORMAT, esp_err_to_name(err));
         release_battery_gauge();
@@ -199,20 +212,20 @@ bool init_battery_gauge()
     cali_config.chan = kBatteryAdcChannel;
     cali_config.atten = kBatteryAdcAtten;
     cali_config.bitwidth = kBatteryAdcBitwidth;
-    err = adc_cali_create_scheme_curve_fitting(&cali_config, &g_battery_adc_cali);
-    if (err == ESP_OK && g_battery_adc_cali) {
-        g_battery_adc_cali_ready = true;
+    err = adc_cali_create_scheme_curve_fitting(&cali_config, &s_battery_adc_cali);
+    if (err == ESP_OK && s_battery_adc_cali) {
+        s_battery_adc_cali_ready = true;
     } else {
         if (err == ESP_OK) {
             ESP_LOGW(TAG, "%s", BATTERY_ADC_CALIBRATION_READY_WITHOUT_HANDLE_LOG);
         } else {
             ESP_LOGW(TAG, BATTERY_ADC_CALIBRATION_UNAVAILABLE_LOG_FORMAT, esp_err_to_name(err));
         }
-        g_battery_adc_cali = nullptr;
-        g_battery_adc_cali_ready = false;
+        s_battery_adc_cali = nullptr;
+        s_battery_adc_cali_ready = false;
     }
 
-    g_battery_adc_ready = true;
+    s_battery_adc_ready = true;
     return true;
 }
 
@@ -233,9 +246,9 @@ float battery_voltage_from_adc_mv(int adc_mv)
     return adc_mv * kBatteryMillivoltsToVolts * kBatteryVoltageDivider;
 }
 
-bool read_battery_percent(int *percent)
+static bool read_battery_reading(BatteryReading *reading)
 {
-    if (!percent) {
+    if (!reading) {
         ESP_LOGW(TAG, BATTERY_PERCENT_OUTPUT_NULL_LOG_FORMAT);
         return false;
     }
@@ -244,7 +257,7 @@ bool read_battery_percent(int *percent)
     }
 
     int raw = 0;
-    esp_err_t err = adc_oneshot_read(g_battery_adc, kBatteryAdcChannel, &raw);
+    esp_err_t err = adc_oneshot_read(s_battery_adc, kBatteryAdcChannel, &raw);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, BATTERY_ADC_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
         release_battery_gauge();
@@ -252,8 +265,8 @@ bool read_battery_percent(int *percent)
     }
 
     int adc_mv = battery_adc_raw_to_mv(raw);
-    if (g_battery_adc_cali_ready) {
-        err = adc_cali_raw_to_voltage(g_battery_adc_cali, raw, &adc_mv);
+    if (s_battery_adc_cali_ready) {
+        err = adc_cali_raw_to_voltage(s_battery_adc_cali, raw, &adc_mv);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, BATTERY_ADC_CALIBRATION_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
         }
@@ -262,80 +275,126 @@ bool read_battery_percent(int *percent)
     float voltage = battery_voltage_from_adc_mv(adc_mv);
     int soc = battery_percent_from_voltage(voltage);
     ESP_LOGI(TAG, BATTERY_ADC_SAMPLE_LOG_FORMAT, raw, adc_mv, voltage, soc);
-    *percent = soc;
-    g_battery_voltage = voltage;
+    reading->percent = soc;
+    reading->voltage = voltage;
     return true;
 }
 
-static void apply_battery_charging_sample(float previous_voltage,
-                                          BatteryChargingTracker &tracker)
+bool read_battery_percent(int *percent)
+{
+    if (!percent) {
+        ESP_LOGW(TAG, BATTERY_PERCENT_OUTPUT_NULL_LOG_FORMAT);
+        return false;
+    }
+    BatteryReading reading;
+    if (!read_battery_reading(&reading)) {
+        return false;
+    }
+    *percent = reading.percent;
+    // Preserve the existing public helper behavior for any external caller.
+    battery_runtime_voltage_store(reading.voltage);
+    return true;
+}
+
+static BatteryChargingState derive_battery_charging_state(
+    const BatteryReading &reading,
+    float previous_voltage,
+    const BatteryChargingState &previous_state,
+    BatteryChargingTracker &tracker)
 {
     BatteryChargingInput input = {
         previous_voltage,
-        g_battery_voltage,
-        g_battery_percent,
+        reading.voltage,
+        reading.percent,
         static_cast<uint32_t>(xTaskGetTickCount()),
     };
-    BatteryChargingState state = {
-        g_battery_charging,
-        g_battery_animation_complete,
-    };
+    BatteryChargingState state = previous_state;
     (void)update_battery_charging_state(input,
                                         kBatteryChargingPolicy,
                                         &tracker,
                                         &state);
-    g_battery_charging = state.charging;
-    g_battery_animation_complete = state.animation_complete;
+    return state;
 }
 
-static void reset_battery_state_after_sample_failure(BatteryChargingTracker &tracker)
+static void apply_battery_reading(const BatteryReading &reading,
+                                  const BatteryChargingState &state,
+                                  BatteryRuntimeSnapshot *snapshot)
 {
-    g_battery_percent = kBatteryPercentUnknown;
-    g_battery_voltage = 0.0f;
-    g_battery_charging = false;
-    g_battery_animation_complete = false;
+    if (!snapshot) {
+        return;
+    }
+    snapshot->percent = reading.percent;
+    snapshot->voltage = reading.voltage;
+    snapshot->charging = state.charging;
+    snapshot->animation_complete = state.animation_complete;
+}
+
+static void reset_battery_state_after_sample_failure(BatteryChargingTracker &tracker,
+                                                     BatteryRuntimeSnapshot *snapshot)
+{
+    if (snapshot) {
+        snapshot->percent = kBatteryPercentUnknown;
+        snapshot->voltage = 0.0f;
+        snapshot->charging = false;
+        snapshot->animation_complete = false;
+    }
     reset_battery_charging_tracker(&tracker);
 }
 
-static void publish_battery_sample_update(bool force)
+static bool battery_visible_state_changed(const BatteryRuntimeSnapshot &previous,
+                                          const BatteryRuntimeSnapshot &next)
 {
-    bool low_battery_changed = update_low_battery_state();
-    if (force || low_battery_changed) {
-        ++g_battery_version;
-        notify_ui_task();
-    }
+    return previous.percent != next.percent ||
+           previous.charging != next.charging ||
+           previous.animation_complete != next.animation_complete ||
+           previous.low_battery_mode != next.low_battery_mode;
 }
 
 void sample_battery()
 {
     static BatteryChargingTracker charging_tracker;
-    int percent = kBatteryPercentUnknown;
-    bool previous_charging = g_battery_charging;
-    bool previous_animation_complete = g_battery_animation_complete;
-    int previous_percent = g_battery_percent;
-    float previous_voltage = g_battery_voltage;
-    if (read_battery_percent(&percent)) {
-        g_battery_percent = percent;
-        apply_battery_charging_sample(previous_voltage, charging_tracker);
-        if (!previous_charging && g_battery_charging) {
-            ESP_LOGI(TAG, BATTERY_CHARGING_STARTED_LOG_FORMAT, g_battery_voltage, g_battery_percent);
+    BatteryRuntimeSnapshot previous;
+    battery_runtime_snapshot_load(&previous);
+    BatteryRuntimeSnapshot next = previous;
+    BatteryReading reading;
+    if (read_battery_reading(&reading)) {
+        BatteryChargingState previous_state = {
+            previous.charging,
+            previous.animation_complete,
+        };
+        BatteryChargingState next_state = derive_battery_charging_state(
+            reading,
+            previous.voltage,
+            previous_state,
+            charging_tracker);
+        apply_battery_reading(reading, next_state, &next);
+        if (!previous.charging && next.charging) {
+            ESP_LOGI(TAG, BATTERY_CHARGING_STARTED_LOG_FORMAT, next.voltage, next.percent);
         }
-        if (!previous_animation_complete && g_battery_animation_complete) {
+        if (!previous.animation_complete && next.animation_complete) {
             ESP_LOGI(TAG,
                      BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT,
-                     g_battery_voltage,
-                     g_battery_percent);
+                     next.voltage,
+                     next.percent);
         }
-        if (previous_charging && !g_battery_charging) {
-            ESP_LOGI(TAG, BATTERY_CHARGING_STOPPED_LOG_FORMAT, g_battery_voltage, g_battery_percent);
-            update_last_charge_time_if_needed();
+        if (previous.charging && !next.charging) {
+            ESP_LOGI(TAG, BATTERY_CHARGING_STOPPED_LOG_FORMAT, next.voltage, next.percent);
+            next.last_charge_time = last_charge_time_after_unplug(previous.last_charge_time);
         }
         release_battery_gauge();
     } else {
-        reset_battery_state_after_sample_failure(charging_tracker);
+        reset_battery_state_after_sample_failure(charging_tracker, &next);
     }
-    bool sample_changed = previous_percent != g_battery_percent ||
-                          previous_charging != g_battery_charging ||
-                          previous_animation_complete != g_battery_animation_complete;
-    publish_battery_sample_update(sample_changed);
+    next.low_battery_mode = battery_low_mode_for_percent(previous.low_battery_mode,
+                                                         next.percent,
+                                                         kLowBatteryEnterPercent,
+                                                         kLowBatteryExitPercent);
+    bool state_changed = battery_visible_state_changed(previous, next);
+    if (state_changed) {
+        ++next.version;
+    }
+    battery_runtime_snapshot_store(next);
+    if (state_changed) {
+        notify_ui_task();
+    }
 }

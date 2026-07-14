@@ -5,9 +5,13 @@
 #include "app_constexpr.h"
 #include "audio_services.h"
 #include "chime_settings.h"
+#include "network_diagnostics_state.h"
 #include "network_services.h"
 #include "ota_services.h"
 #include "pomodoro_services.h"
+#include "ui_info_page_state.h"
+#include "ui_settings_activity_state.h"
+#include "ui_settings_confirmation_state.h"
 #include "ui_text_format.h"
 
 #include <cstdarg>
@@ -177,13 +181,13 @@ void queue_manual_settings_sync(SettingsSyncOp op,
 void clear_inactive_settings_confirmation(int primary, int selected)
 {
     if (!(primary == kSettingsPrimarySystem && selected == kSystemSettingsFactoryResetItem)) {
-        g_factory_reset_confirm_pending = false;
+        settings_confirmation_clear(SettingsConfirmation::kFactoryReset);
     }
     if (!(primary == kSettingsPrimarySystem && selected == kSystemSettingsOfflineItem)) {
-        g_offline_disable_confirm_pending = false;
+        settings_confirmation_clear(SettingsConfirmation::kOfflineDisable);
     }
     if (!(primary == kSettingsPrimaryNetwork && selected == kNetworkSettingsWeatherCityItem)) {
-        g_weather_city_clear_confirm_pending = false;
+        settings_confirmation_clear(SettingsConfirmation::kWeatherCityClear);
     }
 }
 
@@ -212,7 +216,7 @@ void handle_page_order_settings_action()
     }
     g_settings_page_order_selection = next;
     if (save_work_page_order()) {
-        g_active_work_page = first_enabled_work_page();
+        active_work_page_store(first_enabled_work_page());
         set_settings_feedback(kSettingsOrderSavedFeedback, kSettingsFeedbackSavedMs);
     } else {
         set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
@@ -226,8 +230,8 @@ void handle_network_settings_action(int selected)
             set_settings_feedback(kManualWeatherCityEditFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        if (!g_weather_city_clear_confirm_pending) {
-            g_weather_city_clear_confirm_pending = true;
+        if (!settings_confirmation_pending(SettingsConfirmation::kWeatherCityClear)) {
+            settings_confirmation_request(SettingsConfirmation::kWeatherCityClear);
             set_settings_feedback(kManualWeatherCityClearConfirmFeedback, kSettingsTimeoutMs);
             return;
         }
@@ -235,7 +239,7 @@ void handle_network_settings_action(int selected)
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        g_weather_city_clear_confirm_pending = false;
+        settings_confirmation_clear(SettingsConfirmation::kWeatherCityClear);
         if (g_offline_mode_ui_enabled) {
             set_settings_feedback(kManualWeatherCityAutoFeedback, kSettingsFeedbackDefaultMs);
             return;
@@ -412,7 +416,7 @@ void handle_system_settings_action(int selected)
                 set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
                 return;
             }
-            g_offline_disable_confirm_pending = false;
+            settings_confirmation_clear(SettingsConfirmation::kOfflineDisable);
             set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
@@ -421,12 +425,12 @@ void handle_system_settings_action(int selected)
                 set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
                 return;
             }
-            g_offline_disable_confirm_pending = false;
+            settings_confirmation_clear(SettingsConfirmation::kOfflineDisable);
             set_settings_feedback(kSettingsOfflineDisabledFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        if (!g_offline_disable_confirm_pending) {
-            g_offline_disable_confirm_pending = true;
+        if (!settings_confirmation_pending(SettingsConfirmation::kOfflineDisable)) {
+            settings_confirmation_request(SettingsConfirmation::kOfflineDisable);
             set_settings_feedback(kOfflineSetupConfirmFeedback, kSettingsTimeoutMs);
             return;
         }
@@ -434,7 +438,7 @@ void handle_system_settings_action(int selected)
             set_settings_feedback(kSetupStartFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        g_offline_disable_confirm_pending = false;
+        settings_confirmation_clear(SettingsConfirmation::kOfflineDisable);
         set_settings_feedback(kOfflineSetupInstructionFeedback, kSettingsFeedbackInstructionMs);
     } else if (selected == kSystemSettingsNetworkDiagItem) {
         if (g_offline_mode_ui_enabled) {
@@ -444,16 +448,16 @@ void handle_system_settings_action(int selected)
         begin_settings_sync(kSettingsSyncNetworkDiag, kNetworkDiagSyncFeedback);
         ESP_LOGI(TAG, "%s", MANUAL_NETWORK_DIAG_REQUESTED_LOG);
         network_diag_reset();
-        g_settings_requested = false;
-        g_network_diag_page_requested = true;
+        settings_page_clear();
+        network_diag_page_request();
         g_settings_focus_secondary = true;
         g_settings_primary_selection = kSettingsPrimarySystem;
         g_settings_selection = 0;
-        g_info_page_until_tick = 0;
+        info_page_hold_until_store(0);
         xEventGroupSetBits(g_app_events, kNetworkDiagBit);
     } else if (selected == kSystemSettingsFactoryResetItem) {
-        if (!g_factory_reset_confirm_pending) {
-            g_factory_reset_confirm_pending = true;
+        if (!settings_confirmation_pending(SettingsConfirmation::kFactoryReset)) {
+            settings_confirmation_request(SettingsConfirmation::kFactoryReset);
             set_settings_feedback(kFactoryResetConfirmFeedback, kSettingsTimeoutMs);
             ESP_LOGW(TAG, "%s", FACTORY_RESET_CONFIRM_REQUESTED_LOG);
             return;
@@ -467,18 +471,17 @@ void handle_system_settings_action(int selected)
             set_settings_feedback(kSetupStartFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        g_settings_requested = false;
+        settings_page_clear();
         g_settings_page_toggle_mode = false;
         g_settings_page_order_mode = false;
-        g_factory_reset_confirm_pending = false;
-        g_offline_disable_confirm_pending = false;
+        settings_confirmation_clear(SettingsConfirmation::kFactoryReset);
+        settings_confirmation_clear(SettingsConfirmation::kOfflineDisable);
     } else if (selected == kSystemSettingsInfoItem) {
-        g_settings_requested = false;
+        settings_page_clear();
         g_settings_page_toggle_mode = false;
         g_settings_page_order_mode = false;
-        g_factory_reset_confirm_pending = false;
-        g_boot_info_requested = true;
-        g_info_page_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(kSettingsTimeoutMs);
+        settings_confirmation_clear(SettingsConfirmation::kFactoryReset);
+        info_page_request(xTaskGetTickCount() + pdMS_TO_TICKS(kSettingsTimeoutMs));
         ESP_LOGI(TAG, "%s", SYSTEM_INFO_REQUESTED_LOG);
     } else if (selected == kSystemSettingsOtaItem) {
         if (g_offline_mode_ui_enabled) {
@@ -501,7 +504,7 @@ void handle_settings_action()
                                                      g_settings_page_toggle_mode);
     g_settings_primary_selection = primary;
     g_settings_selection = selected;
-    g_settings_last_activity_tick = xTaskGetTickCount();
+    settings_activity_record(xTaskGetTickCount());
     if (g_settings_page_order_mode) {
         handle_page_order_settings_action();
         return;
@@ -510,7 +513,7 @@ void handle_settings_action()
         g_settings_focus_secondary = true;
         g_settings_selection = 0;
         reset_settings_confirmation();
-        g_settings_feedback[0] = '\0';
+        clear_settings_feedback();
         return;
     }
     if (is_settings_sync_busy()) {

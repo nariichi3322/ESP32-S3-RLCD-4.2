@@ -27,6 +27,8 @@ constexpr const char *const kDailySayingLogTexts[] = {
     DAILY_SAYING_UPDATED_LOG_FORMAT,
 };
 portMUX_TYPE s_daily_saying_mux = portMUX_INITIALIZER_UNLOCKED;
+char s_daily_saying[kDailySayingLen] = {};
+time_t s_last_saying_sync_time = 0;
 
 static_assert(array_count(kDailySayingLogTexts) > 0,
               "daily saying log guard must cover log text");
@@ -105,8 +107,8 @@ void settle_before_next_daily_saying_attempt(int attempt)
 void load_daily_saying_cache()
 {
     portENTER_CRITICAL(&s_daily_saying_mux);
-    g_daily_saying[0] = '\0';
-    g_last_saying_sync_time = 0;
+    s_daily_saying[0] = '\0';
+    s_last_saying_sync_time = 0;
     portEXIT_CRITICAL(&s_daily_saying_mux);
 }
 
@@ -116,9 +118,9 @@ bool get_daily_saying_snapshot(char *out, size_t out_len, time_t *last_sync_time
         return false;
     }
     portENTER_CRITICAL(&s_daily_saying_mux);
-    strlcpy(out, g_daily_saying, out_len);
+    strlcpy(out, s_daily_saying, out_len);
     if (last_sync_time) {
-        *last_sync_time = g_last_saying_sync_time;
+        *last_sync_time = s_last_saying_sync_time;
     }
     bool available = out[0] != '\0';
     portEXIT_CRITICAL(&s_daily_saying_mux);
@@ -128,14 +130,14 @@ bool get_daily_saying_snapshot(char *out, size_t out_len, time_t *last_sync_time
 static void publish_daily_saying(const char *text, time_t synced_at)
 {
     portENTER_CRITICAL(&s_daily_saying_mux);
-    strlcpy(g_daily_saying, text, sizeof(g_daily_saying));
-    g_last_saying_sync_time = synced_at;
+    strlcpy(s_daily_saying, text, sizeof(s_daily_saying));
+    s_last_saying_sync_time = synced_at;
     portEXIT_CRITICAL(&s_daily_saying_mux);
 }
 
 bool perform_daily_saying_update()
 {
-    if (g_low_battery_mode) {
+    if (battery_low_mode_load()) {
         return false;
     }
     char next[kDailySayingLen] = {};

@@ -71,7 +71,9 @@ TickType_t next_housekeeping_wake_tick(bool low_battery,
 
 TickType_t next_battery_wake_after_sample(TickType_t sampled_tick)
 {
-    if (g_battery_charging && !g_battery_animation_complete) {
+    BatteryRuntimeSnapshot battery;
+    battery_runtime_snapshot_load(&battery);
+    if (battery.charging && !battery.animation_complete) {
         return sampled_tick + kBatteryChargingSampleDelay;
     }
     return next_battery_sample_tick(sampled_tick);
@@ -118,7 +120,7 @@ void housekeeping_task(void *)
     TickType_t next_sensor = next_sensor_sample_tick(start_tick);
     TickType_t next_battery = next_battery_sample_tick(start_tick);
     bool last_time_valid = is_system_time_plausible();
-    if (!g_low_battery_mode && !local_sensor_sample_available()) {
+    if (!battery_low_mode_load() && !local_sensor_sample_available()) {
         sample_sensor();
     }
     for (;;) {
@@ -136,21 +138,21 @@ void housekeeping_task(void *)
         }
         last_time_valid = time_valid;
         if (app_tick_deadline_reached(now, next_sensor)) {
-            if (!g_low_battery_mode) {
+            if (!battery_low_mode_load()) {
                 sample_sensor();
             }
             next_sensor = next_sensor_sample_tick(xTaskGetTickCount());
         }
         if (app_tick_deadline_reached(now, next_battery)) {
-            bool was_low_battery = g_low_battery_mode;
+            bool was_low_battery = battery_low_mode_load();
             sample_battery();
             TickType_t after_battery = xTaskGetTickCount();
-            if (was_low_battery && !g_low_battery_mode) {
+            if (was_low_battery && !battery_low_mode_load()) {
                 next_sensor = next_sensor_sample_tick(after_battery);
             }
             next_battery = next_battery_wake_after_sample(after_battery);
         }
-        TickType_t next_wake = next_housekeeping_wake_tick(g_low_battery_mode,
+        TickType_t next_wake = next_housekeeping_wake_tick(battery_low_mode_load(),
                                                            xTaskGetTickCount(),
                                                            next_sensor,
                                                            next_battery);

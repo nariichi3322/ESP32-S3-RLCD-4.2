@@ -10,7 +10,9 @@
 #include "network_services.h"
 #include "ota_services.h"
 #include "sensor_services.h"
+#include "startup_state.h"
 #include "ui_display_flush.h"
+#include "ui_task_notify.h"
 #include "ui_views.h"
 #include "xiaozhi_ai.h"
 
@@ -68,18 +70,18 @@ struct AppTaskSpec {
     const char *name;
     uint32_t stack_depth;
     UBaseType_t priority;
-    TaskHandle_t *handle;
+    bool register_ui_handle;
     BaseType_t core_id;
 };
 
 constexpr AppTaskSpec kRegularAppTasks[] = {
-    {network_sync_task, kNetworkSyncTaskName, kNetworkSyncTaskStack, kHighServiceTaskPriority, nullptr, kNetworkTaskCore},
-    {ota_task, kOtaTaskName, kOtaTaskStack, kHighServiceTaskPriority, nullptr, kNetworkTaskCore},
-    {housekeeping_task, kHousekeepingTaskName, kHousekeepingTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
-    {ui_task, kUiTaskName, kUiTaskStack, kNormalServiceTaskPriority, &g_ui_task_handle, kUiTaskCore},
-    {button_task, kButtonTaskName, kButtonTaskStack, kInputTaskPriority, nullptr, kUiTaskCore},
-    {alarm_task, kAlarmTaskName, kAlarmTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
-    {pomodoro_task, kPomodoroTaskName, kPomodoroTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
+    {network_sync_task, kNetworkSyncTaskName, kNetworkSyncTaskStack, kHighServiceTaskPriority, false, kNetworkTaskCore},
+    {ota_task, kOtaTaskName, kOtaTaskStack, kHighServiceTaskPriority, false, kNetworkTaskCore},
+    {housekeeping_task, kHousekeepingTaskName, kHousekeepingTaskStack, kNormalServiceTaskPriority, false, kUiTaskCore},
+    {ui_task, kUiTaskName, kUiTaskStack, kNormalServiceTaskPriority, true, kUiTaskCore},
+    {button_task, kButtonTaskName, kButtonTaskStack, kInputTaskPriority, false, kUiTaskCore},
+    {alarm_task, kAlarmTaskName, kAlarmTaskStack, kNormalServiceTaskPriority, false, kUiTaskCore},
+    {pomodoro_task, kPomodoroTaskName, kPomodoroTaskStack, kNormalServiceTaskPriority, false, kUiTaskCore},
 };
 
 constexpr bool app_task_specs_valid()
@@ -87,7 +89,8 @@ constexpr bool app_task_specs_valid()
     for (const AppTaskSpec &spec : kRegularAppTasks) {
         if (!spec.task || !spec.name || spec.name[0] == '\0' ||
             spec.stack_depth == 0 || spec.priority >= configMAX_PRIORITIES ||
-            spec.core_id < 0 || spec.core_id >= portNUM_PROCESSORS) {
+            spec.core_id < 0 || spec.core_id >= portNUM_PROCESSORS ||
+            (spec.register_ui_handle && spec.task != ui_task)) {
             return false;
         }
     }
@@ -127,35 +130,36 @@ static_assert(array_count(kMainLogTexts) > 0,
 static_assert(cstr_array_nonempty(kMainLogTexts), "main startup log texts must be non-empty");
 } // namespace
 
-static void create_app_task(TaskFunction_t task,
-                            const char *name,
-                            uint32_t stack_depth,
-                            UBaseType_t priority,
-                            TaskHandle_t *handle,
-                            BaseType_t core_id)
+static TaskHandle_t create_app_task(TaskFunction_t task,
+                                    const char *name,
+                                    uint32_t stack_depth,
+                                    UBaseType_t priority,
+                                    BaseType_t core_id)
 {
     const char *task_name = name ? name : kFallbackAppTaskName;
-    if (handle) {
-        *handle = nullptr;
-    }
     if (!task || stack_depth == 0) {
         ESP_LOGE(TAG, MAIN_INVALID_TASK_CREATE_LOG_FORMAT, task_name);
-        return;
+        return nullptr;
     }
-    if (xTaskCreatePinnedToCore(task, task_name, stack_depth, nullptr, priority, handle, core_id) != pdPASS) {
+    TaskHandle_t handle = nullptr;
+    if (xTaskCreatePinnedToCore(task, task_name, stack_depth, nullptr, priority, &handle, core_id) != pdPASS) {
         ESP_LOGE(TAG, MAIN_TASK_CREATE_FAILED_LOG_FORMAT, task_name);
+        return nullptr;
     }
+    return handle;
 }
 
 static void create_regular_app_tasks()
 {
     for (const AppTaskSpec &task : kRegularAppTasks) {
-        create_app_task(task.task,
-                        task.name,
-                        task.stack_depth,
-                        task.priority,
-                        task.handle,
-                        task.core_id);
+        TaskHandle_t handle = create_app_task(task.task,
+                                              task.name,
+                                              task.stack_depth,
+                                              task.priority,
+                                              task.core_id);
+        if (task.register_ui_handle) {
+            register_ui_task_handle(handle);
+        }
     }
 }
 
@@ -218,15 +222,11 @@ static bool init_system_event_services()
 static void create_boot_task_or_signal(TaskFunction_t task,
                                        const char *name,
                                        uint32_t stack_depth,
-                                       TaskHandle_t *handle,
                                        BaseType_t core_id,
                                        EventBits_t done_bit,
                                        const char *failure_log)
 {
     const char *task_name = name ? name : kFallbackBootTaskName;
-    if (handle) {
-        *handle = nullptr;
-    }
     if (!task || stack_depth == 0) {
         ESP_LOGW(TAG, MAIN_INVALID_BOOT_TASK_LOG_FORMAT, failure_log ? failure_log : task_name);
         xEventGroupSetBits(g_app_events, done_bit);
@@ -237,7 +237,7 @@ static void create_boot_task_or_signal(TaskFunction_t task,
                                 stack_depth,
                                 nullptr,
                                 kHighServiceTaskPriority,
-                                handle,
+                                nullptr,
                                 core_id) != pdPASS) {
         ESP_LOGW(TAG, MAIN_BOOT_TASK_CREATE_FAILED_LOG_FORMAT, failure_log);
         xEventGroupSetBits(g_app_events, done_bit);
@@ -272,7 +272,7 @@ extern "C" void app_main(void)
         ESP_LOGW(TAG, MAIN_SHTC3_ALLOCATION_FAILED_LOG_FORMAT);
     }
     sample_battery();
-    if (!g_low_battery_mode) {
+    if (!battery_low_mode_load()) {
         sample_sensor();
     }
     init_wifi();
@@ -290,20 +290,17 @@ extern "C" void app_main(void)
         show_boot_screen();
         Lvgl_unlock();
     }
-    g_boot_anim_current_frame = 0;
-    g_boot_anim_running = true;
+    prepare_boot_animation();
     xEventGroupClearBits(g_app_events, kBootSyncDoneBit | kBootAnimDoneBit);
     create_boot_task_or_signal(boot_anim_task,
                                kBootAnimTaskName,
                                kBootAnimTaskStack,
-                               &g_boot_anim_task_handle,
                                kUiTaskCore,
                                kBootAnimDoneBit,
                                kBootAnimTaskCreateFailed);
     create_boot_task_or_signal(boot_connectivity_task,
                                kBootSyncTaskName,
                                kBootSyncTaskStack,
-                               &g_boot_sync_task_handle,
                                kNetworkTaskCore,
                                kBootSyncDoneBit,
                                kBootConnectivityTaskCreateFailed);
@@ -313,7 +310,7 @@ extern "C" void app_main(void)
                         pdTRUE,
                         pdMS_TO_TICKS(kBootStartupBudgetMs + kBootSyncWaitMarginMs));
     update_boot_screen(100, kBootReadyStatus, kBootReadyDetail);
-    g_boot_anim_running = false;
+    request_boot_animation_stop();
     xEventGroupWaitBits(g_app_events,
                         kBootAnimDoneBit,
                         pdFALSE,
@@ -321,11 +318,11 @@ extern "C" void app_main(void)
                         pdMS_TO_TICKS(kBootAnimStopWaitMs));
     finish_boot_anim_to_last_frame();
     finish_boot_screen();
-    g_startup_screen_active = false;
+    startup_screen_mark_finished();
 
     create_regular_app_tasks();
 
-    if (g_setup_prompt_pending) {
+    if (setup_prompt_playback_pending()) {
         vTaskDelay(pdMS_TO_TICKS(kSetupPromptStartDelayMs));
         (void)start_setup_prompt_playback();
     }

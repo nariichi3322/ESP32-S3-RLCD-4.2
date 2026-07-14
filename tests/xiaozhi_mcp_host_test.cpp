@@ -10,8 +10,14 @@
 #include <cstring>
 
 const char *const APP_VERSION = "v-test";
-int g_battery_percent = 73;
 int g_chime_volume_percent = 80;
+
+void battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out)
+{
+    if (out) {
+        out->percent = 73;
+    }
+}
 
 namespace {
 constexpr size_t kResponseSize = 4096;

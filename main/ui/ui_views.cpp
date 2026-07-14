@@ -7,14 +7,19 @@
 #include "app_constexpr.h"
 #include "app_tick_time.h"
 #include "audio_services.h"
+#include "network_diagnostics_state.h"
 #include "network_services.h"
+#include "ota_runtime_state.h"
 #include "ota_services.h"
 #include "pomodoro_services.h"
 #include "sensor_services.h"
 #include "ui_battery.h"
 #include "ui_battery_blink.h"
+#include "ui_draw_cache.h"
+#include "ui_info_page_state.h"
 #include "ui_loop_schedule.h"
 #include "ui_setup_status.h"
+#include "ui_settings_activity_state.h"
 #include "ui_visible_data_sync.h"
 #include "ui_xiaozhi_auto_return.h"
 #include "xiaozhi_ai.h"
@@ -53,14 +58,6 @@ bool settings_timeout_elapsed(TickType_t last_activity)
     return app_tick_interval_elapsed(now, last_activity, timeout_ticks);
 }
 
-void invalidate_work_page_time_cache()
-{
-    g_last_ui_second = -1;
-    g_last_ui_minute = -1;
-    g_last_ui_date_key = -1;
-    g_last_ui_date_page = -1;
-}
-
 static_assert(kUiStatusRefreshMs > 0, "UI status refresh interval must be positive");
 static_assert(kUiInfoPagePollMs > 0, "UI info page poll interval must be positive");
 static_assert(kUiNetworkDiagRunningPollMs > 0, "network diagnostics running poll interval must be positive");
@@ -78,13 +75,6 @@ static_assert(cstr_array_nonempty(kUiLogTexts), "UI main-loop log texts must be 
 
 } // namespace
 
-void notify_ui_task()
-{
-    if (g_ui_task_handle) {
-        xTaskNotifyGive(g_ui_task_handle);
-    }
-}
-
 namespace {
 TickType_t next_second_delay_ticks()
 {
@@ -98,7 +88,7 @@ TickType_t next_minute_delay_ticks(const struct tm &local)
 
 bool update_invalid_time_labels_for_active_page(int active_work_page)
 {
-    int status_page = (g_low_battery_mode || g_setup_portal_active)
+    int status_page = (battery_low_mode_load() || setup_portal_active_load())
                           ? kWorkPageWeatherClock
                           : active_work_page;
     WorkPageStatusLabels labels = get_work_page_status_labels(status_page);
@@ -109,37 +99,40 @@ bool update_invalid_time_labels_for_active_page(int active_work_page)
 
 bool auxiliary_page_requested()
 {
-    return g_settings_requested ||
-           g_boot_info_requested ||
-           g_network_diag_page_requested;
+    return settings_page_requested() ||
+           info_page_requested() ||
+           network_diag_page_requested();
 }
 
-bool low_refresh_work_page_idle(const struct tm &local)
+bool low_refresh_work_page_idle(const struct tm &local,
+                                const BatteryRuntimeSnapshot &battery)
 {
-    return work_page_uses_low_refresh_idle(g_active_work_page) &&
-           !g_low_battery_mode &&
-           !g_battery_charging &&
-           !g_setup_portal_active &&
+    return work_page_uses_low_refresh_idle(active_work_page_load()) &&
+           !battery.low_battery_mode &&
+           !battery.charging &&
+           !setup_portal_active_load() &&
            !auxiliary_page_requested() &&
            is_tm_plausible(local);
 }
 
 bool flip_clock_fast_poll_active(const struct tm &local)
 {
-    return g_active_work_page == kWorkPageFlipClock &&
-           !g_low_battery_mode &&
-           !g_setup_portal_active &&
+    return active_work_page_load() == kWorkPageFlipClock &&
+           !battery_low_mode_load() &&
+           !setup_portal_active_load() &&
            !auxiliary_page_requested() &&
            is_tm_plausible(local);
 }
 
 TickType_t next_ui_loop_delay_ticks(const struct tm &local, bool battery_blink_visible)
 {
-    bool low_idle = g_low_battery_mode &&
-                    !g_battery_charging &&
+    BatteryRuntimeSnapshot battery;
+    battery_runtime_snapshot_load(&battery);
+    bool low_idle = battery.low_battery_mode &&
+                    !battery.charging &&
                     !auxiliary_page_requested() &&
                     is_tm_plausible(local);
-    bool low_refresh_page_idle = low_refresh_work_page_idle(local);
+    bool low_refresh_page_idle = low_refresh_work_page_idle(local, battery);
     uint32_t delay_candidates[5] = {};
     delay_candidates[0] = (low_idle || low_refresh_page_idle)
                               ? next_minute_delay_ticks(local)
@@ -173,9 +166,10 @@ void update_xiaozhi_auto_return_state(TickType_t tick_now,
                                       TickType_t &last_activity_tick,
                                       uint32_t &last_activity_sequence)
 {
-    if (g_active_work_page == kWorkPageXiaozhiAI &&
-        !g_low_battery_mode &&
-        !g_setup_portal_active &&
+    int active_page = active_work_page_load();
+    if (active_page == kWorkPageXiaozhiAI &&
+        !battery_low_mode_load() &&
+        !setup_portal_active_load() &&
         !auxiliary_page_requested()) {
         XiaozhiAiSnapshot snapshot = {};
         xiaozhi_ai_get_snapshot(&snapshot);
@@ -196,11 +190,11 @@ void update_xiaozhi_auto_return_state(TickType_t tick_now,
             int home_page = first_enabled_work_page();
             if (home_page != kWorkPageXiaozhiAI) {
                 ESP_LOGI(TAG, UI_XIAOZHI_AUTO_RETURN_LOG, home_page);
-                g_active_work_page = home_page;
+                active_work_page_store(home_page);
             }
             last_activity_tick = tick_now;
         }
-    } else if (g_active_work_page != kWorkPageXiaozhiAI) {
+    } else if (active_page != kWorkPageXiaozhiAI) {
         last_activity_tick = 0;
         last_activity_sequence = 0;
     }
@@ -250,7 +244,7 @@ bool update_weather_alert_state(const struct tm &local,
     WeatherAlertData alert = {};
     get_weather_snapshot(nullptr, &alert);
     ClockAlertDisplayState next_alert = clock_alert_display_state(local.tm_sec,
-                                                                 g_low_battery_mode,
+                                                                 battery_low_mode_load(),
                                                                  alert.active,
                                                                  alert.count);
     if (!clock_alert_display_needs_update(next_alert,
@@ -287,15 +281,16 @@ void show_network_diag_aux_page(bool &network_diag_page_visible,
 
 bool update_active_work_page_content(struct tm &local,
                                      const ActiveWorkPageState &state,
+                                     int active_page,
                                      bool status_due,
                                      bool &alert_visible,
                                      int &alert_index)
 {
     bool changed = false;
     if (is_system_time_plausible(&local)) {
-        changed |= update_time_ui(local, state.weather_clock, g_active_work_page);
+        changed |= update_time_ui(local, state.weather_clock, active_page);
         changed |= update_visible_work_page_body(local, state);
-        changed |= update_work_page_day_progress(g_active_work_page, local);
+        changed |= update_work_page_day_progress(active_page, local);
         changed |= update_weather_alert_state(local,
                                               state,
                                               status_due,
@@ -304,9 +299,8 @@ bool update_active_work_page_content(struct tm &local,
         return changed;
     }
 
-    changed |= update_invalid_time_labels_for_active_page(g_active_work_page);
-    g_last_ui_date_key = -1;
-    g_last_ui_date_page = -1;
+    changed |= update_invalid_time_labels_for_active_page(active_page);
+    invalidate_clock_date_draw_cache();
     update_alert_pill(false);
     if (alert_visible) {
         alert_visible = false;
@@ -332,7 +326,7 @@ void ui_task(void *)
     int alert_index = -1;
     bool last_battery_charging = false;
     int last_battery_blink_phase = -1;
-    uint32_t last_settings_action_seq = g_settings_action_seq;
+    uint32_t last_settings_action_seq = settings_activity_action_sequence();
     VisibleSyncRetryState<TickType_t> weather_sync_retry;
     VisibleSyncRetryState<TickType_t> saying_sync_retry;
     TickType_t xiaozhi_last_activity_tick = 0;
@@ -343,16 +337,19 @@ void ui_task(void *)
         time(&now);
         struct tm local = {};
         localtime_r(&now, &local);
-        if (!g_low_battery_mode && !g_setup_portal_active) {
+        BatteryRuntimeSnapshot battery;
+        battery_runtime_snapshot_load(&battery);
+        if (!battery.low_battery_mode && !setup_portal_active_load()) {
             ensure_active_work_page_enabled();
         }
-        xiaozhi_ai_set_page_active(g_active_work_page == kWorkPageXiaozhiAI &&
-                                   !g_low_battery_mode &&
-                                   !g_setup_portal_active &&
+        int active_page = active_work_page_load();
+        xiaozhi_ai_set_page_active(active_page == kWorkPageXiaozhiAI &&
+                                   !battery.low_battery_mode &&
+                                   !setup_portal_active_load() &&
                                    !auxiliary_page_requested());
 
         TickType_t tick_now = xTaskGetTickCount();
-        if (g_active_work_page == kWorkPageXiaozhiAI && auxiliary_page_requested()) {
+        if (active_page == kWorkPageXiaozhiAI && auxiliary_page_requested()) {
             xiaozhi_last_activity_tick = tick_now;
         }
         bool status_due = app_tick_interval_elapsed(tick_now,
@@ -362,15 +359,15 @@ void ui_task(void *)
         if (current_alarm_version != last_alarm_version) {
             status_due = true;
         }
-        bool battery_due = g_battery_version != last_battery_version;
+        bool battery_due = battery.version != last_battery_version;
         UiBatteryBlinkState battery_blink = ui_battery_blink_state({
-            g_battery_charging,
-            g_battery_animation_complete,
-            g_battery_percent,
+            battery.charging,
+            battery.animation_complete,
+            battery.percent,
             kBatteryChargingAnimationStopPercent,
-            g_active_work_page,
+            active_page,
             kWorkPageCount,
-            g_setup_portal_active,
+            setup_portal_active_load(),
             auxiliary_page_requested(),
             is_tm_plausible(local),
             local.tm_sec,
@@ -382,66 +379,68 @@ void ui_task(void *)
         bool battery_blink_due = battery_blink_visible != last_battery_charging ||
                                  (battery_blink_visible &&
                                   battery_blink_phase != last_battery_blink_phase);
-        bool setup_due = g_setup_portal_active != setup_panel_visible;
-        bool mode_due = g_low_battery_mode != low_mode_visible;
+        bool setup_due = setup_portal_active_load() != setup_panel_visible;
+        bool mode_due = battery.low_battery_mode != low_mode_visible;
 
         if (Lvgl_lock(kUiLvglLockTimeoutMs)) {
             bool refresh_now = false;
-            bool info_requested = g_boot_info_requested;
-            bool network_diag_requested = g_network_diag_page_requested;
-            bool settings_requested = g_settings_requested;
-            TickType_t info_until = g_info_page_until_tick;
+            InfoPageStateSnapshot info_state;
+            info_page_state_load(&info_state);
+            bool info_requested = info_state.requested;
+            bool network_diag_requested = network_diag_page_requested();
+            bool settings_requested = settings_page_requested();
+            TickType_t info_until = info_state.hold_until_tick;
             auto restore_active_work_page_after_aux = [&](bool clear_info_timeout) {
                 show_active_work_page();
                 if (clear_info_timeout) {
-                    g_info_page_until_tick = 0;
+                    info_page_hold_until_store(0);
                 }
-                visible_work_page = g_active_work_page;
+                active_page = active_work_page_load();
+                visible_work_page = active_page;
                 setup_panel_visible = false;
-                low_mode_visible = g_low_battery_mode;
+                low_mode_visible = battery.low_battery_mode;
                 apply_clock_mode_visibility(false);
                 status_due = true;
                 battery_due = true;
                 battery_blink_due = true;
-                invalidate_work_page_time_cache();
+                invalidate_clock_time_draw_cache();
                 refresh_now = true;
             };
             if (info_requested && info_until != 0 &&
                 app_tick_deadline_reached(tick_now, info_until) &&
                 !ota_flow_active()) {
-                g_boot_info_requested = false;
-                g_info_page_until_tick = 0;
+                info_page_clear();
                 info_requested = false;
             }
-            if (g_low_battery_mode && !ota_flow_active() &&
+            if (battery.low_battery_mode && !ota_flow_active() &&
                 (info_requested ||
                  network_diag_requested ||
                  settings_requested ||
-                 g_active_work_page != kWorkPageWeatherClock)) {
-                g_boot_info_requested = false;
-                g_network_diag_page_requested = false;
-                g_settings_requested = false;
+                 active_page != kWorkPageWeatherClock)) {
+                info_page_clear();
+                network_diag_page_clear();
+                settings_page_clear();
                 reset_settings_navigation_state();
-                g_info_page_until_tick = 0;
                 info_requested = false;
                 network_diag_requested = false;
                 settings_requested = false;
                 info_page_visible = false;
                 network_diag_page_visible = false;
                 settings_page_visible = false;
-                g_active_work_page = kWorkPageWeatherClock;
+                active_work_page_store(kWorkPageWeatherClock);
+                active_page = kWorkPageWeatherClock;
                 show_active_work_page();
                 visible_work_page = kWorkPageWeatherClock;
                 setup_panel_visible = false;
-                low_mode_visible = g_low_battery_mode;
-                apply_clock_mode_visibility(g_setup_portal_active);
+                low_mode_visible = battery.low_battery_mode;
+                apply_clock_mode_visibility(setup_portal_active_load());
                 update_alert_pill(false);
                 alert_visible = false;
                 alert_index = -1;
                 status_due = true;
                 battery_due = true;
                 battery_blink_due = true;
-                invalidate_work_page_time_cache();
+                invalidate_clock_time_draw_cache();
                 refresh_now = true;
             }
             if (info_requested && !settings_requested) {
@@ -452,7 +451,9 @@ void ui_task(void *)
                 update_boot_info_page();
                 lv_refr_now(nullptr);
                 Lvgl_unlock();
-                vTaskDelay(pdMS_TO_TICKS(g_ota_state == kOtaUpdating ? kOtaStatusMinIntervalMs : kUiInfoPagePollMs));
+                vTaskDelay(pdMS_TO_TICKS(ota_runtime_state_load() == kOtaUpdating
+                                             ? kOtaStatusMinIntervalMs
+                                             : kUiInfoPagePollMs));
                 continue;
             }
             if (info_page_visible) {
@@ -460,10 +461,11 @@ void ui_task(void *)
                 restore_active_work_page_after_aux(true);
             }
 
+            int network_diag_state = network_diag_state_load();
             if (network_diag_requested &&
-                g_network_diag_state == kNetworkDiagDone &&
-                settings_timeout_elapsed(g_settings_last_activity_tick)) {
-                g_network_diag_page_requested = false;
+                network_diag_state == kNetworkDiagDone &&
+                settings_timeout_elapsed(settings_activity_last_tick())) {
+                network_diag_page_clear();
                 network_diag_requested = false;
             }
             if (network_diag_requested && !settings_requested) {
@@ -476,7 +478,9 @@ void ui_task(void *)
                     lv_refr_now(nullptr);
                 }
                 Lvgl_unlock();
-                vTaskDelay(pdMS_TO_TICKS(g_network_diag_state == kNetworkDiagRunning ? kUiNetworkDiagRunningPollMs : kUiNetworkDiagIdlePollMs));
+                vTaskDelay(pdMS_TO_TICKS(network_diag_state_load() == kNetworkDiagRunning
+                                            ? kUiNetworkDiagRunningPollMs
+                                            : kUiNetworkDiagIdlePollMs));
                 continue;
             }
             if (network_diag_page_visible) {
@@ -496,13 +500,14 @@ void ui_task(void *)
                     setup_panel_visible = false;
                     settings_changed = true;
                 }
-                if (g_settings_action_seq != last_settings_action_seq) {
-                    last_settings_action_seq = g_settings_action_seq;
+                uint32_t settings_action_seq = settings_activity_action_sequence();
+                if (settings_action_seq != last_settings_action_seq) {
+                    last_settings_action_seq = settings_action_seq;
                     handle_settings_action();
                     settings_changed = true;
                     settings_action_handled = true;
-                    settings_requested = g_settings_requested;
-                    if (!settings_requested && g_boot_info_requested) {
+                    settings_requested = settings_page_requested();
+                    if (!settings_requested && info_page_requested()) {
                         show_boot_info_aux_page(info_page_visible,
                                                 settings_page_visible);
                         update_boot_info_page();
@@ -511,7 +516,7 @@ void ui_task(void *)
                         vTaskDelay(pdMS_TO_TICKS(kUiPostPageSwitchPollMs));
                         continue;
                     }
-                    if (!settings_requested && g_network_diag_page_requested) {
+                    if (!settings_requested && network_diag_page_requested()) {
                         show_network_diag_aux_page(network_diag_page_visible,
                                                    info_page_visible,
                                                    settings_page_visible);
@@ -526,7 +531,7 @@ void ui_task(void *)
                     settings_changed = true;
                 }
                 if (settings_requested) {
-                    TickType_t last_activity = g_settings_last_activity_tick;
+                    TickType_t last_activity = settings_activity_last_tick();
                     bool button_pressed = gpio_get_level(kBootButtonGpio) == 0 ||
                                           gpio_get_level(kKeyButtonGpio) == 0;
                     if (!settings_action_handled &&
@@ -536,10 +541,10 @@ void ui_task(void *)
                         ESP_LOGI(TAG, "%s", UI_SETTINGS_TIMEOUT_RETURN_LOG);
                         if (g_settings_page_order_mode) {
                             if (save_work_page_order()) {
-                                g_active_work_page = first_enabled_work_page();
+                                active_work_page_store(first_enabled_work_page());
                             }
                         }
-                        g_settings_requested = false;
+                        settings_page_clear();
                         reset_settings_navigation_state();
                         settings_requested = false;
                     }
@@ -549,7 +554,9 @@ void ui_task(void *)
                         lv_refr_now(nullptr);
                     }
                     Lvgl_unlock();
-                    vTaskDelay(pdMS_TO_TICKS(g_ota_state == kOtaUpdating ? kOtaStatusMinIntervalMs : kUiSettingsPollMs));
+                    vTaskDelay(pdMS_TO_TICKS(ota_runtime_state_load() == kOtaUpdating
+                                                 ? kOtaStatusMinIntervalMs
+                                                 : kUiSettingsPollMs));
                     continue;
                 }
             }
@@ -559,34 +566,31 @@ void ui_task(void *)
                 restore_active_work_page_after_aux(false);
             }
 
-            if (g_low_battery_mode || g_setup_portal_active) {
-                if (g_active_work_page != kWorkPageWeatherClock) {
-                    g_active_work_page = kWorkPageWeatherClock;
+            if (battery.low_battery_mode || setup_portal_active_load()) {
+                if (active_page != kWorkPageWeatherClock) {
+                    active_work_page_store(kWorkPageWeatherClock);
                 }
             } else {
                 ensure_active_work_page_enabled();
             }
+            active_page = active_work_page_load();
             update_xiaozhi_auto_return_state(tick_now,
                                               xiaozhi_last_activity_tick,
                                               last_xiaozhi_activity_sequence);
-            if (visible_work_page != g_active_work_page) {
+            active_page = active_work_page_load();
+            if (visible_work_page != active_page) {
                 show_active_work_page();
-                visible_work_page = g_active_work_page;
+                visible_work_page = active_page;
                 xiaozhi_ai_set_page_active(visible_work_page == kWorkPageXiaozhiAI);
                 status_due = true;
                 battery_due = true;
                 battery_blink_due = true;
-                g_last_history_drawn_version = (uint32_t)-1;
-                g_last_history_drawn_hour = -1;
-                g_last_flip_clock_hour = -1;
-                g_last_flip_clock_minute = -1;
-                g_last_flip_clock_second = -1;
-                g_last_flip_sensor_minute = -1;
-                g_last_ui_date_key = -1;
-                g_last_ui_date_page = -1;
+                invalidate_history_draw_cache();
+                invalidate_flip_clock_time_sensor_draw_cache();
+                invalidate_clock_date_draw_cache();
                 refresh_now = true;
             }
-            const ActiveWorkPageState active_pages = active_work_page_state();
+            const ActiveWorkPageState active_pages = active_work_page_state(active_page);
             update_visible_weather_sync(active_pages,
                                         now,
                                         tick_now,
@@ -599,21 +603,22 @@ void ui_task(void *)
 
             refresh_now |= update_active_work_page_content(local,
                                                            active_pages,
+                                                           active_page,
                                                            status_due,
                                                            alert_visible,
                                                            alert_index);
 
             if (status_due || battery_due || battery_blink_due || setup_due || mode_due) {
                 EventBits_t bits = xEventGroupGetBits(g_app_events);
-                bool setup_active = g_setup_portal_active;
+                bool setup_active = setup_portal_active_load();
                 bool content_changed = false;
                 if (setup_active != setup_panel_visible || mode_due) {
                     apply_clock_mode_visibility(setup_active);
                     setup_panel_visible = setup_active;
-                    low_mode_visible = g_low_battery_mode;
+                    low_mode_visible = battery.low_battery_mode;
                     status_due = true;
-                    invalidate_work_page_time_cache();
-                    g_last_second_progress_filled = -1;
+                    invalidate_clock_time_draw_cache();
+                    invalidate_clock_second_progress_draw_cache();
                     update_alert_pill(false);
                     alert_visible = false;
                     alert_index = -1;
@@ -622,7 +627,7 @@ void ui_task(void *)
                 if (setup_active) {
                     content_changed |= update_setup_status_panel();
                 }
-                if (!setup_active && !g_low_battery_mode && active_pages.weather_clock) {
+                if (!setup_active && !battery.low_battery_mode && active_pages.weather_clock) {
                     content_changed |= update_weather_clock_sensor_status();
                     content_changed |= update_weather_clock_network_status(bits,
                                                                             now,
@@ -630,23 +635,23 @@ void ui_task(void *)
                                                                             weather_sync_retry);
                 }
                 if (battery_due || battery_blink_due) {
-                    update_work_page_battery_icon(g_active_work_page,
-                                                  g_battery_percent,
+                    update_work_page_battery_icon(active_page,
+                                                  battery.percent,
                                                   battery_blink_visible,
                                                   battery_blink_on);
-                    last_battery_version = g_battery_version;
+                    last_battery_version = battery.version;
                     last_battery_charging = battery_blink_visible;
                     last_battery_blink_phase = battery_blink_phase;
                     content_changed = true;
                 }
                 if (status_due) {
                     if (!active_pages.weather_clock) {
-                        content_changed |= update_non_clock_work_page_sensor_status(g_active_work_page);
+                        content_changed |= update_non_clock_work_page_sensor_status(active_page);
                     }
                     if (active_pages.weather_clock) {
                         content_changed |= update_top_status_icons(alert_visible);
                     } else {
-                        content_changed |= update_work_page_status_icons(g_active_work_page);
+                        content_changed |= update_work_page_status_icons(active_page);
                     }
                     last_status_update = tick_now;
                     last_alarm_version = current_alarm_version;

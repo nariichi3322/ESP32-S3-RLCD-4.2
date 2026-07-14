@@ -7,6 +7,7 @@
 
 int main()
 {
+    xiaozhi_reset_activation_response(nullptr);
     assert(xiaozhi_activation_response_writable_bytes(nullptr) == 0);
     XiaozhiActivationResponse response;
     assert(xiaozhi_activation_response_writable_bytes(&response) ==
@@ -19,6 +20,13 @@ int main()
     assert(xiaozhi_activation_response_writable_bytes(&response) == 0);
     response.len = static_cast<size_t>(-1);
     assert(xiaozhi_activation_response_writable_bytes(&response) == 0);
+    response.data[0] = 'x';
+    response.data[1] = '\0';
+    xiaozhi_reset_activation_response(&response);
+    assert(response.len == 0);
+    assert(response.data[0] == '\0');
+    assert(xiaozhi_activation_response_writable_bytes(&response) ==
+           kXiaozhiActivationResponseSize - 1);
 
     XiaozhiActivationResponseDocument document;
 

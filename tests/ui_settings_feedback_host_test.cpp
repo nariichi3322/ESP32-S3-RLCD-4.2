@@ -1,34 +1,42 @@
 // 直接验证设置页反馈和手动同步超时收尾的生产实现。
 #include "ui_settings_feedback.h"
+#include "ui_settings_activity_state.h"
+#include "ui_settings_sync_state.h"
 
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
 
 const char *const TAG = "Test";
-char g_settings_feedback[48] = {};
-TickType_t g_settings_feedback_until_tick = 0;
-volatile bool g_settings_requested = false;
-volatile TickType_t g_settings_last_activity_tick = 0;
-volatile int g_settings_sync_op = kSettingsSyncNone;
-volatile TickType_t g_settings_sync_deadline_tick = 0;
-volatile int g_network_diag_state = kNetworkDiagIdle;
 EventGroupHandle_t g_app_events = reinterpret_cast<EventGroupHandle_t>(1);
 
 namespace {
 TickType_t s_now = 0;
 EventBits_t s_event_bits = 0;
 int s_notify_count = 0;
+int s_network_diag_state = kNetworkDiagIdle;
+
+SettingsSyncStateSnapshot sync_state()
+{
+    SettingsSyncStateSnapshot state;
+    settings_sync_state_load(&state);
+    return state;
+}
+
+void expect_active_feedback(TickType_t now, const char *expected)
+{
+    char feedback[kSettingsFeedbackTextLen] = {};
+    assert(settings_feedback_copy_active(now, feedback, sizeof(feedback)));
+    assert(strcmp(feedback, expected) == 0);
+}
 
 void reset_state()
 {
-    memset(g_settings_feedback, 0, sizeof(g_settings_feedback));
-    g_settings_feedback_until_tick = 0;
-    g_settings_requested = true;
-    g_settings_last_activity_tick = 0;
-    g_settings_sync_op = kSettingsSyncNone;
-    g_settings_sync_deadline_tick = 0;
-    g_network_diag_state = kNetworkDiagIdle;
+    clear_settings_feedback();
+    settings_page_request();
+    settings_activity_record(0);
+    settings_sync_state_begin(kSettingsSyncNone, 0);
+    s_network_diag_state = kNetworkDiagIdle;
     s_now = 100;
     s_event_bits = kManualNtpSyncBit | kManualWeatherSyncBit | kManualSayingSyncBit;
     s_notify_count = 0;
@@ -37,22 +45,26 @@ void reset_state()
 void expect_timeout(SettingsSyncOp op, EventBits_t bit, const char *feedback)
 {
     reset_state();
-    g_settings_sync_op = op;
-    g_settings_sync_deadline_tick = 120;
+    settings_sync_state_begin(op, 120);
     assert(!finish_settings_sync_if_timed_out(119));
-    assert(g_settings_sync_op == op);
+    assert(sync_state().operation == op);
     assert((s_event_bits & bit) != 0);
 
     s_now = 120;
     assert(finish_settings_sync_if_timed_out(120));
-    assert(g_settings_sync_op == kSettingsSyncNone);
-    assert(g_settings_sync_deadline_tick == 0);
+    assert(sync_state().operation == kSettingsSyncNone);
+    assert(sync_state().deadline_tick == 0);
     assert((s_event_bits & bit) == 0);
-    assert(strcmp(g_settings_feedback, feedback) == 0);
-    assert(g_settings_last_activity_tick == 120);
+    expect_active_feedback(120, feedback);
+    assert(settings_activity_last_tick() == 120);
     assert(s_notify_count == 1);
 }
 } // namespace
+
+int network_diag_state_load()
+{
+    return s_network_diag_state;
+}
 
 TickType_t xTaskGetTickCount()
 {
@@ -86,37 +98,39 @@ int main()
 {
     reset_state();
     set_settings_feedback("测试", 2500);
-    assert(strcmp(g_settings_feedback, "测试") == 0);
-    assert(g_settings_feedback_until_tick == 2600);
-    assert(g_settings_last_activity_tick == 100);
+    expect_active_feedback(2599, "测试");
+    char expired_feedback[kSettingsFeedbackTextLen] = {};
+    assert(!settings_feedback_copy_active(2600, expired_feedback, sizeof(expired_feedback)));
+    assert(expired_feedback[0] == '\0');
+    assert(settings_activity_last_tick() == 100);
     assert(s_notify_count == 1);
 
     reset_state();
     begin_settings_sync(kSettingsSyncWeather, "同步中");
-    assert(g_settings_sync_op == kSettingsSyncWeather);
-    assert(g_settings_sync_deadline_tick == 100 + kSettingsManualSyncTimeoutMs);
-    assert(strcmp(g_settings_feedback, "同步中") == 0);
+    assert(sync_state().operation == kSettingsSyncWeather);
+    assert(sync_state().deadline_tick == 100 + kSettingsManualSyncTimeoutMs);
+    expect_active_feedback(100, "同步中");
     finish_settings_sync(kSettingsSyncNtp, "错误操作");
-    assert(g_settings_sync_op == kSettingsSyncWeather);
+    assert(sync_state().operation == kSettingsSyncWeather);
 
     expect_timeout(kSettingsSyncNtp, kManualNtpSyncBit, "时间同步超时");
     expect_timeout(kSettingsSyncWeather, kManualWeatherSyncBit, "天气同步超时");
     expect_timeout(kSettingsSyncSaying, kManualSayingSyncBit, "一言更新超时");
 
     reset_state();
-    g_settings_sync_op = kSettingsSyncNtp;
-    g_settings_sync_deadline_tick = UINT32_MAX - 4;
+    settings_sync_state_begin(kSettingsSyncNtp, UINT32_MAX - 4);
     assert(!finish_settings_sync_if_timed_out(UINT32_MAX - 5));
     s_now = 1;
     assert(finish_settings_sync_if_timed_out(1));
 
     reset_state();
-    g_settings_sync_op = kSettingsSyncNetworkDiag;
-    g_settings_sync_deadline_tick = 100;
+    settings_sync_state_begin(kSettingsSyncNetworkDiag, 100);
     assert(finish_settings_sync_if_timed_out(100));
-    assert(g_settings_sync_op == kSettingsSyncNone);
-    assert(g_settings_sync_deadline_tick == 0);
-    assert(g_settings_feedback[0] == '\0');
+    assert(sync_state().operation == kSettingsSyncNone);
+    assert(sync_state().deadline_tick == 0);
+    char feedback[kSettingsFeedbackTextLen] = {};
+    assert(!settings_feedback_copy_active(100, feedback, sizeof(feedback)));
+    assert(feedback[0] == '\0');
     assert(s_notify_count == 0);
     return 0;
 }

@@ -2,6 +2,7 @@
 #pragma once
 
 #include "app_state.h"
+#include "http_timeout_state.h"
 #include "sensor_services.h"
 
 bool acquire_network_http_transaction_lock(TickType_t timeout);
@@ -63,14 +64,13 @@ private:
 class NetworkHttpTimeoutGuard {
 public:
     explicit NetworkHttpTimeoutGuard(int timeout_ms)
-        : previous_timeout_ms_(g_http_timeout_ms)
+        : previous_timeout_ms_(network_http_timeout_ms_exchange(timeout_ms))
     {
-        g_http_timeout_ms = timeout_ms;
     }
 
     ~NetworkHttpTimeoutGuard()
     {
-        g_http_timeout_ms = previous_timeout_ms_;
+        network_http_timeout_ms_store(previous_timeout_ms_);
     }
 
     NetworkHttpTimeoutGuard(const NetworkHttpTimeoutGuard &) = delete;

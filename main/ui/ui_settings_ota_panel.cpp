@@ -2,6 +2,7 @@
 #include "ui_settings_ota_panel.h"
 
 #include "app_constexpr.h"
+#include "ota_runtime_state.h"
 #include "ui_text_format.h"
 #include "ui_views.h"
 
@@ -128,17 +129,19 @@ bool update_settings_ota_panel(bool visible)
     char ota_line[kSettingsOtaLineTextSize] = "";
     char ota_hint[kSettingsOtaHintTextSize] = "";
     bool progress_visible = false;
-    int progress = g_ota_progress;
+    OtaRuntimeSnapshot ota;
+    ota_runtime_snapshot_load(&ota);
+    int progress = ota.progress;
     if (visible) {
-        if (g_ota_state == kOtaUpdating && progress >= 0) {
+        if (ota.state == kOtaUpdating && progress >= 0) {
             progress_visible = true;
-            if (g_ota_speed_kbps > 0) {
+            if (ota.speed_kbps > 0) {
                 ui_text::format_or_fallback(ota_line,
                                             sizeof(ota_line),
                                             kSettingsOtaLinePlaceholder,
                                             kSettingsOtaUpdatingWithSpeedFormat,
                                             progress,
-                                            g_ota_speed_kbps);
+                                            ota.speed_kbps);
             } else {
                 ui_text::format_or_fallback(ota_line,
                                             sizeof(ota_line),
@@ -147,19 +150,19 @@ bool update_settings_ota_panel(bool visible)
                                             progress);
             }
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintDownloading);
-        } else if (g_ota_state == kOtaAvailable) {
-            ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
+        } else if (ota.state == kOtaAvailable) {
+            ui_text::copy(ota_line, sizeof(ota_line), ota.status);
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintInstall);
-        } else if (g_ota_state == kOtaChecking) {
-            ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
+        } else if (ota.state == kOtaChecking) {
+            ui_text::copy(ota_line, sizeof(ota_line), ota.status);
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintChecking);
-        } else if (g_ota_state == kOtaSucceeded) {
+        } else if (ota.state == kOtaSucceeded) {
             progress_visible = true;
             progress = kSettingsOtaProgressMax;
-            ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
+            ui_text::copy(ota_line, sizeof(ota_line), ota.status);
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintRebooting);
-        } else if (g_ota_state == kOtaFailed || g_ota_state == kOtaNoUpdate) {
-            ui_text::copy(ota_line, sizeof(ota_line), g_ota_status);
+        } else if (ota.state == kOtaFailed || ota.state == kOtaNoUpdate) {
+            ui_text::copy(ota_line, sizeof(ota_line), ota.status);
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintRetry);
         } else {
             ui_text::format_or_fallback(ota_line,

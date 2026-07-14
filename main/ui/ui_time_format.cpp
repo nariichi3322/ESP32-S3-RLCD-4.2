@@ -1,11 +1,10 @@
 // 将有效系统时间格式化为完整日期时间，无效值统一输出占位符。
 #include "ui_time_format.h"
 
+#include "app_time_constants.h"
 #include "ui_text_format.h"
 
 namespace {
-constexpr int kTmYearOffset = 1900;
-constexpr int kTmMonthOffset = 1;
 constexpr size_t kDateTimeTextSize = 32;
 constexpr const char *kFullDateTimeFormat = "%04d-%02d-%02d %02d:%02d:%02d";
 constexpr const char *kInvalidTimeText = "--";

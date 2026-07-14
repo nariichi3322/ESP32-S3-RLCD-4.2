@@ -16,7 +16,7 @@ struct ActiveWorkPageState {
 };
 
 bool normal_work_page_active(int page);
-ActiveWorkPageState active_work_page_state();
+ActiveWorkPageState active_work_page_state(int active_page);
 void update_visible_weather_sync(const ActiveWorkPageState &state,
                                  time_t now,
                                  TickType_t tick_now,

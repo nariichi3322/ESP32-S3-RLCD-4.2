@@ -4,6 +4,10 @@
 #include "app_constexpr.h"
 #include "audio_chime_policy.h"
 #include "audio_services_internal.h"
+#include "ota_runtime_state.h"
+#include "startup_state.h"
+#include "wifi_portal_state.h"
+#include "wifi_radio_state.h"
 
 #include <cstdint>
 
@@ -13,6 +17,7 @@
 #define HOURLY_CHIME_SKIPPED_LOG_FORMAT "hourly chime skipped sound=%d"
 
 namespace {
+std::atomic<bool> s_setup_prompt_pending{false};
 constexpr uint32_t kAudioPlaybackTaskStack = 6144;
 constexpr uint32_t kSettingsChimeRetryTaskStack = 3072;
 constexpr UBaseType_t kAudioPlaybackTaskPriority = 4;
@@ -125,11 +130,9 @@ void create_settings_chime_retry_task()
                             nullptr,
                             kSettingsChimeRetryTaskCreateFailedLog);
 }
-} // namespace
 
-void hourly_chime_task(void *arg)
+void run_hourly_chime(int sound_index)
 {
-    const int sound_index = (int)(intptr_t)arg;
     CodecPort *codec = audio_prepare_codec_for_playback();
     if (codec && codec->CodecPort_PlayChimeSound(sound_index, g_chime_volume_percent)) {
         ESP_LOGI(TAG, HOURLY_CHIME_PLAYED_LOG_FORMAT, sound_index, g_chime_volume_percent);
@@ -137,10 +140,29 @@ void hourly_chime_task(void *arg)
         ESP_LOGW(TAG, HOURLY_CHIME_SKIPPED_LOG_FORMAT, sound_index);
     }
     audio_finish_playback();
-    if (g_setup_prompt_pending && !g_startup_screen_active) {
+    if (s_setup_prompt_pending.load(std::memory_order_acquire) &&
+        !startup_screen_active()) {
         vTaskDelay(kSetupPromptChainDelay);
         (void)start_setup_prompt_playback();
     }
+}
+
+void run_setup_prompt()
+{
+    CodecPort *codec = audio_prepare_codec_for_playback();
+    if (codec && codec->CodecPort_PlayWifiPrompt()) {
+        ESP_LOGI(TAG, "%s", kSetupPromptPlayedLog);
+    } else {
+        ESP_LOGW(TAG, "%s", kSetupPromptSkippedLog);
+    }
+    audio_finish_playback();
+}
+} // namespace
+
+void hourly_chime_task(void *arg)
+{
+    const int sound_index = (int)(intptr_t)arg;
+    run_hourly_chime(sound_index);
     vTaskDelete(nullptr);
 }
 
@@ -173,27 +195,25 @@ bool play_chime_sound_repeated_blocking(int source_slot,
 
 void setup_prompt_task(void *)
 {
-    CodecPort *codec = audio_prepare_codec_for_playback();
-    if (codec && codec->CodecPort_PlayWifiPrompt()) {
-        ESP_LOGI(TAG, "%s", kSetupPromptPlayedLog);
-    } else {
-        ESP_LOGW(TAG, "%s", kSetupPromptSkippedLog);
-    }
-    audio_finish_playback();
+    run_setup_prompt();
     vTaskDelete(nullptr);
 }
 
 namespace {
-void settings_confirmation_chime_task(void *)
+void run_settings_confirmation_chime()
 {
     for (int attempt = 0; attempt < kSettingsChimeRetryAttempts; ++attempt) {
         if (start_chime_playback(g_chime_sound_index)) {
-            vTaskDelete(nullptr);
             return;
         }
         vTaskDelay(kSettingsChimeRetryDelay);
     }
     ESP_LOGW(TAG, "%s", kSettingsChimeBusyLog);
+}
+
+void settings_confirmation_chime_task(void *)
+{
+    run_settings_confirmation_chime();
     vTaskDelete(nullptr);
 }
 } // namespace
@@ -220,7 +240,7 @@ bool start_setup_prompt_playback()
     if (!audio_try_mark_playing()) {
         return false;
     }
-    g_setup_prompt_pending = false;
+    s_setup_prompt_pending.store(false, std::memory_order_release);
     if (!create_audio_task(setup_prompt_task,
                            kSetupPromptTaskName,
                            kAudioPlaybackTaskStack,
@@ -228,28 +248,34 @@ bool start_setup_prompt_playback()
                            nullptr,
                            kSetupPromptLogName)) {
         audio_clear_playing();
-        g_setup_prompt_pending = true;
+        s_setup_prompt_pending.store(true, std::memory_order_release);
         return false;
     }
     return true;
 }
 
+bool setup_prompt_playback_pending()
+{
+    return s_setup_prompt_pending.load(std::memory_order_acquire);
+}
+
 void request_setup_prompt_once()
 {
-    if (g_startup_screen_active || is_audio_playing()) {
-        g_setup_prompt_pending = true;
+    if (startup_screen_active() ||
+        is_audio_playing()) {
+        s_setup_prompt_pending.store(true, std::memory_order_release);
         ESP_LOGI(TAG, "%s", kSetupPromptPendingLog);
         return;
     }
     if (!start_setup_prompt_playback()) {
-        g_setup_prompt_pending = true;
+        s_setup_prompt_pending.store(true, std::memory_order_release);
     }
 }
 
 void request_settings_confirmation_chime()
 {
-    if (audio_playback_blocked_by_system(g_low_battery_mode,
-                                         g_ota_state == kOtaUpdating)) {
+    if (audio_playback_blocked_by_system(battery_low_mode_load(),
+                                         ota_runtime_state_load() == kOtaUpdating)) {
         return;
     }
     if (start_chime_playback(g_chime_sound_index)) {
@@ -260,12 +286,13 @@ void request_settings_confirmation_chime()
 
 void play_hourly_chime(int hour, bool enforce_quiet_hours)
 {
+    int ota_state = ota_runtime_state_load();
     const AudioChimeDecision decision = audio_hourly_chime_decision({
-        g_low_battery_mode,
-        g_ota_state == kOtaUpdating,
-        g_wifi_radio_on,
-        g_setup_portal_active,
-        g_ota_state == kOtaChecking,
+        battery_low_mode_load(),
+        ota_state == kOtaUpdating,
+        wifi_radio_on_load(),
+        setup_portal_active_load(),
+        ota_state == kOtaChecking,
         enforce_quiet_hours,
         g_hourly_chime_all_day,
         hour,

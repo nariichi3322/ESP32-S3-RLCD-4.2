@@ -86,10 +86,12 @@ cJSON *create_device_status_result()
         cJSON_AddNullToObject(status.get(), "temperature_c");
         cJSON_AddNullToObject(status.get(), "humidity_percent");
     }
-    bool battery_available = g_battery_percent >= 0 && g_battery_percent <= 100;
+    BatteryRuntimeSnapshot battery;
+    battery_runtime_snapshot_load(&battery);
+    bool battery_available = battery.percent >= 0 && battery.percent <= 100;
     cJSON_AddBoolToObject(status.get(), "battery_available", battery_available);
     if (battery_available) {
-        cJSON_AddNumberToObject(status.get(), "battery_percent", g_battery_percent);
+        cJSON_AddNumberToObject(status.get(), "battery_percent", battery.percent);
     } else {
         cJSON_AddNullToObject(status.get(), "battery_percent");
     }

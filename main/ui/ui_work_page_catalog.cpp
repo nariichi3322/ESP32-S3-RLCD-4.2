@@ -335,7 +335,7 @@ int valid_enabled_work_page_order_index(int current_order_index)
 
 void ensure_active_work_page_enabled()
 {
-    if (!is_work_page_enabled(g_active_work_page)) {
-        g_active_work_page = first_enabled_work_page();
+    if (!is_work_page_enabled(active_work_page_load())) {
+        active_work_page_store(first_enabled_work_page());
     }
 }

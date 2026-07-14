@@ -11,6 +11,15 @@ struct XiaozhiActivationResponse {
     size_t len = 0;
 };
 
+inline void xiaozhi_reset_activation_response(XiaozhiActivationResponse *response)
+{
+    if (!response) {
+        return;
+    }
+    response->data[0] = '\0';
+    response->len = 0;
+}
+
 inline size_t xiaozhi_activation_response_writable_bytes(
     const XiaozhiActivationResponse *response)
 {

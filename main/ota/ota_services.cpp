@@ -2,6 +2,8 @@
 #include "ota_services.h"
 #include "ota_flow_policy.h"
 #include "ota_manifest_client.h"
+#include "ota_runtime_guards.h"
+#include "ota_runtime_state.h"
 #include "ota_validation.h"
 
 #include "app_constexpr.h"
@@ -10,12 +12,12 @@
 #include "network_task_guards.h"
 #include "scoped_heap_buffer.h"
 #include "sensor_services.h"
+#include "ui_info_page_state.h"
+#include "ui_settings_activity_state.h"
 #include "ui_views.h"
 
 #include "esp_app_format.h"
 #include "esp_heap_caps.h"
-#include "esp_task_wdt.h"
-#include "display_bsp.h"
 
 struct OtaCrashBreadcrumb {
     uint32_t magic = 0;
@@ -30,7 +32,6 @@ struct OtaHttpContext {
 };
 
 static RTC_DATA_ATTR OtaCrashBreadcrumb s_ota_breadcrumb;
-static volatile bool s_ota_status_hold_set = false;
 static constexpr uint32_t kOtaBreadcrumbMagic = 0x4f544131;
 static constexpr int kOtaMaxRedirects = 5;
 static constexpr size_t kOtaRedirectUrlLen = 1024;
@@ -80,8 +81,6 @@ static constexpr const char *kOtaStatusInstallingProgressFormat = "Installing %d
 static constexpr const char *kOtaStatusNewVersionFormat = "New version %s";
 static constexpr const char *kOtaStatusFallbackError = "OTA status error";
 static constexpr const char *kOtaRequestFallbackName = "request";
-#define OTA_TASK_WATCHDOG_SUBSCRIBE_SKIPPED_FORMAT "OTA task watchdog subscribe skipped: %s"
-#define OTA_TASK_WATCHDOG_UNSUBSCRIBE_FAILED_FORMAT "OTA task watchdog unsubscribe failed: %s"
 #define OTA_REQUEST_EVENT_GROUP_UNAVAILABLE_FORMAT "OTA %s skipped: event group unavailable"
 #define OTA_HEAP_DIAGNOSTIC_FORMAT "OTA heap %s: total=%d progress=%d dma_free=%u dma_largest=%u internal_free=%u internal_largest=%u psram_free=%u psram_largest=%u"
 static constexpr const char *kOtaAppMarkedValidLog = "OTA app marked valid";
@@ -136,8 +135,6 @@ static constexpr const char *kOtaStatusTexts[] = {
     kOtaStatusFallbackError,
 };
 static constexpr const char *kOtaLogTexts[] = {
-    OTA_TASK_WATCHDOG_SUBSCRIBE_SKIPPED_FORMAT,
-    OTA_TASK_WATCHDOG_UNSUBSCRIBE_FAILED_FORMAT,
     OTA_REQUEST_EVENT_GROUP_UNAVAILABLE_FORMAT,
     OTA_HEAP_DIAGNOSTIC_FORMAT,
     kOtaAppMarkedValidLog,
@@ -221,64 +218,6 @@ static void log_ota_heap(const char *stage, int downloaded, int progress)
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM));
 }
 
-class OtaDisplayQuietGuard {
-public:
-    OtaDisplayQuietGuard()
-    {
-        Display_SetOtaQuietMode(true);
-    }
-
-    ~OtaDisplayQuietGuard()
-    {
-        Display_SetOtaQuietMode(false);
-    }
-
-    OtaDisplayQuietGuard(const OtaDisplayQuietGuard &) = delete;
-    OtaDisplayQuietGuard &operator=(const OtaDisplayQuietGuard &) = delete;
-};
-
-class OtaTaskWatchdogGuard {
-public:
-    OtaTaskWatchdogGuard()
-    {
-        if (esp_task_wdt_status(nullptr) == ESP_OK) {
-            active_ = true;
-            return;
-        }
-        esp_err_t err = esp_task_wdt_add(nullptr);
-        if (err == ESP_OK) {
-            active_ = true;
-            added_ = true;
-        } else {
-            ESP_LOGW(TAG, OTA_TASK_WATCHDOG_SUBSCRIBE_SKIPPED_FORMAT, esp_err_to_name(err));
-        }
-    }
-
-    ~OtaTaskWatchdogGuard()
-    {
-        if (added_) {
-            esp_err_t err = esp_task_wdt_delete(nullptr);
-            if (err != ESP_OK) {
-                ESP_LOGW(TAG, OTA_TASK_WATCHDOG_UNSUBSCRIBE_FAILED_FORMAT, esp_err_to_name(err));
-            }
-        }
-    }
-
-    OtaTaskWatchdogGuard(const OtaTaskWatchdogGuard &) = delete;
-    OtaTaskWatchdogGuard &operator=(const OtaTaskWatchdogGuard &) = delete;
-
-    void reset()
-    {
-        if (active_) {
-            esp_task_wdt_reset();
-        }
-    }
-
-private:
-    bool active_ = false;
-    bool added_ = false;
-};
-
 static void ota_note_phase(int phase, int total, int progress)
 {
     s_ota_breadcrumb.magic = kOtaBreadcrumbMagic;
@@ -289,17 +228,23 @@ static void ota_note_phase(int phase, int total, int progress)
 
 static void ota_set_status(int state, const char *text, int progress = -1, uint32_t hold_ms = 0)
 {
-    g_ota_reboot_pending = false;
-    g_ota_state = state;
-    g_ota_progress = progress;
-    strlcpy(g_ota_status, ota_status_text_or_fallback(text), sizeof(g_ota_status));
+    TickType_t status_until_tick = 0;
     if (hold_ms > 0) {
-        g_ota_status_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(hold_ms);
-        s_ota_status_hold_set = true;
-    } else {
-        s_ota_status_hold_set = false;
-        g_ota_status_until_tick = 0;
+        status_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(hold_ms);
     }
+    ota_runtime_publish_status(state,
+                               ota_status_text_or_fallback(text),
+                               progress,
+                               status_until_tick,
+                               hold_ms > 0);
+    notify_ui_task();
+}
+
+static void ota_set_download_status(const char *text, int progress, int speed_kbps)
+{
+    ota_runtime_publish_download_status(ota_status_text_or_fallback(text),
+                                        progress,
+                                        speed_kbps);
     notify_ui_task();
 }
 
@@ -315,7 +260,7 @@ static void ota_set_manifest_check_failed_status()
 
 static void enter_ota_reboot_quiet_window()
 {
-    g_ota_reboot_pending = true;
+    ota_runtime_reboot_pending_store(true);
     notify_ui_task();
     vTaskDelay(pdMS_TO_TICKS(kOtaPreRestartDisplayQuietMs));
 }
@@ -352,19 +297,19 @@ static bool set_ota_event_bit(EventBits_t bit, const char *name)
 static void keep_ota_settings_panel_visible()
 {
     TickType_t now = xTaskGetTickCount();
-    g_settings_requested = true;
+    settings_page_request();
     g_settings_focus_secondary = true;
     g_settings_page_toggle_mode = false;
     g_settings_page_order_mode = false;
     g_settings_primary_selection = kSettingsPrimarySystem;
     g_settings_selection = kSystemSettingsOtaItem;
-    g_settings_last_activity_tick = now;
-    g_info_page_until_tick = 0;
+    settings_activity_record(now);
+    info_page_hold_until_store(0);
 }
 
 static void hold_ota_info_page(uint32_t hold_ms = kOtaFailureHoldMs)
 {
-    g_info_page_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(hold_ms);
+    info_page_hold_until_store(xTaskGetTickCount() + pdMS_TO_TICKS(hold_ms));
 }
 
 static esp_err_t ota_http_event_handler(esp_http_client_event_t *evt)
@@ -388,11 +333,13 @@ static esp_err_t ota_http_event_handler(esp_http_client_event_t *evt)
 
 static bool ota_flow_active_at(TickType_t now)
 {
+    OtaRuntimeSnapshot runtime;
+    ota_runtime_snapshot_load(&runtime);
     return ota_flow_active_for_tick(
-        g_ota_state,
-        s_ota_status_hold_set,
+        runtime.state,
+        runtime.status_hold_set,
         now,
-        static_cast<TickType_t>(g_ota_status_until_tick));
+        runtime.status_until_tick);
 }
 
 bool ota_flow_active()
@@ -402,21 +349,7 @@ bool ota_flow_active()
 
 void ota_reset_status_if_idle()
 {
-    TickType_t now = xTaskGetTickCount();
-    if (ota_status_should_reset_to_idle(
-            g_ota_state,
-            s_ota_status_hold_set,
-            now,
-            static_cast<TickType_t>(g_ota_status_until_tick))) {
-        g_ota_state = kOtaIdle;
-        s_ota_status_hold_set = false;
-        g_ota_status_until_tick = 0;
-    }
-    if (g_ota_state == kOtaIdle) {
-        strlcpy(g_ota_status, kOtaStatusIdlePrompt, sizeof(g_ota_status));
-        g_ota_progress = -1;
-        g_ota_speed_kbps = -1;
-    }
+    ota_runtime_reset_status_if_idle(xTaskGetTickCount(), kOtaStatusIdlePrompt);
 }
 
 void ota_handle_info_key()
@@ -427,24 +360,24 @@ void ota_handle_info_key()
         ota_set_failed_status(kOtaStatusOfflineMode, kOtaOfflineHoldMs);
         return;
     }
-    if (g_ota_state == kOtaChecking || g_ota_state == kOtaUpdating) {
+    int ota_state = ota_runtime_state_load();
+    if (ota_state == kOtaChecking || ota_state == kOtaUpdating) {
         return;
     }
     keep_ota_settings_panel_visible();
-    if (g_ota_state == kOtaAvailable) {
+    if (ota_state == kOtaAvailable) {
         if (!set_ota_event_bit(kOtaInstallBit, "install")) {
             return;
         }
-        g_ota_speed_kbps = -1;
-        ota_set_status(kOtaUpdating, kOtaStatusInstallingUpdate, 0);
-        g_info_page_until_tick = 0;
+        ota_set_download_status(kOtaStatusInstallingUpdate, 0, -1);
+        info_page_hold_until_store(0);
         return;
     }
     if (!set_ota_event_bit(kOtaCheckBit, "check")) {
         return;
     }
     ota_set_status(kOtaChecking, kOtaStatusCheckingUpdate);
-    g_info_page_until_tick = 0;
+    info_page_hold_until_store(0);
 }
 
 void ota_mark_running_app_valid()
@@ -542,7 +475,7 @@ static bool open_ota_download_http(const OtaManifest &manifest,
             strlcpy(current_url, http_ctx->redirect_url, sizeof(current_url));
             continue;
         }
-        if (status < 200 || status >= 300) {
+        if (!ota_is_http_success_status(status)) {
             ESP_LOGW(TAG, OTA_HTTP_STATUS_FAILED_FORMAT, status, content_len);
             close_ota_http_client(&client);
             ota_set_failed_status(kOtaStatusDownloadFailed);
@@ -604,8 +537,7 @@ static void report_ota_download_progress(int total,
                            kOtaStatusInstallingProgressFormat,
                            progress,
                            speed_kbps);
-    g_ota_speed_kbps = speed_kbps;
-    ota_set_status(kOtaUpdating, status_text, progress);
+    ota_set_download_status(status_text, progress, speed_kbps);
     last_status_us = now_us;
     last_status_total = total;
     if (progress_step) {
@@ -705,11 +637,13 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
         rssi = ap_info.rssi;
     }
+    BatteryRuntimeSnapshot battery;
+    battery_runtime_snapshot_load(&battery);
     ESP_LOGI(TAG,
              OTA_DOWNLOAD_START_FORMAT,
              (int)esp_reset_reason(),
-             g_battery_percent,
-             g_battery_voltage,
+             battery.percent,
+             battery.voltage,
              rssi,
              manifest.size,
              manifest.url);
@@ -828,7 +762,10 @@ static bool prepare_ota_wifi()
         ota_set_failed_status(kOtaStatusNoWifi);
         return false;
     }
-    if (g_low_battery_mode || (g_battery_percent >= 0 && g_battery_percent < kLowBatteryEnterPercent)) {
+    BatteryRuntimeSnapshot battery;
+    battery_runtime_snapshot_load(&battery);
+    if (battery.low_battery_mode ||
+        (battery.percent >= 0 && battery.percent < kLowBatteryEnterPercent)) {
         ota_set_failed_status(kOtaStatusLowBattery);
         return false;
     }
@@ -852,6 +789,81 @@ static void finish_ota_wifi(bool keep_awake_lock = false)
     stop_wifi_radio(true);
     if (!keep_awake_lock) {
         release_network_awake_lock();
+    }
+}
+
+static void handle_ota_check_request()
+{
+    OtaManifest manifest;
+    ota_set_status(kOtaChecking, kOtaStatusCheckingUpdate);
+    char manifest_source[kOtaManifestSourceNameLen] = {};
+    if (!ota_manifest_fetch(&manifest,
+                            manifest_source,
+                            sizeof(manifest_source),
+                            ota_set_manifest_check_failed_status)) {
+        finish_ota_wifi();
+        hold_ota_info_page();
+        return;
+    }
+    ESP_LOGI(TAG,
+             OTA_UPDATE_CHECK_FORMAT,
+             ota_manifest_source_name_or_unknown(manifest_source),
+             manifest.version,
+             APP_VERSION);
+    if (ota_compare_versions(manifest.version, APP_VERSION) <= 0) {
+        ota_set_status(kOtaNoUpdate, kOtaStatusAlreadyLatest, -1, kOtaFailureHoldMs);
+        finish_ota_wifi();
+        hold_ota_info_page();
+        return;
+    }
+    ota_manifest_store_cached(manifest);
+    char status_text[kOtaStatusLen] = {};
+    format_ota_status_text(status_text,
+                           sizeof(status_text),
+                           kOtaStatusNewVersionFormat,
+                           manifest.version);
+    ota_set_status(kOtaAvailable,
+                   status_text,
+                   -1,
+                   kOtaAvailableConfirmTimeoutMs);
+    finish_ota_wifi();
+}
+
+static void handle_ota_install_request()
+{
+    OtaManifest manifest;
+    ota_manifest_load_cached(&manifest);
+    bool ok = false;
+    {
+        OtaDisplayQuietGuard display_quiet;
+        ok = download_and_apply_ota(manifest);
+        if (!ok) {
+            OtaManifest backup_manifest;
+            if (ota_manifest_fetch_backup_for_install(
+                    manifest,
+                    &backup_manifest,
+                    ota_set_manifest_check_failed_status) &&
+                strcmp(backup_manifest.url, manifest.url) != 0) {
+                ESP_LOGW(TAG, "%s", kOtaPrimaryDownloadRetryBackupLog);
+                ota_set_status(kOtaUpdating, kOtaStatusInstallingBackup, 0);
+                ok = download_and_apply_ota(backup_manifest);
+            }
+        }
+        finish_ota_wifi(ok);
+        if (ok) {
+            keep_ota_settings_panel_visible();
+            ota_set_status(kOtaSucceeded,
+                           kOtaStatusUpdateDoneRebooting,
+                           100,
+                           kOtaSuccessHoldMs);
+            vTaskDelay(pdMS_TO_TICKS(kOtaRebootNoticeDelayMs));
+            enter_ota_reboot_quiet_window();
+            esp_restart();
+            release_network_awake_lock();
+        }
+    }
+    if (!ok) {
+        hold_ota_info_page();
     }
 }
 
@@ -879,67 +891,10 @@ void ota_task(void *)
             continue;
         }
 
-        OtaManifest manifest;
         if (install) {
-            ota_manifest_load_cached(&manifest);
+            handle_ota_install_request();
         } else {
-            ota_set_status(kOtaChecking, kOtaStatusCheckingUpdate);
-            char manifest_source[kOtaManifestSourceNameLen] = {};
-            if (!ota_manifest_fetch(&manifest,
-                                    manifest_source,
-                                    sizeof(manifest_source),
-                                    ota_set_manifest_check_failed_status)) {
-                finish_ota_wifi();
-                hold_ota_info_page();
-                continue;
-            }
-            ESP_LOGI(TAG,
-                     OTA_UPDATE_CHECK_FORMAT,
-                     ota_manifest_source_name_or_unknown(manifest_source),
-                     manifest.version,
-                     APP_VERSION);
-            if (ota_compare_versions(manifest.version, APP_VERSION) <= 0) {
-                ota_set_status(kOtaNoUpdate, kOtaStatusAlreadyLatest, -1, kOtaFailureHoldMs);
-                finish_ota_wifi();
-                hold_ota_info_page();
-                continue;
-            }
-            ota_manifest_store_cached(manifest);
-            char status_text[kOtaStatusLen] = {};
-            format_ota_status_text(status_text, sizeof(status_text), kOtaStatusNewVersionFormat, manifest.version);
-            ota_set_status(kOtaAvailable, status_text, -1, kOtaAvailableConfirmTimeoutMs);
-            finish_ota_wifi();
-            continue;
-        }
-
-        bool ok = false;
-        {
-            OtaDisplayQuietGuard display_quiet;
-            ok = download_and_apply_ota(manifest);
-            if (!ok) {
-                OtaManifest backup_manifest;
-                if (ota_manifest_fetch_backup_for_install(
-                        manifest,
-                        &backup_manifest,
-                        ota_set_manifest_check_failed_status) &&
-                    strcmp(backup_manifest.url, manifest.url) != 0) {
-                    ESP_LOGW(TAG, "%s", kOtaPrimaryDownloadRetryBackupLog);
-                    ota_set_status(kOtaUpdating, kOtaStatusInstallingBackup, 0);
-                    ok = download_and_apply_ota(backup_manifest);
-                }
-            }
-            finish_ota_wifi(ok);
-            if (ok) {
-                keep_ota_settings_panel_visible();
-                ota_set_status(kOtaSucceeded, kOtaStatusUpdateDoneRebooting, 100, kOtaSuccessHoldMs);
-                vTaskDelay(pdMS_TO_TICKS(kOtaRebootNoticeDelayMs));
-                enter_ota_reboot_quiet_window();
-                esp_restart();
-                release_network_awake_lock();
-            }
-        }
-        if (!ok) {
-            hold_ota_info_page();
+            handle_ota_check_request();
         }
     }
 }

@@ -160,10 +160,4 @@ esp_err_t write_changed_nvs_u8(nvs_handle_t nvs,
     return set_nvs_u8_if_ok(nvs, err, key, value);
 }
 
-bool close_nvs_save_ok(nvs_handle_t nvs, esp_err_t err)
-{
-    nvs_close(nvs);
-    return err == ESP_OK;
-}
-
 } // namespace network_config_nvs

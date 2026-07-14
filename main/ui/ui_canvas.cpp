@@ -1,6 +1,8 @@
 // 提供 LVGL canvas 缓冲分配、安全打点、线段、虚线和圆点等基础工具。
 #include "ui_views.h"
 
+#include "checked_size.h"
+
 #define UI_CANVAS_BUFFER_INVALID_SIZE_FORMAT "canvas buffer invalid size %dx%d"
 #define UI_CANVAS_BUFFER_SIZE_OVERFLOW_FORMAT "canvas buffer size overflow %dx%d"
 #define UI_CANVAS_BUFFER_ALLOC_FAILED_FORMAT "canvas buffer alloc failed %dx%d"
@@ -65,8 +67,12 @@ bool canvas_pixel_count(int width, int height, size_t *pixel_count)
         ESP_LOGW(TAG, UI_CANVAS_BUFFER_INVALID_SIZE_FORMAT, width, height);
         return false;
     }
-    size_t count = static_cast<size_t>(width) * static_cast<size_t>(height);
-    if (count > SIZE_MAX / sizeof(lv_color_t)) {
+    size_t count = 0;
+    size_t bytes = 0;
+    if (!app_memory::checked_size_multiply(static_cast<size_t>(width),
+                                           static_cast<size_t>(height),
+                                           &count) ||
+        !app_memory::checked_size_multiply(count, sizeof(lv_color_t), &bytes)) {
         ESP_LOGW(TAG, UI_CANVAS_BUFFER_SIZE_OVERFLOW_FORMAT, width, height);
         return false;
     }

@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <type_traits>
 
@@ -47,6 +48,39 @@ int main()
         assert(!buffer);
         assert(buffer.get() == nullptr);
         assert(buffer.size() == 0);
+    }
+
+    {
+        char *owned = static_cast<char *>(calloc(8, sizeof(char)));
+        assert(owned != nullptr);
+        memcpy(owned, "owned", 6);
+        ScopedHeapBuffer<char> buffer(owned, 8);
+        assert(buffer);
+        assert(buffer.data() == owned);
+        assert(buffer.size() == 8);
+        assert(strcmp(buffer.data(), "owned") == 0);
+    }
+
+    {
+        ScopedHeapBuffer<char> buffer(8, HeapBufferInit::kZeroed);
+        assert(buffer);
+        char *released = buffer.release();
+        assert(released != nullptr);
+        assert(!buffer);
+        assert(buffer.data() == nullptr);
+        assert(buffer.size() == 0);
+        free(released);
+    }
+
+    {
+        ScopedHeapBuffer<uint8_t> buffer(8, HeapBufferInit::kZeroed);
+        assert(buffer);
+        buffer.reset();
+        assert(!buffer);
+        assert(buffer.data() == nullptr);
+        assert(buffer.size() == 0);
+        buffer.reset();
+        assert(!buffer);
     }
 
     return 0;

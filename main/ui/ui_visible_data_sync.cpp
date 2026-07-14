@@ -78,7 +78,7 @@ bool update_clock_weather_panel_text(const char *city,
 
 bool weather_cache_stale(time_t now_value)
 {
-    return ui_weather_cache_stale(now_value, g_last_weather_sync_time);
+    return ui_weather_cache_stale(now_value, get_last_weather_sync_time());
 }
 
 bool saying_cache_stale(const struct tm &local_value, time_t now_value)
@@ -117,23 +117,24 @@ void request_weather_sync_if_needed(VisibleSyncRetryState<TickType_t> &retry,
 
 bool normal_work_page_active(int page)
 {
-    return g_active_work_page == page &&
-           !g_low_battery_mode &&
-           !g_setup_portal_active;
+    return active_work_page_load() == page &&
+           !battery_low_mode_load() &&
+           !setup_portal_active_load();
 }
 
-ActiveWorkPageState active_work_page_state()
+ActiveWorkPageState active_work_page_state(int active_page)
 {
     ActiveWorkPageState state = {};
-    state.history = normal_work_page_active(kWorkPageHistory);
-    state.gallery = normal_work_page_active(kWorkPageGallery);
-    state.calendar = normal_work_page_active(kWorkPageCalendar);
-    state.weather_board = normal_work_page_active(kWorkPageWeatherBoard);
-    state.flip_clock = normal_work_page_active(kWorkPageFlipClock);
-    state.xiaozhi = normal_work_page_active(kWorkPageXiaozhiAI);
+    bool normal_mode = !battery_low_mode_load() && !setup_portal_active_load();
+    state.history = normal_mode && active_page == kWorkPageHistory;
+    state.gallery = normal_mode && active_page == kWorkPageGallery;
+    state.calendar = normal_mode && active_page == kWorkPageCalendar;
+    state.weather_board = normal_mode && active_page == kWorkPageWeatherBoard;
+    state.flip_clock = normal_mode && active_page == kWorkPageFlipClock;
+    state.xiaozhi = normal_mode && active_page == kWorkPageXiaozhiAI;
     // Low-battery and setup overlays historically retain the weather clock as
     // their active base page; keep that distinction outside normal-page gates.
-    state.weather_clock = g_active_work_page == kWorkPageWeatherClock;
+    state.weather_clock = active_page == kWorkPageWeatherClock;
     state.uses_weather_data = state.weather_clock || state.weather_board;
     return state;
 }

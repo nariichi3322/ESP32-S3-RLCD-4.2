@@ -4,6 +4,7 @@
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "sensor_services.h"
+#include "ui_draw_cache.h"
 #include "ui_text_format.h"
 
 namespace {
@@ -25,9 +26,12 @@ static constexpr int kStatusWifiX = 90;
 static constexpr int kStatusAlarmX = 116;
 static constexpr int kStatusIconY = 15;
 static constexpr int kStatusFirstWorkPage = kWorkPageWeatherClock;
+static constexpr int kTrendDrawCacheInvalid = 99;
 lv_color_t *s_chime_icon_canvas_buffers[kWorkPageCount];
 lv_color_t *s_wifi_icon_canvas_buffers[kWorkPageCount];
 lv_color_t *s_alarm_icon_canvas_buffers[kWorkPageCount];
+int s_last_temp_trend_drawn = kTrendDrawCacheInvalid;
+int s_last_humi_trend_drawn = kTrendDrawCacheInvalid;
 static constexpr const char *kStatusDatePlaceholder = "----/--/-- / 星期-";
 static constexpr const char *kStatusSummaryPlaceholder = "--C --%";
 static constexpr size_t kStatusSensorSummaryTextSize = 32;
@@ -184,6 +188,12 @@ bool format_clock_sensor_status_text(char *temp,
 }
 
 } // namespace
+
+void invalidate_work_status_draw_cache()
+{
+    s_last_temp_trend_drawn = kTrendDrawCacheInvalid;
+    s_last_humi_trend_drawn = kTrendDrawCacheInvalid;
+}
 
 void build_work_page_status_bar(lv_obj_t *screen,
                                 int page,
@@ -362,10 +372,10 @@ bool update_weather_clock_sensor_status()
     changed |= set_label_text_if_changed(g_humi_label, humi);
     changed |= update_trend_icon(g_temp_trend_canvas,
                                  sensor_ok ? temperature_trend : 0,
-                                 &g_last_temp_trend_drawn);
+                                 &s_last_temp_trend_drawn);
     changed |= update_trend_icon(g_humi_trend_canvas,
                                  sensor_ok ? humidity_trend : 0,
-                                 &g_last_humi_trend_drawn);
+                                 &s_last_humi_trend_drawn);
     return changed;
 }
 
@@ -387,7 +397,7 @@ bool update_work_page_status_icons(int page)
     if (!is_status_icon_page(page)) {
         return false;
     }
-    bool allow = !g_low_battery_mode && !g_setup_portal_active;
+    bool allow = !battery_low_mode_load() && !setup_portal_active_load();
     bool chime_visible = allow && (g_hourly_chime_enabled || g_hourly_chime_all_day);
     bool wifi_visible = allow && wifi_radio_on_for_status_icon();
     lv_obj_t *chime = g_work_status_chime_icon_canvas[page];

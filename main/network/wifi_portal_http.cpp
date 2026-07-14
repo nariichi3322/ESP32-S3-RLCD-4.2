@@ -2,12 +2,17 @@
 #include "network_services.h"
 
 #include "app_constexpr.h"
+#include "network_diagnostics_state.h"
 #include "wifi_portal_dns.h"
 #include "wifi_portal_pages.h"
+#include "wifi_portal_state.h"
 
+#include "ui_info_page_state.h"
+#include "ui_settings_activity_state.h"
 #include "ui_views.h"
 
 namespace {
+httpd_handle_t s_http_server = nullptr;
 constexpr uint16_t kSetupHttpServerPort = 80;
 constexpr size_t kSetupHttpServerStackSize = 8192;
 constexpr size_t kPortalSubmitSsidFieldSize = 33;
@@ -127,15 +132,15 @@ void request_provisioning_sync_after_save()
 
 bool stop_http_server_handle()
 {
-    if (!g_http_server) {
+    if (!s_http_server) {
         return true;
     }
-    esp_err_t err = httpd_stop(g_http_server);
+    esp_err_t err = httpd_stop(s_http_server);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, PORTAL_HTTP_SERVER_STOP_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
-    g_http_server = nullptr;
+    s_http_server = nullptr;
     return true;
 }
 
@@ -173,9 +178,9 @@ esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
         bool offline_saved = save_offline_datetime_from_body(body);
         esp_err_t err = send_offline_result_page(req, offline_saved);
         if (offline_saved) {
-            g_settings_requested = false;
-            g_network_diag_page_requested = false;
-            g_boot_info_requested = false;
+            settings_page_clear();
+            network_diag_page_clear();
+            info_page_clear();
             stop_wifi_radio(true);
             notify_ui_task();
         }
@@ -238,7 +243,7 @@ void stop_http_server()
 {
     (void)stop_http_server_handle();
     stop_captive_dns_server();
-    g_setup_portal_active = false;
+    setup_portal_active_store(false);
 }
 
 esp_err_t save_post_handler(httpd_req_t *req)
@@ -275,11 +280,11 @@ esp_err_t captive_portal_handler(httpd_req_t *req)
 
 bool start_http_server()
 {
-    if (g_http_server && !g_setup_portal_active && !stop_http_server_handle()) {
+    if (s_http_server && !setup_portal_active_load() && !stop_http_server_handle()) {
         return false;
     }
-    if (g_http_server) {
-        g_setup_portal_active = true;
+    if (s_http_server) {
+        setup_portal_active_store(true);
         if (!start_captive_dns_server()) {
             ESP_LOGW(TAG, SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG);
         }
@@ -290,10 +295,10 @@ bool start_http_server()
     config.stack_size = kSetupHttpServerStackSize;
     config.lru_purge_enable = true;
     config.uri_match_fn = httpd_uri_match_wildcard;
-    esp_err_t err = httpd_start(&g_http_server, &config);
+    esp_err_t err = httpd_start(&s_http_server, &config);
     if (err != ESP_OK) {
-        g_http_server = nullptr;
-        g_setup_portal_active = false;
+        s_http_server = nullptr;
+        setup_portal_active_store(false);
         ESP_LOGW(TAG, PORTAL_HTTP_SERVER_START_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
@@ -302,17 +307,17 @@ bool start_http_server()
         if (err != ESP_OK) {
             break;
         }
-        err = register_http_handler(g_http_server, route.uri, route.method, route.handler);
+        err = register_http_handler(s_http_server, route.uri, route.method, route.handler);
     }
     if (err != ESP_OK) {
         ESP_LOGW(TAG, PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT, esp_err_to_name(err));
         (void)stop_http_server_handle();
-        g_setup_portal_active = false;
+        setup_portal_active_store(false);
         return false;
     }
     if (!start_captive_dns_server()) {
         ESP_LOGW(TAG, SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG);
     }
-    g_setup_portal_active = true;
+    setup_portal_active_store(true);
     return true;
 }

@@ -9,10 +9,11 @@
 #include <sys/time.h>
 #include <time.h>
 
+#include <atomic>
+
 #include "esp_event.h"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
-#include "esp_http_server.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_mac.h"
@@ -24,9 +25,6 @@
 #include "esp_sntp.h"
 #include "esp_wifi.h"
 #include "miniz.h"
-#include "esp_adc/adc_cali.h"
-#include "esp_adc/adc_cali_scheme.h"
-#include "esp_adc/adc_oneshot.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
@@ -37,12 +35,13 @@
 #include "mbedtls/sha256.h"
 
 #include "display_bsp.h"
+#include "active_work_page_state.h"
+#include "battery_runtime_state.h"
 #include "i2c_bsp.h"
 #include "i2c_equipment.h"
-#include "codec_bsp.h"
 #include "lvgl_bsp.h"
 #include "dseg_digits.h"
-#include "boot_anim.h"
+#include "network_diagnostics_catalog.h"
 #include "ota_flow_policy.h"
 #include "status_gif_60.h"
 #include "ui_icons.h"
@@ -128,7 +127,6 @@ inline constexpr int kBootAnimRunFrameMs = 50;
 inline constexpr int kBootWifiConnectTimeoutMs = 5 * kAppMsPerSecond;
 inline constexpr int kBootNtpRetries = 2;
 inline constexpr int kBootStartupBudgetMs = 6 * kAppMsPerSecond;
-inline constexpr int kHttpDefaultTimeoutMs = 10 * kAppMsPerSecond;
 inline constexpr int kHttpBootTimeoutMs = 2500;
 inline constexpr int kMinValidYear = 2024;
 inline constexpr int kMaxValidYear = 2035;
@@ -162,7 +160,6 @@ inline constexpr const char *kOtaManifestUrl = WEATHER_CLOCK_OTA_MANIFEST_URL;
 #define WEATHER_CLOCK_OTA_BACKUP_MANIFEST_URL "https://example.invalid/firmware/latest.json"
 #endif
 inline constexpr const char *kOtaBackupManifestUrl = WEATHER_CLOCK_OTA_BACKUP_MANIFEST_URL;
-inline constexpr int kOtaStatusLen = 96;
 inline constexpr int kOtaVersionLen = 24;
 inline constexpr int kOtaUrlLen = 256;
 inline constexpr int kOtaSha256Len = 65;
@@ -174,8 +171,6 @@ inline constexpr int kOtaStatusMinIntervalMs = 3 * kAppMsPerSecond;
 inline constexpr int kOtaAvailableConfirmTimeoutMs = kAppMsPerMinute;
 inline constexpr int kOtaDownloadBufferSize = 4096;
 inline constexpr int kOtaChunkDelayMs = 25;
-inline constexpr int kNetworkDiagLineCount = 9;
-inline constexpr int kNetworkDiagLineLen = 48;
 inline constexpr float kBatteryChargingRiseVoltage = 0.035f;
 inline constexpr float kBatteryChargingStopVoltage = 0.006f;
 inline constexpr int kBatteryChargingRiseSamples = 1;
@@ -216,29 +211,7 @@ enum SettingsPrimaryMenu {
 extern DisplayPort g_display;
 extern I2cMasterBus g_i2c;
 extern Shtc3Port *g_shtc3;
-extern CodecPort *g_codec;
-extern portMUX_TYPE g_audio_state_mux;
-extern portMUX_TYPE g_weather_state_mux;
-extern bool g_audio_playing;
-extern volatile bool g_startup_screen_active;
-extern volatile bool g_setup_prompt_pending;
-#if CONFIG_PM_ENABLE
-extern esp_pm_lock_handle_t g_network_pm_lock;
-extern esp_pm_lock_handle_t g_audio_pm_lock;
-extern esp_pm_lock_handle_t g_audio_wake_pm_lock;
-extern esp_pm_lock_handle_t g_audio_cpu_pm_lock;
-extern int g_network_pm_lock_depth;
-extern int g_audio_pm_lock_depth;
-extern int g_audio_wake_pm_lock_depth;
-extern int g_audio_cpu_pm_lock_depth;
-#endif
-extern adc_oneshot_unit_handle_t g_battery_adc;
-extern adc_cali_handle_t g_battery_adc_cali;
-extern bool g_battery_adc_ready;
-extern bool g_battery_adc_cali_ready;
 extern EventGroupHandle_t g_app_events;
-extern httpd_handle_t g_http_server;
-
 extern char g_wifi_ssid[33];
 extern char g_wifi_pass[65];
 extern char g_weather_api_key[96];
@@ -254,64 +227,12 @@ extern bool g_offline_mode_ui_enabled;
 extern bool g_xiaozhi_auto_return_enabled;
 extern int g_chime_volume_percent;
 extern int g_chime_sound_index;
-extern bool g_ntp_started;
-extern bool g_wifi_radio_on;
-extern bool g_wifi_stop_requested;
-extern bool g_setup_portal_active;
-extern int g_last_wifi_disconnect_reason;
-extern int g_http_timeout_ms;
-extern int64_t g_boot_sync_deadline_us;
-extern float g_temperature;
-extern float g_humidity;
-extern bool g_sensor_ok;
-extern int g_temp_trend;
-extern int g_humi_trend;
-extern int g_battery_percent;
-extern float g_battery_voltage;
-extern bool g_battery_charging;
-extern bool g_battery_animation_complete;
-extern time_t g_last_charge_time;
-extern uint32_t g_battery_version;
-extern time_t g_last_ntp_sync_time;
-extern time_t g_last_weather_sync_time;
-extern volatile bool g_boot_info_requested;
-extern volatile bool g_network_diag_page_requested;
-extern volatile bool g_settings_requested;
 extern volatile bool g_settings_focus_secondary;
 extern volatile bool g_settings_page_toggle_mode;
 extern volatile bool g_settings_page_order_mode;
 extern volatile int g_settings_primary_selection;
 extern volatile int g_settings_selection;
 extern volatile int g_settings_page_order_selection;
-extern volatile uint32_t g_settings_action_seq;
-extern volatile TickType_t g_settings_last_activity_tick;
-extern volatile int g_settings_sync_op;
-extern volatile TickType_t g_settings_sync_deadline_tick;
-extern volatile TickType_t g_info_page_until_tick;
-extern TickType_t g_settings_feedback_until_tick;
-extern bool g_factory_reset_confirm_pending;
-extern bool g_offline_disable_confirm_pending;
-extern bool g_weather_city_clear_confirm_pending;
-extern char g_settings_feedback[48];
-extern volatile int g_ota_state;
-extern volatile int g_ota_progress;
-extern volatile int g_ota_speed_kbps;
-extern volatile TickType_t g_ota_status_until_tick;
-extern volatile bool g_ota_reboot_pending;
-extern char g_ota_status[kOtaStatusLen];
-extern char g_ota_version[kOtaVersionLen];
-extern char g_ota_url[kOtaUrlLen];
-extern char g_ota_sha256[kOtaSha256Len];
-extern char g_ota_notes[kOtaNotesLen];
-extern int g_ota_size;
-extern volatile int g_network_diag_state;
-extern volatile int g_network_diag_step;
-extern volatile int g_network_diag_passed;
-extern volatile int g_network_diag_total;
-extern char g_network_diag_lines[kNetworkDiagLineCount][kNetworkDiagLineLen];
-extern char g_daily_saying[kDailySayingLen];
-extern time_t g_last_saying_sync_time;
-
 struct WeatherData {
     char city[32] = {};
     char text[32] = {};
@@ -382,21 +303,6 @@ struct HourlySensorHistoryBlob {
     HourlySensorSample samples[kHourlyHistoryCount] = {};
 };
 
-extern WeatherData g_weather;
-extern WeatherAlertData g_weather_alert;
-extern WeatherForecastData g_weather_forecast;
-extern WeatherAirData g_weather_air;
-extern volatile bool g_low_battery_mode;
-extern SensorSample g_sensor_history[kSensorHistoryMinutes];
-extern int g_sensor_history_next;
-extern int g_sensor_history_count;
-extern bool g_sensor_average_valid;
-extern float g_last_temp_average;
-extern float g_last_humi_average;
-extern HourlySensorHistoryBlob g_hourly_history;
-extern int64_t g_last_hourly_saved_at;
-extern uint32_t g_hourly_history_version;
-extern volatile int g_active_work_page;
 extern uint8_t g_work_page_enabled_mask;
 extern uint8_t g_work_page_order[kWorkPageCount];
 
@@ -495,9 +401,6 @@ extern lv_obj_t *g_flip_clock_lunar_bold_y_label;
 extern lv_obj_t *g_flip_clock_lunar_bold_xy_label;
 extern lv_obj_t *g_lower_panel_objects[13];
 extern lv_obj_t *g_setup_status_labels[6];
-extern lv_obj_t *g_boot_status_label;
-extern lv_obj_t *g_boot_detail_label;
-extern lv_obj_t *g_boot_anim_canvas;
 extern lv_obj_t *g_info_labels[6];
 extern lv_obj_t *g_network_diag_labels[kNetworkDiagLineCount];
 extern lv_obj_t *g_network_diag_summary_label;
@@ -509,29 +412,3 @@ extern lv_obj_t *g_settings_ota_status_label;
 extern lv_obj_t *g_settings_ota_hint_label;
 extern lv_obj_t *g_settings_ota_bar_frame;
 extern lv_obj_t *g_settings_ota_bar_fill;
-extern volatile bool g_boot_anim_running;
-extern volatile int g_boot_anim_current_frame;
-extern TaskHandle_t g_boot_anim_task_handle;
-extern TaskHandle_t g_boot_sync_task_handle;
-extern TaskHandle_t g_ui_task_handle;
-extern int g_last_ui_second;
-extern int g_last_ui_minute;
-extern int g_last_ui_date_key;
-extern int g_last_ui_date_page;
-extern int g_last_second_progress_filled;
-extern int g_last_status_gif_frame;
-extern int g_last_flip_clock_hour;
-extern int g_last_flip_clock_minute;
-extern int g_last_flip_clock_second;
-extern int g_last_flip_sensor_minute;
-extern int g_last_flip_temp_mood;
-extern int g_last_flip_humi_mood;
-extern int g_last_flip_temp_trend;
-extern int g_last_flip_humi_trend;
-extern int g_last_flip_date_key;
-extern int g_last_temp_trend_drawn;
-extern int g_last_humi_trend_drawn;
-extern uint32_t g_last_history_drawn_version;
-extern int g_last_history_drawn_hour;
-extern int g_last_calendar_drawn_month;
-extern int g_last_calendar_drawn_day;

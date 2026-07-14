@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "app_constexpr.h"
+#include "app_time_constants.h"
 #include "clock_gallery_images.h"
 #include "custom_assets.h"
 #include "network_services.h"
@@ -178,8 +179,8 @@ static bool update_gallery_image_for_date(const struct tm &local)
     }
     int custom_count = custom_assets_gallery_count();
     GalleryImageSelection selection = {};
-    if (!gallery_image_selection_for_date(local.tm_year + 1900,
-                                          local.tm_mon + 1,
+    if (!gallery_image_selection_for_date(local.tm_year + kTmYearOffset,
+                                          local.tm_mon + kTmMonthOffset,
                                           local.tm_mday,
                                           local.tm_wday,
                                           custom_count,
@@ -286,7 +287,7 @@ void build_gallery_page()
     }
 
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
-    update_battery_segments(g_gallery_battery_segments, g_battery_percent);
+    update_battery_segments(g_gallery_battery_segments, battery_percent_load());
     s_last_gallery_image_index = -1;
     s_last_gallery_time_key = -1;
 }

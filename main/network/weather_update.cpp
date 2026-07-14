@@ -5,6 +5,7 @@
 #include "app_constexpr.h"
 #include "network_sync_schedule.h"
 #include "qweather_location_text.h"
+#include "startup_state.h"
 #include "weather_state.h"
 
 namespace {
@@ -42,7 +43,7 @@ bool prepare_weather_followup_request(const char *stage)
     // returning. Keep the longer settle and memory gate through the first
     // minute, including the staggered background refresh after the boot UI.
     bool startup_pressure = network_startup_pressure_window_active(
-        g_startup_screen_active,
+        startup_screen_active(),
         esp_timer_get_time());
     vTaskDelay(pdMS_TO_TICKS(
         network_weather_request_settle_delay_ms(startup_pressure)));
@@ -170,7 +171,7 @@ bool update_weather_by_ip_location()
 
 bool perform_weather_update()
 {
-    if (!g_have_weather_key || g_low_battery_mode) {
+    if (!g_have_weather_key || battery_low_mode_load()) {
         clear_weather_ready_event();
         return false;
     }

@@ -6,6 +6,7 @@
 
 #include "esp_err.h"
 #include "nvs.h"
+#include "scoped_nvs_handle.h"
 
 namespace network_config_nvs {
 
@@ -14,33 +15,19 @@ esp_err_t open_wifi_nvs(nvs_open_mode_t mode,
                         const char *action,
                         bool log_not_found = true);
 
-class ScopedNvsHandle {
+class ScopedNvsHandle : public app_storage::ScopedNvsHandle {
 public:
-    ScopedNvsHandle() = default;
-    ~ScopedNvsHandle() { close(); }
-
-    ScopedNvsHandle(const ScopedNvsHandle &) = delete;
-    ScopedNvsHandle &operator=(const ScopedNvsHandle &) = delete;
-
     esp_err_t open(nvs_open_mode_t mode,
                    const char *action,
                    bool log_not_found = true)
     {
         close();
-        esp_err_t err = open_wifi_nvs(mode, &handle_, action, log_not_found);
-        open_ = err == ESP_OK;
-        return err;
-    }
-
-    nvs_handle_t get() const { return handle_; }
-
-    void close()
-    {
-        if (!open_) {
-            return;
+        nvs_handle_t handle = 0;
+        esp_err_t err = open_wifi_nvs(mode, &handle, action, log_not_found);
+        if (err == ESP_OK) {
+            adopt(handle);
         }
-        nvs_close(handle_);
-        open_ = false;
+        return err;
     }
 
     bool close_save_ok(esp_err_t err)
@@ -48,10 +35,6 @@ public:
         close();
         return err == ESP_OK;
     }
-
-private:
-    nvs_handle_t handle_ = 0;
-    bool open_ = false;
 };
 
 esp_err_t erase_nvs_key_if_present(nvs_handle_t nvs, const char *key, bool *erased);
@@ -79,6 +62,5 @@ esp_err_t write_changed_nvs_u8(nvs_handle_t nvs,
                                const char *key,
                                uint8_t value,
                                bool *changed);
-bool close_nvs_save_ok(nvs_handle_t nvs, esp_err_t err);
 
 } // namespace network_config_nvs

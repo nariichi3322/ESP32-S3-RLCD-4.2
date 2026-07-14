@@ -3,6 +3,7 @@
 
 #include "app_state.h"
 #include "app_text_format.h"
+#include "scoped_nvs_handle.h"
 
 #include <cJSON.h>
 #include <esp_system.h>
@@ -12,6 +13,8 @@
 #include <cstring>
 
 namespace {
+using app_storage::ScopedNvsHandle;
+
 constexpr const char *kNvsNamespace = "xiaozhi";
 constexpr const char *kWebsocketUrlKey = "ws_url";
 constexpr const char *kWebsocketTokenKey = "ws_token";
@@ -55,19 +58,19 @@ bool xiaozhi_load_websocket_config(char *url,
         !app_text::output_buffer_available(token, token_len) || !version) {
         return false;
     }
-    nvs_handle_t nvs;
-    if (nvs_open(kNvsNamespace, NVS_READONLY, &nvs) != ESP_OK) {
+    ScopedNvsHandle nvs;
+    if (nvs.open(kNvsNamespace, NVS_READONLY) != ESP_OK) {
         return false;
     }
     uint8_t binding_confirmed = 0;
-    bool present = nvs_get_u8(nvs, kBindingConfirmedKey, &binding_confirmed) == ESP_OK &&
+    bool present = nvs_get_u8(nvs.get(), kBindingConfirmedKey, &binding_confirmed) == ESP_OK &&
                    binding_confirmed == 1 &&
-                   nvs_read_string(nvs, kWebsocketUrlKey, url, url_len);
-    nvs_read_string(nvs, kWebsocketTokenKey, token, token_len);
-    if (nvs_get_i32(nvs, kWebsocketVersionKey, version) != ESP_OK || *version <= 0) {
+                   nvs_read_string(nvs.get(), kWebsocketUrlKey, url, url_len);
+    nvs_read_string(nvs.get(), kWebsocketTokenKey, token, token_len);
+    if (nvs_get_i32(nvs.get(), kWebsocketVersionKey, version) != ESP_OK || *version <= 0) {
         *version = 1;
     }
-    nvs_close(nvs);
+    nvs.close();
     return present;
 }
 
@@ -82,29 +85,29 @@ bool xiaozhi_save_activation_config(cJSON *websocket, const char *challenge)
     if (!cJSON_IsString(url) || !url->valuestring || url->valuestring[0] == '\0') {
         return false;
     }
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &nvs);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(kNvsNamespace, NVS_READWRITE);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, XIAOZHI_ACTIVATION_NVS_OPEN_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
-    err = nvs_set_str(nvs, kWebsocketUrlKey, url->valuestring);
+    err = nvs_set_str(nvs.get(), kWebsocketUrlKey, url->valuestring);
     if (err == ESP_OK && cJSON_IsString(token) && token->valuestring) {
-        err = nvs_set_str(nvs, kWebsocketTokenKey, token->valuestring);
+        err = nvs_set_str(nvs.get(), kWebsocketTokenKey, token->valuestring);
     }
     if (err == ESP_OK) {
-        err = nvs_set_i32(nvs, kWebsocketVersionKey, cJSON_IsNumber(version) ? version->valueint : 1);
+        err = nvs_set_i32(nvs.get(), kWebsocketVersionKey, cJSON_IsNumber(version) ? version->valueint : 1);
     }
     if (err == ESP_OK) {
-        err = nvs_set_u8(nvs, kBindingConfirmedKey, 1);
+        err = nvs_set_u8(nvs.get(), kBindingConfirmedKey, 1);
     }
     if (err == ESP_OK && challenge && challenge[0] != '\0') {
-        err = nvs_set_str(nvs, kActivationChallengeKey, challenge);
+        err = nvs_set_str(nvs.get(), kActivationChallengeKey, challenge);
     }
     if (err == ESP_OK) {
-        err = nvs_commit(nvs);
+        err = nvs_commit(nvs.get());
     }
-    nvs_close(nvs);
+    nvs.close();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, XIAOZHI_ACTIVATION_NVS_SAVE_FAILED_FORMAT, esp_err_to_name(err));
     }
@@ -116,16 +119,16 @@ bool xiaozhi_load_or_create_client_id(char *out, size_t out_len)
     if (!app_text::output_buffer_available(out, out_len) || out_len < kXiaozhiClientIdSize) {
         return false;
     }
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &nvs);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(kNvsNamespace, NVS_READWRITE);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, XIAOZHI_CLIENT_ID_NVS_OPEN_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
     size_t stored_len = out_len;
-    if (nvs_get_str(nvs, kClientIdKey, out, &stored_len) == ESP_OK &&
+    if (nvs_get_str(nvs.get(), kClientIdKey, out, &stored_len) == ESP_OK &&
         strlen(out) == kXiaozhiClientIdSize - 1) {
-        nvs_close(nvs);
+        nvs.close();
         return true;
     }
     uint8_t uuid[16] = {};
@@ -139,11 +142,11 @@ bool xiaozhi_load_or_create_client_id(char *out, size_t out_len)
              uuid[4], uuid[5], uuid[6], uuid[7],
              uuid[8], uuid[9], uuid[10], uuid[11],
              uuid[12], uuid[13], uuid[14], uuid[15]);
-    err = nvs_set_str(nvs, kClientIdKey, out);
+    err = nvs_set_str(nvs.get(), kClientIdKey, out);
     if (err == ESP_OK) {
-        err = nvs_commit(nvs);
+        err = nvs_commit(nvs.get());
     }
-    nvs_close(nvs);
+    nvs.close();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, XIAOZHI_CLIENT_ID_NVS_SAVE_FAILED_FORMAT, esp_err_to_name(err));
     }
@@ -152,21 +155,21 @@ bool xiaozhi_load_or_create_client_id(char *out, size_t out_len)
 
 bool xiaozhi_clear_activation_storage()
 {
-    nvs_handle_t nvs;
-    esp_err_t err = nvs_open(kNvsNamespace, NVS_READWRITE, &nvs);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(kNvsNamespace, NVS_READWRITE);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, XIAOZHI_NVS_CLEAR_OPEN_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
-    err = nvs_erase_all(nvs);
+    err = nvs_erase_all(nvs.get());
     if (err != ESP_OK) {
         ESP_LOGW(TAG, XIAOZHI_NVS_CLEAR_ERASE_FAILED_FORMAT, esp_err_to_name(err));
     } else {
-        err = nvs_commit(nvs);
+        err = nvs_commit(nvs.get());
         if (err != ESP_OK) {
             ESP_LOGW(TAG, XIAOZHI_NVS_CLEAR_COMMIT_FAILED_FORMAT, esp_err_to_name(err));
         }
     }
-    nvs_close(nvs);
+    nvs.close();
     return err == ESP_OK;
 }

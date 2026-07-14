@@ -15,6 +15,8 @@ inline constexpr int kSemverComponentCount = 3;
 inline constexpr char kHexDigits[] = "0123456789abcdef";
 inline constexpr int64_t kUsPerSecond = 1000000;
 inline constexpr int kBytesPerKiB = 1024;
+inline constexpr int kHttpStatusSuccessFirst = 200;
+inline constexpr int kHttpStatusSuccessAfterLast = 300;
 inline constexpr int kHttpStatusMovedPermanently = 301;
 inline constexpr int kHttpStatusFound = 302;
 inline constexpr int kHttpStatusSeeOther = 303;
@@ -51,6 +53,10 @@ static_assert(kOtaSha256HexLen == kOtaSha256ByteCount * 2,
 static_assert(sizeof(kHexDigits) == 17, "OTA lowercase hex table must contain 16 digits and NUL");
 static_assert(kUsPerSecond > 0, "OTA speed conversion requires a positive second");
 static_assert(kBytesPerKiB == 1024, "OTA speed conversion must remain binary KiB");
+static_assert(kHttpStatusSuccessFirst < kHttpStatusSuccessAfterLast,
+              "OTA HTTP success status range must be ordered");
+static_assert(kHttpStatusSuccessAfterLast < kHttpStatusMovedPermanently,
+              "OTA HTTP success and redirect status ranges must not overlap");
 static_assert(kHttpStatusMovedPermanently < kHttpStatusFound &&
                   kHttpStatusFound < kHttpStatusSeeOther &&
                   kHttpStatusSeeOther < kHttpStatusTemporaryRedirect &&
@@ -110,6 +116,12 @@ inline bool ota_is_http_redirect_status(int status)
            status == ota_validation_detail::kHttpStatusSeeOther ||
            status == ota_validation_detail::kHttpStatusTemporaryRedirect ||
            status == ota_validation_detail::kHttpStatusPermanentRedirect;
+}
+
+constexpr bool ota_is_http_success_status(int status)
+{
+    return status >= ota_validation_detail::kHttpStatusSuccessFirst &&
+           status < ota_validation_detail::kHttpStatusSuccessAfterLast;
 }
 
 inline bool ota_backup_manifest_metadata_matches(const char *current_version,

@@ -3,6 +3,8 @@
 
 #include "app_tick_time.h"
 #include "network_services.h"
+#include "ui_settings_activity_state.h"
+#include "ui_settings_confirmation_state.h"
 #include "ui_settings_feedback.h"
 #include "ui_views.h"
 
@@ -48,9 +50,7 @@ int settings_secondary_count(int primary)
 
 void reset_settings_confirmation()
 {
-    g_factory_reset_confirm_pending = false;
-    g_offline_disable_confirm_pending = false;
-    g_weather_city_clear_confirm_pending = false;
+    settings_confirmation_clear_all();
 }
 
 void reset_settings_navigation_state()
@@ -85,7 +85,7 @@ int clamp_settings_selection_for_mode(int primary, int selected, bool page_toggl
 
 void handle_settings_key_short()
 {
-    g_settings_last_activity_tick = xTaskGetTickCount();
+    settings_activity_record(xTaskGetTickCount());
     int primary = clamp_settings_primary(g_settings_primary_selection);
     if (g_settings_page_order_mode) {
         g_settings_page_order_selection = next_enabled_work_page_order_index(g_settings_page_order_selection);
@@ -101,20 +101,20 @@ void handle_settings_key_short()
         g_settings_selection = 0;
     }
     reset_settings_confirmation();
-    g_settings_feedback[0] = '\0';
+    clear_settings_feedback();
     notify_ui_task();
 }
 
 void handle_settings_key_long()
 {
-    g_settings_last_activity_tick = xTaskGetTickCount();
+    settings_activity_record(xTaskGetTickCount());
     if (g_settings_page_order_mode) {
         g_settings_page_order_mode = false;
         g_settings_focus_secondary = true;
         g_settings_primary_selection = kSettingsPrimaryDisplay;
         g_settings_selection = kDisplaySettingsOrderItem;
         if (save_work_page_order()) {
-            g_active_work_page = first_enabled_work_page();
+            active_work_page_store(first_enabled_work_page());
             set_settings_feedback(kSettingsOrderExitSavedFeedback, kSettingsOrderExitFeedbackMs);
         } else {
             set_settings_feedback(kSettingsOrderExitSaveFailedFeedback, kSettingsOrderExitFeedbackMs);
@@ -128,7 +128,7 @@ void handle_settings_key_long()
         g_settings_primary_selection = kSettingsPrimaryDisplay;
         g_settings_selection = kDisplaySettingsPageSwitchItem;
         reset_settings_confirmation();
-        g_settings_feedback[0] = '\0';
+        clear_settings_feedback();
         notify_ui_task();
         return;
     } else if (g_settings_focus_secondary) {
@@ -139,18 +139,18 @@ void handle_settings_key_long()
         TickType_t now = xTaskGetTickCount();
         if (s_settings_primary_exit_block_until != 0 &&
             app_tick_deadline_pending(now, s_settings_primary_exit_block_until)) {
-            g_settings_last_activity_tick = now;
+            settings_activity_record(now);
             notify_ui_task();
             return;
         }
         s_settings_primary_exit_block_until = 0;
-        g_settings_requested = false;
+        settings_page_clear();
         reset_settings_navigation_state();
-        g_settings_feedback[0] = '\0';
+        clear_settings_feedback();
         notify_ui_task();
         return;
     }
     reset_settings_confirmation();
-    g_settings_feedback[0] = '\0';
+    clear_settings_feedback();
     notify_ui_task();
 }

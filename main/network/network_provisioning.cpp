@@ -117,7 +117,7 @@ bool save_credentials_from_body(const char *body)
              (unsigned)strlen(fields.api_key),
              fields.weather_city[0] ? "set" : "auto",
              (unsigned)strlen(fields.weather_city));
-    g_last_wifi_disconnect_reason = 0;
+    clear_wifi_last_disconnect_reason();
     clear_config_event_bits(kWifiConnectedBit, kConfigEventReasonProvisioningSave);
     if (!save_config(fields.ssid, fields.pass, fields.api_key, fields.weather_city)) {
         return false;

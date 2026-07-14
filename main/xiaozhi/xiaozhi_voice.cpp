@@ -3,7 +3,9 @@
 
 #include "app_tick_time.h"
 #include "audio_services.h"
+#include "checked_size.h"
 
+#include <esp_codec_dev_types.h>
 #include <esp_afe_config.h>
 #include <esp_afe_sr_iface.h>
 #include <esp_afe_sr_models.h>
@@ -33,6 +35,10 @@ constexpr uint32_t kStreamFullWarningIntervalMs = 1000;
 constexpr TickType_t kStreamFullWarningIntervalTicks =
     pdMS_TO_TICKS(kStreamFullWarningIntervalMs);
 constexpr size_t kProcessedStreamBytes = 16 * 1024;
+constexpr const char *kProcessedReadSizeOverflowLog =
+    "AEC processed read sample count overflow";
+constexpr const char *kCaptureSizeOverflowLog =
+    "MR AEC capture size overflow";
 #define XIAOZHI_VOICE_TASK_STOP_TIMEOUT_FORMAT "MR AEC task stop timeout: feed_pending=%d detect_pending=%d"
 
 std::atomic<bool> s_running{false};
@@ -216,11 +222,26 @@ void feed_task(void *)
         vTaskSuspend(nullptr);
         return;
     }
+    size_t capture_samples = 0;
+    size_t capture_bytes = 0;
+    int codec_bytes = 0;
+    if (!app_memory::checked_size_multiply(static_cast<size_t>(chunk_samples),
+                                           static_cast<size_t>(channels),
+                                           &capture_samples) ||
+        !app_memory::checked_size_multiply(capture_samples,
+                                           sizeof(int16_t),
+                                           &capture_bytes) ||
+        !app_memory::checked_size_to_int(capture_bytes, &codec_bytes)) {
+        ESP_LOGW(kTag, "%s", kCaptureSizeOverflowLog);
+        s_running.store(false);
+        s_feed_exited.store(true);
+        vTaskSuspend(nullptr);
+        return;
+    }
     int16_t *stereo = static_cast<int16_t *>(heap_caps_malloc(
-        static_cast<size_t>(chunk_samples) * channels * sizeof(int16_t), MALLOC_CAP_SPIRAM));
+        capture_bytes, MALLOC_CAP_SPIRAM));
     if (!stereo) {
         ESP_LOGW(kTag, "MR AEC capture buffer allocation failed");
-        free(stereo);
         s_running.store(false);
         s_feed_exited.store(true);
         vTaskSuspend(nullptr);
@@ -228,8 +249,8 @@ void feed_task(void *)
     }
     TickType_t next_level_log = xTaskGetTickCount() + kLevelLogIntervalTicks;
     while (s_running.load()) {
-        int result = read_xiaozhi_microphone(
-            stereo, static_cast<size_t>(chunk_samples) * channels * sizeof(int16_t));
+        int result = read_xiaozhi_microphone(stereo,
+                                             static_cast<size_t>(codec_bytes));
         if (result != ESP_CODEC_DEV_OK) {
             ESP_LOGW(kTag, "Microphone read failed: %d", result);
             vTaskDelay(pdMS_TO_TICKS(40));
@@ -479,13 +500,10 @@ void xiaozhi_voice_set_streaming(bool enabled)
     s_streaming.store(false);
     xStreamBufferReset(s_processed_stream);
     s_afe_iface->reset_buffer(s_afe_data);
+    s_detected.store(false);
+    s_afe_iface->enable_wakenet(s_afe_data);
     if (enabled) {
-        s_detected.store(false);
-        s_afe_iface->enable_wakenet(s_afe_data);
         s_streaming.store(true);
-    } else {
-        s_detected.store(false);
-        s_afe_iface->enable_wakenet(s_afe_data);
     }
     ESP_LOGI(kTag, "Xiaozhi AEC stream %s", enabled ? "realtime" : "wake-word");
 }
@@ -510,7 +528,11 @@ bool xiaozhi_voice_read_processed(int16_t *mono_samples,
         return false;
     }
     uint8_t *out = reinterpret_cast<uint8_t *>(mono_samples);
-    size_t expected = sample_count * sizeof(int16_t);
+    size_t expected = 0;
+    if (!app_memory::checked_size_multiply(sample_count, sizeof(int16_t), &expected)) {
+        ESP_LOGW(kTag, "%s", kProcessedReadSizeOverflowLog);
+        return false;
+    }
     size_t received = 0;
     TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
     while (received < expected) {

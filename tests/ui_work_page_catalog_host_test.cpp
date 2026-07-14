@@ -6,7 +6,6 @@
 #include <assert.h>
 #include <string.h>
 
-volatile int g_active_work_page = kWorkPageWeatherClock;
 uint8_t g_work_page_enabled_mask = 0;
 uint8_t g_work_page_order[kWorkPageCount] = {};
 
@@ -115,9 +114,9 @@ int main()
     assert(next_enabled_work_page(kWorkPageCalendar) == kWorkPageHistory);
     assert(next_enabled_work_page(kWorkPageHistory) == kWorkPageWeatherClock);
 
-    g_active_work_page = kWorkPageGallery;
+    active_work_page_store(kWorkPageGallery);
     ensure_active_work_page_enabled();
-    assert(g_active_work_page == kWorkPageWeatherClock);
+    assert(active_work_page_load() == kWorkPageWeatherClock);
 
     g_work_page_order[0] = kWorkPageWeatherClock;
     g_work_page_order[1] = kWorkPageWeatherClock;

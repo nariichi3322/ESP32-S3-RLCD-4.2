@@ -10,6 +10,7 @@
 #include <string.h>
 
 namespace {
+int64_t s_boot_sync_deadline_us = 0;
 constexpr int64_t kMicrosecondsPerMillisecond = 1000;
 constexpr uint32_t kBootScreenShortDelayMs = 200;
 constexpr uint32_t kBootScreenOfflineDelayMs = 600;
@@ -32,14 +33,14 @@ class BootSyncDeadlineGuard {
 public:
     BootSyncDeadlineGuard()
     {
-        g_boot_sync_deadline_us = esp_timer_get_time() +
+        s_boot_sync_deadline_us = esp_timer_get_time() +
                                   static_cast<int64_t>(kBootStartupBudgetMs) *
                                       kMicrosecondsPerMillisecond;
     }
 
     ~BootSyncDeadlineGuard()
     {
-        g_boot_sync_deadline_us = 0;
+        s_boot_sync_deadline_us = 0;
     }
 
     BootSyncDeadlineGuard(const BootSyncDeadlineGuard &) = delete;
@@ -69,7 +70,7 @@ void format_boot_setup_detail(char *out, size_t out_len)
 
 int boot_sync_remaining_ms()
 {
-    return network_boot_budget_remaining_ms(g_boot_sync_deadline_us,
+    return network_boot_budget_remaining_ms(s_boot_sync_deadline_us,
                                             esp_timer_get_time());
 }
 
@@ -146,6 +147,5 @@ void boot_connectivity_task(void *)
 {
     run_boot_connectivity_sync();
     xEventGroupSetBits(g_app_events, kBootSyncDoneBit);
-    g_boot_sync_task_handle = nullptr;
     vTaskDelete(nullptr);
 }

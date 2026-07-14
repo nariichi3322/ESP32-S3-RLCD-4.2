@@ -13,33 +13,55 @@ bool same_local_minute(time_t left, time_t right)
 {
     struct tm left_local = {};
     struct tm right_local = {};
-    localtime_r(&left, &left_local);
-    localtime_r(&right, &right_local);
+    if (!localtime_r(&left, &left_local) || !localtime_r(&right, &right_local)) {
+        return false;
+    }
     return left_local.tm_year == right_local.tm_year &&
            left_local.tm_yday == right_local.tm_yday &&
            left_local.tm_hour == right_local.tm_hour &&
            left_local.tm_min == right_local.tm_min;
 }
 
-time_t next_alarm_minute(time_t now, int hour, int minute)
+bool next_alarm_minute(time_t now, int hour, int minute, time_t *out)
 {
+    if (!out) {
+        return false;
+    }
     struct tm current = {};
-    localtime_r(&now, &current);
+    if (!localtime_r(&now, &current)) {
+        return false;
+    }
     struct tm candidate = current;
     candidate.tm_hour = hour;
     candidate.tm_min = minute;
     candidate.tm_sec = 0;
     candidate.tm_isdst = -1;
     time_t candidate_time = mktime(&candidate);
+    if (candidate_time == static_cast<time_t>(-1)) {
+        return false;
+    }
 
     struct tm current_minute = current;
     current_minute.tm_sec = 0;
     current_minute.tm_isdst = -1;
-    if (candidate_time < mktime(&current_minute)) {
+    time_t current_minute_time = mktime(&current_minute);
+    if (current_minute_time == static_cast<time_t>(-1)) {
+        return false;
+    }
+    if (candidate_time < current_minute_time) {
         candidate.tm_mday += 1;
         candidate_time = mktime(&candidate);
+        if (candidate_time == static_cast<time_t>(-1)) {
+            return false;
+        }
     }
-    return candidate_time;
+    *out = candidate_time;
+    return true;
+}
+
+bool delayed_wall_clock_ms_valid(int64_t now_ms, uint32_t delay_ms)
+{
+    return now_ms <= INT64_MAX - static_cast<int64_t>(delay_ms);
 }
 } // namespace
 
@@ -54,11 +76,16 @@ bool reminder_targets_same_local_minute(int64_t now_ms,
                                         int alarm_minute,
                                         uint32_t delay_ms)
 {
-    if (now_ms < 0 || delay_ms == 0 || !alarm_time_valid(alarm_hour, alarm_minute)) {
+    if (now_ms < 0 || delay_ms == 0 ||
+        !alarm_time_valid(alarm_hour, alarm_minute) ||
+        !delayed_wall_clock_ms_valid(now_ms, delay_ms)) {
         return false;
     }
     time_t now = static_cast<time_t>(now_ms / kMillisecondsPerSecond);
-    time_t alarm_time = next_alarm_minute(now, alarm_hour, alarm_minute);
+    time_t alarm_time = 0;
+    if (!next_alarm_minute(now, alarm_hour, alarm_minute, &alarm_time)) {
+        return false;
+    }
     time_t delayed_time = static_cast<time_t>((now_ms + delay_ms) / kMillisecondsPerSecond);
     return same_local_minute(alarm_time, delayed_time);
 }

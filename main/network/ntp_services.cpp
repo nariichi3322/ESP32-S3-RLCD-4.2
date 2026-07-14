@@ -2,6 +2,7 @@
 #include "network_services.h"
 
 #include "app_constexpr.h"
+#include "app_time_constants.h"
 #include "sensor_services.h"
 
 #include "sdkconfig.h"
@@ -11,6 +12,9 @@
 #define NTP_INVALID_RETRY_COUNT_LOG_FORMAT "ntp sync invalid retry count: %d"
 
 namespace {
+bool s_ntp_started = false;
+portMUX_TYPE s_ntp_state_mux = portMUX_INITIALIZER_UNLOCKED;
+time_t s_last_ntp_sync_time = 0;
 constexpr const char *const kNtpServers[] = {
     "pool.ntp.org",
     "ntp.aliyun.com",
@@ -24,8 +28,6 @@ constexpr size_t kConfiguredNtpServerSlots = CONFIG_LWIP_SNTP_MAX_SERVERS;
 constexpr size_t kConfiguredNtpServerSlots = kDefaultConfiguredNtpServerSlots;
 #endif
 constexpr uint32_t kNtpPollDelayMs = 1000;
-constexpr int kTmYearOffset = 1900;
-constexpr int kTmMonthOffset = 1;
 static_assert(kNtpServerCount > 0, "at least one NTP server is required");
 static_assert(kConfiguredNtpServerSlots > 0, "SNTP must support at least one configured server");
 
@@ -54,8 +56,6 @@ static_assert(kActiveNtpServerCount <= kNtpServerCount, "active NTP server count
 static_assert(kActiveNtpServerCount <= kConfiguredNtpServerSlots, "active NTP server count must fit SNTP slots");
 static_assert(kNtpPollDelayMs > 0, "NTP poll delay must be positive");
 static_assert(kNtpPollDelay > 0, "NTP poll tick delay must be positive");
-static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
-static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
 
 void set_time_synced_event_bit()
 {
@@ -75,11 +75,11 @@ void configure_ntp_servers()
 
 void start_or_restart_ntp()
 {
-    if (!g_ntp_started) {
+    if (!s_ntp_started) {
         esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
         configure_ntp_servers();
         esp_sntp_init();
-        g_ntp_started = true;
+        s_ntp_started = true;
         return;
     }
     esp_sntp_restart();
@@ -116,6 +116,14 @@ bool wait_for_ntp_synced_time(int max_retries, struct tm *synced_time)
 }
 } // namespace
 
+time_t get_last_ntp_sync_time()
+{
+    portENTER_CRITICAL(&s_ntp_state_mux);
+    const time_t last_sync_time = s_last_ntp_sync_time;
+    portEXIT_CRITICAL(&s_ntp_state_mux);
+    return last_sync_time;
+}
+
 bool perform_ntp_sync(int max_retries)
 {
     if (max_retries <= 0) {
@@ -128,7 +136,10 @@ bool perform_ntp_sync(int max_retries)
     struct tm local = {};
     if (wait_for_ntp_synced_time(max_retries, &local)) {
         sync_rtc_from_system_time();
-        time(&g_last_ntp_sync_time);
+        const time_t sync_time = time(nullptr);
+        portENTER_CRITICAL(&s_ntp_state_mux);
+        s_last_ntp_sync_time = sync_time;
+        portEXIT_CRITICAL(&s_ntp_state_mux);
         set_time_synced_event_bit();
         log_ntp_synced_time(local);
         return true;

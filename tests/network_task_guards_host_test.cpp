@@ -3,8 +3,6 @@
 
 #include <assert.h>
 
-int g_http_timeout_ms = 5000;
-
 namespace {
 int g_awake_acquire_calls = 0;
 int g_awake_release_calls = 0;
@@ -72,16 +70,18 @@ int main()
     }
     assert(g_http_lock_release_calls == 1);
 
-    assert(g_http_timeout_ms == 5000);
+    assert(network_http_timeout_ms_load() == 10000);
+    network_http_timeout_ms_store(5000);
+    assert(network_http_timeout_ms_load() == 5000);
     {
         NetworkHttpTimeoutGuard outer(2500);
-        assert(g_http_timeout_ms == 2500);
+        assert(network_http_timeout_ms_load() == 2500);
         {
             NetworkHttpTimeoutGuard inner(750);
-            assert(g_http_timeout_ms == 750);
+            assert(network_http_timeout_ms_load() == 750);
         }
-        assert(g_http_timeout_ms == 2500);
+        assert(network_http_timeout_ms_load() == 2500);
     }
-    assert(g_http_timeout_ms == 5000);
+    assert(network_http_timeout_ms_load() == 5000);
     return 0;
 }

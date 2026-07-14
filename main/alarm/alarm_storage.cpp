@@ -1,10 +1,12 @@
 // 实现闹钟 NVS 三键记录的读取、提交和整命名空间清除。
 #include "alarm_storage.h"
 
-#include "nvs.h"
+#include "scoped_nvs_handle.h"
 
 namespace alarm_storage {
 namespace {
+using app_storage::ScopedNvsHandle;
+
 constexpr const char *kNamespace = "alarm_v1";
 constexpr const char *kEnabledKey = "enabled";
 constexpr const char *kHourKey = "hour";
@@ -32,8 +34,8 @@ esp_err_t first_read_error(esp_err_t enabled_err, esp_err_t hour_err, esp_err_t 
 ReadResult read()
 {
     ReadResult result = {};
-    nvs_handle_t nvs = 0;
-    esp_err_t err = nvs_open(kNamespace, NVS_READONLY, &nvs);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(kNamespace, NVS_READONLY);
     if (err == ESP_ERR_NVS_NOT_FOUND) {
         result.status = ReadStatus::kEmpty;
         return result;
@@ -44,10 +46,10 @@ ReadResult read()
         return result;
     }
 
-    esp_err_t enabled_err = nvs_get_u8(nvs, kEnabledKey, &result.enabled);
-    esp_err_t hour_err = nvs_get_u8(nvs, kHourKey, &result.hour);
-    esp_err_t minute_err = nvs_get_u8(nvs, kMinuteKey, &result.minute);
-    nvs_close(nvs);
+    esp_err_t enabled_err = nvs_get_u8(nvs.get(), kEnabledKey, &result.enabled);
+    esp_err_t hour_err = nvs_get_u8(nvs.get(), kHourKey, &result.hour);
+    esp_err_t minute_err = nvs_get_u8(nvs.get(), kMinuteKey, &result.minute);
+    nvs.close();
 
     if (enabled_err == ESP_OK && hour_err == ESP_OK && minute_err == ESP_OK) {
         result.status = ReadStatus::kLoaded;
@@ -62,23 +64,23 @@ ReadResult read()
 
 WriteResult write(bool enabled, uint8_t hour, uint8_t minute)
 {
-    nvs_handle_t nvs = 0;
-    esp_err_t err = nvs_open(kNamespace, NVS_READWRITE, &nvs);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(kNamespace, NVS_READWRITE);
     if (err != ESP_OK) {
         return {WriteStatus::kOpenFailed, err};
     }
 
-    err = nvs_set_u8(nvs, kEnabledKey, enabled ? 1 : 0);
+    err = nvs_set_u8(nvs.get(), kEnabledKey, enabled ? 1 : 0);
     if (err == ESP_OK) {
-        err = nvs_set_u8(nvs, kHourKey, hour);
+        err = nvs_set_u8(nvs.get(), kHourKey, hour);
     }
     if (err == ESP_OK) {
-        err = nvs_set_u8(nvs, kMinuteKey, minute);
+        err = nvs_set_u8(nvs.get(), kMinuteKey, minute);
     }
     if (err == ESP_OK) {
-        err = nvs_commit(nvs);
+        err = nvs_commit(nvs.get());
     }
-    nvs_close(nvs);
+    nvs.close();
     return err == ESP_OK
                ? WriteResult{WriteStatus::kSaved, ESP_OK}
                : WriteResult{WriteStatus::kWriteFailed, err};
@@ -86,8 +88,8 @@ WriteResult write(bool enabled, uint8_t hour, uint8_t minute)
 
 ClearResult clear()
 {
-    nvs_handle_t nvs = 0;
-    esp_err_t err = nvs_open(kNamespace, NVS_READWRITE, &nvs);
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(kNamespace, NVS_READWRITE);
     if (err == ESP_ERR_NVS_NOT_FOUND) {
         return {ClearStatus::kAlreadyEmpty, ESP_OK};
     }
@@ -95,11 +97,11 @@ ClearResult clear()
         return {ClearStatus::kOpenFailed, err};
     }
 
-    err = nvs_erase_all(nvs);
+    err = nvs_erase_all(nvs.get());
     if (err == ESP_OK) {
-        err = nvs_commit(nvs);
+        err = nvs_commit(nvs.get());
     }
-    nvs_close(nvs);
+    nvs.close();
     return err == ESP_OK
                ? ClearResult{ClearStatus::kCleared, ESP_OK}
                : ClearResult{ClearStatus::kEraseFailed, err};

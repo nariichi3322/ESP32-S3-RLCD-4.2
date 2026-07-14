@@ -1,6 +1,7 @@
 // 实现跨页面和后台服务共用的本地时间可信度与整点策略。
 #include "sensor_time.h"
 
+#include "app_time_constants.h"
 #include "app_state.h"
 
 namespace {
@@ -11,7 +12,6 @@ constexpr int kWeatherSyncSearchHours = 30;
 constexpr int kWeatherSyncSearchStepHours = 1;
 constexpr int kNightSlowWindowStartHour = 22;
 constexpr int kNightSlowWindowEndHour = 6;
-constexpr int kTmYearOffset = 1900;
 
 static_assert(kWeatherSyncFallbackSeconds > 0,
               "weather sync fallback interval must be positive");

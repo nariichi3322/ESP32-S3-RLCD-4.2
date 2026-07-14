@@ -4,6 +4,7 @@
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "app_state.h"
+#include "ui_settings_confirmation_state.h"
 #include "ui_text_format.h"
 
 #include <stdarg.h>
@@ -177,8 +178,9 @@ void populate_settings_secondary_items(
                            kSettingsNetworkDiagText);
         set_secondary_text(secondary_items,
                            kSystemSettingsFactoryResetItem,
-                           g_factory_reset_confirm_pending ? kSettingsFactoryResetConfirmText
-                                                           : kSettingsFactoryResetText);
+                           settings_confirmation_pending(SettingsConfirmation::kFactoryReset)
+                               ? kSettingsFactoryResetConfirmText
+                               : kSettingsFactoryResetText);
         set_secondary_text(secondary_items,
                            kSystemSettingsInfoItem,
                            kSettingsSystemInfoText);

@@ -1,10 +1,14 @@
 // 实现设备配网 AP、STA 连接、Wi-Fi 事件和射频启停生命周期。
 #include "network_services.h"
 
+#include "ota_runtime_state.h"
+
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "wifi_idle_stop_policy.h"
 #include "wifi_portal_dns.h"
+#include "wifi_portal_state.h"
+#include "wifi_radio_state.h"
 
 #include "audio_services.h"
 #include "sensor_services.h"
@@ -18,6 +22,8 @@ esp_netif_t *s_sta_netif = nullptr;
 esp_netif_t *s_ap_netif = nullptr;
 esp_event_handler_instance_t s_wifi_event_handler_instance = nullptr;
 esp_event_handler_instance_t s_ip_event_handler_instance = nullptr;
+// 射频控制任务与 Wi-Fi 事件回调并发访问，用于抑制主动断开后的自动重连。
+std::atomic<bool> s_wifi_stop_requested{false};
 std::atomic<bool> s_wifi_stop_when_idle_requested{false};
 constexpr uint8_t kSetupApChannel = 1;
 constexpr uint8_t kSetupApMaxConnections = 4;
@@ -329,7 +335,7 @@ static bool configure_running_wifi_radio(bool enable_setup_portal,
             clear_sta_connection_state();
         }
     }
-    if (enable_setup_portal && !g_setup_portal_active) {
+    if (enable_setup_portal && !setup_portal_active_load()) {
         if (!start_http_server()) {
             return false;
         }
@@ -347,7 +353,7 @@ static bool configure_running_wifi_radio(bool enable_setup_portal,
 static bool start_stopped_wifi_radio(bool enable_setup_portal,
                                      bool entering_setup_portal)
 {
-    g_wifi_stop_requested = false;
+    s_wifi_stop_requested.store(false, std::memory_order_release);
     esp_err_t err = esp_wifi_set_mode(enable_setup_portal ? WIFI_MODE_APSTA : WIFI_MODE_STA);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, WIFI_SET_MODE_FAILED_FORMAT, esp_err_to_name(err));
@@ -369,7 +375,7 @@ static bool start_stopped_wifi_radio(bool enable_setup_portal,
     configure_wifi_power_save(enable_setup_portal);
     if (enable_setup_portal) {
         if (!start_http_server()) {
-            g_wifi_stop_requested = true;
+            s_wifi_stop_requested.store(true, std::memory_order_release);
             (void)esp_wifi_disconnect();
             (void)esp_wifi_stop();
             return false;
@@ -379,7 +385,7 @@ static bool start_stopped_wifi_radio(bool enable_setup_portal,
         }
         ESP_LOGI(TAG, WIFI_SETUP_AP_ACTIVE_FORMAT, g_ap_ssid);
     }
-    g_wifi_radio_on = true;
+    wifi_radio_on_store(true);
     notify_ui_task();
     return true;
 }
@@ -390,8 +396,8 @@ bool start_wifi_radio(bool enable_setup_portal)
         ESP_LOGI(TAG, WIFI_START_SKIPPED_OFFLINE_LOG);
         return false;
     }
-    bool entering_setup_portal = enable_setup_portal && !g_setup_portal_active;
-    if (g_wifi_radio_on) {
+    bool entering_setup_portal = enable_setup_portal && !setup_portal_active_load();
+    if (wifi_radio_on_load()) {
         return configure_running_wifi_radio(enable_setup_portal,
                                             entering_setup_portal);
     }
@@ -401,10 +407,11 @@ bool start_wifi_radio(bool enable_setup_portal)
 
 void stop_wifi_radio(bool force_setup_portal)
 {
-    if (!g_wifi_radio_on) {
+    if (!wifi_radio_on_load()) {
         return;
     }
-    if ((g_ota_state == kOtaChecking || g_ota_state == kOtaUpdating) && !force_setup_portal) {
+    int ota_state = ota_runtime_state_load();
+    if ((ota_state == kOtaChecking || ota_state == kOtaUpdating) && !force_setup_portal) {
         ESP_LOGI(TAG, WIFI_STOP_SKIPPED_OTA_LOG);
         return;
     }
@@ -412,14 +419,14 @@ void stop_wifi_radio(bool force_setup_portal)
         ESP_LOGI(TAG, WIFI_STOP_SKIPPED_XIAOZHI_LOG);
         return;
     }
-    if (g_setup_portal_active && !force_setup_portal) {
+    if (setup_portal_active_load() && !force_setup_portal) {
         return;
     }
     if (!g_have_wifi_creds && !force_setup_portal) {
         return;
     }
     stop_http_server();
-    g_wifi_stop_requested = true;
+    s_wifi_stop_requested.store(true, std::memory_order_release);
     esp_err_t err = esp_wifi_disconnect();
     if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
         ESP_LOGW(TAG, WIFI_DISCONNECT_DURING_STOP_FAILED_FORMAT, esp_err_to_name(err));
@@ -427,10 +434,10 @@ void stop_wifi_radio(bool force_setup_portal)
     err = esp_wifi_stop();
     if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
         ESP_LOGW(TAG, WIFI_STOP_FAILED_FORMAT, esp_err_to_name(err));
-        g_wifi_stop_requested = false;
+        s_wifi_stop_requested.store(false, std::memory_order_release);
     } else {
-        g_wifi_radio_on = false;
-        g_wifi_stop_requested = false;
+        wifi_radio_on_store(false);
+        s_wifi_stop_requested.store(false, std::memory_order_release);
         clear_sta_connection_state();
         notify_ui_task();
         ESP_LOGI(TAG, WIFI_RADIO_OFF_LOG);
@@ -448,15 +455,16 @@ void service_wifi_radio_stop_when_idle()
     if (!requested) {
         return;
     }
-    if (!g_wifi_radio_on) {
+    if (!wifi_radio_on_load()) {
         s_wifi_stop_when_idle_requested.store(false, std::memory_order_release);
         return;
     }
     WifiIdleStopPolicyInput policy = {};
     policy.requested = requested;
-    policy.radio_on = g_wifi_radio_on;
-    policy.setup_portal_active = g_setup_portal_active;
-    policy.ota_active = g_ota_state == kOtaChecking || g_ota_state == kOtaUpdating;
+    policy.radio_on = wifi_radio_on_load();
+    policy.setup_portal_active = setup_portal_active_load();
+    int ota_state = ota_runtime_state_load();
+    policy.ota_active = ota_state == kOtaChecking || ota_state == kOtaUpdating;
     policy.xiaozhi_keepalive_active = xiaozhi_ai_network_keepalive_active();
     policy.network_lock_active = network_awake_lock_active();
     if (!wifi_idle_stop_allowed(policy)) {
@@ -465,7 +473,7 @@ void service_wifi_radio_stop_when_idle()
 
     s_wifi_stop_when_idle_requested.store(false, std::memory_order_release);
     stop_wifi_radio();
-    if (g_wifi_radio_on) {
+    if (wifi_radio_on_load()) {
         // 关闭失败或运行状态在检查后发生变化时保留请求，交给下一次
         // 联网任务收尾重试，不在当前任务内循环抢占网络资源。
         s_wifi_stop_when_idle_requested.store(true, std::memory_order_release);
@@ -478,11 +486,12 @@ void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, v
         (void)start_station_connection(StationConnectAttempt::Start);
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_DISCONNECTED) {
         wifi_event_sta_disconnected_t *event = (wifi_event_sta_disconnected_t *)event_data;
-        g_last_wifi_disconnect_reason = event ? event->reason : -1;
+        record_wifi_disconnect_reason(event ? event->reason : -1);
         clear_sta_connection_state();
         ESP_LOGW(TAG, WIFI_DISCONNECTED_FORMAT, event ? event->reason : -1);
         notify_ui_task();
-        if (g_have_wifi_creds && g_wifi_radio_on && !g_wifi_stop_requested) {
+        if (g_have_wifi_creds && wifi_radio_on_load() &&
+            !s_wifi_stop_requested.load(std::memory_order_acquire)) {
             (void)start_station_connection(StationConnectAttempt::Reconnect);
         }
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {

@@ -10,7 +10,9 @@ bool play_chime_sound_repeated_blocking(int source_slot,
                                         int repeat_count,
                                         bool (*stop_requested)());
 bool start_setup_prompt_playback();
+bool setup_prompt_playback_pending();
 bool is_audio_playing();
+bool audio_codec_active();
 void park_unused_audio_peripherals();
 void request_setup_prompt_once();
 void request_settings_confirmation_chime();

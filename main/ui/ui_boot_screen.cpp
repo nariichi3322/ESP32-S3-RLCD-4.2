@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "app_constexpr.h"
+#include "boot_anim.h"
 
 namespace {
 constexpr uint32_t kBootAnimLvglLockTimeoutMs = 100;
@@ -33,6 +34,10 @@ constexpr const char *const kBootTexts[] = {
     BOOT_ANIM_CANVAS_CREATE_FAILED_LOG,
 };
 lv_color_t *s_boot_anim_canvas_buffer;
+lv_obj_t *s_boot_status_label;
+lv_obj_t *s_boot_detail_label;
+lv_obj_t *s_boot_anim_canvas;
+std::atomic<bool> s_boot_anim_running{false};
 
 static_assert(kBootContentX >= 0 && kBootContentW > 0,
               "boot screen content frame must be valid");
@@ -48,9 +53,9 @@ static_assert(kBootScreenLvglLockTimeoutMs >= kBootAnimFinishLvglLockTimeoutMs,
 static_assert(cstr_array_nonempty(kBootTexts), "boot screen text registry must not be empty");
 } // namespace
 
-void draw_boot_anim_frame_index(int frame)
+static void draw_boot_anim_frame_index(int frame)
 {
-    if (!g_boot_anim_canvas || !s_boot_anim_canvas_buffer) {
+    if (!s_boot_anim_canvas || !s_boot_anim_canvas_buffer) {
         return;
     }
     if (frame < 0) {
@@ -63,19 +68,28 @@ void draw_boot_anim_frame_index(int frame)
     for (int y = 0; y < BOOT_ANIM_HEIGHT; ++y) {
         for (int x = 0; x < BOOT_ANIM_WIDTH; ++x, ++bit) {
             bool black = packed_1bit_bit_is_set(pixels, bit);
-            lv_canvas_set_px_color(g_boot_anim_canvas, x, y, black ? lv_color_black() : lv_color_white());
+            lv_canvas_set_px_color(s_boot_anim_canvas, x, y, black ? lv_color_black() : lv_color_white());
         }
     }
-    lv_obj_invalidate(g_boot_anim_canvas);
+    lv_obj_invalidate(s_boot_anim_canvas);
+}
+
+void prepare_boot_animation()
+{
+    s_boot_anim_running.store(true, std::memory_order_release);
+}
+
+void request_boot_animation_stop()
+{
+    s_boot_anim_running.store(false, std::memory_order_release);
 }
 
 void boot_anim_task(void *)
 {
     int frame = 0;
-    while (g_boot_anim_running) {
+    while (s_boot_anim_running.load(std::memory_order_acquire)) {
         if (Lvgl_lock(kBootAnimLvglLockTimeoutMs)) {
             draw_boot_anim_frame_index(frame);
-            g_boot_anim_current_frame = frame;
             Lvgl_unlock();
         }
         frame = (frame + 1) % BOOT_ANIM_FRAME_COUNT;
@@ -86,7 +100,6 @@ void boot_anim_task(void *)
     } else {
         ESP_LOGW(TAG, BOOT_ANIM_DONE_EVENT_SKIPPED_LOG);
     }
-    g_boot_anim_task_handle = nullptr;
     vTaskDelete(nullptr);
 }
 
@@ -94,7 +107,6 @@ void finish_boot_anim_to_last_frame()
 {
     if (Lvgl_lock(kBootAnimFinishLvglLockTimeoutMs)) {
         draw_boot_anim_frame_index(BOOT_ANIM_FRAME_COUNT - 1);
-        g_boot_anim_current_frame = BOOT_ANIM_FRAME_COUNT - 1;
         lv_refr_now(nullptr);
         Lvgl_unlock();
     }
@@ -110,10 +122,10 @@ void show_boot_screen()
 
     make_centered_label_with_font(screen, kBootContentX, kBootTitleY, kBootContentW, kBootTitleH,
                                   kBootTitleText, &lv_font_montserrat_16, "boot title create failed");
-    g_boot_status_label = make_centered_label_with_font(screen, kBootContentX, kBootStatusY, kBootContentW,
+    s_boot_status_label = make_centered_label_with_font(screen, kBootContentX, kBootStatusY, kBootContentW,
                                                         kBootStatusH, kBootInitialStatusText,
                                                         &lv_font_montserrat_16, "boot status label create failed");
-    g_boot_detail_label = make_centered_label_with_font(screen, kBootContentX, kBootDetailY, kBootContentW,
+    s_boot_detail_label = make_centered_label_with_font(screen, kBootContentX, kBootDetailY, kBootContentW,
                                                         kBootDetailH, kBootInitialDetailText,
                                                         &lv_font_montserrat_14, "boot detail label create failed");
     make_centered_label_with_font(screen, kBootContentX, kBootVersionY, kBootContentW, kBootVersionH,
@@ -122,21 +134,21 @@ void show_boot_screen()
     if (!s_boot_anim_canvas_buffer) {
         s_boot_anim_canvas_buffer = alloc_canvas_buffer(BOOT_ANIM_WIDTH, BOOT_ANIM_HEIGHT);
     }
-    g_boot_anim_canvas = nullptr;
+    s_boot_anim_canvas = nullptr;
     if (s_boot_anim_canvas_buffer) {
-        g_boot_anim_canvas = lv_canvas_create(screen);
-        if (!g_boot_anim_canvas) {
+        s_boot_anim_canvas = lv_canvas_create(screen);
+        if (!s_boot_anim_canvas) {
             ESP_LOGW(TAG, BOOT_ANIM_CANVAS_CREATE_FAILED_LOG);
         }
     }
-    if (g_boot_anim_canvas) {
-        configure_canvas_base(g_boot_anim_canvas,
+    if (s_boot_anim_canvas) {
+        configure_canvas_base(s_boot_anim_canvas,
                               s_boot_anim_canvas_buffer,
                               kBootAnimCanvasX,
                               kBootAnimCanvasY,
                               BOOT_ANIM_WIDTH,
                               BOOT_ANIM_HEIGHT);
-        lv_canvas_fill_bg(g_boot_anim_canvas, lv_color_white(), LV_OPA_COVER);
+        lv_canvas_fill_bg(s_boot_anim_canvas, lv_color_white(), LV_OPA_COVER);
         draw_boot_anim_frame_index(0);
     }
     lv_refr_now(nullptr);
@@ -150,11 +162,11 @@ void update_boot_screen(int percent, const char *status, const char *detail)
         percent = 100;
     }
     if (Lvgl_lock(kBootScreenLvglLockTimeoutMs)) {
-        if (g_boot_status_label) {
-            set_label_text_if_changed(g_boot_status_label, status);
+        if (s_boot_status_label) {
+            set_label_text_if_changed(s_boot_status_label, status);
         }
-        if (g_boot_detail_label) {
-            set_label_text_if_changed(g_boot_detail_label, detail);
+        if (s_boot_detail_label) {
+            set_label_text_if_changed(s_boot_detail_label, detail);
         }
         lv_refr_now(nullptr);
         Lvgl_unlock();
@@ -167,10 +179,10 @@ void finish_boot_screen()
         lv_obj_clean(lv_scr_act());
         clear_clock_object_refs();
         clear_info_object_refs();
-        g_boot_status_label = nullptr;
-        g_boot_detail_label = nullptr;
-        g_boot_anim_canvas = nullptr;
-        g_active_work_page = first_enabled_work_page();
+        s_boot_status_label = nullptr;
+        s_boot_detail_label = nullptr;
+        s_boot_anim_canvas = nullptr;
+        active_work_page_store(first_enabled_work_page());
         show_active_work_page();
         lv_refr_now(nullptr);
         Lvgl_unlock();

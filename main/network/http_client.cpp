@@ -3,9 +3,11 @@
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
+#include "http_timeout_state.h"
 #include "network_task_guards.h"
 #include "qweather_ca.h"
 #include "scoped_heap_buffer.h"
+#include "scoped_http_client.h"
 
 namespace {
 constexpr size_t kGzipHeaderProbeSize = 3;
@@ -83,37 +85,6 @@ static_assert(array_count(kHttpLogTexts) > 0,
               "HTTP log format guard must cover HTTP log formats");
 static_assert(cstr_array_nonempty(kHttpLogTexts), "HTTP log format texts must be non-empty");
 
-class HttpClientHandle {
-public:
-    explicit HttpClientHandle(const esp_http_client_config_t *config)
-        : client_(config ? esp_http_client_init(config) : nullptr)
-    {
-    }
-
-    ~HttpClientHandle()
-    {
-        if (client_) {
-            esp_http_client_cleanup(client_);
-        }
-    }
-
-    HttpClientHandle(const HttpClientHandle &) = delete;
-    HttpClientHandle &operator=(const HttpClientHandle &) = delete;
-
-    esp_http_client_handle_t get() const
-    {
-        return client_;
-    }
-
-    explicit operator bool() const
-    {
-        return client_ != nullptr;
-    }
-
-private:
-    esp_http_client_handle_t client_ = nullptr;
-};
-
 bool is_qweather_url(const char *url)
 {
     return url &&
@@ -138,7 +109,7 @@ bool compute_http_timeout_ms(int *timeout_ms)
     if (!timeout_ms) {
         return false;
     }
-    *timeout_ms = g_http_timeout_ms;
+    *timeout_ms = network_http_timeout_ms_load();
     int remaining_ms = boot_sync_remaining_ms();
     if (remaining_ms <= 0) {
         ESP_LOGW(TAG, "%s", kHttpBootBudgetExhaustedLog);
@@ -341,7 +312,7 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
     int status = 0;
     int64_t content_length = 0;
     {
-        HttpClientHandle client(&config);
+    ScopedHttpClient client(&config);
         if (!client) {
             ESP_LOGW(TAG, "%s", kHttpClientInitFailedLog);
             return ESP_FAIL;

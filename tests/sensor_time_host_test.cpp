@@ -1,6 +1,8 @@
 // 验证共享时间可信度、夜间窗口、整点归一化和天气同步时刻。
 #include "sensor_time.h"
 
+#include "app_time_constants.h"
+
 #include <assert.h>
 #include <stdlib.h>
 
@@ -8,8 +10,8 @@ namespace {
 struct tm local_value(int year, int month, int day, int hour, int minute, int second)
 {
     struct tm value = {};
-    value.tm_year = year - 1900;
-    value.tm_mon = month - 1;
+    value.tm_year = year - kTmYearOffset;
+    value.tm_mon = month - kTmMonthOffset;
     value.tm_mday = day;
     value.tm_hour = hour;
     value.tm_min = minute;
@@ -33,8 +35,8 @@ void expect_local_time(time_t value,
 {
     struct tm local = {};
     localtime_r(&value, &local);
-    assert(local.tm_year + 1900 == expected_year);
-    assert(local.tm_mon + 1 == expected_month);
+    assert(local.tm_year + kTmYearOffset == expected_year);
+    assert(local.tm_mon + kTmMonthOffset == expected_month);
     assert(local.tm_mday == expected_day);
     assert(local.tm_hour == expected_hour);
     assert(local.tm_min == expected_minute);
@@ -44,6 +46,9 @@ void expect_local_time(time_t value,
 
 int main()
 {
+    static_assert(kTmYearOffset == 1900);
+    static_assert(kTmMonthOffset == 1);
+
     setenv("TZ", "Asia/Shanghai", 1);
     tzset();
 

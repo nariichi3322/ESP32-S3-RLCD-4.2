@@ -5,6 +5,8 @@
 #include "network_services.h"
 #include "network_https_resources.h"
 #include "network_task_guards.h"
+#include "scoped_heap_buffer.h"
+#include "scoped_http_client.h"
 #include "xiaozhi_activation_storage.h"
 
 #include <esp_app_desc.h>
@@ -114,24 +116,22 @@ bool perform_activation_http_request(const esp_http_client_config_t &config,
         ESP_LOGW(TAG, "xiaozhi activation deferred: TLS session is busy");
         return false;
     }
-    esp_http_client_handle_t client = esp_http_client_init(&config);
+    ScopedHttpClient client(&config);
     if (!client) {
         return false;
     }
-    if (!configure_activation_http_request(client,
+    if (!configure_activation_http_request(client.get(),
                                            user_agent,
                                            device_id,
                                            client_id,
                                            body)) {
-        esp_http_client_cleanup(client);
         return false;
     }
     {
         NetworkDisplayDmaGuard display_guard(true);
-        result->err = esp_http_client_perform(client);
+        result->err = esp_http_client_perform(client.get());
     }
-    result->status = esp_http_client_get_status_code(client);
-    esp_http_client_cleanup(client);
+    result->status = esp_http_client_get_status_code(client.get());
     return true;
 }
 } // namespace
@@ -161,14 +161,17 @@ bool xiaozhi_request_activation(XiaozhiActivationResponse *response)
     if (!response) {
         return false;
     }
+    xiaozhi_reset_activation_response(response);
     char device_id[kXiaozhiDeviceIdSize] = {};
     char client_id[kXiaozhiClientIdSize] = {};
     xiaozhi_format_device_id(device_id, sizeof(device_id));
     if (!xiaozhi_load_or_create_client_id(client_id, sizeof(client_id))) {
         return false;
     }
-    char *body = static_cast<char *>(
-        heap_caps_calloc(1, kActivationRequestSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    ScopedHeapBuffer<char> body(
+        static_cast<char *>(heap_caps_calloc(
+            1, kActivationRequestSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)),
+        kActivationRequestSize);
     if (!body) {
         return false;
     }
@@ -179,8 +182,8 @@ bool xiaozhi_request_activation(XiaozhiActivationResponse *response)
     const esp_app_desc_t *app = esp_app_get_description();
     const esp_partition_t *running = esp_ota_get_running_partition();
     int written = snprintf(
-        body,
-        kActivationRequestSize,
+        body.data(),
+        body.size(),
         "{\"version\":2,\"language\":\"zh-CN\",\"flash_size\":%lu,"
         "\"minimum_free_heap_size\":\"%lu\",\"mac_address\":\"%s\",\"uuid\":\"%s\","
         "\"chip_model_name\":\"esp32s3\",\"chip_info\":{\"model\":%d,\"cores\":%d,\"revision\":%d,\"features\":%lu},"
@@ -204,8 +207,7 @@ bool xiaozhi_request_activation(XiaozhiActivationResponse *response)
         kDisplayWidth,
         kDisplayHeight,
         device_id);
-    if (written < 0 || static_cast<size_t>(written) >= kActivationRequestSize) {
-        free(body);
+    if (written < 0 || static_cast<size_t>(written) >= body.size()) {
         return false;
     }
     esp_http_client_config_t config = {};
@@ -222,12 +224,10 @@ bool xiaozhi_request_activation(XiaozhiActivationResponse *response)
                                          user_agent,
                                          device_id,
                                          client_id,
-                                         body,
+                                         body.data(),
                                          &result)) {
-        free(body);
         return false;
     }
-    free(body);
     ESP_LOGI(TAG,
              "xiaozhi activation result: status=%d err=%s response_len=%u",
              result.status,

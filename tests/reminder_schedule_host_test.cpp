@@ -47,6 +47,8 @@ int main()
     assert(!reminder_targets_same_local_minute(now, 25, 0, 10U * 1000U));
     assert(!reminder_targets_same_local_minute(now, 13, 60, 10U * 1000U));
     assert(!reminder_targets_same_local_minute(now, 13, 0, 0));
+    assert(!reminder_targets_same_local_minute(INT64_MAX, 13, 0, 1));
+    assert(!reminder_targets_same_local_minute(INT64_MAX - 9, 13, 0, 10));
 
     assert(pomodoro_display_seconds(60000U) == 60U);
     assert(pomodoro_display_seconds(59999U) == 60U);

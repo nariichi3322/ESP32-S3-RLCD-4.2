@@ -124,12 +124,12 @@ void show_page(lv_obj_t *page)
 
 lv_obj_t *active_work_page_root()
 {
-    if (g_low_battery_mode || g_setup_portal_active) {
-        g_active_work_page = kFallbackWorkPage;
-        return build_work_page_root(g_active_work_page);
+    if (battery_low_mode_load() || setup_portal_active_load()) {
+        active_work_page_store(kFallbackWorkPage);
+        return build_work_page_root(kFallbackWorkPage);
     }
     ensure_active_work_page_enabled();
-    return build_work_page_root(g_active_work_page);
+    return build_work_page_root(active_work_page_load());
 }
 
 void show_active_work_page()
@@ -184,20 +184,13 @@ void set_setup_panel_visible(bool visible)
 
 bool update_low_battery_state()
 {
-    bool previous = g_low_battery_mode;
-    if (g_battery_percent >= 0) {
-        if (!g_low_battery_mode && g_battery_percent < kLowBatteryEnterPercent) {
-            g_low_battery_mode = true;
-        } else if (g_low_battery_mode && g_battery_percent >= kLowBatteryExitPercent) {
-            g_low_battery_mode = false;
-        }
-    }
-    return previous != g_low_battery_mode;
+    return battery_runtime_low_mode_update(kLowBatteryEnterPercent,
+                                           kLowBatteryExitPercent);
 }
 
 void apply_clock_mode_visibility(bool setup_active)
 {
-    bool low = g_low_battery_mode;
+    bool low = battery_low_mode_load();
     set_obj_visible(g_second_canvas, !low);
     set_work_page_day_progress_visible(kWorkPageWeatherClock, !low);
     set_obj_visible(g_second_progress_canvas, !low);
@@ -219,7 +212,7 @@ void update_alert_pill(bool show, int alert_index)
     WeatherAlertData alert = {};
     get_weather_snapshot(nullptr, &alert);
     bool visible = show &&
-                   !g_low_battery_mode &&
+                   !battery_low_mode_load() &&
                    alert.active &&
                    alert.count > 0;
     set_obj_visible(g_alert_pill, visible);
@@ -235,7 +228,7 @@ void update_alert_pill(bool show, int alert_index)
 
 bool update_top_status_icons(bool alert_visible)
 {
-    bool allow = !alert_visible && !g_low_battery_mode && !g_setup_portal_active;
+    bool allow = !alert_visible && !battery_low_mode_load() && !setup_portal_active_load();
     bool changed = false;
     changed |= set_obj_visible(g_chime_status_icon_canvas,
                                allow && (g_hourly_chime_enabled || g_hourly_chime_all_day));

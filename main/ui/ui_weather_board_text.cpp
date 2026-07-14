@@ -2,6 +2,7 @@
 #include "ui_weather_board_text.h"
 
 #include "app_constexpr.h"
+#include "app_time_constants.h"
 #include "ui_text_format.h"
 
 #include <stdio.h>
@@ -9,8 +10,6 @@
 #include <time.h>
 
 namespace {
-constexpr int kTmYearOffset = 1900;
-constexpr int kTmMonthOffset = 1;
 constexpr const char *kForecastDateFormat = "%d-%d-%d";
 constexpr int kForecastDateFieldCount = 3;
 constexpr int kWeatherBoardWeekdayCount = 7;

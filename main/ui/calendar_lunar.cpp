@@ -3,6 +3,7 @@
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
+#include "app_time_constants.h"
 
 #include "app_state.h"
 
@@ -63,8 +64,6 @@ static const char *const kSolarTermNames[] = {
     "寒露", "霜降", "立冬", "小雪", "大雪", "冬至",
 };
 
-static constexpr int kTmYearOffset = 1900;
-static constexpr int kTmMonthOffset = 1;
 static constexpr int kFirstGregorianMonth = 1;
 static constexpr int kLastGregorianMonth = 12;
 static constexpr int kFebruaryMonth = 2;

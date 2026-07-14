@@ -2,9 +2,6 @@
 #include "sensor_services.h"
 
 #include "app_constexpr.h"
-#include "ui_views.h"
-
-#include <errno.h>
 
 #define POWER_PM_LOCK_MUTEX_UNAVAILABLE_LOG_FORMAT "%s pm lock mutex unavailable"
 #define POWER_PM_LOCK_MUTEX_TIMEOUT_LOG_FORMAT "%s pm lock mutex timeout"
@@ -19,25 +16,8 @@
 #define POWER_AUDIO_WAKE_LOCK_CREATE_FAILED_LOG_FORMAT "audio wake pm lock create failed: %s"
 #define POWER_AUDIO_CPU_LOCK_CREATE_FAILED_LOG_FORMAT "audio cpu pm lock create failed: %s"
 #define POWER_DISABLED_LOG_FORMAT "power management disabled in sdkconfig"
-#define POWER_RTC_INVALID_TIME_LOG_FORMAT "ignore invalid RTC time: %04u-%02u-%02u %02u:%02u:%02u"
-#define POWER_RTC_MKTIME_FAILED_LOG_FORMAT "ignore RTC time: mktime failed"
-#define POWER_RTC_LOCALTIME_FAILED_LOG_FORMAT "ignore RTC time: localtime normalization failed"
-#define POWER_RTC_NORMALIZED_MISMATCH_LOG_FORMAT "ignore normalized RTC time mismatch"
-#define POWER_RTC_SETTIME_FAILED_LOG_FORMAT "set system time from RTC failed errno=%d"
-#define POWER_RTC_RESTORED_LOG_FORMAT "system time restored from RTC: %04u-%02u-%02u %02u:%02u:%02u"
-#define POWER_RTC_SYNC_LOCALTIME_FAILED_LOG_FORMAT "skip RTC sync: localtime failed"
-#define POWER_RTC_SYNC_TIME_NOT_PLAUSIBLE_LOG_FORMAT "skip RTC sync: system time is not plausible"
 
 namespace {
-constexpr uint16_t kRtcMinMonth = 1;
-constexpr uint16_t kRtcMaxMonth = 12;
-constexpr uint16_t kRtcMinDay = 1;
-constexpr uint16_t kRtcMaxDay = 31;
-constexpr uint16_t kRtcMaxHour = 23;
-constexpr uint16_t kRtcMaxMinute = 59;
-constexpr uint16_t kRtcMaxSecond = 59;
-constexpr int kTmYearOffset = 1900;
-constexpr int kTmMonthOffset = 1;
 constexpr const char *kNetworkPmLockName = "network_sync";
 constexpr const char *kAudioPmLockName = "audio_play";
 constexpr const char *kAudioWakePmLockName = "audio_wake_80";
@@ -68,62 +48,11 @@ constexpr const char *const kPowerTexts[] = {
     POWER_AUDIO_WAKE_LOCK_CREATE_FAILED_LOG_FORMAT,
     POWER_AUDIO_CPU_LOCK_CREATE_FAILED_LOG_FORMAT,
     POWER_DISABLED_LOG_FORMAT,
-    POWER_RTC_INVALID_TIME_LOG_FORMAT,
-    POWER_RTC_MKTIME_FAILED_LOG_FORMAT,
-    POWER_RTC_LOCALTIME_FAILED_LOG_FORMAT,
-    POWER_RTC_NORMALIZED_MISMATCH_LOG_FORMAT,
-    POWER_RTC_SETTIME_FAILED_LOG_FORMAT,
-    POWER_RTC_RESTORED_LOG_FORMAT,
-    POWER_RTC_SYNC_LOCALTIME_FAILED_LOG_FORMAT,
-    POWER_RTC_SYNC_TIME_NOT_PLAUSIBLE_LOG_FORMAT,
 };
 
-static_assert(kMinValidYear <= kMaxValidYear, "valid year range must be ordered");
-static_assert(kRtcMinMonth == 1, "RTC month range must start at 1");
-static_assert(kRtcMaxMonth == 12, "RTC month range must end at 12");
-static_assert(kRtcMinDay == 1, "RTC day range must start at 1");
-static_assert(kRtcMaxDay == 31, "RTC day range must end at 31");
-static_assert(kRtcMaxHour == 23, "RTC hour max must stay 23");
-static_assert(kRtcMaxMinute == 59, "RTC minute max must stay 59");
-static_assert(kRtcMaxSecond == 59, "RTC second max must stay 59");
-static_assert(kTmYearOffset == 1900, "struct tm year offset must stay 1900");
-static_assert(kTmMonthOffset == 1, "struct tm month offset must stay 1");
 static_assert(array_count(kPowerTexts) > 0,
               "power text guard must cover names and log texts");
 static_assert(cstr_array_nonempty(kPowerTexts), "power management names and log texts must be non-empty");
-
-bool rtc_time_fields_in_range(const rtcTimeStruct_t &rtc_time)
-{
-    return rtc_time.year >= kMinValidYear &&
-           rtc_time.year <= kMaxValidYear &&
-           rtc_time.month >= kRtcMinMonth &&
-           rtc_time.month <= kRtcMaxMonth &&
-           rtc_time.day >= kRtcMinDay &&
-           rtc_time.day <= kRtcMaxDay &&
-           rtc_time.hour <= kRtcMaxHour &&
-           rtc_time.minute <= kRtcMaxMinute &&
-           rtc_time.second <= kRtcMaxSecond;
-}
-
-bool rtc_date_matches_tm(const rtcTimeStruct_t &rtc_time, const struct tm &local_time)
-{
-    return local_time.tm_year + kTmYearOffset == rtc_time.year &&
-           local_time.tm_mon + kTmMonthOffset == rtc_time.month &&
-           local_time.tm_mday == rtc_time.day;
-}
-
-void copy_rtc_time_to_tm(const rtcTimeStruct_t &rtc_time, struct tm *tm_time)
-{
-    if (!tm_time) {
-        return;
-    }
-    tm_time->tm_year = rtc_time.year - kTmYearOffset;
-    tm_time->tm_mon = rtc_time.month - kTmMonthOffset;
-    tm_time->tm_mday = rtc_time.day;
-    tm_time->tm_hour = rtc_time.hour;
-    tm_time->tm_min = rtc_time.minute;
-    tm_time->tm_sec = rtc_time.second;
-}
 } // namespace
 
 #if CONFIG_PM_ENABLE
@@ -131,6 +60,14 @@ void copy_rtc_time_to_tm(const rtcTimeStruct_t &rtc_time, struct tm *tm_time)
 
 namespace {
 SemaphoreHandle_t s_pm_lock_mutex = nullptr;
+esp_pm_lock_handle_t s_network_pm_lock = nullptr;
+esp_pm_lock_handle_t s_audio_pm_lock = nullptr;
+esp_pm_lock_handle_t s_audio_wake_pm_lock = nullptr;
+esp_pm_lock_handle_t s_audio_cpu_pm_lock = nullptr;
+int s_network_pm_lock_depth = 0;
+int s_audio_pm_lock_depth = 0;
+int s_audio_wake_pm_lock_depth = 0;
+int s_audio_cpu_pm_lock_depth = 0;
 constexpr uint32_t kPmLockMutexTimeoutMs = 1000;
 constexpr TickType_t kPmLockMutexTimeout = pdMS_TO_TICKS(kPmLockMutexTimeoutMs);
 static_assert(kPmLockMutexTimeoutMs > 0, "PM lock mutex timeout must be positive");
@@ -237,24 +174,24 @@ void init_power_management()
     if (!s_pm_lock_mutex) {
         ESP_LOGW(TAG, POWER_MUTEX_CREATE_FAILED_LOG_FORMAT);
     }
-    err = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, kNetworkPmLockName, &g_network_pm_lock);
+    err = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, kNetworkPmLockName, &s_network_pm_lock);
     if (err != ESP_OK) {
-        g_network_pm_lock = nullptr;
+        s_network_pm_lock = nullptr;
         ESP_LOGW(TAG, POWER_NETWORK_LOCK_CREATE_FAILED_LOG_FORMAT, esp_err_to_name(err));
     }
-    err = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, kAudioPmLockName, &g_audio_pm_lock);
+    err = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, kAudioPmLockName, &s_audio_pm_lock);
     if (err != ESP_OK) {
-        g_audio_pm_lock = nullptr;
+        s_audio_pm_lock = nullptr;
         ESP_LOGW(TAG, POWER_AUDIO_LOCK_CREATE_FAILED_LOG_FORMAT, esp_err_to_name(err));
     }
-    err = esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, kAudioWakePmLockName, &g_audio_wake_pm_lock);
+    err = esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, kAudioWakePmLockName, &s_audio_wake_pm_lock);
     if (err != ESP_OK) {
-        g_audio_wake_pm_lock = nullptr;
+        s_audio_wake_pm_lock = nullptr;
         ESP_LOGW(TAG, POWER_AUDIO_WAKE_LOCK_CREATE_FAILED_LOG_FORMAT, esp_err_to_name(err));
     }
-    err = esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, kAudioCpuPmLockName, &g_audio_cpu_pm_lock);
+    err = esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, kAudioCpuPmLockName, &s_audio_cpu_pm_lock);
     if (err != ESP_OK) {
-        g_audio_cpu_pm_lock = nullptr;
+        s_audio_cpu_pm_lock = nullptr;
         ESP_LOGW(TAG, POWER_AUDIO_CPU_LOCK_CREATE_FAILED_LOG_FORMAT, esp_err_to_name(err));
     }
 #else
@@ -265,14 +202,14 @@ void init_power_management()
 void acquire_network_awake_lock()
 {
 #if CONFIG_PM_ENABLE
-    acquire_pm_lock(g_network_pm_lock, &g_network_pm_lock_depth, kNetworkPmLogName);
+    acquire_pm_lock(s_network_pm_lock, &s_network_pm_lock_depth, kNetworkPmLogName);
 #endif
 }
 
 void release_network_awake_lock()
 {
 #if CONFIG_PM_ENABLE
-    release_pm_lock(g_network_pm_lock, &g_network_pm_lock_depth, kNetworkPmLogName);
+    release_pm_lock(s_network_pm_lock, &s_network_pm_lock_depth, kNetworkPmLogName);
 #endif
 }
 
@@ -282,7 +219,7 @@ bool network_awake_lock_active()
     if (!take_pm_lock_mutex(kNetworkPmLogName)) {
         return true;
     }
-    bool active = g_network_pm_lock_depth > 0;
+    bool active = s_network_pm_lock_depth > 0;
     give_pm_lock_mutex();
     return active;
 #else
@@ -300,10 +237,10 @@ bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out)
     if (!take_pm_lock_mutex(kNetworkPmLogName)) {
         return false;
     }
-    out->network = g_network_pm_lock_depth;
-    out->audio = g_audio_pm_lock_depth;
-    out->audio_wake = g_audio_wake_pm_lock_depth;
-    out->audio_cpu = g_audio_cpu_pm_lock_depth;
+    out->network = s_network_pm_lock_depth;
+    out->audio = s_audio_pm_lock_depth;
+    out->audio_wake = s_audio_wake_pm_lock_depth;
+    out->audio_cpu = s_audio_cpu_pm_lock_depth;
     give_pm_lock_mutex();
 #endif
     return true;
@@ -312,8 +249,8 @@ bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out)
 void acquire_audio_awake_lock()
 {
 #if CONFIG_PM_ENABLE
-    acquire_pm_lock(g_audio_pm_lock, &g_audio_pm_lock_depth, kAudioPmLogName);
-    acquire_pm_lock(g_audio_wake_pm_lock, &g_audio_wake_pm_lock_depth, kAudioWakePmLogName);
+    acquire_pm_lock(s_audio_pm_lock, &s_audio_pm_lock_depth, kAudioPmLogName);
+    acquire_pm_lock(s_audio_wake_pm_lock, &s_audio_wake_pm_lock_depth, kAudioWakePmLogName);
     set_audio_performance_mode(true);
 #endif
 }
@@ -322,77 +259,19 @@ void release_audio_awake_lock()
 {
 #if CONFIG_PM_ENABLE
     set_audio_performance_mode(false);
-    release_pm_lock(g_audio_wake_pm_lock, &g_audio_wake_pm_lock_depth, kAudioWakePmLogName);
-    release_pm_lock(g_audio_pm_lock, &g_audio_pm_lock_depth, kAudioPmLogName);
+    release_pm_lock(s_audio_wake_pm_lock, &s_audio_wake_pm_lock_depth, kAudioWakePmLogName);
+    release_pm_lock(s_audio_pm_lock, &s_audio_pm_lock_depth, kAudioPmLogName);
 #endif
 }
 
 void set_audio_performance_mode(bool enabled)
 {
 #if CONFIG_PM_ENABLE
-    set_pm_lock_active(g_audio_cpu_pm_lock,
-                       &g_audio_cpu_pm_lock_depth,
+    set_pm_lock_active(s_audio_cpu_pm_lock,
+                       &s_audio_cpu_pm_lock_depth,
                        kAudioCpuPmLogName,
                        enabled);
 #else
     (void)enabled;
 #endif
-}
-
-void restore_system_time_from_rtc()
-{
-    rtcTimeStruct_t rtc_time = {};
-    Rtc_GetTime(&rtc_time);
-    if (!rtc_time_fields_in_range(rtc_time)) {
-        ESP_LOGW(TAG, POWER_RTC_INVALID_TIME_LOG_FORMAT,
-                 rtc_time.year, rtc_time.month, rtc_time.day,
-                 rtc_time.hour, rtc_time.minute, rtc_time.second);
-        return;
-    }
-    struct tm tm_time = {};
-    copy_rtc_time_to_tm(rtc_time, &tm_time);
-    time_t epoch = mktime(&tm_time);
-    if (epoch == (time_t)-1) {
-        ESP_LOGW(TAG, POWER_RTC_MKTIME_FAILED_LOG_FORMAT);
-        return;
-    }
-    struct tm normalized = {};
-    if (!localtime_r(&epoch, &normalized)) {
-        ESP_LOGW(TAG, POWER_RTC_LOCALTIME_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!rtc_date_matches_tm(rtc_time, normalized)) {
-        ESP_LOGW(TAG, POWER_RTC_NORMALIZED_MISMATCH_LOG_FORMAT);
-        return;
-    }
-    struct timeval now = {};
-    now.tv_sec = epoch;
-    if (settimeofday(&now, nullptr) != 0) {
-        ESP_LOGW(TAG, POWER_RTC_SETTIME_FAILED_LOG_FORMAT, errno);
-        return;
-    }
-    ESP_LOGI(TAG, POWER_RTC_RESTORED_LOG_FORMAT,
-             rtc_time.year, rtc_time.month, rtc_time.day,
-             rtc_time.hour, rtc_time.minute, rtc_time.second);
-}
-
-void sync_rtc_from_system_time()
-{
-    time_t now;
-    time(&now);
-    struct tm local = {};
-    if (!localtime_r(&now, &local)) {
-        ESP_LOGW(TAG, POWER_RTC_SYNC_LOCALTIME_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!is_tm_plausible(local)) {
-        ESP_LOGW(TAG, POWER_RTC_SYNC_TIME_NOT_PLAUSIBLE_LOG_FORMAT);
-        return;
-    }
-    Rtc_SetTime(local.tm_year + kTmYearOffset,
-                local.tm_mon + kTmMonthOffset,
-                local.tm_mday,
-                local.tm_hour,
-                local.tm_min,
-                local.tm_sec);
 }

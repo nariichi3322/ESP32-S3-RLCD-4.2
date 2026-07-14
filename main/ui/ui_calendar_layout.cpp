@@ -2,12 +2,12 @@
 #include "ui_calendar_layout.h"
 
 #include "app_text_format.h"
+#include "app_time_constants.h"
 
 namespace {
 
 constexpr int kCalendarVisibleCellLimit =
     kCalendarWeekdayCount * kCalendarVisibleRowCount;
-constexpr int kTmYearOffset = 1900;
 constexpr int kMonthsPerYear = 12;
 
 } // namespace

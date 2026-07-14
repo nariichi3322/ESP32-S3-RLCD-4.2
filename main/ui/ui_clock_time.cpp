@@ -1,11 +1,10 @@
 // 实现天气时钟不依赖 LVGL 的时间状态与整点报时边界规则。
 #include "ui_clock_time.h"
 
+#include "app_time_constants.h"
 #include "ui_text_format.h"
 
 namespace {
-constexpr int kTmYearOffset = 1900;
-constexpr int kTmMonthOffset = 1;
 constexpr int kSecondsPerMinute = 60;
 constexpr int kMinutesPerHour = 60;
 constexpr int kHoursPerDay = 24;

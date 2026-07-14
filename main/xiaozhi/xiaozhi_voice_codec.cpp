@@ -21,6 +21,8 @@ VoiceCodecRuntime::~VoiceCodecRuntime()
 
 bool VoiceCodecRuntime::initialize(int output_sample_rate)
 {
+    release();
+
     esp_opus_enc_config_t encoder_cfg = ESP_OPUS_ENC_CONFIG_DEFAULT();
     encoder_cfg.sample_rate = ESP_AUDIO_SAMPLE_RATE_16K;
     encoder_cfg.channel = ESP_AUDIO_MONO;
@@ -77,6 +79,9 @@ bool VoiceCodecRuntime::initialize(int output_sample_rate)
                              MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
         ready = encode_buffers != nullptr;
     }
+    if (!ready) {
+        release();
+    }
     return ready;
 }
 
@@ -96,4 +101,6 @@ void VoiceCodecRuntime::release()
     }
     free(encode_buffers);
     encode_buffers = nullptr;
+    encoder_input_size = 0;
+    encoder_output_size = 0;
 }

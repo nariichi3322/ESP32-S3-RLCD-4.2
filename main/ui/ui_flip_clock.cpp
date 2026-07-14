@@ -7,6 +7,7 @@
 #include "sensor_services.h"
 #include "ui_battery.h"
 #include "ui_clock_time.h"
+#include "ui_draw_cache.h"
 #include "ui_flip_sensor_mood.h"
 #include "ui_inverted_clock_card.h"
 #include "ui_text_format.h"
@@ -26,6 +27,7 @@ static constexpr const int (&kCardX)[kCardCount] = inverted_clock_card::kX;
 static constexpr int kHourCardIndex = 0;
 static constexpr int kMinuteCardIndex = 1;
 static constexpr int kSecondCardIndex = 2;
+static constexpr int kTrendDrawCacheInvalid = 99;
 static constexpr int kFlipTopLineX = 18;
 static constexpr int kFlipTopLineY = 54;
 static constexpr int kFlipTopLineW = 364;
@@ -76,6 +78,15 @@ lv_color_t *s_flip_clock_temp_mood_canvas_buffer;
 lv_color_t *s_flip_clock_humi_mood_canvas_buffer;
 lv_color_t *s_flip_clock_temp_trend_canvas_buffer;
 lv_color_t *s_flip_clock_humi_trend_canvas_buffer;
+int s_last_flip_clock_hour = -1;
+int s_last_flip_clock_minute = -1;
+int s_last_flip_clock_second = -1;
+int s_last_flip_sensor_minute = -1;
+int s_last_flip_temp_mood = -1;
+int s_last_flip_humi_mood = -1;
+int s_last_flip_temp_trend = kTrendDrawCacheInvalid;
+int s_last_flip_humi_trend = kTrendDrawCacheInvalid;
+int s_last_flip_date_key = -1;
 
 static_assert(array_count(kCardX) == kCardCount,
               "flip clock card X table must match card count");
@@ -222,18 +233,18 @@ bool update_flip_sensor_text()
                                        g_flip_clock_humidity_bold_y_label);
     changed |= update_mood_icon(g_flip_clock_temp_mood_canvas,
                                 temp_mood,
-                                &g_last_flip_temp_mood,
+                                &s_last_flip_temp_mood,
                                 temp_mood_icon_bits(temp_mood));
     changed |= update_mood_icon(g_flip_clock_humi_mood_canvas,
                                 humi_mood,
-                                &g_last_flip_humi_mood,
+                                &s_last_flip_humi_mood,
                                 humi_mood_icon_bits(humi_mood));
     changed |= update_flip_trend_icon(g_flip_clock_temp_trend_canvas,
                                       sensor_ok ? temperature_trend : 0,
-                                      &g_last_flip_temp_trend);
+                                      &s_last_flip_temp_trend);
     changed |= update_flip_trend_icon(g_flip_clock_humi_trend_canvas,
                                       sensor_ok ? humidity_trend : 0,
-                                      &g_last_flip_humi_trend);
+                                      &s_last_flip_humi_trend);
     return changed;
 }
 
@@ -537,18 +548,31 @@ void build_flip_date_panel(lv_obj_t *screen)
 
 void reset_flip_clock_refresh_cache()
 {
-    g_last_flip_clock_hour = -1;
-    g_last_flip_clock_minute = -1;
-    g_last_flip_clock_second = -1;
-    g_last_flip_sensor_minute = -1;
-    g_last_flip_temp_mood = -1;
-    g_last_flip_humi_mood = -1;
-    g_last_flip_temp_trend = 99;
-    g_last_flip_humi_trend = 99;
-    g_last_flip_date_key = -1;
+    s_last_flip_clock_hour = -1;
+    s_last_flip_clock_minute = -1;
+    s_last_flip_clock_second = -1;
+    s_last_flip_sensor_minute = -1;
+    s_last_flip_temp_mood = -1;
+    s_last_flip_humi_mood = -1;
+    s_last_flip_temp_trend = kTrendDrawCacheInvalid;
+    s_last_flip_humi_trend = kTrendDrawCacheInvalid;
+    s_last_flip_date_key = -1;
 }
 
 } // namespace
+
+void invalidate_flip_clock_draw_cache()
+{
+    reset_flip_clock_refresh_cache();
+}
+
+void invalidate_flip_clock_time_sensor_draw_cache()
+{
+    s_last_flip_clock_hour = -1;
+    s_last_flip_clock_minute = -1;
+    s_last_flip_clock_second = -1;
+    s_last_flip_sensor_minute = -1;
+}
 
 bool update_flip_clock_sensor_status()
 {
@@ -589,7 +613,7 @@ void build_flip_clock_page()
     build_flip_sensor_panel(screen);
     build_flip_date_panel(screen);
 
-    update_battery_segments(g_flip_clock_battery_segments, g_battery_percent);
+    update_battery_segments(g_flip_clock_battery_segments, battery_percent_load());
     reset_flip_clock_refresh_cache();
 }
 
@@ -600,25 +624,25 @@ bool update_flip_clock_page(const struct tm &local)
         return false;
     }
     int last_values[kCardCount] = {
-        g_last_flip_clock_hour,
-        g_last_flip_clock_minute,
-        g_last_flip_clock_second,
+        s_last_flip_clock_hour,
+        s_last_flip_clock_minute,
+        s_last_flip_clock_second,
     };
     bool changed = update_inverted_clock_cards(local,
                                                 g_flip_clock_card_canvas,
                                                 last_values);
-    g_last_flip_clock_hour = last_values[kHourCardIndex];
-    g_last_flip_clock_minute = last_values[kMinuteCardIndex];
-    g_last_flip_clock_second = last_values[kSecondCardIndex];
+    s_last_flip_clock_hour = last_values[kHourCardIndex];
+    s_last_flip_clock_minute = last_values[kMinuteCardIndex];
+    s_last_flip_clock_second = last_values[kSecondCardIndex];
     ClockUiTimeSnapshot time_snapshot = clock_ui_time_snapshot(local);
     int minute = local.tm_min;
-    if (time_snapshot.date_key != g_last_flip_date_key) {
-        g_last_flip_date_key = time_snapshot.date_key;
+    if (time_snapshot.date_key != s_last_flip_date_key) {
+        s_last_flip_date_key = time_snapshot.date_key;
         changed |= update_flip_date_text(local);
     }
 
-    if (minute != g_last_flip_sensor_minute) {
-        g_last_flip_sensor_minute = minute;
+    if (minute != s_last_flip_sensor_minute) {
+        s_last_flip_sensor_minute = minute;
         changed |= update_flip_sensor_text();
     }
     return changed;

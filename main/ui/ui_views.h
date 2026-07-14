@@ -10,14 +10,16 @@
 #include "ui_settings_feedback.h"
 #include "ui_settings_navigation.h"
 #include "ui_status_gif.h"
+#include "ui_task_notify.h"
 #include "ui_time_format.h"
 #include "ui_widgets.h"
 #include "ui_work_page_catalog.h"
+#include "wifi_portal_state.h"
+#include "wifi_radio_state.h"
 
-void notify_ui_task();
 inline bool wifi_radio_on_for_status_icon()
 {
-    return g_wifi_radio_on;
+    return wifi_radio_on_load();
 }
 constexpr const char *kClockWeatherCityPlaceholder = "--";
 constexpr const char *kClockWeatherInfoWaitingText = "等待数据";
@@ -65,7 +67,8 @@ bool update_low_battery_state();
 void apply_clock_mode_visibility(bool setup_active);
 void update_alert_pill(bool show, int alert_index = 0);
 bool update_top_status_icons(bool alert_visible);
-void draw_boot_anim_frame_index(int frame);
+void prepare_boot_animation();
+void request_boot_animation_stop();
 void boot_anim_task(void *);
 void finish_boot_anim_to_last_frame();
 void show_boot_screen();

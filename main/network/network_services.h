@@ -1,6 +1,7 @@
 // 声明配网、Wi-Fi、HTTP、天气、NTP、OTA 调度等网络服务接口。
 #pragma once
 #include "app_state.h"
+#include "esp_http_server.h"
 #include "network_form.h"
 #include "network_gzip.h"
 #include "network_https_resources.h"
@@ -11,6 +12,7 @@
 #include "qweather_icons.h"
 #include "qweather_url.h"
 #include "wifi_portal_pages.h"
+#include "wifi_portal_state.h"
 
 struct HttpBuffer {
     char *data;
@@ -52,6 +54,7 @@ void service_wifi_radio_stop_when_idle();
 void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, void *event_data);
 void init_wifi();
 bool perform_ntp_sync(int max_retries = 30);
+time_t get_last_ntp_sync_time();
 int boot_sync_remaining_ms();
 // ESP32-S3 的 TLS 硬件密码锁不能被并发握手安全共享；所有 HTTPS/WSS 建连经此锁串行化。
 bool init_network_http_transaction_lock();
@@ -96,6 +99,7 @@ void get_weather_full_snapshot(WeatherData *weather,
 void get_weather_snapshot(WeatherData *weather, WeatherAlertData *alert);
 void get_weather_forecast_snapshot(WeatherForecastData *forecast);
 void get_weather_air_snapshot(WeatherAirData *air);
+time_t get_last_weather_sync_time();
 bool weather_extended_data_ready();
 bool perform_weather_update();
 void load_daily_saying_cache();

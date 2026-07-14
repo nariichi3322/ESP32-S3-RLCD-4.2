@@ -2,6 +2,7 @@
 #include "ui_object_refs.h"
 
 #include "app_state.h"
+#include "ui_draw_cache.h"
 #include "ui_progress.h"
 
 namespace {
@@ -139,25 +140,12 @@ void clear_history_page_refs()
 
 void clear_ui_draw_cache_state()
 {
-    g_last_ui_second = -1;
-    g_last_ui_minute = -1;
-    g_last_ui_date_key = -1;
-    g_last_ui_date_page = -1;
-    g_last_second_progress_filled = -1;
-    g_last_status_gif_frame = -1;
-    g_last_flip_clock_hour = -1;
-    g_last_flip_clock_minute = -1;
-    g_last_flip_clock_second = -1;
-    g_last_flip_temp_mood = -1;
-    g_last_flip_humi_mood = -1;
-    g_last_flip_temp_trend = 99;
-    g_last_flip_humi_trend = 99;
-    g_last_flip_date_key = -1;
-    g_last_flip_sensor_minute = -1;
-    g_last_temp_trend_drawn = 99;
-    g_last_humi_trend_drawn = 99;
-    g_last_history_drawn_version = (uint32_t)-1;
-    g_last_history_drawn_hour = -1;
+    invalidate_clock_time_draw_cache();
+    invalidate_clock_second_progress_draw_cache();
+    invalidate_status_gif_draw_cache();
+    invalidate_flip_clock_draw_cache();
+    invalidate_work_status_draw_cache();
+    invalidate_history_draw_cache();
 }
 
 void clear_aux_page_root_refs()

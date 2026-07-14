@@ -1,5 +1,6 @@
 // 负责 Wi-Fi、API Key、页面设置和声音设置的 NVS 配置读写。
 #include "network_services.h"
+#include "wifi_portal_state.h"
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
@@ -191,7 +192,7 @@ bool apply_loaded_page_config(uint8_t page_mask, const uint8_t *page_order, bool
     if (g_offline_mode_ui_enabled) {
         g_work_page_enabled_mask = work_page_mask_for_offline_mode(g_work_page_enabled_mask);
     }
-    g_active_work_page = first_enabled_work_page();
+    active_work_page_store(first_enabled_work_page());
     return online_mask != g_work_page_enabled_mask;
 }
 
@@ -278,7 +279,7 @@ bool set_offline_mode_enabled(bool enabled)
         normalize_work_page_order();
         ensure_active_work_page_enabled();
         clear_network_request_bits();
-        if (!g_setup_portal_active) {
+        if (!setup_portal_active_load()) {
             stop_wifi_radio(true);
         }
     }
@@ -345,7 +346,7 @@ static void reset_saved_config_runtime_state()
     g_chime_sound_index = 0;
     g_work_page_enabled_mask = kDefaultWorkPageMask;
     reset_work_page_order();
-    g_active_work_page = first_enabled_work_page();
+    active_work_page_store(first_enabled_work_page());
     clear_config_event_bits(kWifiConnectedBit | kWeatherReadyBit, kConfigEventReasonFactoryReset);
     clear_network_request_bits();
 }

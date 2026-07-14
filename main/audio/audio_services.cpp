@@ -3,6 +3,7 @@
 
 #include "app_constexpr.h"
 #include "audio_services_internal.h"
+#include "checked_size.h"
 #include "sensor_services.h"
 
 #include <cstddef>
@@ -16,6 +17,9 @@
     "xiaozhi audio residual cleanup: owner=%d codec=%d lock=%d speaker=%d stream=%d"
 
 namespace {
+CodecPort *s_audio_codec = nullptr;
+portMUX_TYPE s_audio_state_mux = portMUX_INITIALIZER_UNLOCKED;
+bool s_audio_playing = false;
 constexpr float kXiaozhiMicGainDb = 37.5f;
 constexpr int kXiaozhiAudioSampleRate = 16000;
 constexpr size_t kXiaozhiSpeakerFadeSamples = 160;
@@ -36,12 +40,15 @@ constexpr const char *kAudioCodecAllocationFailedLog = "audio codec allocation f
 constexpr const char *kXiaozhiAudioStartFailedLog = "xiaozhi audio session start failed";
 constexpr const char *kXiaozhiSpeakerCloseFailedLog = "xiaozhi speaker close failed after retry";
 constexpr const char *kXiaozhiWakeFeedbackWarmupFailedLog = "xiaozhi wake feedback speaker warmup failed";
+constexpr const char *kXiaozhiMicrophoneReadSizeOverflowLog =
+    "xiaozhi microphone read size exceeds codec limit";
 constexpr const char *kAudioTexts[] = {
     kAudioCodecBoardName,
     kAudioCodecAllocationFailedLog,
     kXiaozhiAudioStartFailedLog,
     kXiaozhiSpeakerCloseFailedLog,
     kXiaozhiWakeFeedbackWarmupFailedLog,
+    kXiaozhiMicrophoneReadSizeOverflowLog,
     AUDIO_IDLE_GPIO_CONFIG_FAILED_LOG_FORMAT,
     AUDIO_IDLE_GPIO_LEVEL_FAILED_LOG_FORMAT,
     XIAOZHI_AUDIO_RESIDUAL_CLEANUP_LOG_FORMAT,
@@ -99,14 +106,14 @@ static void reset_xiaozhi_speaker_state()
 
 static bool close_xiaozhi_speaker_with_retry()
 {
-    if (!g_codec) {
+    if (!s_audio_codec) {
         return false;
     }
     if (s_xiaozhi_speaker_open) {
         vTaskDelay(pdMS_TO_TICKS(kXiaozhiSpeakerDrainMs));
     }
     for (int attempt = 0; attempt < kXiaozhiSpeakerCloseAttempts; ++attempt) {
-        if (g_codec->CodecPort_CloseSpeaker()) {
+        if (s_audio_codec->CodecPort_CloseSpeaker()) {
             reset_xiaozhi_speaker_open_state();
             return true;
         }
@@ -162,47 +169,52 @@ void park_unused_audio_peripherals()
 bool audio_try_mark_playing()
 {
     bool acquired = false;
-    portENTER_CRITICAL(&g_audio_state_mux);
-    if (!g_audio_playing) {
-        g_audio_playing = true;
+    portENTER_CRITICAL(&s_audio_state_mux);
+    if (!s_audio_playing) {
+        s_audio_playing = true;
         acquired = true;
     }
-    portEXIT_CRITICAL(&g_audio_state_mux);
+    portEXIT_CRITICAL(&s_audio_state_mux);
     return acquired;
 }
 
 void audio_clear_playing()
 {
-    portENTER_CRITICAL(&g_audio_state_mux);
-    g_audio_playing = false;
-    portEXIT_CRITICAL(&g_audio_state_mux);
+    portENTER_CRITICAL(&s_audio_state_mux);
+    s_audio_playing = false;
+    portEXIT_CRITICAL(&s_audio_state_mux);
 }
 
 bool is_audio_playing()
 {
     bool playing = false;
-    portENTER_CRITICAL(&g_audio_state_mux);
-    playing = g_audio_playing;
-    portEXIT_CRITICAL(&g_audio_state_mux);
+    portENTER_CRITICAL(&s_audio_state_mux);
+    playing = s_audio_playing;
+    portEXIT_CRITICAL(&s_audio_state_mux);
     return playing;
+}
+
+bool audio_codec_active()
+{
+    return s_audio_codec != nullptr;
 }
 
 static CodecPort *ensure_audio_codec()
 {
-    if (!g_codec) {
-        g_codec = new (std::nothrow) CodecPort(g_i2c, kAudioCodecBoardName);
-        if (!g_codec) {
+    if (!s_audio_codec) {
+        s_audio_codec = new (std::nothrow) CodecPort(g_i2c, kAudioCodecBoardName);
+        if (!s_audio_codec) {
             ESP_LOGW(TAG, "%s", kAudioCodecAllocationFailedLog);
         }
     }
-    return g_codec;
+    return s_audio_codec;
 }
 
 static void release_audio_codec()
 {
-    if (g_codec) {
-        delete g_codec;
-        g_codec = nullptr;
+    if (s_audio_codec) {
+        delete s_audio_codec;
+        s_audio_codec = nullptr;
     }
 }
 
@@ -257,15 +269,15 @@ void stop_xiaozhi_audio_session()
         ESP_LOGW(TAG,
                  XIAOZHI_AUDIO_RESIDUAL_CLEANUP_LOG_FORMAT,
                  s_xiaozhi_audio_session_owned ? 1 : 0,
-                 g_codec ? 1 : 0,
+                 s_audio_codec ? 1 : 0,
                  s_audio_awake_lock_held ? 1 : 0,
                  s_xiaozhi_speaker_open ? 1 : 0,
                  s_xiaozhi_speaker_stream_active ? 1 : 0);
     }
-    if (g_codec) {
+    if (s_audio_codec) {
         finish_xiaozhi_speaker_stream();
         (void)close_xiaozhi_speaker_with_retry();
-        g_codec->CodecPort_CloseMic();
+        s_audio_codec->CodecPort_CloseMic();
     }
     reset_xiaozhi_speaker_state();
     audio_finish_playback();
@@ -280,15 +292,21 @@ void set_xiaozhi_audio_high_performance(bool enabled)
 
 int read_xiaozhi_microphone(void *buffer, size_t bytes)
 {
-    if (!g_codec || !buffer || bytes == 0) {
+    if (!s_audio_codec || !buffer || bytes == 0) {
         return ESP_FAIL;
     }
-    return g_codec->CodecPort_EchoRead(buffer, static_cast<int>(bytes));
+    int codec_bytes = 0;
+    if (!app_memory::checked_size_to_int(bytes, &codec_bytes)) {
+        ESP_LOGW(TAG, "%s", kXiaozhiMicrophoneReadSizeOverflowLog);
+        return ESP_FAIL;
+    }
+    return s_audio_codec->CodecPort_EchoRead(buffer, codec_bytes);
 }
 
 int write_xiaozhi_speaker(const int16_t *mono_samples, size_t sample_count, int sample_rate)
 {
-    if (!g_codec || !mono_samples || sample_count == 0 || !g_codec->CodecPort_OpenXiaozhiSpeaker(sample_rate)) {
+    if (!s_audio_codec || !mono_samples || sample_count == 0 ||
+        !s_audio_codec->CodecPort_OpenXiaozhiSpeaker(sample_rate)) {
         return ESP_FAIL;
     }
     s_xiaozhi_speaker_open = true;
@@ -316,7 +334,8 @@ int write_xiaozhi_speaker(const int16_t *mono_samples, size_t sample_count, int 
             s_xiaozhi_last_speaker_sample = sample;
             s_xiaozhi_speaker_stream_active = true;
         }
-        int written = g_codec->CodecPort_PlayWrite(mono, static_cast<int>(frames * sizeof(int16_t)));
+        int written = s_audio_codec->CodecPort_PlayWrite(mono,
+                                                         static_cast<int>(frames * sizeof(int16_t)));
         if (written != ESP_CODEC_DEV_OK) {
             return written;
         }
@@ -332,16 +351,16 @@ void apply_xiaozhi_speaker_volume(int volume_percent)
     } else if (volume_percent > 100) {
         volume_percent = 100;
     }
-    if (!g_codec || !s_xiaozhi_speaker_open || s_xiaozhi_applied_volume == volume_percent) {
+    if (!s_audio_codec || !s_xiaozhi_speaker_open || s_xiaozhi_applied_volume == volume_percent) {
         return;
     }
-    g_codec->CodecPort_SetSpeakerVol(volume_percent);
+    s_audio_codec->CodecPort_SetSpeakerVol(volume_percent);
     s_xiaozhi_applied_volume = volume_percent;
 }
 
 static void finish_xiaozhi_speaker_stream()
 {
-    if (!g_codec || !s_xiaozhi_speaker_stream_active) {
+    if (!s_audio_codec || !s_xiaozhi_speaker_stream_active) {
         reset_xiaozhi_speaker_stream_state();
         return;
     }
@@ -360,11 +379,12 @@ static void finish_xiaozhi_speaker_stream()
 
 static bool warm_up_xiaozhi_wake_feedback_speaker()
 {
-    if (!g_codec || !g_codec->CodecPort_OpenXiaozhiSpeaker(kXiaozhiAudioSampleRate)) {
+    if (!s_audio_codec ||
+        !s_audio_codec->CodecPort_OpenXiaozhiSpeaker(kXiaozhiAudioSampleRate)) {
         return false;
     }
     s_xiaozhi_speaker_open = true;
-    g_codec->CodecPort_SetSpeakerVol(0);
+    s_audio_codec->CodecPort_SetSpeakerVol(0);
     s_xiaozhi_applied_volume = 0;
 
     int16_t silence[kXiaozhiWakeFeedbackWarmupChunkSamples] = {};
@@ -374,8 +394,8 @@ static bool warm_up_xiaozhi_wake_feedback_speaker()
         size_t samples = remaining < kXiaozhiWakeFeedbackWarmupChunkSamples
                              ? remaining
                              : kXiaozhiWakeFeedbackWarmupChunkSamples;
-        if (g_codec->CodecPort_PlayWrite(silence,
-                                         static_cast<int>(samples * sizeof(int16_t))) !=
+        if (s_audio_codec->CodecPort_PlayWrite(silence,
+                                               static_cast<int>(samples * sizeof(int16_t))) !=
             ESP_CODEC_DEV_OK) {
             ESP_LOGW(TAG, "%s", kXiaozhiWakeFeedbackWarmupFailedLog);
             return false;
@@ -389,7 +409,7 @@ static bool warm_up_xiaozhi_wake_feedback_speaker()
 
 bool resume_xiaozhi_microphone_after_playback()
 {
-    if (!g_codec) {
+    if (!s_audio_codec) {
         return false;
     }
     // STD TX 与 TDM RX 是官方同板卡验证过的全双工布局。结束播放只关闭
@@ -434,7 +454,7 @@ void smooth_xiaozhi_speaker_segment_transition()
 
 void abort_xiaozhi_speaker_playback()
 {
-    if (!g_codec) {
+    if (!s_audio_codec) {
         return;
     }
     finish_xiaozhi_speaker_stream();

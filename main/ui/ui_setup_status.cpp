@@ -5,6 +5,7 @@
 #include "app_state.h"
 #include "ui_text_format.h"
 #include "ui_views.h"
+#include "wifi_portal_state.h"
 
 namespace {
 #define SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT "setup status label create failed index=%d"
@@ -118,13 +119,14 @@ bool update_setup_status_panel()
                                      kSetupStatusPlaceholder,
                                      kSetupStaSsidFormat,
                                      g_wifi_ssid[0] ? g_wifi_ssid : kSetupStatusPlaceholder);
+    const int disconnect_reason = wifi_last_disconnect_reason();
     if (g_sta_ip[0]) {
         changed |= set_setup_status_line(kSetupStatusStaIpIndex, kSetupStaIpPlaceholder, kSetupStaIpFormat, g_sta_ip);
-    } else if (g_last_wifi_disconnect_reason) {
+    } else if (disconnect_reason) {
         changed |= set_setup_status_line(kSetupStatusStaIpIndex,
                                          kSetupStaIpPlaceholder,
                                          kSetupStaIpReasonFormat,
-                                         g_last_wifi_disconnect_reason);
+                                         disconnect_reason);
     } else {
         char line[kSetupStatusLineSize] = {};
         ui_text::copy(line, sizeof(line), kSetupStaIpPlaceholder);

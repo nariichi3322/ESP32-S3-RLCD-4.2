@@ -5,6 +5,12 @@
 #include "network_services.h"
 
 namespace {
+portMUX_TYPE s_weather_state_mux = portMUX_INITIALIZER_UNLOCKED;
+WeatherData s_weather;
+WeatherAlertData s_weather_alert;
+WeatherForecastData s_weather_forecast;
+WeatherAirData s_weather_air;
+time_t s_last_weather_sync_time = 0;
 #define WEATHER_UPDATED_LOG_FORMAT "weather updated: %s %s %sC %s%% icon=%s forecast=%s air=%s"
 constexpr const char *kWeatherFetchStatusOk = "ok";
 constexpr const char *kWeatherFetchStatusCached = "cached";
@@ -37,20 +43,20 @@ void get_weather_full_snapshot(WeatherData *weather,
                                WeatherForecastData *forecast,
                                WeatherAirData *air)
 {
-    portENTER_CRITICAL(&g_weather_state_mux);
+    portENTER_CRITICAL(&s_weather_state_mux);
     if (weather) {
-        *weather = g_weather;
+        *weather = s_weather;
     }
     if (alert) {
-        *alert = g_weather_alert;
+        *alert = s_weather_alert;
     }
     if (forecast) {
-        *forecast = g_weather_forecast;
+        *forecast = s_weather_forecast;
     }
     if (air) {
-        *air = g_weather_air;
+        *air = s_weather_air;
     }
-    portEXIT_CRITICAL(&g_weather_state_mux);
+    portEXIT_CRITICAL(&s_weather_state_mux);
 }
 
 void get_weather_snapshot(WeatherData *weather, WeatherAlertData *alert)
@@ -72,6 +78,14 @@ void get_weather_air_snapshot(WeatherAirData *air)
         return;
     }
     get_weather_full_snapshot(nullptr, nullptr, nullptr, air);
+}
+
+time_t get_last_weather_sync_time()
+{
+    portENTER_CRITICAL(&s_weather_state_mux);
+    const time_t last_sync_time = s_last_weather_sync_time;
+    portEXIT_CRITICAL(&s_weather_state_mux);
+    return last_sync_time;
 }
 
 bool weather_extended_data_ready()
@@ -103,17 +117,17 @@ void commit_weather_update_snapshot(const WeatherData &next,
 {
     time_t now = 0;
     time(&now);
-    portENTER_CRITICAL(&g_weather_state_mux);
-    g_weather = next;
-    g_weather_alert = next_alert;
+    portENTER_CRITICAL(&s_weather_state_mux);
+    s_weather = next;
+    s_weather_alert = next_alert;
     if (forecast_ok) {
-        g_weather_forecast = next_forecast;
+        s_weather_forecast = next_forecast;
     }
     if (air_ok) {
-        g_weather_air = next_air;
+        s_weather_air = next_air;
     }
-    g_last_weather_sync_time = now;
-    portEXIT_CRITICAL(&g_weather_state_mux);
+    s_last_weather_sync_time = now;
+    portEXIT_CRITICAL(&s_weather_state_mux);
     publish_weather_ready_event();
     ESP_LOGI(TAG, WEATHER_UPDATED_LOG_FORMAT,
              next.city,

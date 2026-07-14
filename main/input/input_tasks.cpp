@@ -4,9 +4,14 @@
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "audio_services.h"
+#include "network_diagnostics_state.h"
 #include "ota_services.h"
 #include "pomodoro_services.h"
+#include "ui_info_page_state.h"
+#include "ui_settings_activity_state.h"
 #include "ui_views.h"
+#include "wifi_portal_state.h"
+#include "wifi_radio_state.h"
 
 #define BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT "button gpio config failed: %s"
 #define BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT "switch work page: %d"
@@ -66,45 +71,45 @@ bool button_press_is_long(TickType_t held)
 
 bool low_refresh_button_idle_context()
 {
-    if (g_battery_charging ||
-        g_setup_portal_active ||
-        g_settings_requested ||
-        g_boot_info_requested ||
-        g_network_diag_page_requested ||
+    if (battery_charging_load() ||
+        setup_portal_active_load() ||
+        settings_page_requested() ||
+        info_page_requested() ||
+        network_diag_page_requested() ||
         ota_flow_active() ||
         is_audio_playing() ||
-        g_wifi_radio_on) {
+        wifi_radio_on_load()) {
         return false;
     }
-    if (g_low_battery_mode) {
+    if (battery_low_mode_load()) {
         return true;
     }
-    return work_page_uses_low_refresh_idle(g_active_work_page);
+    return work_page_uses_low_refresh_idle(active_work_page_load());
 }
 
 void return_to_system_settings_item(int selection, TickType_t now)
 {
-    g_settings_requested = true;
+    settings_page_request();
     g_settings_focus_secondary = true;
     g_settings_page_toggle_mode = false;
     g_settings_page_order_mode = false;
     g_settings_primary_selection = kSettingsPrimarySystem;
     g_settings_selection = selection;
     g_settings_page_order_selection = 0;
-    g_settings_last_activity_tick = now;
+    settings_activity_record(now);
 }
 
 void enter_settings_primary_menu(TickType_t now)
 {
-    g_boot_info_requested = false;
-    g_settings_requested = true;
+    info_page_clear();
+    settings_page_request();
     g_settings_focus_secondary = false;
     g_settings_page_toggle_mode = false;
     g_settings_page_order_mode = false;
     g_settings_primary_selection = kSettingsPrimaryNetwork;
     g_settings_selection = 0;
     g_settings_page_order_selection = 0;
-    g_settings_last_activity_tick = now;
+    settings_activity_record(now);
 }
 
 void handle_settings_key_long_or_busy()
@@ -148,29 +153,31 @@ void button_task(void *)
                 boot_pressed_since = now;
                 boot_press_stopped_alert = alarm_stop_ringing_from_button() ||
                                            pomodoro_stop_alert_from_button();
-                if (g_settings_requested) {
-                    g_settings_last_activity_tick = now;
+                if (settings_page_requested()) {
+                    settings_activity_record(now);
                 }
             }
         } else {
             if (boot_pressed_since != 0 && boot_press_stopped_alert) {
                 // 提醒音播放期间任意按键只负责停止音频，不继续执行原按键动作。
-            } else if (boot_pressed_since != 0 && g_settings_requested) {
+            } else if (boot_pressed_since != 0 && settings_page_requested()) {
                 TickType_t held = now - boot_pressed_since;
                 if (button_press_is_short(held)) {
-                    g_settings_action_seq = g_settings_action_seq + 1;
+                    settings_activity_record_action(now);
                     notify_ui_task();
+                } else {
+                    settings_activity_record(now);
                 }
-                g_settings_last_activity_tick = now;
             } else if (boot_pressed_since != 0 &&
-                       !g_boot_info_requested &&
-                       !g_network_diag_page_requested &&
-                       !g_setup_portal_active &&
-                       !g_low_battery_mode) {
+                       !info_page_requested() &&
+                       !network_diag_page_requested() &&
+                       !setup_portal_active_load() &&
+                       !battery_low_mode_load()) {
                 TickType_t held = now - boot_pressed_since;
                 if (button_press_is_short(held)) {
-                    g_active_work_page = next_enabled_work_page(g_active_work_page);
-                    ESP_LOGI(TAG, BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT, g_active_work_page + 1);
+                    int next_page = next_enabled_work_page(active_work_page_load());
+                    active_work_page_store(next_page);
+                    ESP_LOGI(TAG, BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT, next_page + 1);
                     notify_ui_task();
                 }
             }
@@ -185,11 +192,11 @@ void button_task(void *)
                 key_long_handled = false;
                 key_press_stopped_alert = alarm_stop_ringing_from_button() ||
                                           pomodoro_stop_alert_from_button();
-                if (g_settings_requested) {
-                    g_settings_last_activity_tick = now;
+                if (settings_page_requested()) {
+                    settings_activity_record(now);
                 }
                 if (!key_press_stopped_alert &&
-                    !g_settings_requested && !g_boot_info_requested && !g_network_diag_page_requested) {
+                    !settings_page_requested() && !info_page_requested() && !network_diag_page_requested()) {
                     ESP_LOGI(TAG, BUTTON_SHOW_SETTINGS_LOG_FORMAT);
                     enter_settings_primary_menu(now);
                     key_press_opened_settings = true;
@@ -198,26 +205,25 @@ void button_task(void *)
             } else if (!key_press_stopped_alert &&
                        !key_press_opened_settings &&
                        !key_long_handled &&
-                       g_settings_requested &&
+                       settings_page_requested() &&
                        button_press_is_long(now - key_pressed_since)) {
-                g_settings_last_activity_tick = now;
+                settings_activity_record(now);
                 handle_settings_key_long_or_busy();
                 key_long_handled = true;
                 notify_ui_task();
             } else if (!key_long_handled &&
-                       g_boot_info_requested &&
-                       !g_settings_requested &&
+                       info_page_requested() &&
+                       !settings_page_requested() &&
                        button_press_is_long(now - key_pressed_since)) {
-                g_boot_info_requested = false;
-                g_info_page_until_tick = 0;
+                info_page_clear();
                 return_to_system_settings_item(kSystemSettingsInfoItem, now);
                 key_long_handled = true;
                 notify_ui_task();
             } else if (!key_long_handled &&
-                       g_network_diag_page_requested &&
-                       !g_settings_requested &&
+                       network_diag_page_requested() &&
+                       !settings_page_requested() &&
                        button_press_is_long(now - key_pressed_since)) {
-                g_network_diag_page_requested = false;
+                network_diag_page_clear();
                 return_to_system_settings_item(kSystemSettingsNetworkDiagItem, now);
                 key_long_handled = true;
                 notify_ui_task();
@@ -225,14 +231,14 @@ void button_task(void *)
         } else {
             if (key_pressed_since != 0 &&
                 !key_press_stopped_alert &&
-                !key_press_opened_settings && !key_long_handled && g_settings_requested) {
+                !key_press_opened_settings && !key_long_handled && settings_page_requested()) {
                 TickType_t held = now - key_pressed_since;
                 if (button_press_is_long(held)) {
-                    g_settings_last_activity_tick = now;
+                    settings_activity_record(now);
                     handle_settings_key_long_or_busy();
                     notify_ui_task();
                 } else if (button_press_is_short(held)) {
-                    g_settings_last_activity_tick = now;
+                    settings_activity_record(now);
                     if (!is_settings_sync_busy() && !ota_flow_active()) {
                         handle_settings_key_short();
                     } else {
@@ -241,8 +247,8 @@ void button_task(void *)
                     }
                 }
             }
-            if (key_pressed_since != 0 && g_settings_requested) {
-                g_settings_last_activity_tick = now;
+            if (key_pressed_since != 0 && settings_page_requested()) {
+                settings_activity_record(now);
             }
             key_pressed_since = 0;
             key_press_opened_settings = false;
@@ -252,7 +258,7 @@ void button_task(void *)
         int delay_ms = low_refresh_button_idle_context() ? kButtonLowRefreshIdlePollMs : kButtonIdlePollMs;
         if (boot_pressed || key_pressed) {
             delay_ms = kButtonPressedPollMs;
-        } else if (g_settings_requested || g_boot_info_requested || g_network_diag_page_requested || g_setup_portal_active) {
+        } else if (settings_page_requested() || info_page_requested() || network_diag_page_requested() || setup_portal_active_load()) {
             delay_ms = kButtonActivePollMs;
         }
         vTaskDelay(pdMS_TO_TICKS(delay_ms));

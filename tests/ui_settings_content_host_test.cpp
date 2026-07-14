@@ -3,6 +3,7 @@
 
 #include "alarm_services.h"
 #include "app_state.h"
+#include "ui_settings_confirmation_state.h"
 
 #include <assert.h>
 #include <string.h>
@@ -13,7 +14,6 @@ bool g_has_manual_weather_city = false;
 bool g_offline_mode_ui_enabled = false;
 int g_chime_volume_percent = 60;
 int g_chime_sound_index = 2;
-bool g_factory_reset_confirm_pending = false;
 
 namespace {
 AlarmSnapshot s_alarm = {};
@@ -74,7 +74,7 @@ int main()
     expect_text(items, kDisplaySettingsAlarmItem, "闹钟 06:30");
 
     g_offline_mode_ui_enabled = true;
-    g_factory_reset_confirm_pending = true;
+    settings_confirmation_request(SettingsConfirmation::kFactoryReset);
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimarySystem, items);
     expect_text(items, kSystemSettingsOfflineItem, "离线模式 开");

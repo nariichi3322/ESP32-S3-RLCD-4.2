@@ -3,9 +3,11 @@
 
 #include "alarm_services.h"
 #include "audio_services.h"
+#include "ota_runtime_state.h"
 #include "reminder_schedule.h"
 #include "sensor_time.h"
 #include "ui_views.h"
+#include "wifi_portal_state.h"
 #include "xiaozhi_ai.h"
 #include "xiaozhi_mcp.h"
 
@@ -77,11 +79,12 @@ bool completion_audio_blocked()
 {
     AlarmSnapshot alarm = {};
     alarm_get_snapshot(&alarm);
-    return g_low_battery_mode ||
-           g_setup_portal_active ||
-           g_ota_state == kOtaChecking ||
-           g_ota_state == kOtaUpdating ||
-           g_ota_state == kOtaSucceeded ||
+    int ota_state = ota_runtime_state_load();
+    return battery_low_mode_load() ||
+           setup_portal_active_load() ||
+           ota_state == kOtaChecking ||
+           ota_state == kOtaUpdating ||
+           ota_state == kOtaSucceeded ||
            alarm.ringing;
 }
 

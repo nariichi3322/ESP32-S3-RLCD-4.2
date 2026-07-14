@@ -8,11 +8,12 @@
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 
+#include <atomic>
 #include <errno.h>
 
 namespace {
-TaskHandle_t s_captive_dns_task_handle = nullptr;
-volatile bool s_captive_dns_stop = false;
+std::atomic<bool> s_captive_dns_task_active{false};
+std::atomic<bool> s_captive_dns_stop{false};
 constexpr size_t kCaptivePortalUriSize = 64;
 char s_captive_portal_uri[kCaptivePortalUriSize] = {};
 constexpr uint16_t kCaptiveDnsPort = 53;
@@ -67,19 +68,48 @@ static_assert(kCaptivePortalUriSize > cstr_length(kSetupPortalUrl),
 static_assert(array_count(kCaptiveDnsTexts) > 0, "captive DNS text registry must not be empty");
 static_assert(cstr_array_nonempty(kCaptiveDnsTexts), "captive DNS texts must be non-empty");
 
-void captive_dns_task(void *)
+class ScopedSocketDescriptor {
+public:
+    explicit ScopedSocketDescriptor(int descriptor)
+        : descriptor_(descriptor)
+    {
+    }
+
+    ~ScopedSocketDescriptor()
+    {
+        if (descriptor_ >= 0) {
+            close(descriptor_);
+        }
+    }
+
+    ScopedSocketDescriptor(const ScopedSocketDescriptor &) = delete;
+    ScopedSocketDescriptor &operator=(const ScopedSocketDescriptor &) = delete;
+
+    int get() const
+    {
+        return descriptor_;
+    }
+
+    explicit operator bool() const
+    {
+        return descriptor_ >= 0;
+    }
+
+private:
+    int descriptor_ = -1;
+};
+
+bool run_captive_dns_server()
 {
-    int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-    if (sock < 0) {
+    ScopedSocketDescriptor sock(socket(AF_INET, SOCK_DGRAM, IPPROTO_IP));
+    if (!sock) {
         ESP_LOGW(TAG, CAPTIVE_DNS_SOCKET_FAILED_LOG);
-        s_captive_dns_task_handle = nullptr;
-        vTaskDelete(nullptr);
-        return;
+        return false;
     }
 
     timeval timeout = {};
     timeout.tv_sec = kCaptiveDnsSocketTimeoutSec;
-    if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
+    if (setsockopt(sock.get(), SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout)) != 0) {
         ESP_LOGW(TAG, CAPTIVE_DNS_TIMEOUT_SETUP_FAILED_FORMAT, errno);
     }
 
@@ -87,33 +117,37 @@ void captive_dns_task(void *)
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_ANY);
     addr.sin_port = htons(kCaptiveDnsPort);
-    if (bind(sock, (sockaddr *)&addr, sizeof(addr)) != 0) {
+    if (bind(sock.get(), (sockaddr *)&addr, sizeof(addr)) != 0) {
         ESP_LOGW(TAG, CAPTIVE_DNS_BIND_FAILED_LOG);
-        close(sock);
-        s_captive_dns_task_handle = nullptr;
-        vTaskDelete(nullptr);
-        return;
+        return false;
     }
 
     ESP_LOGI(TAG, CAPTIVE_DNS_STARTED_LOG);
-    while (!s_captive_dns_stop) {
+    while (!s_captive_dns_stop.load(std::memory_order_acquire)) {
         uint8_t query[kCaptiveDnsPacketSize] = {};
         sockaddr_in from = {};
         socklen_t from_len = sizeof(from);
-        int len = recvfrom(sock, query, sizeof(query), 0, (sockaddr *)&from, &from_len);
+        int len = recvfrom(sock.get(), query, sizeof(query), 0, (sockaddr *)&from, &from_len);
         if (len <= 0) {
             continue;
         }
         uint8_t response[kCaptiveDnsPacketSize] = {};
         int response_len = build_captive_dns_response(query, len, response, sizeof(response));
         if (response_len > 0) {
-            sendto(sock, response, response_len, 0, (sockaddr *)&from, from_len);
+            sendto(sock.get(), response, response_len, 0, (sockaddr *)&from, from_len);
         }
     }
 
-    close(sock);
-    s_captive_dns_task_handle = nullptr;
-    ESP_LOGI(TAG, CAPTIVE_DNS_STOPPED_LOG);
+    return true;
+}
+
+void captive_dns_task(void *)
+{
+    bool started = run_captive_dns_server();
+    s_captive_dns_task_active.store(false, std::memory_order_release);
+    if (started) {
+        ESP_LOGI(TAG, CAPTIVE_DNS_STOPPED_LOG);
+    }
     vTaskDelete(nullptr);
 }
 } // namespace
@@ -164,28 +198,32 @@ void configure_captive_portal_dhcp(esp_netif_t *ap_netif)
 
 bool start_captive_dns_server()
 {
-    if (s_captive_dns_task_handle) {
-        if (!s_captive_dns_stop) {
+    if (s_captive_dns_task_active.load(std::memory_order_acquire)) {
+        if (!s_captive_dns_stop.load(std::memory_order_acquire)) {
             return true;
         }
-        for (int i = 0; i < kCaptiveDnsStopWaitAttempts && s_captive_dns_task_handle; ++i) {
+        for (int i = 0;
+             i < kCaptiveDnsStopWaitAttempts &&
+             s_captive_dns_task_active.load(std::memory_order_acquire);
+             ++i) {
             vTaskDelay(kCaptiveDnsStopWaitDelay);
         }
-        if (s_captive_dns_task_handle) {
+        if (s_captive_dns_task_active.load(std::memory_order_acquire)) {
             ESP_LOGW(TAG, CAPTIVE_DNS_TASK_STILL_STOPPING_LOG);
             return false;
         }
     }
-    s_captive_dns_stop = false;
+    s_captive_dns_stop.store(false, std::memory_order_release);
+    s_captive_dns_task_active.store(true, std::memory_order_release);
     BaseType_t ok = xTaskCreatePinnedToCore(captive_dns_task,
                                             kCaptiveDnsTaskName,
                                             kCaptiveDnsTaskStack,
                                             nullptr,
                                             kCaptiveDnsTaskPriority,
-                                            &s_captive_dns_task_handle,
+                                            nullptr,
                                             kCaptiveDnsTaskCore);
     if (ok != pdPASS) {
-        s_captive_dns_task_handle = nullptr;
+        s_captive_dns_task_active.store(false, std::memory_order_release);
         ESP_LOGW(TAG, CAPTIVE_DNS_TASK_START_FAILED_LOG);
         return false;
     }
@@ -194,9 +232,9 @@ bool start_captive_dns_server()
 
 void stop_captive_dns_server()
 {
-    if (!s_captive_dns_task_handle) {
-        s_captive_dns_stop = false;
+    if (!s_captive_dns_task_active.load(std::memory_order_acquire)) {
+        s_captive_dns_stop.store(false, std::memory_order_release);
         return;
     }
-    s_captive_dns_stop = true;
+    s_captive_dns_stop.store(true, std::memory_order_release);
 }

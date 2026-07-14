@@ -19,6 +19,7 @@ constexpr OtaManifestSource kBuiltInManifestSources[] = {
     {kManifestSourceR2, kOtaManifestUrl},
     {kManifestSourceGithub, kOtaBackupManifestUrl},
 };
+OtaManifest s_cached_manifest;
 constexpr const char *kManifestParseInvalidArgLog = "OTA manifest parse invalid arg";
 constexpr const char *kManifestJsonParseFailedLog = "OTA manifest JSON parse failed";
 #define MANIFEST_MISSING_REQUIRED_FIELDS_FORMAT "OTA manifest missing required fields version=%d url=%d sha=%d"
@@ -163,20 +164,20 @@ void ota_manifest_load_cached(OtaManifest *manifest)
     if (!manifest) {
         return;
     }
-    strlcpy(manifest->version, g_ota_version, sizeof(manifest->version));
-    strlcpy(manifest->url, g_ota_url, sizeof(manifest->url));
-    strlcpy(manifest->sha256, g_ota_sha256, sizeof(manifest->sha256));
-    strlcpy(manifest->notes, g_ota_notes, sizeof(manifest->notes));
-    manifest->size = g_ota_size;
+    strlcpy(manifest->version, s_cached_manifest.version, sizeof(manifest->version));
+    strlcpy(manifest->url, s_cached_manifest.url, sizeof(manifest->url));
+    strlcpy(manifest->sha256, s_cached_manifest.sha256, sizeof(manifest->sha256));
+    strlcpy(manifest->notes, s_cached_manifest.notes, sizeof(manifest->notes));
+    manifest->size = s_cached_manifest.size;
 }
 
 void ota_manifest_store_cached(const OtaManifest &manifest)
 {
-    strlcpy(g_ota_version, manifest.version, sizeof(g_ota_version));
-    strlcpy(g_ota_url, manifest.url, sizeof(g_ota_url));
-    strlcpy(g_ota_sha256, manifest.sha256, sizeof(g_ota_sha256));
-    strlcpy(g_ota_notes, manifest.notes, sizeof(g_ota_notes));
-    g_ota_size = manifest.size;
+    strlcpy(s_cached_manifest.version, manifest.version, sizeof(s_cached_manifest.version));
+    strlcpy(s_cached_manifest.url, manifest.url, sizeof(s_cached_manifest.url));
+    strlcpy(s_cached_manifest.sha256, manifest.sha256, sizeof(s_cached_manifest.sha256));
+    strlcpy(s_cached_manifest.notes, manifest.notes, sizeof(s_cached_manifest.notes));
+    s_cached_manifest.size = manifest.size;
 }
 
 bool ota_manifest_fetch(OtaManifest *manifest,

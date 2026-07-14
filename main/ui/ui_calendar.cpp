@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "app_constexpr.h"
+#include "app_time_constants.h"
 #include "calendar_lunar.h"
 #include "sensor_services.h"
 #include "ui_battery.h"
@@ -39,11 +40,11 @@ static constexpr int kCalendarDayTextWInset = 4;
 static constexpr int kCalendarDayTextH = 14;
 static constexpr int kCalendarSubTextY = 20;
 static constexpr int kCalendarSubTextH = 12;
-static constexpr int kTmYearOffset = 1900;
-static constexpr int kTmMonthOffset = 1;
 static constexpr int kCalendarDayTextSize = 4; // "31" plus terminator, with one byte spare.
 static constexpr const char *kCalendarWeekdays[kCalendarWeekdayCount] = {"日", "一", "二", "三", "四", "五", "六"};
 static lv_color_t *s_calendar_canvas_buffer;
+static int s_last_calendar_drawn_month = -1;
+static int s_last_calendar_drawn_day = -1;
 
 static_assert(array_count(kCalendarWeekdays) == kCalendarWeekdayCount,
               "calendar weekday label table must match weekday count");
@@ -276,9 +277,9 @@ bool update_calendar_page(const struct tm &local)
     build_calendar_page();
     bool changed = false;
     int month_key = calendar_month_key(local);
-    if (month_key != g_last_calendar_drawn_month || local.tm_mday != g_last_calendar_drawn_day) {
-        g_last_calendar_drawn_month = month_key;
-        g_last_calendar_drawn_day = local.tm_mday;
+    if (month_key != s_last_calendar_drawn_month || local.tm_mday != s_last_calendar_drawn_day) {
+        s_last_calendar_drawn_month = month_key;
+        s_last_calendar_drawn_day = local.tm_mday;
         draw_calendar_grid(local);
         changed = true;
     }
@@ -319,7 +320,7 @@ void build_calendar_page()
     }
     if (!s_calendar_canvas_buffer) {
         lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
-        update_battery_segments(g_calendar_battery_segments, g_battery_percent);
+        update_battery_segments(g_calendar_battery_segments, battery_percent_load());
         return;
     }
     g_calendar_canvas = lv_canvas_create(screen);
@@ -336,5 +337,5 @@ void build_calendar_page()
     }
 
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
-    update_battery_segments(g_calendar_battery_segments, g_battery_percent);
+    update_battery_segments(g_calendar_battery_segments, battery_percent_load());
 }
