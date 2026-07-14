@@ -3,15 +3,15 @@
   "items": [
     {
       "version": "v1.5.11",
-      "notes": "`v1.5.11`：\n  1. 本版用于验证新的外网自动发布链路，只顺延固件、SDL 和工程版本号，不修改设备业务逻辑、UI、分区表、NVS、资源格式、OTA 协议或上位机接口。\n  2. GitHub 公开源码仓库新增固定 ESP-IDF `v5.5.3` 自动构建：版本标签触发 app 固件与包含 bootloader、分区表、OTA data、语音模型和 app 的 merged 固件构建，并把两个附件追加到同版本 Release。\n  3. 自动构建严格保留既有中文 Release 说明，只增加或覆盖两个固件附件；随后按实际构建文件重新计算 size 和 SHA256，更新公开仓库中的 `latest.json` 与最近 10 版 `versions.json`。\n  4. Cloudflare Worker 改为每 15 分钟从 GitHub 主动拉取 manifest 与 Release 固件；app 和 merged 采用流式写入 R2，两个固件都通过长度、SHA256 和 R2 回读校验后才覆盖在线 manifest，避免半发布状态。\n  5. GitHub Actions 不持有 Cloudflare 写入令牌；受保护的 Worker 手动同步和本机 R2 直传只保留为维护者应急入口，降低第三方运行器凭据暴露风险。\n  6. 正式发布默认只需本机完成编译验证、发布 Gitea 并同步 GitHub 源码；等待脚本会确认 GitHub Release 双附件和 R2 `latest.json`、`versions.json`、app、merged 全部就绪，不再由本机重复上传大固件。\n  7. 新增 manifest 生成与 Worker 同步主机测试，覆盖哈希/大小、最近 10 版、清单长度、无效输入、双固件成功导入、merged 下载失败时不更新 manife…",
+      "notes": "ESP32-S3 RLCD 4.2 天气时钟 v1.5.11 源码发布。\n\n`v1.5.11`：\n  1. 本版用于验证新的外网自动发布链路，只顺延固件、SDL 和工程版本号，不修改设备业务逻辑、UI、分区表、NVS、资源格式、OTA 协议或上位机接口。\n  2. GitHub 公开源码仓库新增固定 ESP-IDF `v5.5.3` 自动构建：版本标签触发 app 固件与包含 bootloader、分区表、OTA data、语音模型和 app 的 merged 固件构建，并把两个附件追加到同版本 Release。\n  3. 自动构建严格保留既有中文 Release 说明，只增加或覆盖两个固件附件；随后按实际构建文件重新计算 size 和 SHA256，更新公开仓库中的 `latest.json` 与最近 10 版 `versions.json`。\n  4. Cloudflare Worker 改为每 15 分钟从 GitHub 主动拉取 manifest 与 Release 固件；app 和 merged 采用流式写入 R2，两个固件都通过长度、SHA256 和 R2 回读校验后才覆盖在线 manifest，避免半发布状态。\n  5. GitHub Actions 不持有 Cloudflare 写入令牌；受保护的 Worker 手动同步和本机 R2 直传只保留为维护者应急入口，降低第三方运行器凭据暴露风险。\n  6. 正式发布默认只需本机完成编译验证、发布 Gitea 并同步 GitHub 源码；等待脚本会确认 GitHub Release 双附件和 R2 `latest.json`、`versions.json`、app、merged 全部就绪，不再由本机重复上传大固件。\n  7. 新增 manifest 生成与 Worker 同步主机测试，覆盖哈希/大小、最近 10 版、清单长度、无效输入、双固件成功导入、merged 下载失败时不更新 manifest，以及 Cloudflare 定时同步路径。\n\n本 Release 仅包含公开的 RLCD_CLOCK 时钟源码；严禁商用。",
       "app": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.11.bin",
-        "sha256": "db6b5a7890caf494280486a52d5b3177d16a357f1108f597f0719a70fb4e4a23",
-        "size": 6209168
+        "sha256": "b487ea38a4ddff2cd7c9bb491a08eb2ac2f78298e2bc65a019f05e0b3fe69863",
+        "size": 6209056
       },
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.11_merged.bin",
-        "sha256": "83a6b81edf4ff116ccebc7e1c8cdf37ce1a0fb1b472a7528c168c4bf1ce6171d",
+        "sha256": "2be5cc0c6bda26d125516477d58ae6f8acd79089241abb412c9c6fe1e8d70ea5",
         "size": 16509951
       }
     },
