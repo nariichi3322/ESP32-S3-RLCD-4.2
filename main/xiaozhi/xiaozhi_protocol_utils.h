@@ -1,78 +1,93 @@
 // 声明小智协议使用的 UTF-8、WebSocket URL 和固定文本报文纯工具。
 #pragma once
 
+#include "xiaozhi_text_utils.h"
+
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace xiaozhi_protocol {
 
-static __attribute__((noinline)) bool output_buffer_available(char *out, size_t out_len)
+[[maybe_unused]] static __attribute__((noinline)) size_t audio_frame_header_size(int version)
 {
-    return out && out_len > 0;
+    if (version == 2) {
+        return 16;
+    }
+    if (version == 3) {
+        return 4;
+    }
+    return 0;
 }
 
-static __attribute__((noinline)) size_t utf8_character_size(const unsigned char *text, size_t remaining)
+[[maybe_unused]] static __attribute__((noinline)) bool audio_frame_size(int version,
+                                                       size_t payload_len,
+                                                       size_t frame_capacity,
+                                                       size_t *frame_len)
 {
-    if (!text || remaining == 0) {
-        return 0;
+    if (!frame_len || payload_len == 0) {
+        return false;
     }
-    size_t size = 1;
-    if (text[0] < 0x80) {
-        return 1;
+    const size_t header_len = audio_frame_header_size(version);
+    if ((version == 3 && payload_len > std::numeric_limits<uint16_t>::max()) ||
+        (version == 2 && payload_len > std::numeric_limits<uint32_t>::max()) ||
+        header_len > frame_capacity ||
+        payload_len > frame_capacity - header_len) {
+        return false;
     }
-    if ((text[0] & 0xe0) == 0xc0) {
-        size = 2;
-    } else if ((text[0] & 0xf0) == 0xe0) {
-        size = 3;
-    } else if ((text[0] & 0xf8) == 0xf0) {
-        size = 4;
-    } else {
-        return 0;
-    }
-    if (size > remaining) {
-        return 0;
-    }
-    for (size_t index = 1; index < size; ++index) {
-        if ((text[index] & 0xc0) != 0x80) {
-            return 0;
-        }
-    }
-    return size;
+    *frame_len = header_len + payload_len;
+    return true;
 }
 
-static __attribute__((noinline)) void utf8_safe_copy(char *out, size_t out_len, const char *text)
+[[maybe_unused]] static __attribute__((noinline)) bool decoded_audio_size_valid(size_t decoded_size,
+                                                               size_t buffer_capacity)
 {
-    if (!output_buffer_available(out, out_len)) {
-        return;
-    }
-    out[0] = '\0';
-    if (!text) {
-        return;
-    }
-    const unsigned char *source = reinterpret_cast<const unsigned char *>(text);
-    size_t source_len = strlen(text);
-    size_t source_offset = 0;
-    size_t output_offset = 0;
-    while (source_offset < source_len && output_offset + 1 < out_len) {
-        size_t character_size = utf8_character_size(source + source_offset, source_len - source_offset);
-        if (character_size == 0) {
-            out[output_offset++] = '?';
-            ++source_offset;
-            continue;
-        }
-        if (output_offset + character_size >= out_len) {
-            break;
-        }
-        memcpy(out + output_offset, source + source_offset, character_size);
-        output_offset += character_size;
-        source_offset += character_size;
-    }
-    out[output_offset] = '\0';
+    return decoded_size > 0 &&
+           decoded_size <= buffer_capacity &&
+           decoded_size % sizeof(int16_t) == 0;
 }
 
-static __attribute__((noinline)) bool parse_websocket_url(const char *url,
+[[maybe_unused]] static __attribute__((noinline)) bool audio_payload_range(int version,
+                                                          const uint8_t *frame,
+                                                          size_t frame_len,
+                                                          size_t *payload_offset,
+                                                          size_t *payload_len)
+{
+    if (!frame || frame_len == 0 || !payload_offset || !payload_len) {
+        return false;
+    }
+    *payload_offset = 0;
+    *payload_len = 0;
+    const size_t header_len = audio_frame_header_size(version);
+    if (header_len == 0) {
+        *payload_len = frame_len;
+        return true;
+    }
+    if (frame_len <= header_len) {
+        return false;
+    }
+    size_t declared_len = 0;
+    if (version == 2) {
+        declared_len = (static_cast<size_t>(frame[12]) << 24) |
+                       (static_cast<size_t>(frame[13]) << 16) |
+                       (static_cast<size_t>(frame[14]) << 8) |
+                       static_cast<size_t>(frame[15]);
+    } else if (version == 3) {
+        declared_len = (static_cast<size_t>(frame[2]) << 8) |
+                       static_cast<size_t>(frame[3]);
+    }
+    if (declared_len == 0 || declared_len > frame_len - header_len) {
+        return false;
+    }
+    *payload_offset = header_len;
+    *payload_len = declared_len;
+    return true;
+}
+
+[[maybe_unused]] static __attribute__((noinline)) bool parse_websocket_url(const char *url,
                                 bool *secure,
                                 char *host,
                                 size_t host_len,
@@ -122,7 +137,7 @@ static __attribute__((noinline)) bool parse_websocket_url(const char *url,
     return true;
 }
 
-static __attribute__((noinline)) void format_listen_start(char *out,
+[[maybe_unused]] static __attribute__((noinline)) void format_listen_start(char *out,
                                                           size_t out_len,
                                                           const char *session_id)
 {
@@ -135,7 +150,7 @@ static __attribute__((noinline)) void format_listen_start(char *out,
              session_id);
 }
 
-static __attribute__((noinline)) void format_wake_abort(char *out,
+[[maybe_unused]] static __attribute__((noinline)) void format_wake_abort(char *out,
                                                         size_t out_len,
                                                         const char *session_id)
 {
@@ -148,7 +163,7 @@ static __attribute__((noinline)) void format_wake_abort(char *out,
              session_id);
 }
 
-static __attribute__((noinline)) void format_websocket_headers(char *out,
+[[maybe_unused]] static __attribute__((noinline)) void format_websocket_headers(char *out,
                                                                size_t out_len,
                                                                int version,
                                                                const char *device_id,
@@ -165,7 +180,7 @@ static __attribute__((noinline)) void format_websocket_headers(char *out,
              client_id);
 }
 
-static __attribute__((noinline)) void format_websocket_authorization(char *out,
+[[maybe_unused]] static __attribute__((noinline)) void format_websocket_authorization(char *out,
                                                                      size_t out_len,
                                                                      const char *token)
 {
@@ -175,7 +190,7 @@ static __attribute__((noinline)) void format_websocket_authorization(char *out,
     snprintf(out, out_len, "%s%s", strchr(token, ' ') ? "" : "Bearer ", token);
 }
 
-static __attribute__((noinline)) void format_client_hello(char *out,
+[[maybe_unused]] static __attribute__((noinline)) void format_client_hello(char *out,
                                                           size_t out_len,
                                                           int version)
 {

@@ -1,7 +1,9 @@
 // 负责选择手动城市或 IP 定位，并组合提交完整天气更新结果。
 #include "network_services.h"
+#include "network_https_resources.h"
 
 #include "app_constexpr.h"
+#include "network_sync_schedule.h"
 #include "qweather_location_text.h"
 #include "weather_state.h"
 
@@ -17,11 +19,14 @@ static_assert(kWeatherCityNameSize <= kManualWeatherCityLen,
 #define WEATHER_MANUAL_CITY_UPDATE_FAILED_FORMAT "weather update failed for manual city: %s"
 #define WEATHER_RETRY_IP_CITY_LOOKUP_FORMAT "retry qweather city lookup by ip city: %s"
 #define WEATHER_USING_IP_COORDINATES_FORMAT "using ip coordinates for weather now: %s"
+#define WEATHER_STARTUP_FOLLOWUP_DEFERRED_FORMAT \
+    "startup weather %s deferred: internal_free=%u internal_largest=%u dma_largest=%u"
 constexpr const char *kWeatherIpLookupUpdateFailedLog = "weather update failed after ip lookup";
 constexpr const char *kWeatherIpGeolocationLookupFailedLog = "ip geolocation lookup failed";
 constexpr const char *kWeatherUpdateWarningTexts[] = {
     kWeatherIpLookupUpdateFailedLog,
     kWeatherIpGeolocationLookupFailedLog,
+    WEATHER_STARTUP_FOLLOWUP_DEFERRED_FORMAT,
 };
 static_assert(cstr_array_nonempty(kWeatherUpdateWarningTexts),
               "weather update warning texts must be non-empty");
@@ -29,6 +34,35 @@ static_assert(cstr_array_nonempty(kWeatherUpdateWarningTexts),
 void log_weather_update_warning(const char *message)
 {
     ESP_LOGW(TAG, "%s", cstr_nonempty(message) ? message : "weather update failed");
+}
+
+bool prepare_weather_followup_request(const char *stage)
+{
+    // Each QWeather helper owns and releases its response/TLS buffers before
+    // returning. Keep the longer settle and memory gate through the first
+    // minute, including the staggered background refresh after the boot UI.
+    bool startup_pressure = network_startup_pressure_window_active(
+        g_startup_screen_active,
+        esp_timer_get_time());
+    vTaskDelay(pdMS_TO_TICKS(
+        network_weather_request_settle_delay_ms(startup_pressure)));
+    if (!startup_pressure) {
+        return true;
+    }
+    const NetworkHttpsMemorySnapshot memory = capture_network_https_memory_snapshot();
+    if (network_startup_followup_https_allowed(startup_pressure,
+                                               memory.internal_free,
+                                               memory.internal_largest,
+                                               memory.dma_largest)) {
+        return true;
+    }
+    ESP_LOGW(TAG,
+             WEATHER_STARTUP_FOLLOWUP_DEFERRED_FORMAT,
+             cstr_nonempty(stage) ? stage : "follow-up",
+             static_cast<unsigned>(memory.internal_free),
+             static_cast<unsigned>(memory.internal_largest),
+             static_cast<unsigned>(memory.dma_largest));
+    return false;
 }
 
 bool lookup_weather_city(const char *location,
@@ -52,15 +86,26 @@ bool lookup_weather_city(const char *location,
 
 bool fetch_and_commit_weather(const char *city_id, WeatherData *next)
 {
-    if (!city_id || !next || !qweather_fetch_now(city_id, next)) {
+    if (!city_id || !next ||
+        !prepare_weather_followup_request("current") ||
+        !qweather_fetch_now(city_id, next)) {
         return false;
     }
 
     WeatherAlertData next_alert = {};
     WeatherForecastData next_forecast = {};
     WeatherAirData next_air = {};
+    if (!prepare_weather_followup_request("alert")) {
+        return false;
+    }
     (void)qweather_fetch_alert(next->lat, next->lon, &next_alert);
+    if (!prepare_weather_followup_request("forecast")) {
+        return false;
+    }
     bool forecast_ok = qweather_fetch_daily(city_id, &next_forecast);
+    if (!prepare_weather_followup_request("air")) {
+        return false;
+    }
     bool air_ok = qweather_fetch_air(city_id, &next_air);
     commit_weather_update_snapshot(*next, next_alert, next_forecast, next_air, forecast_ok, air_ok);
     return true;
@@ -99,9 +144,15 @@ bool update_weather_by_ip_location()
         return false;
     }
     trim_ascii(location);
+    if (!prepare_weather_followup_request("city lookup")) {
+        return false;
+    }
     bool have_city_id = lookup_weather_city(location, city_id, lookup_city, &next);
     if (!have_city_id && ip_city[0] != '\0') {
         ESP_LOGW(TAG, WEATHER_RETRY_IP_CITY_LOOKUP_FORMAT, ip_city);
+        if (!prepare_weather_followup_request("city lookup retry")) {
+            return false;
+        }
         have_city_id = lookup_weather_city(ip_city, city_id, lookup_city, &next);
     }
     copy_first_nonempty_text(next.city, sizeof(next.city), ip_city, lookup_city, location);

@@ -4,7 +4,6 @@
 #include "app_constexpr.h"
 #include "app_state.h"
 
-#include <stdlib.h>
 #include <string.h>
 
 namespace {
@@ -21,21 +20,6 @@ constexpr const char *kQweatherResponseTexts[] = {
 #define QWEATHER_RESPONSE_SIZE_INVALID_FORMAT "qweather %s response size invalid"
 #define QWEATHER_RESPONSE_ALLOC_FAILED_FORMAT "qweather %s response alloc failed"
 
-char *alloc_qweather_response(const char *stage, size_t buffer_size)
-{
-    if (buffer_size == 0) {
-        ESP_LOGW(TAG, QWEATHER_RESPONSE_SIZE_INVALID_FORMAT, qweather_stage_text(stage));
-        return nullptr;
-    }
-    char *response = static_cast<char *>(malloc(buffer_size));
-    if (!response) {
-        ESP_LOGW(TAG, QWEATHER_RESPONSE_ALLOC_FAILED_FORMAT, qweather_stage_text(stage));
-        return nullptr;
-    }
-    response[0] = '\0';
-    return response;
-}
-
 static_assert(array_count(kQweatherResponseTexts) > 0,
               "QWeather response text registry must not be empty");
 static_assert(cstr_array_nonempty(kQweatherResponseTexts),
@@ -48,15 +32,17 @@ const char *qweather_stage_text(const char *stage)
 }
 
 QweatherResponseBuffer::QweatherResponseBuffer(const char *stage, size_t buffer_size)
-    : data_(alloc_qweather_response(stage, buffer_size)),
+    : data_(buffer_size, HeapBufferInit::kCString),
       size_(buffer_size)
 {
+    if (buffer_size == 0) {
+        ESP_LOGW(TAG, QWEATHER_RESPONSE_SIZE_INVALID_FORMAT, qweather_stage_text(stage));
+    } else if (!data_) {
+        ESP_LOGW(TAG, QWEATHER_RESPONSE_ALLOC_FAILED_FORMAT, qweather_stage_text(stage));
+    }
 }
 
-QweatherResponseBuffer::~QweatherResponseBuffer()
-{
-    free(data_);
-}
+QweatherResponseBuffer::~QweatherResponseBuffer() = default;
 
 QweatherJsonRoot::QweatherJsonRoot(char *response)
     : root_(response)

@@ -3,6 +3,7 @@
 
 #include "cJSON.h"
 #include "network_json_root.h"
+#include "scoped_heap_buffer.h"
 
 #include <stddef.h>
 
@@ -18,7 +19,7 @@ public:
 
     char *get() const
     {
-        return data_;
+        return data_.get();
     }
 
     size_t size() const
@@ -28,11 +29,11 @@ public:
 
     explicit operator bool() const
     {
-        return data_ != nullptr;
+        return static_cast<bool>(data_);
     }
 
 private:
-    char *data_ = nullptr;
+    ScopedHeapBuffer<char> data_;
     size_t size_ = 0;
 };
 

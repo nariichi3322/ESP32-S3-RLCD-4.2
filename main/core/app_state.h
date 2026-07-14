@@ -43,6 +43,7 @@
 #include "lvgl_bsp.h"
 #include "dseg_digits.h"
 #include "boot_anim.h"
+#include "ota_flow_policy.h"
 #include "status_gif_60.h"
 #include "ui_icons.h"
 
@@ -210,16 +211,6 @@ enum SettingsPrimaryMenu {
     kSettingsPrimarySound = 1,
     kSettingsPrimaryDisplay = 2,
     kSettingsPrimarySystem = 3,
-};
-
-enum OtaUiState {
-    kOtaIdle = 0,
-    kOtaChecking = 1,
-    kOtaAvailable = 2,
-    kOtaUpdating = 3,
-    kOtaSucceeded = 4,
-    kOtaFailed = 5,
-    kOtaNoUpdate = 6,
 };
 
 extern DisplayPort g_display;

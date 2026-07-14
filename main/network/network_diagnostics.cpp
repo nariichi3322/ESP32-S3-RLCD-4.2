@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "network_json_root.h"
+#include "scoped_heap_buffer.h"
 #include "ui_views.h"
 
 #include "lwip/netdb.h"
@@ -183,45 +184,6 @@ static_assert(kNetworkDiagInitialLines[0].index == kNetworkDiagLocalIpLine,
 static_assert(kNetworkDiagInitialLines[array_count(kNetworkDiagInitialLines) - 1].index == kNetworkDiagOtaLine,
               "network diag initial table must end with OTA row");
 
-class NetworkDiagResponseBuffer {
-public:
-    explicit NetworkDiagResponseBuffer(size_t buffer_len)
-        : data_((char *)calloc(buffer_len, 1)),
-          size_(buffer_len)
-    {
-        if (!data_) {
-            ESP_LOGW(TAG, NETWORK_DIAG_RESPONSE_ALLOC_FAILED_FORMAT, (unsigned)buffer_len);
-        }
-    }
-
-    ~NetworkDiagResponseBuffer()
-    {
-        free(data_);
-    }
-
-    NetworkDiagResponseBuffer(const NetworkDiagResponseBuffer &) = delete;
-    NetworkDiagResponseBuffer &operator=(const NetworkDiagResponseBuffer &) = delete;
-
-    char *get() const
-    {
-        return data_;
-    }
-
-    size_t size() const
-    {
-        return size_;
-    }
-
-    explicit operator bool() const
-    {
-        return data_ != nullptr;
-    }
-
-private:
-    char *data_;
-    size_t size_;
-};
-
 void diag_count(bool ok)
 {
     g_network_diag_total = g_network_diag_total + 1;
@@ -261,8 +223,9 @@ bool http_probe_ok(const char *url, size_t buffer_len = kNetworkDiagDefaultProbe
         ESP_LOGW(TAG, "%s", NETWORK_DIAG_HTTP_PROBE_INVALID_ARG_LOG);
         return false;
     }
-    NetworkDiagResponseBuffer response(buffer_len);
+    ScopedHeapBuffer<char> response(buffer_len, HeapBufferInit::kZeroed);
     if (!response) {
+        ESP_LOGW(TAG, NETWORK_DIAG_RESPONSE_ALLOC_FAILED_FORMAT, (unsigned)buffer_len);
         return false;
     }
     return http_get_text(url, response.get(), response.size(), nullptr) == ESP_OK;
@@ -347,8 +310,12 @@ bool lookup_public_ip(char *out, size_t out_len)
         return false;
     }
     out[0] = '\0';
-    NetworkDiagResponseBuffer response(kNetworkDiagPublicIpResponseBufferSize);
+    ScopedHeapBuffer<char> response(kNetworkDiagPublicIpResponseBufferSize,
+                                    HeapBufferInit::kZeroed);
     if (!response) {
+        ESP_LOGW(TAG,
+                 NETWORK_DIAG_RESPONSE_ALLOC_FAILED_FORMAT,
+                 (unsigned)kNetworkDiagPublicIpResponseBufferSize);
         return false;
     }
     bool ok = false;
@@ -447,10 +414,8 @@ void network_diag_record_text_line(int index, const char *fmt, bool ok, const ch
 }
 } // namespace
 
-void run_network_diagnostics()
+void run_network_diagnostic_checks()
 {
-    network_diag_begin();
-
     char location[kNetworkDiagLocationTextSize] = {};
     char city[kNetworkDiagCityTextSize] = {};
     char public_ip[kNetworkDiagPublicIpTextSize] = {};
@@ -500,6 +465,4 @@ void run_network_diagnostics()
     network_diag_set_checking_line(kNetworkDiagOtaLine, kNetworkDiagOtaFormat);
     bool ota_ok = http_probe_ok(kOtaManifestUrl, kNetworkDiagWideProbeBufferSize);
     network_diag_record_result_line(kNetworkDiagOtaLine, kNetworkDiagOtaFormat, ota_ok);
-
-    network_diag_finish();
 }

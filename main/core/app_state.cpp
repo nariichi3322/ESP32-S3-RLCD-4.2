@@ -3,7 +3,7 @@
 #include "chime_settings.h"
 
 const char *const TAG = "WeatherClock";
-const char *const APP_VERSION = "v1.5.8";
+const char *const APP_VERSION = "v1.5.9";
 #ifndef WEATHER_CLOCK_BUILD_DATE
 #define WEATHER_CLOCK_BUILD_DATE "unknown"
 #endif

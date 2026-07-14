@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "app_state.h"
+#include "scoped_heap_buffer.h"
 
 #include <stdarg.h>
 
@@ -132,42 +133,6 @@ private:
     wifi_ap_record_t *records_ = nullptr;
     uint16_t capacity_ = 0;
     uint16_t count_ = 0;
-};
-
-class PortalHtmlBuffer {
-public:
-    explicit PortalHtmlBuffer(size_t len)
-        : html_((char *)calloc(1, len)),
-          size_(len)
-    {
-    }
-
-    ~PortalHtmlBuffer()
-    {
-        free(html_);
-    }
-
-    PortalHtmlBuffer(const PortalHtmlBuffer &) = delete;
-    PortalHtmlBuffer &operator=(const PortalHtmlBuffer &) = delete;
-
-    char *data() const
-    {
-        return html_;
-    }
-
-    size_t size() const
-    {
-        return size_;
-    }
-
-    explicit operator bool() const
-    {
-        return html_ != nullptr;
-    }
-
-private:
-    char *html_ = nullptr;
-    size_t size_ = 0;
 };
 
 esp_err_t send_portal_html(httpd_req_t *req, const char *html)
@@ -363,7 +328,7 @@ esp_err_t root_get_handler(httpd_req_t *req)
     char safe_weather_city[kPortalEscapedCitySize] = {};
     html_escape(g_wifi_ssid, safe_ssid, sizeof(safe_ssid));
     html_escape(g_manual_weather_city, safe_weather_city, sizeof(safe_weather_city));
-    PortalHtmlBuffer html(kPortalRootHtmlSize);
+    ScopedHeapBuffer<char> html(kPortalRootHtmlSize, HeapBufferInit::kZeroed);
     if (!html) {
         return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
     }

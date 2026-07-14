@@ -3,6 +3,7 @@
 #include "app_state.h"
 #include "network_form.h"
 #include "network_gzip.h"
+#include "network_https_resources.h"
 #include "network_json.h"
 #include "network_text.h"
 #include "network_url.h"
@@ -15,20 +16,6 @@ struct HttpBuffer {
     char *data;
     size_t len;
     size_t cap;
-};
-
-// TLS 握手期间切换到显示 DMA 保守模式，避免网络大块内存分配与 LCD
-// 刷新争用内部 DMA 内存。天气、小智等联网模块复用同一个守卫。
-class NetworkDisplayDmaGuard {
-public:
-    explicit NetworkDisplayDmaGuard(bool active);
-    ~NetworkDisplayDmaGuard();
-
-    NetworkDisplayDmaGuard(const NetworkDisplayDmaGuard &) = delete;
-    NetworkDisplayDmaGuard &operator=(const NetworkDisplayDmaGuard &) = delete;
-
-private:
-    bool active_ = false;
 };
 
 bool load_saved_config();
@@ -58,6 +45,10 @@ void stop_captive_dns_server();
 bool start_http_server();
 bool start_wifi_radio(bool enable_setup_portal);
 void stop_wifi_radio(bool force_setup_portal = false);
+// 小智退出与后台同步可能交错：先登记关闭请求，再由最后释放联网锁的
+// 任务补关 Wi-Fi，避免双方都因对方仍持锁而永久漏关射频。
+void request_wifi_radio_stop_when_idle();
+void service_wifi_radio_stop_when_idle();
 void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, void *event_data);
 void init_wifi();
 bool perform_ntp_sync(int max_retries = 30);
@@ -105,6 +96,7 @@ void get_weather_full_snapshot(WeatherData *weather,
 void get_weather_snapshot(WeatherData *weather, WeatherAlertData *alert);
 void get_weather_forecast_snapshot(WeatherForecastData *forecast);
 void get_weather_air_snapshot(WeatherAirData *air);
+bool weather_extended_data_ready();
 bool perform_weather_update();
 void load_daily_saying_cache();
 bool get_daily_saying_snapshot(char *out, size_t out_len, time_t *last_sync_time = nullptr);
@@ -121,5 +113,6 @@ void network_diag_reset();
 void network_diag_begin();
 void network_diag_finish();
 void network_diag_set_line(int index, const char *fmt, ...);
-void run_network_diagnostics();
+// 只执行检测项目；调用方负责 begin/finish 与 Wi-Fi 会话生命周期。
+void run_network_diagnostic_checks();
 void network_sync_task(void *);

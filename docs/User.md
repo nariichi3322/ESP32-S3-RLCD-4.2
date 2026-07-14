@@ -27,7 +27,7 @@ Settings returns to the current work page after about 30 seconds without activit
 
 Depending on the page, the status area shows date, weekday, battery, Wi-Fi, reminder, alarm, and local sensor information.
 
-- **Wi-Fi icon:** shown only while Wi-Fi is actually connected.
+- **Wi-Fi icon:** shown whenever the Wi-Fi radio is on and hidden when it is off, including connection and synchronization periods.
 - **Sound icon:** shown when an hourly or all-day reminder is enabled.
 - **Alarm icon:** shown while the one-shot alarm is enabled.
 - **Battery icon:** shows estimated charge. During detected charging it blinks on whole-second boundaries. The hardware has no dedicated CHG/VBUS input, so plug/unplug detection based on ADC voltage trends can be delayed briefly.
@@ -92,6 +92,7 @@ Provides local wake-word detection, voice conversations, on-screen transcripts, 
 - High-power voice services start only while entering the Xiaozhi page.
 - First use may require binding to the Xiaozhi service by following the on-screen prompt.
 - Speak the wake word while waiting. If the page says Xiaozhi is preparing, allow service initialization to finish.
+- If the cloud service recognizes only an incomplete phrase and returns no text or audio reply, the page shows that it did not hear the complete request. Continue or repeat the request; about 12 seconds of silence returns to wake-word standby.
 - Leaving the page stops the ordinary voice session. Alarm and an active Pomodoro keep running in the background.
 - This page consumes substantially more power and warms the PCB, which may make the onboard temperature/humidity reading higher than the surrounding air.
 
@@ -112,7 +113,7 @@ With no saved online configuration and offline mode disabled, setup starts autom
 
 ### 4.2 Online Mode
 
-Submitting Wi-Fi credentials stores the online configuration and starts connection. QWeather API Key is required only for weather services; NTP and daily text do not use it.
+Submitting Wi-Fi credentials stores the online configuration and starts connection. QWeather API Key is required only for weather services; NTP and daily text do not use it. If the short boot request obtains current conditions but not forecast or air quality, a staggered background refresh remains scheduled so extended weather-board data is normally ready before first entry.
 
 After setup, NTP, weather, and daily-text requests are staggered to avoid concurrent HTTPS memory peaks. Enabled network pages receive an initial data prefetch even if they are not the first visible page.
 

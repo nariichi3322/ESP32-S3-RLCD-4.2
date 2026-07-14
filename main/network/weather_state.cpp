@@ -74,6 +74,17 @@ void get_weather_air_snapshot(WeatherAirData *air)
     get_weather_full_snapshot(nullptr, nullptr, nullptr, air);
 }
 
+bool weather_extended_data_ready()
+{
+    WeatherForecastData forecast = {};
+    WeatherAirData air = {};
+    get_weather_full_snapshot(nullptr, nullptr, &forecast, &air);
+    return forecast.ready &&
+           forecast.count > 0 &&
+           forecast.days[0].valid &&
+           air.ready;
+}
+
 void clear_weather_ready_event()
 {
     if (!g_app_events) {

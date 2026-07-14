@@ -290,6 +290,25 @@ bool network_awake_lock_active()
 #endif
 }
 
+bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out)
+{
+    if (!out) {
+        return false;
+    }
+    *out = {};
+#if CONFIG_PM_ENABLE
+    if (!take_pm_lock_mutex(kNetworkPmLogName)) {
+        return false;
+    }
+    out->network = g_network_pm_lock_depth;
+    out->audio = g_audio_pm_lock_depth;
+    out->audio_wake = g_audio_wake_pm_lock_depth;
+    out->audio_cpu = g_audio_cpu_pm_lock_depth;
+    give_pm_lock_mutex();
+#endif
+    return true;
+}
+
 void acquire_audio_awake_lock()
 {
 #if CONFIG_PM_ENABLE

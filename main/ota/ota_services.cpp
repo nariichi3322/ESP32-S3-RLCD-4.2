@@ -1,16 +1,17 @@
 // 处理固件更新检查、下载、校验、写入和重启提示流程。
 #include "ota_services.h"
-#include "ota_manifest_parser.h"
+#include "ota_flow_policy.h"
+#include "ota_manifest_client.h"
 #include "ota_validation.h"
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
-#include "app_tick_time.h"
 #include "network_services.h"
+#include "network_task_guards.h"
+#include "scoped_heap_buffer.h"
 #include "sensor_services.h"
 #include "ui_views.h"
 
-#include "custom_assets.h"
 #include "esp_app_format.h"
 #include "esp_heap_caps.h"
 #include "esp_task_wdt.h"
@@ -28,19 +29,12 @@ struct OtaHttpContext {
     size_t redirect_url_len = 0;
 };
 
-struct OtaManifestSource {
-    const char *name = nullptr;
-    const char *url = nullptr;
-};
-
 static RTC_DATA_ATTR OtaCrashBreadcrumb s_ota_breadcrumb;
 static volatile bool s_ota_status_hold_set = false;
 static constexpr uint32_t kOtaBreadcrumbMagic = 0x4f544131;
 static constexpr int kOtaMaxRedirects = 5;
 static constexpr size_t kOtaRedirectUrlLen = 1024;
 static constexpr int kOtaHttpTxBufferSize = 2048;
-static constexpr size_t kOtaManifestResponseBufferSize = 2048;
-static constexpr int kOtaManifestSourceNameLen = 16;
 static constexpr size_t kOtaDownloadStatusTextLen = 48;
 static constexpr int64_t kOtaUsPerMs = 1000;
 static constexpr uint32_t kOtaFailureHoldMs = 5000;
@@ -54,8 +48,6 @@ static constexpr TickType_t kOtaReadRetryDelay = pdMS_TO_TICKS(kOtaReadRetryDela
 static_assert(kOtaMaxRedirects > 0, "OTA redirect limit must be positive");
 static_assert(kOtaRedirectUrlLen > kOtaUrlLen, "OTA redirect URL buffer must exceed manifest URL storage");
 static_assert(kOtaHttpTxBufferSize > 0, "OTA HTTP tx buffer must be positive");
-static_assert(kOtaManifestResponseBufferSize > 1, "OTA manifest response buffer must fit text and NUL");
-static_assert(kOtaManifestSourceNameLen > 1, "OTA manifest source name must fit text and NUL");
 static_assert(kOtaSha256HexLen + 1 == kOtaSha256Len,
               "OTA SHA256 hex length must match manifest storage");
 static_assert(kOtaDownloadStatusTextLen <= kOtaStatusLen,
@@ -87,18 +79,7 @@ static constexpr const char *kOtaStatusInstallingBackup = "Installing backup 0%"
 static constexpr const char *kOtaStatusInstallingProgressFormat = "Installing %d%%  %dKB/s";
 static constexpr const char *kOtaStatusNewVersionFormat = "New version %s";
 static constexpr const char *kOtaStatusFallbackError = "OTA status error";
-static constexpr const char *kOtaManifestSourceR2 = "R2";
-static constexpr const char *kOtaManifestSourceGithub = "GitHub";
-static constexpr const char *kOtaManifestSourceCustom = "Custom";
-static constexpr const char *kOtaUnknownManifestSource = "unknown";
-static constexpr const char *kOtaPlaceholderManifestHost = "example.invalid";
 static constexpr const char *kOtaRequestFallbackName = "request";
-static constexpr int kOtaBuiltInManifestSourceCount = 2;
-static constexpr int kOtaBackupManifestSourceIndex = 1;
-static constexpr OtaManifestSource kOtaBuiltInManifestSources[] = {
-    {kOtaManifestSourceR2, kOtaManifestUrl},
-    {kOtaManifestSourceGithub, kOtaBackupManifestUrl},
-};
 #define OTA_TASK_WATCHDOG_SUBSCRIBE_SKIPPED_FORMAT "OTA task watchdog subscribe skipped: %s"
 #define OTA_TASK_WATCHDOG_UNSUBSCRIBE_FAILED_FORMAT "OTA task watchdog unsubscribe failed: %s"
 #define OTA_REQUEST_EVENT_GROUP_UNAVAILABLE_FORMAT "OTA %s skipped: event group unavailable"
@@ -106,27 +87,23 @@ static constexpr OtaManifestSource kOtaBuiltInManifestSources[] = {
 static constexpr const char *kOtaAppMarkedValidLog = "OTA app marked valid";
 #define OTA_APP_VALID_MARK_FAILED_FORMAT "OTA app valid mark failed: %s"
 #define OTA_PREVIOUS_BREADCRUMB_FORMAT "previous OTA breadcrumb: phase=%d total=%d progress=%d%% reset=%d"
-static constexpr const char *kOtaManifestParseInvalidArgLog = "OTA manifest parse invalid arg";
-static constexpr const char *kOtaManifestJsonParseFailedLog = "OTA manifest JSON parse failed";
-#define OTA_MANIFEST_MISSING_REQUIRED_FIELDS_FORMAT "OTA manifest missing required fields version=%d url=%d sha=%d"
-#define OTA_MANIFEST_SHA_INVALID_FORMAT "OTA manifest sha invalid len=%u"
-#define OTA_MANIFEST_SOURCE_SKIPPED_FORMAT "OTA manifest source skipped: %s"
-static constexpr const char *kOtaManifestResponseAllocFailedLog = "OTA manifest response alloc failed";
-#define OTA_MANIFEST_FETCH_FAILED_FORMAT "OTA manifest failed source=%s err=%s"
-#define OTA_MANIFEST_PARSE_FAILED_FORMAT "OTA manifest parse failed source=%s"
-#define OTA_MANIFEST_LOADED_FORMAT "OTA manifest loaded source=%s version=%s"
-#define OTA_BACKUP_MANIFEST_MISMATCH_FORMAT "OTA backup manifest mismatch current=%s backup=%s"
 static constexpr const char *kOtaManifestInvalidForInstallLog = "OTA manifest invalid for install";
 #define OTA_DOWNLOAD_START_FORMAT "OTA start: reset=%d battery=%d%% %.3fV rssi=%d size=%d url=%s"
 #define OTA_HTTP_HEADER_FAILED_FORMAT "OTA http header failed: %s"
 #define OTA_HTTP_OPEN_FAILED_FORMAT "OTA http open failed: %s"
+static constexpr const char *kOtaHttpClientInitFailedLog = "OTA http client init failed";
+static constexpr const char *kOtaHttpTransactionLockTimeoutLog =
+    "OTA download deferred: HTTP transaction is busy";
 #define OTA_REDIRECT_STATUS_FORMAT "OTA redirect status=%d location=%s"
+#define OTA_REDIRECT_LOCATION_INVALID_FORMAT "OTA redirect location invalid len=%u"
 #define OTA_HTTP_STATUS_FAILED_FORMAT "OTA http status=%d content_len=%d"
 static constexpr const char *kOtaRedirectLimitReachedLog = "OTA redirect limit reached";
 #define OTA_BEGIN_FAILED_FORMAT "OTA begin failed: %s"
+#define OTA_DOWNLOAD_BUFFER_ALLOC_FAILED_FORMAT "OTA download buffer allocation failed size=%u"
 #define OTA_DOWNLOAD_TIMEOUT_FORMAT "OTA download timed out total=%d"
 #define OTA_READ_FAILED_NO_PROGRESS_FORMAT "OTA read failed with no progress total=%d"
 #define OTA_STALLED_FORMAT "OTA stalled total=%d"
+#define OTA_WRITE_FAILED_FORMAT "OTA write failed total=%d chunk=%d err=%s"
 #define OTA_SHA_MISMATCH_FORMAT "OTA sha mismatch expected=%s actual=%s"
 #define OTA_END_FAILED_FORMAT "OTA end failed: %s"
 #define OTA_APP_DESCRIPTION_FAILED_FORMAT "OTA app description failed: %s"
@@ -158,14 +135,6 @@ static constexpr const char *kOtaStatusTexts[] = {
     kOtaStatusNewVersionFormat,
     kOtaStatusFallbackError,
 };
-static constexpr const char *kOtaManifestTexts[] = {
-    kOtaManifestSourceR2,
-    kOtaManifestSourceGithub,
-    kOtaManifestSourceCustom,
-    kOtaUnknownManifestSource,
-    kOtaPlaceholderManifestHost,
-    kOtaRequestFallbackName,
-};
 static constexpr const char *kOtaLogTexts[] = {
     OTA_TASK_WATCHDOG_SUBSCRIBE_SKIPPED_FORMAT,
     OTA_TASK_WATCHDOG_UNSUBSCRIBE_FAILED_FORMAT,
@@ -174,27 +143,22 @@ static constexpr const char *kOtaLogTexts[] = {
     kOtaAppMarkedValidLog,
     OTA_APP_VALID_MARK_FAILED_FORMAT,
     OTA_PREVIOUS_BREADCRUMB_FORMAT,
-    kOtaManifestParseInvalidArgLog,
-    kOtaManifestJsonParseFailedLog,
-    OTA_MANIFEST_MISSING_REQUIRED_FIELDS_FORMAT,
-    OTA_MANIFEST_SHA_INVALID_FORMAT,
-    OTA_MANIFEST_SOURCE_SKIPPED_FORMAT,
-    kOtaManifestResponseAllocFailedLog,
-    OTA_MANIFEST_FETCH_FAILED_FORMAT,
-    OTA_MANIFEST_PARSE_FAILED_FORMAT,
-    OTA_MANIFEST_LOADED_FORMAT,
-    OTA_BACKUP_MANIFEST_MISMATCH_FORMAT,
     kOtaManifestInvalidForInstallLog,
     OTA_DOWNLOAD_START_FORMAT,
     OTA_HTTP_HEADER_FAILED_FORMAT,
     OTA_HTTP_OPEN_FAILED_FORMAT,
+    kOtaHttpClientInitFailedLog,
+    kOtaHttpTransactionLockTimeoutLog,
     OTA_REDIRECT_STATUS_FORMAT,
+    OTA_REDIRECT_LOCATION_INVALID_FORMAT,
     OTA_HTTP_STATUS_FAILED_FORMAT,
     kOtaRedirectLimitReachedLog,
     OTA_BEGIN_FAILED_FORMAT,
+    OTA_DOWNLOAD_BUFFER_ALLOC_FAILED_FORMAT,
     OTA_DOWNLOAD_TIMEOUT_FORMAT,
     OTA_READ_FAILED_NO_PROGRESS_FORMAT,
     OTA_STALLED_FORMAT,
+    OTA_WRITE_FAILED_FORMAT,
     OTA_SHA_MISMATCH_FORMAT,
     OTA_END_FAILED_FORMAT,
     OTA_APP_DESCRIPTION_FAILED_FORMAT,
@@ -204,11 +168,6 @@ static constexpr const char *kOtaLogTexts[] = {
     OTA_UPDATE_CHECK_FORMAT,
     kOtaPrimaryDownloadRetryBackupLog,
 };
-
-constexpr bool ota_manifest_source_name_fits(const char *text)
-{
-    return cstr_nonempty(text) && cstr_length(text) < kOtaManifestSourceNameLen;
-}
 
 static const char *ota_request_name_or_fallback(const char *name)
 {
@@ -240,26 +199,12 @@ static void format_ota_status_text(char *out, size_t out_len, const char *fmt, .
 
 static_assert(array_count(kOtaStatusTexts) > 0,
               "OTA status text guard must cover status texts");
-static_assert(array_count(kOtaManifestTexts) > 0,
-              "OTA manifest text guard must cover manifest texts");
 static_assert(array_count(kOtaLogTexts) > 0,
               "OTA log text guard must cover diagnostic texts");
 static_assert(cstr_array_nonempty(kOtaStatusTexts), "OTA status texts must be non-empty");
-static_assert(cstr_array_nonempty(kOtaManifestTexts), "OTA manifest field texts must be non-empty");
 static_assert(cstr_array_nonempty(kOtaLogTexts), "OTA diagnostic texts must be non-empty");
-static_assert(array_count(kOtaBuiltInManifestSources) == kOtaBuiltInManifestSourceCount,
-              "OTA built-in manifest source list must cover R2 and GitHub");
-static_assert(kOtaBackupManifestSourceIndex >= 0 &&
-                  kOtaBackupManifestSourceIndex < kOtaBuiltInManifestSourceCount,
-              "OTA backup manifest source index must stay within built-in source list");
-static_assert(ota_manifest_source_name_fits(kOtaManifestSourceR2),
-              "R2 OTA manifest source name must fit UI storage");
-static_assert(ota_manifest_source_name_fits(kOtaManifestSourceGithub),
-              "GitHub OTA manifest source name must fit UI storage");
-static_assert(ota_manifest_source_name_fits(kOtaManifestSourceCustom),
-              "custom OTA manifest source name must fit UI storage");
-static_assert(ota_manifest_source_name_fits(kOtaUnknownManifestSource),
-              "unknown OTA manifest source name must fit UI storage");
+static_assert(cstr_nonempty(kOtaRequestFallbackName),
+              "OTA request fallback name must be non-empty");
 
 static void log_ota_heap(const char *stage, int downloaded, int progress)
 {
@@ -334,81 +279,6 @@ private:
     bool added_ = false;
 };
 
-class OtaManifestResponseBuffer {
-public:
-    explicit OtaManifestResponseBuffer(size_t size)
-        : data_((char *)malloc(size)),
-          size_(size)
-    {
-        if (data_) {
-            data_[0] = '\0';
-        }
-    }
-
-    ~OtaManifestResponseBuffer()
-    {
-        free(data_);
-    }
-
-    OtaManifestResponseBuffer(const OtaManifestResponseBuffer &) = delete;
-    OtaManifestResponseBuffer &operator=(const OtaManifestResponseBuffer &) = delete;
-
-    char *data() const
-    {
-        return data_;
-    }
-
-    size_t size() const
-    {
-        return size_;
-    }
-
-    explicit operator bool() const
-    {
-        return data_ != nullptr;
-    }
-
-private:
-    char *data_ = nullptr;
-    size_t size_ = 0;
-};
-
-class OtaDownloadBuffer {
-public:
-    explicit OtaDownloadBuffer(size_t size)
-        : data_((uint8_t *)malloc(size)),
-          size_(size)
-    {
-    }
-
-    ~OtaDownloadBuffer()
-    {
-        free(data_);
-    }
-
-    OtaDownloadBuffer(const OtaDownloadBuffer &) = delete;
-    OtaDownloadBuffer &operator=(const OtaDownloadBuffer &) = delete;
-
-    uint8_t *data() const
-    {
-        return data_;
-    }
-
-    int size() const
-    {
-        return (int)size_;
-    }
-
-    explicit operator bool() const
-    {
-        return data_ != nullptr;
-    }
-
-private:
-    uint8_t *data_ = nullptr;
-    size_t size_ = 0;
-};
-
 static void ota_note_phase(int phase, int total, int progress)
 {
     s_ota_breadcrumb.magic = kOtaBreadcrumbMagic;
@@ -438,32 +308,16 @@ static void ota_set_failed_status(const char *text, uint32_t hold_ms = kOtaFailu
     ota_set_status(kOtaFailed, text, -1, hold_ms);
 }
 
+static void ota_set_manifest_check_failed_status()
+{
+    ota_set_failed_status(kOtaStatusCheckFailed);
+}
+
 static void enter_ota_reboot_quiet_window()
 {
     g_ota_reboot_pending = true;
     notify_ui_task();
     vTaskDelay(pdMS_TO_TICKS(kOtaPreRestartDisplayQuietMs));
-}
-
-static void load_cached_manifest(OtaManifest *manifest)
-{
-    if (!manifest) {
-        return;
-    }
-    strlcpy(manifest->version, g_ota_version, sizeof(manifest->version));
-    strlcpy(manifest->url, g_ota_url, sizeof(manifest->url));
-    strlcpy(manifest->sha256, g_ota_sha256, sizeof(manifest->sha256));
-    strlcpy(manifest->notes, g_ota_notes, sizeof(manifest->notes));
-    manifest->size = g_ota_size;
-}
-
-static void store_cached_manifest(const OtaManifest &manifest)
-{
-    strlcpy(g_ota_version, manifest.version, sizeof(g_ota_version));
-    strlcpy(g_ota_url, manifest.url, sizeof(g_ota_url));
-    strlcpy(g_ota_sha256, manifest.sha256, sizeof(g_ota_sha256));
-    strlcpy(g_ota_notes, manifest.notes, sizeof(g_ota_notes));
-    g_ota_size = manifest.size;
 }
 
 static void cleanup_ota_http_client(esp_http_client_handle_t *client)
@@ -508,6 +362,11 @@ static void keep_ota_settings_panel_visible()
     g_info_page_until_tick = 0;
 }
 
+static void hold_ota_info_page(uint32_t hold_ms = kOtaFailureHoldMs)
+{
+    g_info_page_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(hold_ms);
+}
+
 static esp_err_t ota_http_event_handler(esp_http_client_event_t *evt)
 {
     if (!evt) {
@@ -527,18 +386,13 @@ static esp_err_t ota_http_event_handler(esp_http_client_event_t *evt)
     return ESP_OK;
 }
 
-static bool ota_status_hold_active(TickType_t now)
-{
-    return s_ota_status_hold_set &&
-           app_tick_deadline_pending(now, static_cast<TickType_t>(g_ota_status_until_tick));
-}
-
 static bool ota_flow_active_at(TickType_t now)
 {
-    return g_ota_state == kOtaChecking ||
-           (g_ota_state == kOtaAvailable && ota_status_hold_active(now)) ||
-           g_ota_state == kOtaUpdating ||
-           (g_ota_state == kOtaSucceeded && ota_status_hold_active(now));
+    return ota_flow_active_for_tick(
+        g_ota_state,
+        s_ota_status_hold_set,
+        now,
+        static_cast<TickType_t>(g_ota_status_until_tick));
 }
 
 bool ota_flow_active()
@@ -549,10 +403,11 @@ bool ota_flow_active()
 void ota_reset_status_if_idle()
 {
     TickType_t now = xTaskGetTickCount();
-    if (!ota_flow_active_at(now) &&
-        g_ota_state != kOtaIdle &&
-        s_ota_status_hold_set &&
-        app_tick_deadline_reached(now, static_cast<TickType_t>(g_ota_status_until_tick))) {
+    if (ota_status_should_reset_to_idle(
+            g_ota_state,
+            s_ota_status_hold_set,
+            now,
+            static_cast<TickType_t>(g_ota_status_until_tick))) {
         g_ota_state = kOtaIdle;
         s_ota_status_hold_set = false;
         g_ota_status_until_tick = 0;
@@ -616,137 +471,219 @@ void ota_mark_running_app_valid()
     }
 }
 
-static bool parse_ota_manifest(const char *json, OtaManifest *manifest)
+static bool open_ota_download_http(const OtaManifest &manifest,
+                                   OtaHttpContext *http_ctx,
+                                   esp_http_client_handle_t *out_client,
+                                   int *out_content_len)
 {
-    OtaManifestParseResult result = ota_parse_manifest_json(json, manifest);
-    switch (result.status) {
-    case kOtaManifestParseOk:
-        return true;
-    case kOtaManifestParseInvalidArgument:
-        ESP_LOGW(TAG, "%s", kOtaManifestParseInvalidArgLog);
-        break;
-    case kOtaManifestParseInvalidJson:
-        ESP_LOGW(TAG, "%s", kOtaManifestJsonParseFailedLog);
-        break;
-    case kOtaManifestParseMissingRequiredFields:
-        ESP_LOGW(TAG, OTA_MANIFEST_MISSING_REQUIRED_FIELDS_FORMAT,
-                 result.have_version,
-                 result.have_url,
-                 result.have_sha256);
-        break;
-    case kOtaManifestParseInvalidSha256:
-        ESP_LOGW(TAG, OTA_MANIFEST_SHA_INVALID_FORMAT, (unsigned)result.sha256_length);
-        break;
+    if (!http_ctx || !http_ctx->redirect_url || http_ctx->redirect_url_len == 0 ||
+        !out_client || !out_content_len) {
+        ota_set_failed_status(kOtaStatusDownloadFailed);
+        return false;
     }
+    *out_client = nullptr;
+    *out_content_len = 0;
+    char current_url[kOtaRedirectUrlLen] = {};
+    strlcpy(current_url, manifest.url, sizeof(current_url));
+
+    for (int redirect = 0; redirect <= kOtaMaxRedirects; ++redirect) {
+        http_ctx->redirect_url[0] = '\0';
+        esp_http_client_config_t config = {};
+        config.url = current_url;
+        config.timeout_ms = kOtaHttpTimeoutMs;
+        config.crt_bundle_attach = esp_crt_bundle_attach;
+        config.disable_auto_redirect = true;
+        config.max_redirection_count = kOtaMaxRedirects;
+        config.keep_alive_enable = true;
+        config.buffer_size = kOtaDownloadBufferSize;
+        config.buffer_size_tx = kOtaHttpTxBufferSize;
+        config.event_handler = ota_http_event_handler;
+        config.user_data = http_ctx;
+
+        esp_http_client_handle_t client = esp_http_client_init(&config);
+        if (!client) {
+            ESP_LOGW(TAG, "%s", kOtaHttpClientInitFailedLog);
+            ota_set_failed_status(kOtaStatusDownloadFailed);
+            return false;
+        }
+        esp_err_t err = esp_http_client_set_header(client,
+                                                   "Accept",
+                                                   "application/octet-stream,*/*");
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, OTA_HTTP_HEADER_FAILED_FORMAT, esp_err_to_name(err));
+            cleanup_ota_http_client(&client);
+            ota_set_failed_status(kOtaStatusDownloadFailed);
+            return false;
+        }
+        err = esp_http_client_open(client, 0);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, OTA_HTTP_OPEN_FAILED_FORMAT, esp_err_to_name(err));
+            cleanup_ota_http_client(&client);
+            ota_set_failed_status(kOtaStatusDownloadFailed);
+            return false;
+        }
+        int content_len = esp_http_client_fetch_headers(client);
+        int status = esp_http_client_get_status_code(client);
+        if (ota_is_http_redirect_status(status)) {
+            ESP_LOGI(TAG,
+                     OTA_REDIRECT_STATUS_FORMAT,
+                     status,
+                     http_ctx->redirect_url[0] ? http_ctx->redirect_url : "--");
+            close_ota_http_client(&client);
+            size_t redirect_len = strlen(http_ctx->redirect_url);
+            if (http_ctx->redirect_url[0] == '\0' ||
+                redirect_len >= sizeof(current_url)) {
+                ESP_LOGW(TAG,
+                         OTA_REDIRECT_LOCATION_INVALID_FORMAT,
+                         static_cast<unsigned>(redirect_len));
+                ota_set_failed_status(kOtaStatusDownloadFailed);
+                return false;
+            }
+            strlcpy(current_url, http_ctx->redirect_url, sizeof(current_url));
+            continue;
+        }
+        if (status < 200 || status >= 300) {
+            ESP_LOGW(TAG, OTA_HTTP_STATUS_FAILED_FORMAT, status, content_len);
+            close_ota_http_client(&client);
+            ota_set_failed_status(kOtaStatusDownloadFailed);
+            return false;
+        }
+        *out_client = client;
+        *out_content_len = content_len;
+        return true;
+    }
+
+    ESP_LOGW(TAG, "%s", kOtaRedirectLimitReachedLog);
+    ota_set_failed_status(kOtaStatusDownloadFailed);
     return false;
 }
 
-static bool ota_manifest_source_name_valid(const OtaManifestSource &source)
+static void report_ota_download_progress(int total,
+                                         int expected,
+                                         int64_t started_us,
+                                         int &last_progress,
+                                         int &last_heap_progress,
+                                         int64_t &last_status_us,
+                                         int &last_status_total)
 {
-    return cstr_nonempty(source.name);
-}
-
-static bool ota_manifest_source_url_valid(const OtaManifestSource &source)
-{
-    return cstr_nonempty(source.url) &&
-           strstr(source.url, kOtaPlaceholderManifestHost) == nullptr;
-}
-
-static const char *ota_manifest_source_name_or_unknown(const char *name)
-{
-    return cstr_nonempty(name) ? name : kOtaUnknownManifestSource;
-}
-
-static bool ota_manifest_source_valid(const OtaManifestSource &source)
-{
-    return ota_manifest_source_name_valid(source) &&
-           ota_manifest_source_url_valid(source);
-}
-
-static bool fetch_ota_manifest_from_source(const OtaManifestSource &source, OtaManifest *manifest)
-{
-    if (!manifest) {
-        ota_set_failed_status(kOtaStatusCheckFailed);
-        return false;
-    }
-    if (!ota_manifest_source_valid(source)) {
-        ESP_LOGW(TAG, OTA_MANIFEST_SOURCE_SKIPPED_FORMAT, ota_manifest_source_name_or_unknown(source.name));
-        return false;
-    }
-    OtaManifestResponseBuffer response(kOtaManifestResponseBufferSize);
-    if (!response) {
-        ESP_LOGW(TAG, "%s", kOtaManifestResponseAllocFailedLog);
-        ota_set_failed_status(kOtaStatusCheckFailed);
-        return false;
-    }
-    esp_err_t err = http_get_text(source.url, response.data(), response.size());
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, OTA_MANIFEST_FETCH_FAILED_FORMAT, ota_manifest_source_name_or_unknown(source.name), esp_err_to_name(err));
-        return false;
-    }
-    if (!parse_ota_manifest(response.data(), manifest)) {
-        ESP_LOGW(TAG,
-                 OTA_MANIFEST_PARSE_FAILED_FORMAT,
-                 ota_manifest_source_name_or_unknown(source.name));
-        return false;
-    }
-    ESP_LOGI(TAG, OTA_MANIFEST_LOADED_FORMAT, ota_manifest_source_name_or_unknown(source.name), manifest->version);
-    return true;
-}
-
-static void store_ota_manifest_source_name(char *out, size_t out_len, const char *name)
-{
-    if (!app_text::output_buffer_available(out, out_len)) {
+    if (expected <= 0) {
         return;
     }
-    strlcpy(out, ota_manifest_source_name_or_unknown(name), out_len);
+
+    int progress = (total * 100) / expected;
+    if (progress > 100) {
+        progress = 100;
+    }
+    if (progress != last_progress) {
+        ota_note_phase(3, total, progress);
+    }
+    if (progress >= last_heap_progress + 25 || progress >= 100) {
+        log_ota_heap("download", total, progress);
+        last_heap_progress = progress;
+    }
+
+    int64_t now_us = esp_timer_get_time();
+    bool progress_step = progress != last_progress;
+    bool status_due = last_status_us == 0 ||
+                      now_us - last_status_us >=
+                          (int64_t)kOtaStatusMinIntervalMs * kOtaUsPerMs ||
+                      progress >= 100;
+    if (!status_due) {
+        return;
+    }
+
+    int speed_window_bytes = total - last_status_total;
+    int64_t speed_window_us = last_status_us == 0
+                                  ? now_us - started_us
+                                  : now_us - last_status_us;
+    int speed_kbps = ota_speed_kbps_for_window(speed_window_bytes,
+                                               speed_window_us);
+    char status_text[kOtaDownloadStatusTextLen] = {};
+    format_ota_status_text(status_text,
+                           sizeof(status_text),
+                           kOtaStatusInstallingProgressFormat,
+                           progress,
+                           speed_kbps);
+    g_ota_speed_kbps = speed_kbps;
+    ota_set_status(kOtaUpdating, status_text, progress);
+    last_status_us = now_us;
+    last_status_total = total;
+    if (progress_step) {
+        last_progress = progress;
+    }
 }
 
-static bool fetch_ota_manifest(OtaManifest *manifest, char *source_name = nullptr, size_t source_name_len = 0)
+static bool stream_ota_image(esp_http_client_handle_t client,
+                             esp_ota_handle_t ota_handle,
+                             const OtaManifest &manifest,
+                             int content_len,
+                             ScopedHeapBuffer<uint8_t> &buffer,
+                             mbedtls_sha256_context &sha_ctx,
+                             OtaTaskWatchdogGuard &wdt,
+                             int64_t started_us,
+                             int &total)
 {
-    char custom_url[kOtaUrlLen] = {};
-    if (custom_assets_read_ota_manifest_url(custom_url, sizeof(custom_url))) {
-        OtaManifestSource custom_source = {kOtaManifestSourceCustom, custom_url};
-        if (fetch_ota_manifest_from_source(custom_source, manifest)) {
-            store_ota_manifest_source_name(source_name, source_name_len, custom_source.name);
-            return true;
+    int last_progress = -1;
+    int last_heap_progress = -25;
+    int64_t last_progress_us = started_us;
+    int64_t last_status_us = 0;
+    int last_status_total = 0;
+    for (;;) {
+        wdt.reset();
+        int64_t now_us = esp_timer_get_time();
+        if (now_us - started_us >
+            static_cast<int64_t>(kOtaMaxDownloadMs) * kOtaUsPerMs) {
+            ESP_LOGW(TAG, OTA_DOWNLOAD_TIMEOUT_FORMAT, total);
+            return false;
         }
-    }
-    for (const auto &source : kOtaBuiltInManifestSources) {
-        if (fetch_ota_manifest_from_source(source, manifest)) {
-            store_ota_manifest_source_name(source_name, source_name_len, source.name);
-            return true;
+        int read = esp_http_client_read(client,
+                                        reinterpret_cast<char *>(buffer.data()),
+                                        static_cast<int>(buffer.size()));
+        wdt.reset();
+        if (read < 0) {
+            if (esp_timer_get_time() - last_progress_us >
+                static_cast<int64_t>(kOtaNoProgressTimeoutMs) * kOtaUsPerMs) {
+                ESP_LOGW(TAG, OTA_READ_FAILED_NO_PROGRESS_FORMAT, total);
+                return false;
+            }
+            vTaskDelay(kOtaReadRetryDelay);
+            continue;
         }
+        if (read == 0) {
+            if (esp_http_client_is_complete_data_received(client)) {
+                return true;
+            }
+            if (esp_timer_get_time() - last_progress_us >
+                static_cast<int64_t>(kOtaNoProgressTimeoutMs) * kOtaUsPerMs) {
+                ESP_LOGW(TAG, OTA_STALLED_FORMAT, total);
+                return false;
+            }
+            vTaskDelay(kOtaReadRetryDelay);
+            continue;
+        }
+        last_progress_us = esp_timer_get_time();
+        mbedtls_sha256_update(&sha_ctx, buffer.data(), read);
+        esp_err_t err = esp_ota_write(ota_handle, buffer.data(), read);
+        wdt.reset();
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG,
+                     OTA_WRITE_FAILED_FORMAT,
+                     total,
+                     read,
+                     esp_err_to_name(err));
+            return false;
+        }
+        vTaskDelay(pdMS_TO_TICKS(kOtaChunkDelayMs));
+        total += read;
+        int expected = content_len > 0 ? content_len : manifest.size;
+        report_ota_download_progress(total,
+                                     expected,
+                                     started_us,
+                                     last_progress,
+                                     last_heap_progress,
+                                     last_status_us,
+                                     last_status_total);
     }
-    ota_set_failed_status(kOtaStatusCheckFailed);
-    return false;
-}
-
-static bool fetch_backup_manifest_for_install(const OtaManifest &current, OtaManifest *backup)
-{
-    if (!backup || current.version[0] == '\0' || !ota_valid_sha256_string(current.sha256)) {
-        return false;
-    }
-    OtaManifest candidate;
-    const OtaManifestSource &backup_source =
-        kOtaBuiltInManifestSources[kOtaBackupManifestSourceIndex];
-    if (!fetch_ota_manifest_from_source(backup_source, &candidate)) {
-        return false;
-    }
-    if (!ota_backup_manifest_metadata_matches(current.version,
-                                              current.sha256,
-                                              current.size,
-                                              candidate.version,
-                                              candidate.sha256,
-                                              candidate.size)) {
-        ESP_LOGW(TAG,
-                 OTA_BACKUP_MANIFEST_MISMATCH_FORMAT,
-                 current.version,
-                 candidate.version);
-        return false;
-    }
-    *backup = candidate;
-    return true;
 }
 
 static bool download_and_apply_ota(const OtaManifest &manifest)
@@ -778,74 +715,26 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
              manifest.url);
     log_ota_heap("start", 0, 0);
 
-    char current_url[kOtaRedirectUrlLen] = {};
-    strlcpy(current_url, manifest.url, sizeof(current_url));
+    char redirect_url[kOtaRedirectUrlLen] = {};
+    OtaHttpContext http_ctx = {redirect_url, sizeof(redirect_url)};
     esp_http_client_handle_t client = nullptr;
     int content_len = 0;
-    esp_err_t err = ESP_FAIL;
-    for (int redirect = 0; redirect <= kOtaMaxRedirects; ++redirect) {
-        char redirect_url[kOtaRedirectUrlLen] = {};
-        OtaHttpContext http_ctx = {redirect_url, sizeof(redirect_url)};
-        esp_http_client_config_t config = {};
-        config.url = current_url;
-        config.timeout_ms = kOtaHttpTimeoutMs;
-        config.crt_bundle_attach = esp_crt_bundle_attach;
-        config.disable_auto_redirect = true;
-        config.max_redirection_count = kOtaMaxRedirects;
-        config.keep_alive_enable = true;
-        config.buffer_size = kOtaDownloadBufferSize;
-        config.buffer_size_tx = kOtaHttpTxBufferSize;
-        config.event_handler = ota_http_event_handler;
-        config.user_data = &http_ctx;
-
-        client = esp_http_client_init(&config);
-        if (!client) {
-            ota_set_failed_status(kOtaStatusDownloadFailed);
-            return false;
-        }
-        err = esp_http_client_set_header(client, "Accept", "application/octet-stream,*/*");
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, OTA_HTTP_HEADER_FAILED_FORMAT, esp_err_to_name(err));
-            cleanup_ota_http_client(&client);
-            ota_set_failed_status(kOtaStatusDownloadFailed);
-            return false;
-        }
-        err = esp_http_client_open(client, 0);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, OTA_HTTP_OPEN_FAILED_FORMAT, esp_err_to_name(err));
-            cleanup_ota_http_client(&client);
-            ota_set_failed_status(kOtaStatusDownloadFailed);
-            return false;
-        }
-        content_len = esp_http_client_fetch_headers(client);
-        int status = esp_http_client_get_status_code(client);
-        if (ota_is_http_redirect_status(status)) {
-            ESP_LOGI(TAG, OTA_REDIRECT_STATUS_FORMAT, status, redirect_url[0] ? redirect_url : "--");
-            close_ota_http_client(&client);
-            if (redirect_url[0] == '\0' || strlen(redirect_url) >= sizeof(current_url)) {
-                ota_set_failed_status(kOtaStatusDownloadFailed);
-                return false;
-            }
-            strlcpy(current_url, redirect_url, sizeof(current_url));
-            continue;
-        }
-        if (status < 200 || status >= 300) {
-            ESP_LOGW(TAG, OTA_HTTP_STATUS_FAILED_FORMAT, status, content_len);
-            close_ota_http_client(&client);
-            ota_set_failed_status(kOtaStatusDownloadFailed);
-            return false;
-        }
-        break;
-    }
-    if (!client) {
-        ESP_LOGW(TAG, "%s", kOtaRedirectLimitReachedLog);
+    NetworkHttpTransactionGuard transaction_lock(
+        pdMS_TO_TICKS(kOtaWifiConnectTimeoutMs));
+    if (!transaction_lock.locked()) {
+        ESP_LOGW(TAG, "%s", kOtaHttpTransactionLockTimeoutLog);
         ota_set_failed_status(kOtaStatusDownloadFailed);
+        return false;
+    }
+    if (!open_ota_download_http(manifest, &http_ctx, &client, &content_len)) {
         return false;
     }
 
     esp_ota_handle_t ota_handle = 0;
     ota_note_phase(2, 0, 0);
-    err = esp_ota_begin(update_partition, manifest.size > 0 ? manifest.size : OTA_SIZE_UNKNOWN, &ota_handle);
+    esp_err_t err = esp_ota_begin(update_partition,
+                                  manifest.size > 0 ? manifest.size : OTA_SIZE_UNKNOWN,
+                                  &ota_handle);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, OTA_BEGIN_FAILED_FORMAT, esp_err_to_name(err));
         close_ota_http_client(&client);
@@ -853,8 +742,11 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         return false;
     }
 
-    OtaDownloadBuffer buffer(kOtaDownloadBufferSize);
+    ScopedHeapBuffer<uint8_t> buffer(kOtaDownloadBufferSize);
     if (!buffer) {
+        ESP_LOGW(TAG,
+                 OTA_DOWNLOAD_BUFFER_ALLOC_FAILED_FORMAT,
+                 static_cast<unsigned>(kOtaDownloadBufferSize));
         esp_ota_abort(ota_handle);
         close_ota_http_client(&client);
         ota_set_failed_status(kOtaStatusNoMemory);
@@ -866,91 +758,17 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
     mbedtls_sha256_starts(&sha_ctx, 0);
 
     int total = 0;
-    int last_progress = -1;
-    int last_heap_progress = -25;
     int64_t started_us = esp_timer_get_time();
-    int64_t last_progress_us = started_us;
-    int64_t last_status_us = 0;
-    int last_status_total = 0;
-    bool ok = true;
     OtaTaskWatchdogGuard wdt;
-    for (;;) {
-        wdt.reset();
-        int64_t now_us = esp_timer_get_time();
-        if (now_us - started_us > (int64_t)kOtaMaxDownloadMs * kOtaUsPerMs) {
-            ESP_LOGW(TAG, OTA_DOWNLOAD_TIMEOUT_FORMAT, total);
-            ok = false;
-            break;
-        }
-        int read = esp_http_client_read(client, (char *)buffer.data(), buffer.size());
-        wdt.reset();
-        if (read < 0) {
-            if (esp_timer_get_time() - last_progress_us > (int64_t)kOtaNoProgressTimeoutMs * kOtaUsPerMs) {
-                ESP_LOGW(TAG, OTA_READ_FAILED_NO_PROGRESS_FORMAT, total);
-                ok = false;
-                break;
-            }
-            vTaskDelay(kOtaReadRetryDelay);
-            continue;
-        }
-        if (read == 0) {
-            if (esp_http_client_is_complete_data_received(client)) {
-                break;
-            }
-            if (esp_timer_get_time() - last_progress_us > (int64_t)kOtaNoProgressTimeoutMs * kOtaUsPerMs) {
-                ESP_LOGW(TAG, OTA_STALLED_FORMAT, total);
-                ok = false;
-                break;
-            }
-            vTaskDelay(kOtaReadRetryDelay);
-            continue;
-        }
-        last_progress_us = esp_timer_get_time();
-        mbedtls_sha256_update(&sha_ctx, buffer.data(), read);
-        err = esp_ota_write(ota_handle, buffer.data(), read);
-        wdt.reset();
-        if (err != ESP_OK) {
-            ok = false;
-            break;
-        }
-        vTaskDelay(pdMS_TO_TICKS(kOtaChunkDelayMs));
-        total += read;
-        int expected = content_len > 0 ? content_len : manifest.size;
-        if (expected > 0) {
-            int progress = (total * 100) / expected;
-            if (progress > 100) progress = 100;
-            if (progress != last_progress) {
-                ota_note_phase(3, total, progress);
-            }
-            if (progress >= last_heap_progress + 25 || progress >= 100) {
-                log_ota_heap("download", total, progress);
-                last_heap_progress = progress;
-            }
-            int64_t now_us = esp_timer_get_time();
-            bool progress_step = progress != last_progress;
-            bool status_due = last_status_us == 0 ||
-                              now_us - last_status_us >= (int64_t)kOtaStatusMinIntervalMs * kOtaUsPerMs ||
-                              progress >= 100;
-            if (status_due) {
-                int speed_window_bytes = total - last_status_total;
-                int64_t speed_window_us = last_status_us == 0 ? now_us - started_us : now_us - last_status_us;
-                int speed_kbps = ota_speed_kbps_for_window(speed_window_bytes, speed_window_us);
-                char status_text[kOtaDownloadStatusTextLen] = {};
-                format_ota_status_text(status_text,
-                                       sizeof(status_text),
-                                       kOtaStatusInstallingProgressFormat,
-                                       progress,
-                                       speed_kbps);
-                g_ota_speed_kbps = speed_kbps;
-                ota_set_status(kOtaUpdating, status_text, progress);
-                last_status_us = now_us;
-                last_status_total = total;
-                if (progress_step) {
-                    last_progress = progress;
-                }
-            }
-        }
-    }
+    bool ok = stream_ota_image(client,
+                               ota_handle,
+                               manifest,
+                               content_len,
+                               buffer,
+                               sha_ctx,
+                               wdt,
+                               started_us,
+                               total);
 
     uint8_t hash[kOtaSha256ByteCount];
     wdt.reset();
@@ -1057,19 +875,22 @@ void ota_task(void *)
         }
 
         if (!prepare_ota_wifi()) {
-            g_info_page_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(kOtaFailureHoldMs);
+            hold_ota_info_page();
             continue;
         }
 
         OtaManifest manifest;
         if (install) {
-            load_cached_manifest(&manifest);
+            ota_manifest_load_cached(&manifest);
         } else {
             ota_set_status(kOtaChecking, kOtaStatusCheckingUpdate);
             char manifest_source[kOtaManifestSourceNameLen] = {};
-            if (!fetch_ota_manifest(&manifest, manifest_source, sizeof(manifest_source))) {
+            if (!ota_manifest_fetch(&manifest,
+                                    manifest_source,
+                                    sizeof(manifest_source),
+                                    ota_set_manifest_check_failed_status)) {
                 finish_ota_wifi();
-                g_info_page_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(kOtaFailureHoldMs);
+                hold_ota_info_page();
                 continue;
             }
             ESP_LOGI(TAG,
@@ -1080,10 +901,10 @@ void ota_task(void *)
             if (ota_compare_versions(manifest.version, APP_VERSION) <= 0) {
                 ota_set_status(kOtaNoUpdate, kOtaStatusAlreadyLatest, -1, kOtaFailureHoldMs);
                 finish_ota_wifi();
-                g_info_page_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(kOtaFailureHoldMs);
+                hold_ota_info_page();
                 continue;
             }
-            store_cached_manifest(manifest);
+            ota_manifest_store_cached(manifest);
             char status_text[kOtaStatusLen] = {};
             format_ota_status_text(status_text, sizeof(status_text), kOtaStatusNewVersionFormat, manifest.version);
             ota_set_status(kOtaAvailable, status_text, -1, kOtaAvailableConfirmTimeoutMs);
@@ -1097,7 +918,10 @@ void ota_task(void *)
             ok = download_and_apply_ota(manifest);
             if (!ok) {
                 OtaManifest backup_manifest;
-                if (fetch_backup_manifest_for_install(manifest, &backup_manifest) &&
+                if (ota_manifest_fetch_backup_for_install(
+                        manifest,
+                        &backup_manifest,
+                        ota_set_manifest_check_failed_status) &&
                     strcmp(backup_manifest.url, manifest.url) != 0) {
                     ESP_LOGW(TAG, "%s", kOtaPrimaryDownloadRetryBackupLog);
                     ota_set_status(kOtaUpdating, kOtaStatusInstallingBackup, 0);
@@ -1115,7 +939,7 @@ void ota_task(void *)
             }
         }
         if (!ok) {
-            g_info_page_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(kOtaFailureHoldMs);
+            hold_ota_info_page();
         }
     }
 }

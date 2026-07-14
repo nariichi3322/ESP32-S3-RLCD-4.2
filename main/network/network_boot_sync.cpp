@@ -1,4 +1,4 @@
-// 执行启动页 Wi-Fi 连接、时间校准和当前主页数据的限时同步流程。
+// 执行启动页 Wi-Fi 连接与时间校准，页面 HTTPS 数据统一留给后台错峰同步。
 #include "network_services.h"
 
 #include "app_text_format.h"
@@ -15,16 +15,18 @@ constexpr uint32_t kBootScreenShortDelayMs = 200;
 constexpr uint32_t kBootScreenOfflineDelayMs = 600;
 constexpr uint32_t kBootScreenSetupDelayMs = 1500;
 constexpr int kBootScreenCompletePercent = 100;
-constexpr int kBootWeatherMinRemainingMs = 250;
-constexpr int kBootSayingMinRemainingMs = 700;
 constexpr int kBootNtpMinRemainingMs = 600;
 constexpr size_t kBootSetupDetailTextSize = 64;
 constexpr const char *kBootDetailStartingClock = "Starting clock";
 constexpr const char *kBootDetailSynchronizingTime = "Synchronizing time";
+constexpr const char *kBootDetailPageDataQueued = "Page data queued";
+constexpr const char *kBootDetailBackgroundRefresh = "Refreshing after startup";
 constexpr const char *kBootSetupDetailFallback = "Setup AP: --";
 constexpr const char *kBootSetupDetailFormat = "Setup AP: %s";
 constexpr const char *kBootRtcInvalidNtpPriorityLog =
     "system time invalid after Wi-Fi connect, prioritizing boot NTP";
+constexpr const char *kBootPageDataDeferredLog =
+    "boot page HTTPS deferred to staggered background sync";
 
 class BootSyncDeadlineGuard {
 public:
@@ -63,16 +65,6 @@ void format_boot_setup_detail(char *out, size_t out_len)
     copy_boot_detail_fallback_on_format_error(written, out, out_len);
 }
 
-bool active_work_page_uses_weather_data()
-{
-    return g_active_work_page == kWorkPageWeatherClock ||
-           g_active_work_page == kWorkPageWeatherBoard;
-}
-
-bool active_work_page_uses_daily_saying()
-{
-    return g_active_work_page == kWorkPageGallery;
-}
 } // namespace
 
 int boot_sync_remaining_ms()
@@ -103,6 +95,7 @@ void run_boot_connectivity_sync()
         update_boot_screen(kBootScreenCompletePercent, "Wi-Fi start failed", kBootDetailStartingClock);
         vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
         awake_lock.release();
+        service_wifi_radio_stop_when_idle();
         return;
     }
     int remaining_ms = boot_sync_remaining_ms();
@@ -114,12 +107,12 @@ void run_boot_connectivity_sync()
         vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
         stop_wifi_radio();
         awake_lock.release();
+        service_wifi_radio_stop_when_idle();
         return;
     }
 
-    bool boot_weather_page_visible = active_work_page_uses_weather_data();
-    bool boot_gallery_page_visible = active_work_page_uses_daily_saying();
-    update_boot_screen(42, "Wi-Fi connected", boot_weather_page_visible ? "Loading weather" : "Checking time");
+    update_boot_screen(42, "Wi-Fi connected", "Checking time");
+    ESP_LOGI(TAG, "%s", kBootPageDataDeferredLog);
     bool ntp_attempted = false;
     bool ntp_ok = false;
     if (!is_time_valid()) {
@@ -129,51 +122,11 @@ void run_boot_connectivity_sync()
             ntp_attempted = true;
             update_boot_screen(46, kBootDetailSynchronizingTime, "Restoring lost RTC time");
             ntp_ok = perform_ntp_sync(kBootNtpRetries);
-            update_boot_screen(50,
+            update_boot_screen(72,
                                ntp_ok ? "Time synchronized" : "NTP retry later",
-                               ntp_ok ? "Loading page data" : "Will retry in background");
+                               ntp_ok ? kBootDetailPageDataQueued : "Will retry in background");
         }
     }
-    remaining_ms = boot_sync_remaining_ms();
-    if (boot_weather_page_visible && g_have_weather_key && !g_low_battery_mode &&
-        remaining_ms > kBootWeatherMinRemainingMs) {
-        bool weather_ok = false;
-        update_boot_screen(58, "Loading weather", "Fetching API data");
-        {
-            NetworkHttpTimeoutGuard timeout_guard(kHttpBootTimeoutMs);
-            NetworkDisplayDmaGuard display_guard(true);
-            weather_ok = perform_weather_update();
-        }
-        update_boot_screen(weather_ok ? 76 : 68,
-                           weather_ok ? "Weather ready" : "Weather retry later",
-                           weather_ok ? kBootDetailSynchronizingTime : "Will sync in background");
-    } else if (boot_weather_page_visible && g_have_weather_key && !g_low_battery_mode) {
-        update_boot_screen(68, "Weather retry later", kBootDetailStartingClock);
-    } else if (g_low_battery_mode) {
-        update_boot_screen(58, "Weather skipped", "Low battery");
-    } else if (!boot_weather_page_visible) {
-        update_boot_screen(58, "Weather deferred", "Open weather page");
-    } else {
-        update_boot_screen(58, "Weather skipped", "API Key not configured");
-    }
-
-    remaining_ms = boot_sync_remaining_ms();
-    if (boot_gallery_page_visible && !g_low_battery_mode &&
-        remaining_ms > kBootSayingMinRemainingMs) {
-        update_boot_screen(78, "Loading quote", "Fetching daily text");
-        bool saying_ok = false;
-        {
-            NetworkHttpTimeoutGuard timeout_guard(kHttpBootTimeoutMs);
-            NetworkDisplayDmaGuard display_guard(true);
-            saying_ok = perform_daily_saying_update();
-        }
-        update_boot_screen(saying_ok ? 80 : 78,
-                           saying_ok ? "Quote ready" : "Quote retry later",
-                           kBootDetailSynchronizingTime);
-    } else if (!boot_gallery_page_visible && !g_low_battery_mode) {
-        update_boot_screen(78, "Quote deferred", "Open image page");
-    }
-
     remaining_ms = boot_sync_remaining_ms();
     if (!ntp_attempted && remaining_ms > kBootNtpMinRemainingMs) {
         update_boot_screen(82, kBootDetailSynchronizingTime, "Short NTP check");
@@ -181,11 +134,12 @@ void run_boot_connectivity_sync()
     }
     update_boot_screen(kBootScreenCompletePercent,
                        ntp_ok ? "Time synchronized" : "NTP retry later",
-                       kBootDetailStartingClock);
+                       kBootDetailBackgroundRefresh);
 
     vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
     stop_wifi_radio();
     awake_lock.release();
+    service_wifi_radio_stop_when_idle();
 }
 
 void boot_connectivity_task(void *)

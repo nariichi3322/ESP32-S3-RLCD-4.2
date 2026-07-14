@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "daily_saying_parser.h"
+#include "scoped_heap_buffer.h"
 #include "ui_views.h"
 
 #define DAILY_SAYING_RESPONSE_ALLOC_FAILED_LOG_FORMAT "daily saying response alloc failed"
@@ -16,6 +17,7 @@
 namespace {
 constexpr size_t kDailySayingResponseBufferSize = 768;
 constexpr int kMaxSayingAttempts = 8;
+constexpr uint32_t kDailySayingRetrySettleMs = 120;
 constexpr const char *const kDailySayingLogTexts[] = {
     DAILY_SAYING_RESPONSE_ALLOC_FAILED_LOG_FORMAT,
     DAILY_SAYING_HTTP_FAILED_LOG_FORMAT,
@@ -35,53 +37,9 @@ static_assert(kDailySayingResponseBufferSize >= kDailySayingLen,
 static_assert(kDailySayingLen > daily_saying_parser::kMaxChars,
               "daily saying cache must exceed the accepted character limit plus terminator");
 static_assert(kMaxSayingAttempts > 0, "daily saying retry count must be positive");
+static_assert(kDailySayingRetrySettleMs > 0,
+              "daily saying retry settle delay must be positive");
 static_assert(cstr_nonempty(kDailySayingUrl), "daily saying URL must be non-empty");
-
-class DailySayingResponseBuffer {
-public:
-    DailySayingResponseBuffer()
-        : data_((char *)calloc(kDailySayingResponseBufferSize, 1)),
-          size_(kDailySayingResponseBufferSize)
-    {
-        if (!data_) {
-            ESP_LOGW(TAG, DAILY_SAYING_RESPONSE_ALLOC_FAILED_LOG_FORMAT);
-        }
-    }
-
-    ~DailySayingResponseBuffer()
-    {
-        free(data_);
-    }
-
-    DailySayingResponseBuffer(const DailySayingResponseBuffer &) = delete;
-    DailySayingResponseBuffer &operator=(const DailySayingResponseBuffer &) = delete;
-
-    char *get() const
-    {
-        return data_;
-    }
-
-    void clear() const
-    {
-        if (data_) {
-            memset(data_, 0, size_);
-        }
-    }
-
-    size_t size() const
-    {
-        return size_;
-    }
-
-    explicit operator bool() const
-    {
-        return data_ != nullptr;
-    }
-
-private:
-    char *data_;
-    size_t size_;
-};
 
 struct DailySayingAttemptStats {
     int http_failures = 0;
@@ -135,6 +93,13 @@ bool parse_daily_saying_attempt(const char *response,
     out[0] = '\0';
     return false;
 }
+
+void settle_before_next_daily_saying_attempt(int attempt)
+{
+    if (attempt < kMaxSayingAttempts) {
+        vTaskDelay(pdMS_TO_TICKS(kDailySayingRetrySettleMs));
+    }
+}
 } // namespace
 
 void load_daily_saying_cache()
@@ -174,8 +139,10 @@ bool perform_daily_saying_update()
         return false;
     }
     char next[kDailySayingLen] = {};
-    DailySayingResponseBuffer response;
+    ScopedHeapBuffer<char> response(kDailySayingResponseBufferSize,
+                                    HeapBufferInit::kZeroed);
     if (!response) {
+        ESP_LOGW(TAG, DAILY_SAYING_RESPONSE_ALLOC_FAILED_LOG_FORMAT);
         return false;
     }
     DailySayingAttemptStats stats;
@@ -185,11 +152,13 @@ bool perform_daily_saying_update()
         if (err != ESP_OK) {
             stats.record_http_failure();
             ESP_LOGW(TAG, DAILY_SAYING_HTTP_FAILED_LOG_FORMAT, esp_err_to_name(err));
+            settle_before_next_daily_saying_attempt(attempt);
             continue;
         }
         if (parse_daily_saying_attempt(response.get(), next, sizeof(next), attempt, stats)) {
             break;
         }
+        settle_before_next_daily_saying_attempt(attempt);
     }
     if (next[0] == '\0') {
         log_daily_saying_update_failed(stats);

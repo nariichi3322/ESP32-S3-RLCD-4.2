@@ -457,6 +457,20 @@ bool xiaozhi_voice_is_listening()
     return s_running.load();
 }
 
+void xiaozhi_voice_get_runtime_snapshot(XiaozhiVoiceRuntimeSnapshot *out)
+{
+    if (!out) {
+        return;
+    }
+    out->running = s_running.load();
+    out->streaming = s_streaming.load();
+    out->feed_task = s_feed_task != nullptr;
+    out->detect_task = s_detect_task != nullptr;
+    out->afe = s_afe_iface != nullptr || s_afe_data != nullptr;
+    out->model = s_models != nullptr;
+    out->processed_stream = s_processed_stream != nullptr;
+}
+
 void xiaozhi_voice_set_streaming(bool enabled)
 {
     if (!s_running.load() || !s_afe_iface || !s_afe_data || !s_processed_stream) {

@@ -6,10 +6,18 @@
 inline constexpr int kSensorSampleDayMinutes = 1;
 inline constexpr int kSensorSampleNightMinutes = 2;
 
+struct PowerLockDepthSnapshot {
+    int network = 0;
+    int audio = 0;
+    int audio_wake = 0;
+    int audio_cpu = 0;
+};
+
 void init_power_management();
 void acquire_network_awake_lock();
 void release_network_awake_lock();
 bool network_awake_lock_active();
+bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out);
 void acquire_audio_awake_lock();
 void release_audio_awake_lock();
 void set_audio_performance_mode(bool enabled);

@@ -3,6 +3,8 @@
 
 #include "app_state.h"
 #include "network_services.h"
+#include "network_https_resources.h"
+#include "network_task_guards.h"
 #include "xiaozhi_activation_storage.h"
 
 #include <esp_app_desc.h>
@@ -42,7 +44,10 @@ esp_err_t activation_http_event(esp_http_client_event_t *event)
     }
     XiaozhiActivationResponse *buffer =
         static_cast<XiaozhiActivationResponse *>(event->user_data);
-    size_t room = sizeof(buffer->data) - buffer->len - 1;
+    size_t room = xiaozhi_activation_response_writable_bytes(buffer);
+    if (room == 0) {
+        return ESP_OK;
+    }
     size_t copy_len = static_cast<size_t>(event->data_len) < room
                           ? static_cast<size_t>(event->data_len)
                           : room;
@@ -85,6 +90,48 @@ bool configure_activation_http_request(esp_http_client_handle_t client,
         ESP_LOGW(TAG, XIAOZHI_ACTIVATION_BODY_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
+    return true;
+}
+
+struct ActivationHttpResult {
+    esp_err_t err = ESP_FAIL;
+    int status = 0;
+};
+
+bool perform_activation_http_request(const esp_http_client_config_t &config,
+                                     const char *user_agent,
+                                     const char *device_id,
+                                     const char *client_id,
+                                     const char *body,
+                                     ActivationHttpResult *result)
+{
+    if (!result) {
+        return false;
+    }
+    NetworkHttpTransactionGuard transaction_lock(
+        pdMS_TO_TICKS(config.timeout_ms));
+    if (!transaction_lock.locked()) {
+        ESP_LOGW(TAG, "xiaozhi activation deferred: TLS session is busy");
+        return false;
+    }
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    if (!client) {
+        return false;
+    }
+    if (!configure_activation_http_request(client,
+                                           user_agent,
+                                           device_id,
+                                           client_id,
+                                           body)) {
+        esp_http_client_cleanup(client);
+        return false;
+    }
+    {
+        NetworkDisplayDmaGuard display_guard(true);
+        result->err = esp_http_client_perform(client);
+    }
+    result->status = esp_http_client_get_status_code(client);
+    esp_http_client_cleanup(client);
     return true;
 }
 } // namespace
@@ -168,38 +215,23 @@ bool xiaozhi_request_activation(XiaozhiActivationResponse *response)
     config.event_handler = activation_http_event;
     config.user_data = response;
     config.crt_bundle_attach = esp_crt_bundle_attach;
-    if (!acquire_network_http_transaction_lock(pdMS_TO_TICKS(config.timeout_ms))) {
-        ESP_LOGW(TAG, "xiaozhi activation deferred: TLS session is busy");
-        free(body);
-        return false;
-    }
-    esp_http_client_handle_t client = esp_http_client_init(&config);
-    if (!client) {
-        release_network_http_transaction_lock();
-        free(body);
-        return false;
-    }
     char user_agent[64] = {};
     snprintf(user_agent, sizeof(user_agent), "s3-rlcd-4.2/%s", app ? app->version : APP_VERSION);
-    if (!configure_activation_http_request(client, user_agent, device_id, client_id, body)) {
-        esp_http_client_cleanup(client);
-        release_network_http_transaction_lock();
+    ActivationHttpResult result;
+    if (!perform_activation_http_request(config,
+                                         user_agent,
+                                         device_id,
+                                         client_id,
+                                         body,
+                                         &result)) {
         free(body);
         return false;
     }
-    esp_err_t err = ESP_FAIL;
-    {
-        NetworkDisplayDmaGuard display_guard(true);
-        err = esp_http_client_perform(client);
-    }
-    int status = esp_http_client_get_status_code(client);
-    esp_http_client_cleanup(client);
-    release_network_http_transaction_lock();
     free(body);
     ESP_LOGI(TAG,
              "xiaozhi activation result: status=%d err=%s response_len=%u",
-             status,
-             esp_err_to_name(err),
+             result.status,
+             esp_err_to_name(result.err),
              static_cast<unsigned>(response->len));
-    return err == ESP_OK && status == 200 && response->len > 0;
+    return result.err == ESP_OK && result.status == 200 && response->len > 0;
 }

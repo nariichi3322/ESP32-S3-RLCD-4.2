@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "alarm_services.h"
+#include "app_constexpr.h"
 #include "sensor_services.h"
 #include "ui_text_format.h"
 
@@ -32,6 +33,11 @@ static constexpr const char *kStatusSummaryPlaceholder = "--C --%";
 static constexpr size_t kStatusSensorSummaryTextSize = 32;
 static constexpr const char *kStatusSensorSummaryFormat = "%.0fC %.0f%%";
 static constexpr const char *kStatusSensorSummaryFallback = "--C --%%";
+static constexpr size_t kClockSensorValueTextSize = 32;
+static constexpr const char *kClockSensorTempFormat = "%.1f℃";
+static constexpr const char *kClockSensorHumidityFormat = "%.1f%%";
+static constexpr const char *kClockSensorTempPlaceholder = "--.-℃";
+static constexpr const char *kClockSensorHumidityPlaceholder = "--.-%%";
 static constexpr const char *kStatusTimePlaceholder = "--:--";
 static constexpr size_t kStatusTimeTextSize = 8;
 static constexpr const char *kStatusTimeFormat = "%02d:%02d";
@@ -65,6 +71,12 @@ static_assert(kStatusChimeX + CHIME_STATUS_ICON_WIDTH <= kDisplayWidth &&
               "work status icons must fit display bounds");
 static_assert(kStatusTimeTextSize >= sizeof("00:00"),
               "work status time buffer must fit HH:MM text");
+static_assert(kClockSensorValueTextSize > 1,
+              "clock sensor status text buffer must fit text and NUL");
+static_assert(cstr_length(kClockSensorTempPlaceholder) + 1 <= kClockSensorValueTextSize,
+              "clock sensor temperature placeholder must fit status text buffer");
+static_assert(cstr_length(kClockSensorHumidityPlaceholder) + 1 <= kClockSensorValueTextSize,
+              "clock sensor humidity placeholder must fit status text buffer");
 
 enum class StatusLabelKind {
     kDate,
@@ -95,10 +107,7 @@ void build_status_icon(lv_obj_t *screen,
         ESP_LOGW(TAG, WORK_STATUS_ICON_INVALID_SIZE_FORMAT, width, height, bytes_per_row);
         return;
     }
-    if (!*buffer) {
-        *buffer = alloc_canvas_buffer(width, height);
-    }
-    if (!*buffer) {
+    if (!ensure_canvas_buffer(buffer, width, height)) {
         return;
     }
     *canvas = lv_canvas_create(screen);
@@ -141,6 +150,37 @@ lv_obj_t *make_status_label(lv_obj_t *screen,
         log_status_label_create_failed(kind, page);
     }
     return label;
+}
+
+bool format_clock_sensor_status_text(char *temp,
+                                     size_t temp_len,
+                                     char *humi,
+                                     size_t humi_len,
+                                     int *temperature_trend,
+                                     int *humidity_trend)
+{
+    float temperature = 0.0f;
+    float humidity = 0.0f;
+    bool sensor_ok = get_local_sensor_snapshot(&temperature,
+                                               &humidity,
+                                               temperature_trend,
+                                               humidity_trend);
+    if (sensor_ok) {
+        ui_text::format_or_fallback(temp,
+                                    temp_len,
+                                    kClockSensorTempPlaceholder,
+                                    kClockSensorTempFormat,
+                                    temperature);
+        ui_text::format_or_fallback(humi,
+                                    humi_len,
+                                    kClockSensorHumidityPlaceholder,
+                                    kClockSensorHumidityFormat,
+                                    humidity);
+    } else {
+        ui_text::copy(temp, temp_len, kClockSensorTempPlaceholder);
+        ui_text::copy(humi, humi_len, kClockSensorHumidityPlaceholder);
+    }
+    return sensor_ok;
 }
 
 } // namespace
@@ -306,6 +346,29 @@ bool update_non_clock_work_page_sensor_status(int page)
     return update_work_page_sensor_summary(get_work_page_status_labels(page).summary);
 }
 
+bool update_weather_clock_sensor_status()
+{
+    char temp[kClockSensorValueTextSize] = {};
+    char humi[kClockSensorValueTextSize] = {};
+    int temperature_trend = 0;
+    int humidity_trend = 0;
+    bool sensor_ok = format_clock_sensor_status_text(temp,
+                                                     sizeof(temp),
+                                                     humi,
+                                                     sizeof(humi),
+                                                     &temperature_trend,
+                                                     &humidity_trend);
+    bool changed = set_label_text_if_changed(g_temp_label, temp);
+    changed |= set_label_text_if_changed(g_humi_label, humi);
+    changed |= update_trend_icon(g_temp_trend_canvas,
+                                 sensor_ok ? temperature_trend : 0,
+                                 &g_last_temp_trend_drawn);
+    changed |= update_trend_icon(g_humi_trend_canvas,
+                                 sensor_ok ? humidity_trend : 0,
+                                 &g_last_humi_trend_drawn);
+    return changed;
+}
+
 void style_work_page_sensor_summary(lv_obj_t *label)
 {
     if (!label) {
@@ -326,7 +389,7 @@ bool update_work_page_status_icons(int page)
     }
     bool allow = !g_low_battery_mode && !g_setup_portal_active;
     bool chime_visible = allow && (g_hourly_chime_enabled || g_hourly_chime_all_day);
-    bool wifi_visible = allow && wifi_connected_for_status_icon();
+    bool wifi_visible = allow && wifi_radio_on_for_status_icon();
     lv_obj_t *chime = g_work_status_chime_icon_canvas[page];
     lv_obj_t *wifi = g_work_status_wifi_icon_canvas[page];
     lv_obj_t *alarm = g_work_status_alarm_icon_canvas[page];

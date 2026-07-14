@@ -3,7 +3,9 @@
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
+#include "network_task_guards.h"
 #include "qweather_ca.h"
+#include "scoped_heap_buffer.h"
 
 namespace {
 constexpr size_t kGzipHeaderProbeSize = 3;
@@ -80,31 +82,6 @@ static_assert(cstr_nonempty(kHttpTransactionLockTimeoutLog),
 static_assert(array_count(kHttpLogTexts) > 0,
               "HTTP log format guard must cover HTTP log formats");
 static_assert(cstr_array_nonempty(kHttpLogTexts), "HTTP log format texts must be non-empty");
-
-class HttpTransactionLock {
-public:
-    explicit HttpTransactionLock(TickType_t timeout) : locked_(acquire_network_http_transaction_lock(timeout))
-    {
-    }
-
-    ~HttpTransactionLock()
-    {
-        if (locked_) {
-            release_network_http_transaction_lock();
-        }
-    }
-
-    bool locked() const
-    {
-        return locked_;
-    }
-
-    HttpTransactionLock(const HttpTransactionLock &) = delete;
-    HttpTransactionLock &operator=(const HttpTransactionLock &) = delete;
-
-private:
-    bool locked_ = false;
-};
 
 class HttpClientHandle {
 public:
@@ -209,45 +186,6 @@ void copy_log_preview(char *out, size_t out_len, const char *text)
     }
 }
 
-class HttpByteBuffer {
-public:
-    explicit HttpByteBuffer(size_t len)
-        : data_((uint8_t *)malloc(len)),
-          size_(len)
-    {
-        if (!data_) {
-            ESP_LOGW(TAG, HTTP_TEMP_BUFFER_ALLOC_FAILED_FORMAT, (unsigned)len);
-        }
-    }
-
-    ~HttpByteBuffer()
-    {
-        free(data_);
-    }
-
-    HttpByteBuffer(const HttpByteBuffer &) = delete;
-    HttpByteBuffer &operator=(const HttpByteBuffer &) = delete;
-
-    uint8_t *get() const
-    {
-        return data_;
-    }
-
-    size_t size() const
-    {
-        return size_;
-    }
-
-    explicit operator bool() const
-    {
-        return data_ != nullptr;
-    }
-
-private:
-    uint8_t *data_;
-    size_t size_;
-};
-
 esp_err_t set_http_header_checked(esp_http_client_handle_t client,
                                   const char *name,
                                   const char *value)
@@ -322,8 +260,9 @@ esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len)
         return ESP_FAIL;
     }
 
-    HttpByteBuffer compressed(*body_len);
+    ScopedHeapBuffer<uint8_t> compressed(*body_len);
     if (!compressed) {
+        ESP_LOGW(TAG, HTTP_TEMP_BUFFER_ALLOC_FAILED_FORMAT, (unsigned)*body_len);
         return ESP_ERR_NO_MEM;
     }
     memcpy(compressed.get(), out, compressed.size());
@@ -387,7 +326,7 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
     if (!compute_http_timeout_ms(&timeout_ms)) {
         return ESP_ERR_TIMEOUT;
     }
-    HttpTransactionLock transaction_lock(pdMS_TO_TICKS(timeout_ms));
+    NetworkHttpTransactionGuard transaction_lock(pdMS_TO_TICKS(timeout_ms));
     if (!transaction_lock.locked()) {
         ESP_LOGW(TAG, "%s", kHttpTransactionLockTimeoutLog);
         return ESP_ERR_TIMEOUT;

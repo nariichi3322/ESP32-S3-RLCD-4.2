@@ -240,7 +240,7 @@ bool update_top_status_icons(bool alert_visible)
     changed |= set_obj_visible(g_chime_status_icon_canvas,
                                allow && (g_hourly_chime_enabled || g_hourly_chime_all_day));
     changed |= set_obj_visible(g_wifi_status_icon_canvas,
-                               allow && wifi_connected_for_status_icon());
+                               allow && wifi_radio_on_for_status_icon());
     changed |= set_obj_visible(g_alarm_status_icon_canvas,
                                allow && alarm_is_enabled());
     return changed;

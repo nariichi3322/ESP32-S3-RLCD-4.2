@@ -62,6 +62,38 @@ constexpr const char *kBootAnimTaskCreateFailed = "boot animation task create fa
 constexpr const char *kBootConnectivityTaskCreateFailed = "boot connectivity task create failed";
 constexpr const char *kBootReadyStatus = "Ready";
 constexpr const char *kBootReadyDetail = "Starting clock";
+
+struct AppTaskSpec {
+    TaskFunction_t task;
+    const char *name;
+    uint32_t stack_depth;
+    UBaseType_t priority;
+    TaskHandle_t *handle;
+    BaseType_t core_id;
+};
+
+constexpr AppTaskSpec kRegularAppTasks[] = {
+    {network_sync_task, kNetworkSyncTaskName, kNetworkSyncTaskStack, kHighServiceTaskPriority, nullptr, kNetworkTaskCore},
+    {ota_task, kOtaTaskName, kOtaTaskStack, kHighServiceTaskPriority, nullptr, kNetworkTaskCore},
+    {housekeeping_task, kHousekeepingTaskName, kHousekeepingTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
+    {ui_task, kUiTaskName, kUiTaskStack, kNormalServiceTaskPriority, &g_ui_task_handle, kUiTaskCore},
+    {button_task, kButtonTaskName, kButtonTaskStack, kInputTaskPriority, nullptr, kUiTaskCore},
+    {alarm_task, kAlarmTaskName, kAlarmTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
+    {pomodoro_task, kPomodoroTaskName, kPomodoroTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
+};
+
+constexpr bool app_task_specs_valid()
+{
+    for (const AppTaskSpec &spec : kRegularAppTasks) {
+        if (!spec.task || !spec.name || spec.name[0] == '\0' ||
+            spec.stack_depth == 0 || spec.priority >= configMAX_PRIORITIES ||
+            spec.core_id < 0 || spec.core_id >= portNUM_PROCESSORS) {
+            return false;
+        }
+    }
+    return true;
+}
+
 constexpr const char *const kMainLogTexts[] = {
     MAIN_INVALID_TASK_CREATE_LOG_FORMAT,
     MAIN_TASK_CREATE_FAILED_LOG_FORMAT,
@@ -87,6 +119,9 @@ static_assert(kButtonTaskStack > 0, "button task stack must be positive");
 static_assert(kAlarmTaskStack > 0, "alarm task stack must be positive");
 static_assert(kPomodoroTaskStack > 0, "pomodoro task stack must be positive");
 static_assert(kBootAnimStopWaitMs > 0, "boot animation stop wait must be positive");
+static_assert(array_count(kRegularAppTasks) > 0,
+              "regular task table must not be empty");
+static_assert(app_task_specs_valid(), "regular app task specs must be valid");
 static_assert(array_count(kMainLogTexts) > 0,
               "main startup log guard must cover startup log texts");
 static_assert(cstr_array_nonempty(kMainLogTexts), "main startup log texts must be non-empty");
@@ -112,27 +147,9 @@ static void create_app_task(TaskFunction_t task,
     }
 }
 
-struct AppTaskSpec {
-    TaskFunction_t task;
-    const char *name;
-    uint32_t stack_depth;
-    UBaseType_t priority;
-    TaskHandle_t *handle;
-    BaseType_t core_id;
-};
-
 static void create_regular_app_tasks()
 {
-    const AppTaskSpec tasks[] = {
-        {network_sync_task, kNetworkSyncTaskName, kNetworkSyncTaskStack, kHighServiceTaskPriority, nullptr, kNetworkTaskCore},
-        {ota_task, kOtaTaskName, kOtaTaskStack, kHighServiceTaskPriority, nullptr, kNetworkTaskCore},
-        {housekeeping_task, kHousekeepingTaskName, kHousekeepingTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
-        {ui_task, kUiTaskName, kUiTaskStack, kNormalServiceTaskPriority, &g_ui_task_handle, kUiTaskCore},
-        {button_task, kButtonTaskName, kButtonTaskStack, kInputTaskPriority, nullptr, kUiTaskCore},
-        {alarm_task, kAlarmTaskName, kAlarmTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
-        {pomodoro_task, kPomodoroTaskName, kPomodoroTaskStack, kNormalServiceTaskPriority, nullptr, kUiTaskCore},
-    };
-    for (const AppTaskSpec &task : tasks) {
+    for (const AppTaskSpec &task : kRegularAppTasks) {
         create_app_task(task.task,
                         task.name,
                         task.stack_depth,
@@ -164,6 +181,15 @@ static bool init_nvs_storage()
     return true;
 }
 
+static void release_app_event_group()
+{
+    if (!g_app_events) {
+        return;
+    }
+    vEventGroupDelete(g_app_events);
+    g_app_events = nullptr;
+}
+
 static bool init_system_event_services()
 {
     g_app_events = xEventGroupCreate();
@@ -174,11 +200,16 @@ static bool init_system_event_services()
     esp_err_t ret = esp_netif_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, MAIN_NETIF_INIT_FAILED_LOG_FORMAT, esp_err_to_name(ret));
+        release_app_event_group();
         return false;
     }
     ret = esp_event_loop_create_default();
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
         ESP_LOGE(TAG, MAIN_EVENT_LOOP_INIT_FAILED_LOG_FORMAT, esp_err_to_name(ret));
+        // ESP-IDF 5.5 does not support esp_netif_deinit(). Release the owned
+        // event group and leave the TCP/IP stack inert instead of retaining a
+        // stale global handle that later code could mistake for a usable bus.
+        release_app_event_group();
         return false;
     }
     return true;

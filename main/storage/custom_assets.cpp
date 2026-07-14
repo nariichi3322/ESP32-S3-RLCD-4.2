@@ -2,6 +2,7 @@
 #include "custom_assets.h"
 
 #include "app_constexpr.h"
+#include "ascii_text.h"
 #include "custom_asset_catalog.h"
 #include "custom_asset_format.h"
 
@@ -106,28 +107,6 @@ constexpr bool custom_asset_type_ids_distinct()
         }
     }
     return true;
-}
-
-static void trim_custom_asset_text(char *text)
-{
-    if (!text) {
-        return;
-    }
-    char *start = text;
-    while (*start == ' ' || *start == '\t' || *start == '\r' || *start == '\n') {
-        ++start;
-    }
-    if (start != text) {
-        memmove(text, start, strlen(start) + 1);
-    }
-    size_t len = strlen(text);
-    while (len > 0 &&
-           (text[len - 1] == ' ' ||
-            text[len - 1] == '\t' ||
-            text[len - 1] == '\r' ||
-            text[len - 1] == '\n')) {
-        text[--len] = '\0';
-    }
 }
 
 static bool custom_asset_text_read_args_valid(const CustomAssetEntry *entry, const char *out, size_t out_len)
@@ -580,7 +559,7 @@ static bool custom_assets_read_text(const CustomAssetEntry *entry, char *out, si
         return false;
     }
     out[entry->length] = '\0';
-    trim_custom_asset_text(out);
+    trim_ascii_line_whitespace(out);
     return out[0] != '\0';
 }
 

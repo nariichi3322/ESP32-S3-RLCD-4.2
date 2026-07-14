@@ -11,7 +11,6 @@
 #include "ui_inverted_clock_card.h"
 #include "ui_text_format.h"
 
-#define FLIP_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT "flip clock card %d canvas create failed"
 #define FLIP_CLOCK_TEMP_LABEL_CREATE_FAILED_LOG "flip clock temp label create failed"
 #define FLIP_CLOCK_HUMIDITY_LABEL_CREATE_FAILED_LOG "flip clock humidity label create failed"
 #define FLIP_CLOCK_MOOD_CANVAS_CREATE_FAILED_FORMAT "flip clock %s mood canvas create failed"
@@ -19,11 +18,11 @@
 
 namespace {
 
-static constexpr int kCardCount = 3;
+static constexpr int kCardCount = inverted_clock_card::kCount;
 static constexpr int kCardW = inverted_clock_card::kWidth;
 static constexpr int kCardH = inverted_clock_card::kHeight;
-static constexpr int kCardY = 66;
-static constexpr int kCardX[kCardCount] = {18, 144, 270};
+static constexpr int kCardY = inverted_clock_card::kY;
+static constexpr const int (&kCardX)[kCardCount] = inverted_clock_card::kX;
 static constexpr int kHourCardIndex = 0;
 static constexpr int kMinuteCardIndex = 1;
 static constexpr int kSecondCardIndex = 2;
@@ -398,10 +397,9 @@ void build_flip_mood_canvas(lv_obj_t *screen,
     if (!canvas || !buffer) {
         return;
     }
-    if (!*buffer) {
-        *buffer = alloc_canvas_buffer(FLIP_SENSOR_ICON_WIDTH, FLIP_SENSOR_ICON_HEIGHT);
-    }
-    if (!*buffer) {
+    if (!ensure_canvas_buffer(buffer,
+                              FLIP_SENSOR_ICON_WIDTH,
+                              FLIP_SENSOR_ICON_HEIGHT)) {
         return;
     }
     *canvas = lv_canvas_create(screen);
@@ -428,10 +426,9 @@ void build_flip_trend_canvas(lv_obj_t *screen,
     if (!canvas || !buffer) {
         return;
     }
-    if (!*buffer) {
-        *buffer = alloc_canvas_buffer(kFlipTrendCanvasW, kFlipTrendCanvasH);
-    }
-    if (!*buffer) {
+    if (!ensure_canvas_buffer(buffer,
+                              kFlipTrendCanvasW,
+                              kFlipTrendCanvasH)) {
         return;
     }
     *canvas = lv_canvas_create(screen);
@@ -556,69 +553,6 @@ void reset_flip_clock_refresh_cache()
 bool update_flip_clock_sensor_status()
 {
     return update_flip_sensor_text();
-}
-
-void build_inverted_clock_cards(lv_obj_t *parent,
-                                lv_obj_t *card_canvas[3],
-                                lv_color_t *card_canvas_buf[3])
-{
-    if (!parent || !card_canvas || !card_canvas_buf) {
-        return;
-    }
-    for (int i = 0; i < kCardCount; ++i) {
-        if (!card_canvas_buf[i]) {
-            card_canvas_buf[i] = alloc_canvas_buffer(kCardW, kCardH);
-        }
-        if (!card_canvas_buf[i]) {
-            continue;
-        }
-        card_canvas[i] = lv_canvas_create(parent);
-        if (!card_canvas[i]) {
-            ESP_LOGW(TAG, FLIP_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT, i);
-            continue;
-        }
-        configure_canvas_base(card_canvas[i],
-                              card_canvas_buf[i],
-                              kCardX[i],
-                              kCardY,
-                              kCardW,
-                              kCardH);
-        lv_canvas_fill_bg(card_canvas[i], lv_color_black(), LV_OPA_COVER);
-    }
-}
-
-bool update_inverted_clock_cards(const struct tm &local,
-                                 lv_obj_t *card_canvas[3],
-                                 int last_values[3])
-{
-    if (!card_canvas || !last_values) {
-        return false;
-    }
-    const int values[kCardCount] = {local.tm_hour, local.tm_min, local.tm_sec};
-    bool changed = false;
-    for (int i = 0; i < kCardCount; ++i) {
-        changed |= update_inverted_clock_card_value(card_canvas[i],
-                                                     values[i],
-                                                     &last_values[i]);
-    }
-    return changed;
-}
-
-void clear_inverted_clock_card(lv_obj_t *card_canvas)
-{
-    inverted_clock_card::clear(card_canvas);
-}
-
-bool update_inverted_clock_card_value(lv_obj_t *card_canvas,
-                                      int value,
-                                      int *last_value)
-{
-    if (!card_canvas || !last_value || value < 0 || value > 99 || value == *last_value) {
-        return false;
-    }
-    *last_value = value;
-    inverted_clock_card::render(card_canvas, value);
-    return true;
 }
 
 void build_flip_clock_page()

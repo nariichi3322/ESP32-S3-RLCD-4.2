@@ -93,6 +93,17 @@ lv_color_t *alloc_canvas_buffer(int width, int height)
     return buf;
 }
 
+bool ensure_canvas_buffer(lv_color_t **buffer, int width, int height)
+{
+    if (!buffer) {
+        return false;
+    }
+    if (!*buffer) {
+        *buffer = alloc_canvas_buffer(width, height);
+    }
+    return *buffer != nullptr;
+}
+
 void configure_canvas_base(lv_obj_t *canvas,
                            lv_color_t *buffer,
                            int x,

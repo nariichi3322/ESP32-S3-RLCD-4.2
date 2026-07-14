@@ -5,14 +5,9 @@
 #include "app_constexpr.h"
 #include "app_tick_time.h"
 
-#include "audio_services.h"
-#include "network_services.h"
 #include "ota_services.h"
-#include "sensor_services.h"
+#include "ui_settings_content.h"
 #include "ui_settings_ota_panel.h"
-#include "ui_text_format.h"
-
-#include <stdarg.h>
 
 namespace {
 int collect_visible_work_page_order_indices(int *indices, size_t capacity)
@@ -31,7 +26,6 @@ int collect_visible_work_page_order_indices(int *indices, size_t capacity)
 
 #define SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT "settings primary label create failed index=%d"
 #define SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT "settings secondary label create failed index=%d"
-#define SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT "settings secondary text format failed index=%d"
 #define SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT "settings switch dot create failed index=%d"
 
 constexpr int kSettingsPrimaryX = 12;
@@ -42,7 +36,6 @@ constexpr int kSettingsSecondaryH = 30;
 constexpr int kSettingsSwitchDotX = 362;
 constexpr int kSettingsSwitchDotYOffset = 8;
 constexpr int kSettingsSwitchDotSize = 12;
-constexpr size_t kSettingsSecondaryTextSize = 56;
 constexpr int kSettingsListRowY[] = {66, 105, 144, 183, 222, 222, 222};
 constexpr int kSettingsGridRowY[] = {66, 105, 144, 183};
 constexpr size_t kSettingsListRowCount = array_count(kSettingsListRowY);
@@ -56,68 +49,16 @@ constexpr int kSettingsGridSwitchDotYOffset = 9;
 constexpr int kSettingsSystemLongItemY = 144;
 constexpr int kSettingsDisplayLongItemY = 183;
 constexpr const char *kSettingsPrimaryItems[kSettingsPrimaryCount] = {"网络", "声音", "显示", "系统"};
-constexpr const char *kSettingsNetworkSyncTimeText = "同步时间";
-constexpr const char *kSettingsNetworkSyncWeatherText = "同步天气";
-constexpr const char *kSettingsNetworkSayingText = "更新一言";
-constexpr const char *kSettingsWeatherCityManualFormat = "天气城市 %s";
-constexpr const char *kSettingsWeatherCityAutoText = "天气城市 自动";
-constexpr const char *kSettingsSoundVolumeFormat = "音量 %d%%";
-constexpr const char *kSettingsSoundChoiceFormat = "声音选择 %d";
-constexpr const char *kSettingsHourlyText = "整点提醒 7:00 - 22:00";
-constexpr const char *kSettingsAllDayText = "全天提醒 0:00 - 24:00";
-constexpr const char *kSettingsPageSwitchText = "页面开关";
-constexpr const char *kSettingsPageOrderText = "页面顺序";
-constexpr const char *kSettingsAlarmOffText = "闹钟 --:--";
-constexpr const char *kSettingsAlarmOnFormat = "闹钟 %02d:%02d";
-constexpr const char *kSettingsXiaozhiAutoReturnText = "小智AI自动返回";
 constexpr const char *kSettingsPageOrderEntryFormat = "%d %s";
-constexpr const char *kSettingsOfflineFormat = "离线模式 %s";
-constexpr const char *kSettingsOfflineOnText = "开";
-constexpr const char *kSettingsOfflineOffText = "关";
-constexpr const char *kSettingsNetworkDiagText = "网络检测";
-constexpr const char *kSettingsFactoryResetConfirmText = "确认恢复";
-constexpr const char *kSettingsFactoryResetText = "恢复出厂设置";
-constexpr const char *kSettingsSystemInfoText = "关于本机";
-constexpr const char *kSettingsCheckUpdateText = "检查更新";
-constexpr const char *kSettingsSecondaryTexts[] = {
-    kSettingsNetworkSyncTimeText,
-    kSettingsNetworkSyncWeatherText,
-    kSettingsNetworkSayingText,
-    kSettingsWeatherCityManualFormat,
-    kSettingsWeatherCityAutoText,
-    kSettingsSoundVolumeFormat,
-    kSettingsSoundChoiceFormat,
-    kSettingsHourlyText,
-    kSettingsAllDayText,
-    kSettingsPageSwitchText,
-    kSettingsPageOrderText,
-    kSettingsAlarmOffText,
-    kSettingsAlarmOnFormat,
-    kSettingsXiaozhiAutoReturnText,
-    kSettingsPageOrderEntryFormat,
-    kSettingsOfflineFormat,
-    kSettingsOfflineOnText,
-    kSettingsOfflineOffText,
-    kSettingsNetworkDiagText,
-    kSettingsFactoryResetConfirmText,
-    kSettingsFactoryResetText,
-    kSettingsSystemInfoText,
-    kSettingsCheckUpdateText,
-};
-#define SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT "settings secondary text index out of range: %d"
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
-constexpr const char *kLabelCreateFailedLog = "label create failed";
 constexpr const char *kSettingsLabelPlaceholder = "--";
 constexpr const char *kSettingsFixedTexts[] = {
-    kLabelCreateFailedLog,
     kSettingsLabelPlaceholder,
 };
 constexpr const char *kBootSettingsLogTexts[] = {
     SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT,
     SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT,
-    SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT,
     SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT,
-    SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT,
     SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT,
 };
 
@@ -158,14 +99,11 @@ static_assert(array_count(g_settings_labels) == kSettingsLabelCount,
               "settings label storage must match configured label count");
 static_assert(array_count(g_settings_switch_dots) == kSettingsSecondaryMaxCount,
               "settings switch dot storage must match secondary slot count");
-static_assert(array_count(kSettingsSecondaryTexts) > 0, "settings secondary text registry must not be empty");
 static_assert(array_count(kSettingsFixedTexts) > 0, "settings fixed text registry must not be empty");
 static_assert(array_count(kBootSettingsLogTexts) > 0, "boot/settings log registry must not be empty");
 static_assert(cstr_array_nonempty(kSettingsPrimaryItems), "settings primary menu texts must be non-empty");
-static_assert(cstr_array_nonempty(kSettingsSecondaryTexts), "settings secondary menu texts must be non-empty");
 static_assert(cstr_array_nonempty(kSettingsFixedTexts), "settings fixed texts must be non-empty");
 static_assert(cstr_array_nonempty(kBootSettingsLogTexts), "boot/settings log texts must be non-empty");
-static_assert(kSettingsSecondaryTextSize > 1, "settings secondary text buffer must fit text and NUL");
 static_assert(kSettingsGridColumns > 0, "settings grid must have columns");
 static_assert(kSettingsGridColW > 0 && kSettingsSecondaryH > 0,
               "settings grid item size must be positive");
@@ -173,37 +111,6 @@ static_assert(kSettingsSystemLongItemY >= 0 && kSettingsDisplayLongItemY >= 0,
               "settings long item y positions must be non-negative");
 static_assert(kSettingsListRowCount >= kSettingsPrimaryCount,
               "settings list rows must fit primary menu items");
-
-bool settings_secondary_index_valid(int index)
-{
-    return index >= 0 && index < kSettingsSecondaryMaxCount;
-}
-
-void set_secondary_text(char items[][kSettingsSecondaryTextSize], int index, const char *text)
-{
-    if (!settings_secondary_index_valid(index)) {
-        ESP_LOGW(TAG, SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT, index);
-        return;
-    }
-    ui_text::copy(items[index], kSettingsSecondaryTextSize, text);
-}
-
-void format_secondary_text(char items[][kSettingsSecondaryTextSize], int index, const char *format, ...)
-{
-    if (!settings_secondary_index_valid(index)) {
-        ESP_LOGW(TAG, SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT, index);
-        return;
-    }
-    items[index][0] = '\0';
-    va_list args;
-    va_start(args, format);
-    int written = vsnprintf(items[index], kSettingsSecondaryTextSize, format ? format : "", args);
-    va_end(args);
-    if (ui_text::format_failed(written, kSettingsSecondaryTextSize)) {
-        items[index][0] = '\0';
-        ESP_LOGW(TAG, SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT, index);
-    }
-}
 
 void hide_settings_switch_slot(int index)
 {
@@ -213,13 +120,6 @@ void hide_settings_switch_slot(int index)
     }
     if (g_settings_switch_dots[index]) {
         set_obj_visible(g_settings_switch_dots[index], false);
-    }
-}
-
-void warn_if_center_align_failed(lv_obj_t *label, const char *message)
-{
-    if (!center_align_label(label)) {
-        ESP_LOGW(TAG, "%s", cstr_nonempty(message) ? message : kLabelCreateFailedLog);
     }
 }
 
@@ -292,8 +192,13 @@ void build_settings_page()
     g_settings_root = screen;
     lv_obj_add_flag(g_settings_root, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_t *title = make_label(screen, 24, 18, 352, 28, "设置");
-    warn_if_center_align_failed(title, "settings title create failed");
+    make_centered_label(screen,
+                        24,
+                        18,
+                        352,
+                        28,
+                        "设置",
+                        "settings title create failed");
     make_black_bar(screen, 24, 52, 352, 3);
 
     make_black_bar(screen, 136, 62, 2, 174);
@@ -317,10 +222,11 @@ void build_settings_page()
         g_settings_switch_dots[i] = lv_obj_create(screen);
         if (g_settings_switch_dots[i]) {
             lv_obj_clear_flag(g_settings_switch_dots[i], LV_OBJ_FLAG_SCROLLABLE);
-            lv_obj_set_pos(g_settings_switch_dots[i],
-                           kSettingsSwitchDotX,
-                           kSettingsListRowY[i] + kSettingsSwitchDotYOffset);
-            lv_obj_set_size(g_settings_switch_dots[i], kSettingsSwitchDotSize, kSettingsSwitchDotSize);
+            set_obj_box(g_settings_switch_dots[i],
+                        kSettingsSwitchDotX,
+                        kSettingsListRowY[i] + kSettingsSwitchDotYOffset,
+                        kSettingsSwitchDotSize,
+                        kSettingsSwitchDotSize);
             style_settings_switch_dot(g_settings_switch_dots[i], false, false);
             lv_obj_add_flag(g_settings_switch_dots[i], LV_OBJ_FLAG_HIDDEN);
         } else {
@@ -329,73 +235,24 @@ void build_settings_page()
     }
     build_settings_ota_panel(screen, kSettingsSecondaryX, kSettingsSecondaryW);
 
-    g_settings_feedback_label = make_label(screen, 24, 246, 352, 20, "");
-    warn_if_center_align_failed(g_settings_feedback_label, "settings feedback label create failed");
+    g_settings_feedback_label = make_centered_label(screen,
+                                                    24,
+                                                    246,
+                                                    352,
+                                                    20,
+                                                    "",
+                                                    "settings feedback label create failed");
 
-    lv_obj_t *hint = make_label(screen, 24, 270, 352, 22, "KEY选择  长按返回  BOOT确认");
-    warn_if_center_align_failed(hint, "settings hint label create failed");
+    make_centered_label(screen,
+                        24,
+                        270,
+                        352,
+                        22,
+                        "KEY选择  长按返回  BOOT确认",
+                        "settings hint label create failed");
 }
 
 namespace {
-void populate_settings_secondary_items(
-    int primary,
-    char secondary_items[][kSettingsSecondaryTextSize])
-{
-    if (primary == kSettingsPrimaryNetwork) {
-        set_secondary_text(secondary_items, kNetworkSettingsNtpItem, kSettingsNetworkSyncTimeText);
-        set_secondary_text(secondary_items, kNetworkSettingsWeatherItem, kSettingsNetworkSyncWeatherText);
-        set_secondary_text(secondary_items, kNetworkSettingsSayingItem, kSettingsNetworkSayingText);
-        if (g_has_manual_weather_city) {
-            format_secondary_text(secondary_items,
-                                  kNetworkSettingsWeatherCityItem,
-                                  kSettingsWeatherCityManualFormat,
-                                  g_manual_weather_city);
-        } else {
-            set_secondary_text(secondary_items, kNetworkSettingsWeatherCityItem, kSettingsWeatherCityAutoText);
-        }
-    } else if (primary == kSettingsPrimarySound) {
-        format_secondary_text(secondary_items,
-                              kSoundSettingsVolumeItem,
-                              kSettingsSoundVolumeFormat,
-                              g_chime_volume_percent);
-        format_secondary_text(secondary_items,
-                              kSoundSettingsSoundItem,
-                              kSettingsSoundChoiceFormat,
-                              g_chime_sound_index + 1);
-        set_secondary_text(secondary_items, kSoundSettingsHourlyItem, kSettingsHourlyText);
-        set_secondary_text(secondary_items, kSoundSettingsAllDayItem, kSettingsAllDayText);
-    } else if (primary == kSettingsPrimaryDisplay) {
-        set_secondary_text(secondary_items, kDisplaySettingsPageSwitchItem, kSettingsPageSwitchText);
-        set_secondary_text(secondary_items, kDisplaySettingsOrderItem, kSettingsPageOrderText);
-        AlarmSnapshot alarm = {};
-        alarm_get_snapshot(&alarm);
-        if (alarm.enabled) {
-            format_secondary_text(secondary_items,
-                                  kDisplaySettingsAlarmItem,
-                                  kSettingsAlarmOnFormat,
-                                  alarm.hour,
-                                  alarm.minute);
-        } else {
-            set_secondary_text(secondary_items, kDisplaySettingsAlarmItem, kSettingsAlarmOffText);
-        }
-        set_secondary_text(secondary_items,
-                           kDisplaySettingsXiaozhiAutoReturnItem,
-                           kSettingsXiaozhiAutoReturnText);
-    } else {
-        format_secondary_text(secondary_items,
-                              kSystemSettingsOfflineItem,
-                              kSettingsOfflineFormat,
-                              g_offline_mode_ui_enabled ? kSettingsOfflineOnText : kSettingsOfflineOffText);
-        set_secondary_text(secondary_items, kSystemSettingsNetworkDiagItem, kSettingsNetworkDiagText);
-        set_secondary_text(secondary_items,
-                           kSystemSettingsFactoryResetItem,
-                           g_factory_reset_confirm_pending ? kSettingsFactoryResetConfirmText
-                                                           : kSettingsFactoryResetText);
-        set_secondary_text(secondary_items, kSystemSettingsInfoItem, kSettingsSystemInfoText);
-        set_secondary_text(secondary_items, kSystemSettingsOtaItem, kSettingsCheckUpdateText);
-    }
-}
-
 bool settings_render_selection_changed(int primary, int selected)
 {
     static lv_obj_t *last_settings_root = nullptr;

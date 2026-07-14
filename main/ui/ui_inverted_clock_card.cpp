@@ -4,6 +4,8 @@
 #include "ui_views.h"
 #include "ui_dseg_layout.h"
 
+#define INVERTED_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT "flip clock card %d canvas create failed"
+
 namespace inverted_clock_card {
 namespace {
 
@@ -16,6 +18,11 @@ static_assert(kRadius > 0 && kRadius * 2 <= kWidth && kRadius * 2 <= kHeight,
               "inverted clock card radius must fit card");
 static_assert(kDigitScaleNumerator > 0 && kDigitScaleDenominator > 0,
               "inverted clock digit scale must be positive");
+static_assert(kCount == 3, "inverted clock card group must keep three cards");
+static_assert(kX[0] >= 0 && kX[kCount - 1] + kWidth <= kDisplayWidth,
+              "inverted clock card group must fit display width");
+static_assert(kY >= 0 && kY + kHeight <= kDisplayHeight,
+              "inverted clock card group must fit display height");
 
 void apply_rounding(lv_obj_t *canvas)
 {
@@ -144,3 +151,71 @@ void clear(lv_obj_t *canvas)
 }
 
 } // namespace inverted_clock_card
+
+void build_inverted_clock_cards(lv_obj_t *parent,
+                                lv_obj_t *card_canvas[3],
+                                lv_color_t *card_canvas_buf[3])
+{
+    if (!parent || !card_canvas || !card_canvas_buf) {
+        return;
+    }
+    for (int i = 0; i < inverted_clock_card::kCount; ++i) {
+        if (!card_canvas_buf[i]) {
+            card_canvas_buf[i] = alloc_canvas_buffer(inverted_clock_card::kWidth,
+                                                     inverted_clock_card::kHeight);
+        }
+        if (!card_canvas_buf[i]) {
+            continue;
+        }
+        card_canvas[i] = lv_canvas_create(parent);
+        if (!card_canvas[i]) {
+            ESP_LOGW(TAG, INVERTED_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT, i);
+            continue;
+        }
+        configure_canvas_base(card_canvas[i],
+                              card_canvas_buf[i],
+                              inverted_clock_card::kX[i],
+                              inverted_clock_card::kY,
+                              inverted_clock_card::kWidth,
+                              inverted_clock_card::kHeight);
+        lv_canvas_fill_bg(card_canvas[i], lv_color_black(), LV_OPA_COVER);
+    }
+}
+
+bool update_inverted_clock_cards(const struct tm &local,
+                                 lv_obj_t *card_canvas[3],
+                                 int last_values[3])
+{
+    if (!card_canvas || !last_values) {
+        return false;
+    }
+    const int values[inverted_clock_card::kCount] = {
+        local.tm_hour,
+        local.tm_min,
+        local.tm_sec,
+    };
+    bool changed = false;
+    for (int i = 0; i < inverted_clock_card::kCount; ++i) {
+        changed |= update_inverted_clock_card_value(card_canvas[i],
+                                                     values[i],
+                                                     &last_values[i]);
+    }
+    return changed;
+}
+
+void clear_inverted_clock_card(lv_obj_t *card_canvas)
+{
+    inverted_clock_card::clear(card_canvas);
+}
+
+bool update_inverted_clock_card_value(lv_obj_t *card_canvas,
+                                      int value,
+                                      int *last_value)
+{
+    if (!card_canvas || !last_value || value < 0 || value > 99 || value == *last_value) {
+        return false;
+    }
+    *last_value = value;
+    inverted_clock_card::render(card_canvas, value);
+    return true;
+}

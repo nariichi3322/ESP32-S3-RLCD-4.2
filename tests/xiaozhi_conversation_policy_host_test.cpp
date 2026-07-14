@@ -18,6 +18,12 @@ int main()
     assert(!xiaozhi_wake_interrupt_allowed(true, false, true, 5000));
     assert(!xiaozhi_wake_interrupt_allowed(true, true, true, 5000));
 
+    static_assert(kXiaozhiEmptyReplyContinuationMs > 0);
+    assert(!xiaozhi_turn_reply_is_empty(false, false, false));
+    assert(xiaozhi_turn_reply_is_empty(true, false, false));
+    assert(!xiaozhi_turn_reply_is_empty(true, true, false));
+    assert(!xiaozhi_turn_reply_is_empty(true, false, true));
+
     assert(!xiaozhi_user_requested_exit(nullptr));
     assert(!xiaozhi_user_requested_exit(""));
     assert(xiaozhi_user_requested_exit("关闭小智吧"));

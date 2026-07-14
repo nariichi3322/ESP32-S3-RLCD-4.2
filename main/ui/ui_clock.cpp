@@ -156,17 +156,6 @@ const char *clock_component_name(const char *name)
     return cstr_nonempty(name) ? name : kClockComponentFallbackName;
 }
 
-bool prepare_clock_canvas_buffer(lv_color_t **buffer, int width, int height)
-{
-    if (!buffer) {
-        return false;
-    }
-    if (!*buffer) {
-        *buffer = alloc_canvas_buffer(width, height);
-    }
-    return *buffer != nullptr;
-}
-
 void configure_clock_alert_pill(lv_obj_t *pill)
 {
     if (!pill) {
@@ -196,7 +185,7 @@ void build_clock_status_icon(lv_obj_t *screen,
     if (!screen || !canvas || !buffer || !bits) {
         return;
     }
-    if (!prepare_clock_canvas_buffer(buffer, width, height)) {
+    if (!ensure_canvas_buffer(buffer, width, height)) {
         return;
     }
     *canvas = lv_canvas_create(screen);
@@ -246,7 +235,7 @@ void build_clock_lower_icon(lv_obj_t *screen,
     if (!screen || !canvas || !buffer || !bits) {
         return;
     }
-    if (!prepare_clock_canvas_buffer(buffer, width, height)) {
+    if (!ensure_canvas_buffer(buffer, width, height)) {
         return;
     }
     *canvas = lv_canvas_create(screen);
@@ -269,7 +258,7 @@ void build_clock_trend_canvas(lv_obj_t *screen,
     if (!screen || !canvas || !buffer) {
         return;
     }
-    if (!prepare_clock_canvas_buffer(buffer, TREND_ICON_WIDTH, TREND_ICON_HEIGHT)) {
+    if (!ensure_canvas_buffer(buffer, TREND_ICON_WIDTH, TREND_ICON_HEIGHT)) {
         return;
     }
     *canvas = lv_canvas_create(screen);
@@ -298,7 +287,7 @@ void build_clock_fill_canvas(lv_obj_t *screen,
     if (!screen || !canvas || !buffer) {
         return;
     }
-    if (!prepare_clock_canvas_buffer(buffer, width, height)) {
+    if (!ensure_canvas_buffer(buffer, width, height)) {
         return;
     }
     *canvas = lv_canvas_create(screen);
@@ -329,7 +318,9 @@ void build_clock_header(lv_obj_t *screen)
     if (g_alert_pill) {
         configure_clock_alert_pill(g_alert_pill);
 
-        if (prepare_clock_canvas_buffer(&s_alert_icon_canvas_buffer, WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT)) {
+        if (ensure_canvas_buffer(&s_alert_icon_canvas_buffer,
+                                 WARNING_ICON_WIDTH,
+                                 WARNING_ICON_HEIGHT)) {
             g_alert_icon_canvas = lv_canvas_create(g_alert_pill);
             if (g_alert_icon_canvas) {
                 configure_canvas_base(g_alert_icon_canvas,

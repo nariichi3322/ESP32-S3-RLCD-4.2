@@ -1,4 +1,5 @@
 // 验证小智激活响应中绑定字段与 WebSocket 节点的只读提取语义。
+#include "xiaozhi_activation_client.h"
 #include "xiaozhi_activation_response_parser.h"
 
 #include <assert.h>
@@ -6,6 +7,19 @@
 
 int main()
 {
+    assert(xiaozhi_activation_response_writable_bytes(nullptr) == 0);
+    XiaozhiActivationResponse response;
+    assert(xiaozhi_activation_response_writable_bytes(&response) ==
+           kXiaozhiActivationResponseSize - 1);
+    response.len = kXiaozhiActivationResponseSize - 2;
+    assert(xiaozhi_activation_response_writable_bytes(&response) == 1);
+    response.len = kXiaozhiActivationResponseSize - 1;
+    assert(xiaozhi_activation_response_writable_bytes(&response) == 0);
+    response.len = kXiaozhiActivationResponseSize;
+    assert(xiaozhi_activation_response_writable_bytes(&response) == 0);
+    response.len = static_cast<size_t>(-1);
+    assert(xiaozhi_activation_response_writable_bytes(&response) == 0);
+
     XiaozhiActivationResponseDocument document;
 
     assert(!document.parse(nullptr, 0));

@@ -11,5 +11,14 @@ struct XiaozhiActivationResponse {
     size_t len = 0;
 };
 
+inline size_t xiaozhi_activation_response_writable_bytes(
+    const XiaozhiActivationResponse *response)
+{
+    if (!response || response->len >= sizeof(response->data) - 1) {
+        return 0;
+    }
+    return sizeof(response->data) - response->len - 1;
+}
+
 void xiaozhi_format_device_id(char *out, size_t out_len);
 bool xiaozhi_request_activation(XiaozhiActivationResponse *response);

@@ -8,6 +8,7 @@
 // TTS 期间禁用 WakeNet 打断，避免误触发 abort 后截断回复及尚未完成的 MCP。
 inline constexpr bool kXiaozhiWakeInterruptDuringTtsEnabled = false;
 inline constexpr uint32_t kXiaozhiWakeInterruptArmDelayMs = 1000;
+inline constexpr uint32_t kXiaozhiEmptyReplyContinuationMs = 12000;
 
 constexpr bool xiaozhi_wake_interrupt_allowed(bool server_speaking,
                                               bool tts_stop_pending,
@@ -19,6 +20,15 @@ constexpr bool xiaozhi_wake_interrupt_allowed(bool server_speaking,
            !tts_stop_pending &&
            tts_start_known &&
            speaking_elapsed_ms >= kXiaozhiWakeInterruptArmDelayMs;
+}
+
+constexpr bool xiaozhi_turn_reply_is_empty(bool user_text_received,
+                                           bool assistant_text_received,
+                                           bool assistant_audio_received)
+{
+    return user_text_received &&
+           !assistant_text_received &&
+           !assistant_audio_received;
 }
 
 inline bool xiaozhi_user_requested_exit(const char *text)

@@ -86,10 +86,7 @@ void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf
         ESP_LOGW(TAG, "%s", UI_PROGRESS_CANVAS_BUILD_INVALID_ARG_LOG);
         return;
     }
-    if (!*buf) {
-        *buf = alloc_canvas_buffer(kProgressCanvasW, kProgressCanvasH);
-    }
-    if (!*buf) {
+    if (!ensure_canvas_buffer(buf, kProgressCanvasW, kProgressCanvasH)) {
         return;
     }
     *canvas = lv_canvas_create(parent);

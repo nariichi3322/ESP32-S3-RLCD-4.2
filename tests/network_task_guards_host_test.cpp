@@ -1,4 +1,4 @@
-// 验证联网任务唤醒锁和临时 HTTP 超时守卫的作用域恢复与重复释放保护。
+// 验证联网任务唤醒锁、HTTP 事务锁和临时超时守卫的作用域恢复。
 #include "network_task_guards.h"
 
 #include <assert.h>
@@ -8,6 +8,10 @@ int g_http_timeout_ms = 5000;
 namespace {
 int g_awake_acquire_calls = 0;
 int g_awake_release_calls = 0;
+int g_http_lock_acquire_calls = 0;
+int g_http_lock_release_calls = 0;
+TickType_t g_http_lock_last_timeout = 0;
+bool g_http_lock_available = true;
 } // namespace
 
 void acquire_network_awake_lock()
@@ -18,6 +22,18 @@ void acquire_network_awake_lock()
 void release_network_awake_lock()
 {
     ++g_awake_release_calls;
+}
+
+bool acquire_network_http_transaction_lock(TickType_t timeout)
+{
+    ++g_http_lock_acquire_calls;
+    g_http_lock_last_timeout = timeout;
+    return g_http_lock_available;
+}
+
+void release_network_http_transaction_lock()
+{
+    ++g_http_lock_release_calls;
 }
 
 int main()
@@ -37,6 +53,24 @@ int main()
         assert(g_awake_release_calls == 2);
     }
     assert(g_awake_release_calls == 2);
+
+    {
+        NetworkHttpTransactionGuard guard(321);
+        assert(guard.locked());
+        assert(g_http_lock_acquire_calls == 1);
+        assert(g_http_lock_last_timeout == 321);
+        assert(g_http_lock_release_calls == 0);
+    }
+    assert(g_http_lock_release_calls == 1);
+
+    g_http_lock_available = false;
+    {
+        NetworkHttpTransactionGuard guard(654);
+        assert(!guard.locked());
+        assert(g_http_lock_acquire_calls == 2);
+        assert(g_http_lock_last_timeout == 654);
+    }
+    assert(g_http_lock_release_calls == 1);
 
     assert(g_http_timeout_ms == 5000);
     {

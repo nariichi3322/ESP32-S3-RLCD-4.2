@@ -1,6 +1,7 @@
 // 声明联网同步任务每轮到期项目与下一唤醒时间的纯计算接口。
 #pragma once
 
+#include <stddef.h>
 #include <stdint.h>
 #include <time.h>
 
@@ -24,6 +25,7 @@ struct NetworkSyncScheduleInput {
 struct NetworkSyncSchedule {
     bool boot_weather_ready = false;
     bool boot_saying_ready = false;
+    bool stagger_boot_saying_after_weather = false;
     bool ntp_due = false;
     bool weather_due = false;
     bool saying_due = false;
@@ -40,3 +42,15 @@ bool network_cache_local_hour_matches(const struct tm &now_local,
                                       const struct tm &cached_local);
 bool network_cache_local_day_matches(const struct tm &now_local,
                                      const struct tm &cached_local);
+bool network_boot_https_memory_sufficient(size_t internal_free,
+                                          size_t internal_largest,
+                                          size_t dma_largest);
+bool network_startup_pressure_window_active(bool startup_screen_active,
+                                            int64_t uptime_us);
+uint32_t network_weather_request_settle_delay_ms(bool startup_pressure_active);
+uint32_t network_inter_operation_settle_delay_ms(bool startup_pressure_active);
+bool network_visible_auto_sync_allowed(int64_t uptime_us);
+bool network_startup_followup_https_allowed(bool startup_pressure_active,
+                                            size_t internal_free,
+                                            size_t internal_largest,
+                                            size_t dma_largest);

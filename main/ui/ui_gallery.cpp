@@ -159,10 +159,7 @@ static void build_gallery_canvas(lv_obj_t *screen,
     if (!screen || !canvas || !buffer || width <= 0 || height <= 0) {
         return;
     }
-    if (!*buffer) {
-        *buffer = alloc_canvas_buffer(width, height);
-    }
-    if (!*buffer) {
+    if (!ensure_canvas_buffer(buffer, width, height)) {
         return;
     }
     *canvas = lv_canvas_create(screen);

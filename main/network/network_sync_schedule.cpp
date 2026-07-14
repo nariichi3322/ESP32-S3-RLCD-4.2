@@ -9,9 +9,31 @@ constexpr uint32_t kMillisecondsPerSecond = 1000;
 constexpr time_t kSecondsPerMinute = 60;
 constexpr uint32_t kIdleDefaultWaitMs = 5 * kSecondsPerMinute * kMillisecondsPerSecond;
 constexpr uint32_t kIdleMinimumWaitMs = 1000;
+constexpr size_t kBootHttpsMinimumInternalFree = 48 * 1024;
+constexpr size_t kBootHttpsMinimumInternalLargest = 24 * 1024;
+constexpr size_t kBootHttpsMinimumDmaLargest = 16 * 1024;
+constexpr int64_t kStartupPressureWindowUs = 60LL * 1000 * 1000;
+constexpr int64_t kStartupVisibleAutoSyncDelayUs = 30LL * 1000 * 1000;
+constexpr uint32_t kWeatherRequestSettleDelayMs = 120;
+constexpr uint32_t kStartupWeatherRequestSettleDelayMs = 300;
+constexpr uint32_t kNetworkOperationSettleDelayMs = 250;
+constexpr uint32_t kStartupNetworkOperationSettleDelayMs = 1000;
 static_assert(kIdleMinimumWaitMs > 0, "network idle minimum wait must be positive");
 static_assert(kIdleDefaultWaitMs >= kIdleMinimumWaitMs,
               "network idle default wait must cover the minimum wait");
+static_assert(kBootHttpsMinimumInternalFree >= kBootHttpsMinimumInternalLargest,
+              "boot HTTPS free-memory threshold must cover the largest-block threshold");
+static_assert(kBootHttpsMinimumInternalLargest >= kBootHttpsMinimumDmaLargest,
+              "boot HTTPS internal block threshold must cover the DMA block threshold");
+static_assert(kStartupPressureWindowUs > 0,
+              "startup pressure window must be positive");
+static_assert(kStartupVisibleAutoSyncDelayUs > 0 &&
+                  kStartupVisibleAutoSyncDelayUs < kStartupPressureWindowUs,
+              "visible auto sync delay must fit the startup pressure window");
+static_assert(kStartupWeatherRequestSettleDelayMs > kWeatherRequestSettleDelayMs,
+              "startup HTTPS requests must use the longer settle delay");
+static_assert(kStartupNetworkOperationSettleDelayMs > kNetworkOperationSettleDelayMs,
+              "startup network operations must use the longer settle delay");
 
 time_t earliest_pending_boot_sync(const NetworkSyncScheduleInput &input)
 {
@@ -32,7 +54,12 @@ NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInp
 {
     NetworkSyncSchedule schedule = {};
     schedule.boot_weather_ready = input.boot_weather_due && input.now >= input.boot_weather_due_at;
-    schedule.boot_saying_ready = input.boot_saying_due && input.now >= input.boot_saying_due_at;
+    bool boot_saying_time_ready = input.boot_saying_due && input.now >= input.boot_saying_due_at;
+    schedule.stagger_boot_saying_after_weather =
+        schedule.boot_weather_ready && input.boot_saying_due &&
+        !input.provisioning_sync_due && !input.manual_saying_due;
+    schedule.boot_saying_ready = boot_saying_time_ready &&
+                                 !schedule.stagger_boot_saying_after_weather;
     schedule.weather_due = input.have_weather_key &&
                            !input.low_battery_mode &&
                            (input.manual_weather_due ||
@@ -109,4 +136,50 @@ bool network_cache_local_hour_matches(const struct tm &now_local,
 {
     return network_cache_local_day_matches(now_local, cached_local) &&
            now_local.tm_hour == cached_local.tm_hour;
+}
+
+bool network_boot_https_memory_sufficient(size_t internal_free,
+                                          size_t internal_largest,
+                                          size_t dma_largest)
+{
+    return internal_free >= kBootHttpsMinimumInternalFree &&
+           internal_largest >= kBootHttpsMinimumInternalLargest &&
+           dma_largest >= kBootHttpsMinimumDmaLargest;
+}
+
+bool network_startup_pressure_window_active(bool startup_screen_active,
+                                            int64_t uptime_us)
+{
+    return startup_screen_active ||
+           (uptime_us >= 0 && uptime_us < kStartupPressureWindowUs);
+}
+
+uint32_t network_weather_request_settle_delay_ms(bool startup_pressure_active)
+{
+    return startup_pressure_active
+               ? kStartupWeatherRequestSettleDelayMs
+               : kWeatherRequestSettleDelayMs;
+}
+
+uint32_t network_inter_operation_settle_delay_ms(bool startup_pressure_active)
+{
+    return startup_pressure_active
+               ? kStartupNetworkOperationSettleDelayMs
+               : kNetworkOperationSettleDelayMs;
+}
+
+bool network_visible_auto_sync_allowed(int64_t uptime_us)
+{
+    return uptime_us < 0 || uptime_us >= kStartupVisibleAutoSyncDelayUs;
+}
+
+bool network_startup_followup_https_allowed(bool startup_pressure_active,
+                                            size_t internal_free,
+                                            size_t internal_largest,
+                                            size_t dma_largest)
+{
+    return !startup_pressure_active ||
+           network_boot_https_memory_sufficient(internal_free,
+                                                internal_largest,
+                                                dma_largest);
 }

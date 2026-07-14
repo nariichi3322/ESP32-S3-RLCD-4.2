@@ -3,6 +3,8 @@
 #include "app_state.h"
 #include "ui_bitmap.h"
 #include "ui_dseg_clock.h"
+#include "ui_history_chart.h"
+#include "ui_inverted_clock_card.h"
 #include "ui_object_refs.h"
 #include "ui_progress.h"
 #include "ui_settings_feedback.h"
@@ -13,9 +15,9 @@
 #include "ui_work_page_catalog.h"
 
 void notify_ui_task();
-inline bool wifi_connected_for_status_icon()
+inline bool wifi_radio_on_for_status_icon()
 {
-    return g_app_events && ((xEventGroupGetBits(g_app_events) & kWifiConnectedBit) != 0);
+    return g_wifi_radio_on;
 }
 constexpr const char *kClockWeatherCityPlaceholder = "--";
 constexpr const char *kClockWeatherInfoWaitingText = "等待数据";
@@ -25,6 +27,7 @@ constexpr const char *kClockWeatherTempPlaceholder = "--℃";
 constexpr const char *kClockWeatherHumidityPlaceholder = "--%";
 constexpr const char *kClockWeatherUnknownIconCode = "999";
 lv_color_t *alloc_canvas_buffer(int width, int height);
+bool ensure_canvas_buffer(lv_color_t **buffer, int width, int height);
 void configure_canvas_base(lv_obj_t *canvas,
                            lv_color_t *buffer,
                            int x,
@@ -46,6 +49,7 @@ WorkPageStatusLabels get_work_page_status_labels(int page);
 bool update_work_page_status_time(lv_obj_t *label, const struct tm &local);
 bool update_work_page_sensor_summary(lv_obj_t *label);
 bool update_non_clock_work_page_sensor_status(int page);
+bool update_weather_clock_sensor_status();
 void style_work_page_sensor_summary(lv_obj_t *label);
 bool update_work_page_status_icons(int page);
 lv_obj_t *create_page_root();
@@ -80,34 +84,9 @@ void canvas_set_px_safe(lv_obj_t *canvas, int x, int y, int w, int h, lv_color_t
 void canvas_draw_line(lv_obj_t *canvas, int w, int h, int x0, int y0, int x1, int y1, lv_color_t color);
 void canvas_draw_dashed_hline(lv_obj_t *canvas, int w, int h, int x1, int x2, int y, lv_color_t color);
 void canvas_draw_filled_circle(lv_obj_t *canvas, int w, int h, int cx, int cy, int radius, lv_color_t color);
-void style_history_value_badge(lv_obj_t *label);
 void format_axis_hour(time_t value, char *out, size_t out_len);
 int value_to_plot_y(float value, float min_value, float max_value, int y, int h);
-void set_history_badge(lv_obj_t *label,
-                       const char *text,
-                       int canvas_x,
-                       int canvas_y,
-                       int point_x,
-                       int point_y,
-                       int plot_x,
-                       int plot_y,
-                       int plot_w,
-                       int plot_h);
 bool collect_history_window(time_t end_hour, HourlySensorSample *out, int *out_count);
-void update_history_axis_labels(time_t start, time_t end);
-void draw_history_chart_panel(lv_obj_t *canvas,
-                              int canvas_w,
-                              int canvas_h,
-                              const HourlySensorSample *samples,
-                              int sample_count,
-                              bool temperature,
-                              int plot_x,
-                              int plot_y,
-                              int plot_w,
-                              int plot_h,
-                              lv_obj_t *max_label,
-                              lv_obj_t *min_label,
-                              lv_obj_t **axis_labels);
 bool update_history_page(const struct tm &local);
 void build_history_page();
 bool update_gallery_page(const struct tm &local);
@@ -116,16 +95,6 @@ bool update_calendar_page(const struct tm &local);
 void build_calendar_page();
 bool update_weather_board_page(const struct tm &local);
 void build_weather_board_page();
-void build_inverted_clock_cards(lv_obj_t *parent,
-                                lv_obj_t *card_canvas[3],
-                                lv_color_t *card_canvas_buf[3]);
-bool update_inverted_clock_cards(const struct tm &local,
-                                 lv_obj_t *card_canvas[3],
-                                 int last_values[3]);
-void clear_inverted_clock_card(lv_obj_t *card_canvas);
-bool update_inverted_clock_card_value(lv_obj_t *card_canvas,
-                                      int value,
-                                      int *last_value);
 bool update_flip_clock_sensor_status();
 bool update_flip_clock_page(const struct tm &local);
 void build_flip_clock_page();
