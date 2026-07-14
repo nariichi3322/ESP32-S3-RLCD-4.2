@@ -209,6 +209,10 @@
 
 ## 7. OTA 更新与刷机
 
+GitHub 公开源码仓库的同版本 Release 会由 GitHub Actions 自动附加两个构建产物：`weather_clock_vX.X.X.bin` 用于 OTA 或单独写入 App 分区，`weather_clock_vX.X.X_merged.bin` 用于从 `0x0` 完整刷写。自动构建只增加固件附件，不会改写该 Release 原有的中文版本说明。
+
+Cloudflare OTA 服务会在 GitHub 构建完成后自动导入并校验这两个固件；只有两个固件均可用时才发布新的在线清单，因此不再需要维护者从本机重复上传大文件。
+
 进入 **设置 > 系统 > 检查更新**：
 
 1. 页面显示当前固件版本，按 BOOT 开始检查。

@@ -209,6 +209,10 @@ The single alarm can be set, changed, or disabled through Xiaozhi voice.
 
 ## 7. OTA and Flashing
 
+For each public source release, GitHub Actions automatically attaches two build outputs to the matching GitHub Release: `weather_clock_vX.X.X.bin` for OTA or app-partition flashing, and `weather_clock_vX.X.X_merged.bin` for a complete flash from address `0x0`. The automated build only adds firmware assets and does not rewrite the existing release notes.
+
+After the GitHub build completes, the Cloudflare OTA service imports and verifies both files automatically. It publishes the new online manifests only after both firmware images are available.
+
 Open **Settings > System > Check Update**:
 
 1. Press BOOT to check.
