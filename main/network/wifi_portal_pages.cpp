@@ -338,11 +338,14 @@ esp_err_t send_save_result_page(httpd_req_t *req, bool saved, bool connected, co
     html_escape(g_wifi_ssid, safe_ssid, sizeof(safe_ssid));
     html_escape(g_has_manual_weather_city ? g_manual_weather_city : "自动定位", safe_city, sizeof(safe_city));
     html_escape(extra_message ? extra_message : "", safe_extra, sizeof(safe_extra));
-    char html[kPortalSaveResultHtmlSize] = {};
+    ScopedHeapBuffer<char> html(kPortalSaveResultHtmlSize, HeapBufferInit::kZeroed);
+    if (!html) {
+        return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
+    }
     const char *title = portal_save_result_title(saved, connected);
     const char *body = portal_save_result_body(saved, connected);
     const int disconnect_reason = wifi_last_disconnect_reason();
-    html_append(html, sizeof(html),
+    html_append(html.data(), html.size(),
                 "%s"
                 "<title>天气时钟配网结果</title><style>"
                 "*{box-sizing:border-box}body{margin:0;background:#eef1f5;color:#17202a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}"
@@ -362,13 +365,16 @@ esp_err_t send_save_result_page(httpd_req_t *req, bool saved, bool connected, co
                 safe_ssid,
                 safe_city,
                 disconnect_reason);
-    return send_portal_html(req, html);
+    return send_portal_html(req, html.data());
 }
 
 esp_err_t send_offline_result_page(httpd_req_t *req, bool saved)
 {
-    char html[kPortalOfflineResultHtmlSize] = {};
-    html_append(html, sizeof(html),
+    ScopedHeapBuffer<char> html(kPortalOfflineResultHtmlSize, HeapBufferInit::kZeroed);
+    if (!html) {
+        return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
+    }
+    html_append(html.data(), html.size(),
                 "%s"
                 "<title>天气时钟离线模式</title><style>"
                 "*{box-sizing:border-box}body{margin:0;background:#eef1f5;color:#17202a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}"
@@ -381,5 +387,5 @@ esp_err_t send_offline_result_page(httpd_req_t *req, bool saved)
                 saved ? "已开启" : "提示",
                 saved ? kPortalOfflineSavedTitle : kPortalOfflineInvalidTitle,
                 saved ? kPortalOfflineSavedBody : kPortalOfflineInvalidBody);
-    return send_portal_html(req, html);
+    return send_portal_html(req, html.data());
 }

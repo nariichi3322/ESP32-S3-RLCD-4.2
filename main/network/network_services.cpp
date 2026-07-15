@@ -5,15 +5,16 @@
 
 #include "network_https_resources.h"
 #include "network_diagnostics_catalog.h"
+#include "network_sync_requests.h"
 #include "network_sync_schedule.h"
 #include "network_task_guards.h"
 #include "sensor_services.h"
+#include "sensor_time.h"
 #include "startup_state.h"
 #include "ui_views.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_state.h"
 
-static constexpr uint32_t kNetworkOtaActiveWaitMs = 10000;
 static constexpr time_t kSecondsPerMinute = 60;
 static constexpr time_t kMinutesPerHour = 60;
 static constexpr time_t kHoursPerDay = 24;
@@ -24,6 +25,12 @@ static constexpr uint32_t kNetworkShortRetryWaitMs = 1000;
 static constexpr uint32_t kNetworkWifiConnectTimeoutMs = 45000;
 static constexpr uint32_t kNetworkTaskStartupDelayMs = 2500;
 static constexpr uint32_t kNetworkBootSyncGateWarningMs = 1000;
+static constexpr EventBits_t kNetworkSyncWakeBits = kProvisioningSyncBit |
+                                                     kManualNtpSyncBit |
+                                                     kManualWeatherSyncBit |
+                                                     kManualSayingSyncBit |
+                                                     kNetworkDiagBit |
+                                                     kNetworkStateChangedBit;
 static constexpr time_t kNetworkNtpRetryDelaySec = 5 * kSecondsPerMinute;
 static constexpr time_t kBootWeatherRefreshDelaySec = 10;
 static constexpr time_t kBootSayingRefreshDelaySec = 25;
@@ -41,26 +48,9 @@ static_assert(kNetworkBootSyncGateWarningMs > 0,
               "boot sync gate warning delay must be positive");
 static_assert(kNetworkDiagOtaLine == kNetworkDiagLineCount - 1,
               "network service diagnostics line mapping must match diagnostics line count");
-static constexpr const char *kNetworkStatusOfflineModeEnabled = "离线模式已开启";
-static constexpr const char *kNetworkStatusWifiNotConfigured = "未配置 WiFi";
-static constexpr const char *kNetworkDiagLocalIpPlaceholder = "本地IP: --";
-static constexpr const char *kNetworkDiagPublicIpPlaceholder = "公网IP: --";
-static constexpr const char *kNetworkDiagIpLocationWifiNotConfigured = "IP定位: WiFi未配置";
 static constexpr const char *kNetworkDiagIpLocationWifiStartFailed = "IP定位: WiFi启动失败";
+static constexpr const char *kNetworkDiagIpLocationPowerLockUnavailable = "IP定位: 系统繁忙";
 static constexpr const char *kNetworkDiagIpLocationWifiConnectTimeout = "IP定位: WiFi连接超时";
-static constexpr const char *kNetworkDiagDnsUnchecked = "DNS: 未检测";
-static constexpr const char *kNetworkDiagWeatherUnchecked = "天气: 未检测";
-static constexpr const char *kNetworkDiagNtpUnchecked = "NTP: 未检测";
-static constexpr const char *kNetworkDiagSayingUnchecked = "一言: 未检测";
-static constexpr const char *kNetworkDiagInternetUnchecked = "公网: 未检测";
-static constexpr const char *kNetworkDiagOtaSourceUnchecked = "OTA源: 未检测";
-static constexpr const char *kNetworkSyncTimeComplete = "时间同步完成";
-static constexpr const char *kNetworkSyncWeatherComplete = "天气同步完成";
-static constexpr const char *kNetworkSyncSayingComplete = "一言更新完成";
-static constexpr const char *kNetworkSyncNetworkDiagComplete = "网络检测完成";
-static constexpr const char *kNetworkSyncTimeFailed = "时间同步失败";
-static constexpr const char *kNetworkSyncWeatherFailed = "天气同步失败";
-static constexpr const char *kNetworkSyncSayingFailed = "一言更新失败";
 static constexpr const char *kNetworkSyncWeatherKeyMissing = "未配置 API Key";
 static constexpr const char *kNetworkSyncLowBatterySkipped = "电量低，已跳过";
 static constexpr const char *kNetworkWifiWaitSkippedLog = "wifi wait skipped: app events unavailable";
@@ -77,6 +67,8 @@ static constexpr const char *kNetworkCacheUnknownLabel = "unknown";
 static constexpr const char *kNetworkDiagWifiOnLog = "wifi radio on for network diagnostics";
 #define NETWORK_SYNC_WIFI_ON_FORMAT "wifi radio on for sync: ntp=%d weather=%d saying=%d boot_weather=%d boot_saying=%d"
 static constexpr const char *kNetworkSyncWifiStartFailedLog = "wifi start failed during sync window";
+static constexpr const char *kNetworkSyncPowerLockUnavailableLog =
+    "network PM lock unavailable during sync window";
 static constexpr const char *kNetworkSyncWifiConnectTimeoutLog = "wifi connect timeout during sync window";
 static constexpr const char *kNetworkBootSyncGateWaitLog = "network sync waiting for boot connectivity task";
 
@@ -114,10 +106,31 @@ bool enabled_daily_saying_page_exists()
 void wait_for_network_sync_event(uint32_t timeout_ms)
 {
     xEventGroupWaitBits(g_app_events,
-                        kProvisioningSyncBit | kManualNtpSyncBit | kManualWeatherSyncBit | kManualSayingSyncBit | kNetworkDiagBit,
+                        kNetworkSyncWakeBits,
                         pdFALSE,
                         pdFALSE,
                         pdMS_TO_TICKS(timeout_ms));
+}
+
+static void wait_for_network_runtime_request()
+{
+    xEventGroupWaitBits(g_app_events,
+                        kNetworkSyncWakeBits,
+                        pdFALSE,
+                        pdFALSE,
+                        portMAX_DELAY);
+}
+
+static void wait_for_ota_network_block_change()
+{
+    // Pending level-triggered sync bits remain queued while OTA owns HTTPS and
+    // Wi-Fi. Wait only for the edge-like runtime-state bit so those requests do
+    // not turn the protection branch into a busy loop.
+    xEventGroupWaitBits(g_app_events,
+                        kNetworkStateChangedBit,
+                        pdTRUE,
+                        pdFALSE,
+                        portMAX_DELAY);
 }
 
 void schedule_ntp_retry(time_t *next_ntp_retry_at)
@@ -129,17 +142,17 @@ void schedule_ntp_retry(time_t *next_ntp_retry_at)
     *next_ntp_retry_at += kNetworkNtpRetryDelaySec;
 }
 
-void set_network_diag_unavailable(const char *ip_location_text)
+static void update_ntp_retry_deadline(bool retry_required,
+                                      time_t *next_ntp_retry_at)
 {
-    network_diag_set_line(kNetworkDiagLocalIpLine, kNetworkDiagLocalIpPlaceholder);
-    network_diag_set_line(kNetworkDiagPublicIpLine, kNetworkDiagPublicIpPlaceholder);
-    network_diag_set_line(kNetworkDiagIpLocationLine, ip_location_text);
-    network_diag_set_line(kNetworkDiagDnsLine, kNetworkDiagDnsUnchecked);
-    network_diag_set_line(kNetworkDiagWeatherLine, kNetworkDiagWeatherUnchecked);
-    network_diag_set_line(kNetworkDiagNtpLine, kNetworkDiagNtpUnchecked);
-    network_diag_set_line(kNetworkDiagSayingLine, kNetworkDiagSayingUnchecked);
-    network_diag_set_line(kNetworkDiagInternetLine, kNetworkDiagInternetUnchecked);
-    network_diag_set_line(kNetworkDiagOtaLine, kNetworkDiagOtaSourceUnchecked);
+    if (!next_ntp_retry_at) {
+        return;
+    }
+    if (retry_required) {
+        schedule_ntp_retry(next_ntp_retry_at);
+    } else {
+        *next_ntp_retry_at = 0;
+    }
 }
 
 static bool localtime_for_cache_check(time_t value, struct tm *out, const char *label)
@@ -201,114 +214,14 @@ static void clear_ready_boot_sync_flags(bool weather_ready, bool saying_ready, b
     }
 }
 
-static void finish_requested_settings_sync(bool requested,
-                                           SettingsSyncOp op,
-                                           const char *status,
-                                           EventBits_t bit,
-                                           bool clear_bit)
-{
-    if (!requested) {
-        return;
-    }
-    finish_settings_sync(op, status);
-    if (clear_bit) {
-        xEventGroupClearBits(g_app_events, bit);
-    }
-}
-
-static void finish_settings_sync_and_clear_bit(SettingsSyncOp op, const char *status, EventBits_t bit)
-{
-    finish_requested_settings_sync(true, op, status, bit, true);
-}
-
-struct NetworkSyncRequestSnapshot {
-    bool provisioning = false;
-    bool manual_ntp = false;
-    bool manual_weather = false;
-    bool manual_saying = false;
-    bool diagnostics = false;
-
-    bool none_for_setup_portal() const
-    {
-        return !provisioning && !manual_ntp && !manual_weather &&
-               !manual_saying && !diagnostics;
-    }
-};
-
-static void finish_requested_manual_syncs(const NetworkSyncRequestSnapshot &requests,
-                                          const char *status,
-                                          bool clear_bits)
-{
-    finish_requested_settings_sync(requests.manual_ntp,
-                                   kSettingsSyncNtp,
-                                   status,
-                                   kManualNtpSyncBit,
-                                   clear_bits);
-    finish_requested_settings_sync(requests.manual_weather,
-                                   kSettingsSyncWeather,
-                                   status,
-                                   kManualWeatherSyncBit,
-                                   clear_bits);
-    finish_requested_settings_sync(requests.manual_saying,
-                                   kSettingsSyncSaying,
-                                   status,
-                                   kManualSayingSyncBit,
-                                   clear_bits);
-}
-
-static NetworkSyncRequestSnapshot snapshot_network_sync_requests()
-{
-    // A loop must schedule and finish the same event snapshot even if another
-    // task raises a new request while HTTPS is in progress.
-    EventBits_t bits = xEventGroupGetBits(g_app_events);
-    NetworkSyncRequestSnapshot requests;
-    requests.provisioning = (bits & kProvisioningSyncBit) != 0;
-    requests.manual_ntp = (bits & kManualNtpSyncBit) != 0;
-    requests.manual_weather = (bits & kManualWeatherSyncBit) != 0;
-    requests.manual_saying = (bits & kManualSayingSyncBit) != 0;
-    requests.diagnostics = (bits & kNetworkDiagBit) != 0;
-    return requests;
-}
-
-static void finish_offline_network_requests(const NetworkSyncRequestSnapshot &requests)
-{
-    if (wifi_radio_on_load() && !setup_portal_active_load()) {
-        stop_wifi_radio(true);
-    }
-    finish_requested_manual_syncs(requests, kNetworkStatusOfflineModeEnabled, false);
-    if (requests.diagnostics) {
-        network_diag_begin();
-        for (int i = 0; i < kNetworkDiagLineCount; ++i) {
-            network_diag_set_line(i, kNetworkStatusOfflineModeEnabled);
-        }
-        network_diag_finish();
-        finish_settings_sync(kSettingsSyncNetworkDiag, kNetworkStatusOfflineModeEnabled);
-    }
-    clear_network_request_bits();
-}
-
-static void finish_unconfigured_network_requests(const NetworkSyncRequestSnapshot &requests)
-{
-    finish_requested_manual_syncs(requests, kNetworkStatusWifiNotConfigured, true);
-    if (requests.provisioning) {
-        xEventGroupClearBits(g_app_events, kProvisioningSyncBit);
-    }
-    if (requests.diagnostics) {
-        network_diag_begin();
-        set_network_diag_unavailable(kNetworkDiagIpLocationWifiNotConfigured);
-        network_diag_finish();
-        finish_settings_sync_and_clear_bit(kSettingsSyncNetworkDiag,
-                                           kNetworkSyncNetworkDiagComplete,
-                                           kNetworkDiagBit);
-    }
-}
-
 static void finish_network_radio_session(NetworkAwakeLockGuard &awake_lock,
                                          bool force_setup_portal = false)
 {
     // Keep the CPU awake through esp_wifi_stop(), then service any deferred
     // close request after this session releases its final PM-lock ownership.
-    stop_wifi_radio(force_setup_portal);
+    if (awake_lock.locked()) {
+        stop_wifi_radio(force_setup_portal);
+    }
     awake_lock.release();
     service_wifi_radio_stop_when_idle();
 }
@@ -397,55 +310,6 @@ static void stagger_boot_saying_after_weather(const NetworkSyncSchedule &schedul
              static_cast<long long>(kBootHttpsInterRequestGapSec));
 }
 
-static void finish_failed_sync_requests(const NetworkSyncRequestSnapshot &requests)
-{
-    if (requests.provisioning) {
-        xEventGroupClearBits(g_app_events, kProvisioningSyncBit);
-    }
-    if (requests.manual_ntp) {
-        finish_settings_sync_and_clear_bit(kSettingsSyncNtp,
-                                           kNetworkSyncTimeFailed,
-                                           kManualNtpSyncBit);
-    }
-    if (requests.manual_weather) {
-        finish_settings_sync_and_clear_bit(kSettingsSyncWeather,
-                                           kNetworkSyncWeatherFailed,
-                                           kManualWeatherSyncBit);
-    }
-    if (requests.manual_saying) {
-        finish_settings_sync_and_clear_bit(kSettingsSyncSaying,
-                                           kNetworkSyncSayingFailed,
-                                           kManualSayingSyncBit);
-    }
-}
-
-static void finish_successful_sync_requests(const NetworkSyncRequestSnapshot &requests,
-                                            bool ntp_ok,
-                                            bool weather_ok,
-                                            bool saying_ok)
-{
-    if (requests.provisioning) {
-        xEventGroupClearBits(g_app_events, kProvisioningSyncBit);
-    }
-    if (requests.manual_ntp) {
-        finish_settings_sync_and_clear_bit(kSettingsSyncNtp,
-                                           ntp_ok ? kNetworkSyncTimeComplete : kNetworkSyncTimeFailed,
-                                           kManualNtpSyncBit);
-    }
-    if (requests.manual_weather) {
-        finish_settings_sync_and_clear_bit(kSettingsSyncWeather,
-                                           weather_ok ? kNetworkSyncWeatherComplete : kNetworkSyncWeatherFailed,
-                                           kManualWeatherSyncBit);
-        notify_ui_task();
-    }
-    if (requests.manual_saying) {
-        finish_settings_sync_and_clear_bit(kSettingsSyncSaying,
-                                           saying_ok ? kNetworkSyncSayingComplete : kNetworkSyncSayingFailed,
-                                           kManualSayingSyncBit);
-        notify_ui_task();
-    }
-}
-
 static void finalize_failed_network_sync_window(const NetworkSyncSchedule &schedule,
                                                 const NetworkSyncRequestSnapshot &requests,
                                                 bool *boot_weather_due,
@@ -458,7 +322,8 @@ static void finalize_failed_network_sync_window(const NetworkSyncSchedule &sched
                                 boot_saying_due);
     finish_failed_sync_requests(requests);
     if (schedule.ntp_due) {
-        schedule_ntp_retry(next_ntp_retry_at);
+        update_ntp_retry_deadline(schedule.ntp_retry_required,
+                                  next_ntp_retry_at);
     }
 }
 
@@ -469,7 +334,8 @@ static void execute_connected_sync_window(const NetworkSyncSchedule &schedule,
                                           bool &boot_saying_due,
                                           time_t &boot_weather_due_at,
                                           time_t &next_ntp_retry_at,
-                                          int &last_midnight_ntp_yday)
+                                          bool &daily_ntp_pending,
+                                          time_t &next_daily_ntp_at)
 {
     bool ntp_ok = false;
     bool weather_ok = false;
@@ -480,13 +346,12 @@ static void execute_connected_sync_window(const NetworkSyncSchedule &schedule,
         if (perform_ntp_sync()) {
             ntp_ok = true;
             boot_ntp_due = false;
+            daily_ntp_pending = false;
             next_ntp_retry_at = 0;
-            struct tm synced_local = {};
-            if (is_time_valid(&synced_local) && synced_local.tm_hour == 0) {
-                last_midnight_ntp_yday = synced_local.tm_yday;
-            }
+            next_daily_ntp_at = next_local_midnight_time(time(nullptr));
         } else {
-            schedule_ntp_retry(&next_ntp_retry_at);
+            update_ntp_retry_deadline(schedule.ntp_retry_required,
+                                      &next_ntp_retry_at);
         }
         settle_between_network_operations(schedule.weather_due ||
                                           schedule.saying_due);
@@ -527,7 +392,9 @@ static void execute_network_diagnostics_window()
     ESP_LOGI(TAG, "%s", kNetworkDiagWifiOnLog);
     NetworkAwakeLockGuard awake_lock;
     network_diag_begin();
-    if (!start_wifi_radio(false)) {
+    if (!awake_lock.locked()) {
+        set_network_diag_unavailable(kNetworkDiagIpLocationPowerLockUnavailable);
+    } else if (!start_wifi_radio(false)) {
         set_network_diag_unavailable(kNetworkDiagIpLocationWifiStartFailed);
     } else if (!wait_for_wifi_connected(kNetworkWifiConnectTimeoutMs)) {
         set_network_diag_unavailable(kNetworkDiagIpLocationWifiConnectTimeout);
@@ -536,9 +403,7 @@ static void execute_network_diagnostics_window()
     }
     finish_network_radio_session(awake_lock);
     network_diag_finish();
-    finish_settings_sync_and_clear_bit(kSettingsSyncNetworkDiag,
-                                       kNetworkSyncNetworkDiagComplete,
-                                       kNetworkDiagBit);
+    finish_network_diagnostics_sync();
 }
 
 static void wait_for_boot_sync_completion()
@@ -566,9 +431,12 @@ void network_sync_task(void *)
     EventBits_t initial_bits = xEventGroupGetBits(g_app_events);
     bool boot_ntp_due = (initial_bits & kTimeSyncedBit) == 0;
     time_t next_ntp_retry_at = 0;
-    int last_midnight_ntp_yday = -1;
+    bool daily_ntp_pending = false;
     time_t boot_schedule_now = 0;
     time(&boot_schedule_now);
+    time_t next_daily_ntp_at = boot_ntp_due
+                                   ? 0
+                                   : next_local_midnight_time(boot_schedule_now);
     bool boot_weather_due = g_have_wifi_creds &&
                             g_have_weather_key &&
                             !g_offline_mode_ui_enabled &&
@@ -585,26 +453,27 @@ void network_sync_task(void *)
     }
 
     for (;;) {
+        // Consume only the edge-like state notification before reading the
+        // latest runtime state. Sync request bits stay level-triggered.
+        xEventGroupClearBits(g_app_events, kNetworkStateChangedBit);
         NetworkSyncRequestSnapshot requests = snapshot_network_sync_requests();
         int ota_state = ota_runtime_state_load();
-        if (ota_state == kOtaChecking || ota_state == kOtaUpdating) {
-            // Keep queued requests intact, but do not let their level-triggered
-            // event bits turn the OTA protection branch into a busy loop.
-            vTaskDelay(pdMS_TO_TICKS(kNetworkOtaActiveWaitMs));
+        if (ota_blocks_background_network_sync(ota_state)) {
+            wait_for_ota_network_block_change();
             continue;
         }
         if (g_offline_mode_ui_enabled) {
             boot_weather_due = false;
             boot_saying_due = false;
             finish_offline_network_requests(requests);
-            wait_for_network_sync_event(kNetworkNoWorkWaitMs);
+            wait_for_network_runtime_request();
             continue;
         }
         if (!g_have_wifi_creds) {
             boot_weather_due = false;
             boot_saying_due = false;
             finish_unconfigured_network_requests(requests);
-            wait_for_network_sync_event(kNetworkNoWorkWaitMs);
+            wait_for_network_runtime_request();
             continue;
         }
         if (requests.manual_weather && !g_have_weather_key) {
@@ -623,14 +492,18 @@ void network_sync_task(void *)
             continue;
         }
 
-        struct tm local = {};
-        bool time_valid = is_time_valid(&local);
-        bool midnight_ntp_due = time_valid &&
-                                local.tm_hour == 0 &&
-                                local.tm_min == 0 &&
-                                local.tm_yday != last_midnight_ntp_yday;
         time_t now;
         time(&now);
+        struct tm local = {};
+        bool time_valid = localtime_r(&now, &local) && is_tm_plausible(local);
+        if (!daily_ntp_pending && next_daily_ntp_at > 0 && now >= next_daily_ntp_at) {
+            daily_ntp_pending = true;
+            next_daily_ntp_at = 0;
+        }
+        if (!daily_ntp_pending && next_daily_ntp_at == 0 &&
+            !boot_ntp_due && time_valid) {
+            next_daily_ntp_at = next_local_midnight_time(now);
+        }
         // A short boot request may obtain current conditions while forecast or
         // air quality times out. Keep the staggered full refresh scheduled in
         // that partial state so the weather board is ready before first entry.
@@ -658,7 +531,7 @@ void network_sync_task(void *)
         schedule_input.manual_weather_due = requests.manual_weather;
         schedule_input.manual_saying_due = requests.manual_saying;
         schedule_input.boot_ntp_due = boot_ntp_due;
-        schedule_input.midnight_ntp_due = midnight_ntp_due;
+        schedule_input.daily_ntp_due = daily_ntp_pending;
         schedule_input.boot_weather_due = boot_weather_due;
         schedule_input.boot_saying_due = boot_saying_due;
         NetworkSyncSchedule schedule = calculate_network_sync_schedule(schedule_input);
@@ -684,7 +557,8 @@ void network_sync_task(void *)
                                    ? kBootHttpsMemoryRetryMs
                                    : network_idle_wait_ms(now,
                                                           schedule.next_boot_due_at,
-                                                          next_ntp_retry_at);
+                                                          next_ntp_retry_at,
+                                                          next_daily_ntp_at);
             wait_for_network_sync_event(wait_ms);
             continue;
         }
@@ -697,8 +571,12 @@ void network_sync_task(void *)
                  schedule.boot_weather_ready,
                  schedule.boot_saying_ready);
         NetworkAwakeLockGuard awake_lock;
-        if (!start_wifi_radio(false)) {
-            ESP_LOGW(TAG, "%s", kNetworkSyncWifiStartFailedLog);
+        if (!awake_lock.locked() || !start_wifi_radio(false)) {
+            ESP_LOGW(TAG,
+                     "%s",
+                     awake_lock.locked()
+                         ? kNetworkSyncWifiStartFailedLog
+                         : kNetworkSyncPowerLockUnavailableLog);
             finalize_failed_network_sync_window(schedule,
                                                 requests,
                                                 &boot_weather_due,
@@ -719,7 +597,8 @@ void network_sync_task(void *)
                                           boot_saying_due,
                                           boot_weather_due_at,
                                           next_ntp_retry_at,
-                                          last_midnight_ntp_yday);
+                                          daily_ntp_pending,
+                                          next_daily_ntp_at);
             stagger_boot_saying_after_weather(schedule,
                                               boot_saying_due,
                                               &boot_saying_due_at);

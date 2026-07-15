@@ -3,6 +3,7 @@
 
 #include "alarm_services.h"
 #include "audio_services.h"
+#include "input_button_wait_policy.h"
 #include "network_diagnostics_state.h"
 #include "ota_services.h"
 #include "pomodoro_services.h"
@@ -12,7 +13,13 @@
 #include "wifi_portal_state.h"
 #include "wifi_radio_state.h"
 
+#include "esp_sleep.h"
+
 #define BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT "button gpio config failed: %s"
+#define BUTTON_ISR_SERVICE_FAILED_LOG_FORMAT "button gpio isr service failed: %s; using polling fallback"
+#define BUTTON_ISR_HANDLER_FAILED_LOG_FORMAT "button gpio %d isr handler failed: %s; using polling fallback"
+#define BUTTON_WAKEUP_FAILED_LOG_FORMAT "button light sleep wakeup failed: %s; using polling fallback"
+#define BUTTON_EDGE_WAKEUP_READY_LOG_FORMAT "button edge wakeup ready for low-refresh idle"
 #define BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT "switch work page: %d"
 #define BUTTON_SHOW_SETTINGS_LOG_FORMAT "key button clicked, showing settings page"
 
@@ -26,6 +33,7 @@ constexpr uint64_t kButtonInputPinMask = kBootButtonPinMask | kKeyButtonPinMask;
 constexpr TickType_t kButtonDebounceTicks = pdMS_TO_TICKS(kButtonDebounceMs);
 constexpr TickType_t kButtonLongPressTicks = pdMS_TO_TICKS(kButtonLongPressMs);
 constexpr const char *kSettingsBusyFeedbackText = "请等待操作完成";
+TaskHandle_t s_button_task_handle = nullptr;
 
 static_assert(kButtonLongPressMs > kButtonDebounceMs,
               "button long-press duration must be longer than debounce duration");
@@ -104,12 +112,88 @@ void handle_settings_key_long_or_busy()
     }
     set_settings_feedback(kSettingsBusyFeedbackText, kButtonBusyFeedbackMs);
 }
+
+void IRAM_ATTR notify_button_edge(void *)
+{
+    TaskHandle_t task = s_button_task_handle;
+    if (!task) {
+        return;
+    }
+    BaseType_t higher_priority_task_woken = pdFALSE;
+    vTaskNotifyGiveFromISR(task, &higher_priority_task_woken);
+    if (higher_priority_task_woken == pdTRUE) {
+        portYIELD_FROM_ISR();
+    }
+}
+
+void disable_button_interrupts()
+{
+    (void)gpio_set_intr_type(kBootButtonGpio, GPIO_INTR_DISABLE);
+    (void)gpio_set_intr_type(kKeyButtonGpio, GPIO_INTR_DISABLE);
+}
+
+void remove_button_isr_handlers(bool boot_registered, bool key_registered)
+{
+    if (boot_registered) {
+        (void)gpio_isr_handler_remove(kBootButtonGpio);
+    }
+    if (key_registered) {
+        (void)gpio_isr_handler_remove(kKeyButtonGpio);
+    }
+    disable_button_interrupts();
+}
+
+bool setup_button_edge_wakeup()
+{
+    esp_err_t err = gpio_install_isr_service(0);
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE) {
+        ESP_LOGW(TAG, BUTTON_ISR_SERVICE_FAILED_LOG_FORMAT, esp_err_to_name(err));
+        disable_button_interrupts();
+        return false;
+    }
+
+    bool boot_registered = false;
+    bool key_registered = false;
+    err = gpio_isr_handler_add(kBootButtonGpio, notify_button_edge, nullptr);
+    if (err == ESP_OK) {
+        boot_registered = true;
+    } else {
+        ESP_LOGW(TAG,
+                 BUTTON_ISR_HANDLER_FAILED_LOG_FORMAT,
+                 static_cast<int>(kBootButtonGpio),
+                 esp_err_to_name(err));
+        remove_button_isr_handlers(boot_registered, key_registered);
+        return false;
+    }
+
+    err = gpio_isr_handler_add(kKeyButtonGpio, notify_button_edge, nullptr);
+    if (err == ESP_OK) {
+        key_registered = true;
+    } else {
+        ESP_LOGW(TAG,
+                 BUTTON_ISR_HANDLER_FAILED_LOG_FORMAT,
+                 static_cast<int>(kKeyButtonGpio),
+                 esp_err_to_name(err));
+        remove_button_isr_handlers(boot_registered, key_registered);
+        return false;
+    }
+
+    err = esp_sleep_enable_ext1_wakeup_io(kButtonInputPinMask, ESP_EXT1_WAKEUP_ANY_LOW);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, BUTTON_WAKEUP_FAILED_LOG_FORMAT, esp_err_to_name(err));
+        remove_button_isr_handlers(boot_registered, key_registered);
+        return false;
+    }
+
+    ESP_LOGI(TAG, BUTTON_EDGE_WAKEUP_READY_LOG_FORMAT);
+    return true;
+}
 } // namespace
 
 void button_task(void *)
 {
     gpio_config_t button = {};
-    button.intr_type = GPIO_INTR_DISABLE;
+    button.intr_type = GPIO_INTR_ANYEDGE;
     button.mode = GPIO_MODE_INPUT;
     button.pin_bit_mask = kButtonInputPinMask;
     button.pull_down_en = GPIO_PULLDOWN_DISABLE;
@@ -119,6 +203,9 @@ void button_task(void *)
         ESP_LOGE(TAG, BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT, esp_err_to_name(err));
         return;
     }
+
+    s_button_task_handle = xTaskGetCurrentTaskHandle();
+    const bool edge_wakeup_ready = setup_button_edge_wakeup();
 
     TickType_t boot_pressed_since = 0;
     TickType_t key_pressed_since = 0;
@@ -239,7 +326,18 @@ void button_task(void *)
             key_long_handled = false;
             key_press_stopped_alert = false;
         }
-        int delay_ms = low_refresh_button_idle_context() ? kButtonLowRefreshIdlePollMs : kButtonIdlePollMs;
+        const bool low_refresh_idle = low_refresh_button_idle_context();
+        const bool press_tracking_active = boot_pressed_since != 0 || key_pressed_since != 0;
+        if (button_task_can_wait_for_edge(edge_wakeup_ready,
+                                          low_refresh_idle,
+                                          boot_pressed,
+                                          key_pressed,
+                                          press_tracking_active)) {
+            (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            continue;
+        }
+
+        int delay_ms = low_refresh_idle ? kButtonLowRefreshIdlePollMs : kButtonIdlePollMs;
         if (boot_pressed || key_pressed) {
             delay_ms = kButtonPressedPollMs;
         } else if (settings_page_requested() || info_page_requested() || network_diag_page_requested() || setup_portal_active_load()) {

@@ -43,6 +43,7 @@ portMUX_TYPE s_local_sensor_mux = portMUX_INITIALIZER_UNLOCKED;
 float s_temperature = 0.0f;
 float s_humidity = 0.0f;
 bool s_sensor_ok = false;
+uint32_t s_local_sensor_version = 0;
 int s_temperature_trend = 0;
 int s_humidity_trend = 0;
 SensorSample s_sensor_trend_samples[kSensorHistoryMinutes] = {};
@@ -417,13 +418,16 @@ void sample_sensor()
         s_humidity = humi;
         s_temperature_trend = temperature_trend;
         s_humidity_trend = humidity_trend;
+        ++s_local_sensor_version;
         portEXIT_CRITICAL(&s_local_sensor_mux);
         record_hourly_sensor_sample(temp, humi);
     } else {
         portENTER_CRITICAL(&s_local_sensor_mux);
         s_sensor_ok = false;
+        ++s_local_sensor_version;
         portEXIT_CRITICAL(&s_local_sensor_mux);
     }
+    notify_ui_task();
 }
 
 bool get_local_sensor_snapshot(float *temperature,
@@ -447,4 +451,12 @@ bool get_local_sensor_snapshot(float *temperature,
     }
     portEXIT_CRITICAL(&s_local_sensor_mux);
     return sensor_ok;
+}
+
+uint32_t local_sensor_state_version()
+{
+    portENTER_CRITICAL(&s_local_sensor_mux);
+    uint32_t version = s_local_sensor_version;
+    portEXIT_CRITICAL(&s_local_sensor_mux);
+    return version;
 }

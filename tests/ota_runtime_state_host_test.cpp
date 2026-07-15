@@ -7,6 +7,8 @@
 #include <string.h>
 #include <thread>
 
+int g_network_runtime_notification_count = 0;
+
 int main()
 {
     OtaRuntimeSnapshot initial;
@@ -18,6 +20,7 @@ int main()
     assert(!initial.status_hold_set);
     assert(!initial.reboot_pending);
     assert(strcmp(initial.status, "BOOT: Check Update") == 0);
+    assert(g_network_runtime_notification_count == 0);
 
     ota_runtime_publish_status(kOtaAvailable, "New version v2", -1, 200, true);
     OtaRuntimeSnapshot available;
@@ -26,6 +29,7 @@ int main()
     assert(available.status_hold_set);
     assert(available.status_until_tick == 200);
     assert(strcmp(available.status, "New version v2") == 0);
+    assert(g_network_runtime_notification_count == 0);
     ota_runtime_reset_status_if_idle(199, "idle");
     assert(ota_runtime_state_load() == kOtaAvailable);
 
@@ -36,6 +40,7 @@ int main()
     assert(downloading.progress == 25);
     assert(downloading.speed_kbps == 128);
     assert(!downloading.status_hold_set);
+    assert(g_network_runtime_notification_count == 1);
 
     ota_runtime_reboot_pending_store(true);
     assert(ota_runtime_reboot_pending_load());
@@ -44,6 +49,7 @@ int main()
     ota_runtime_snapshot_load(&failed);
     assert(!failed.reboot_pending);
     assert(failed.speed_kbps == 128);
+    assert(g_network_runtime_notification_count == 2);
 
     char long_status[kOtaStatusLen + 16];
     memset(long_status, 'x', sizeof(long_status));
@@ -52,6 +58,7 @@ int main()
     OtaRuntimeSnapshot truncated;
     ota_runtime_snapshot_load(&truncated);
     assert(strlen(truncated.status) == kOtaStatusLen - 1);
+    assert(g_network_runtime_notification_count == 2);
 
     ota_runtime_reset_status_if_idle(400, "BOOT: Check Update");
     OtaRuntimeSnapshot idle;
@@ -62,11 +69,13 @@ int main()
     assert(!idle.status_hold_set);
     assert(idle.status_until_tick == 0);
     assert(strcmp(idle.status, "BOOT: Check Update") == 0);
+    assert(g_network_runtime_notification_count == 2);
 
     ota_runtime_publish_status(kOtaFailed, "persistent", -1, 0, false);
     ota_runtime_reset_status_if_idle(1000, "idle");
     assert(ota_runtime_state_load() == kOtaFailed);
     assert(idle.state == kOtaIdle);
+    assert(g_network_runtime_notification_count == 2);
 
     std::atomic<bool> writer_done{false};
     std::thread writer([&writer_done]() {
@@ -102,5 +111,6 @@ int main()
     assert(final_snapshot.progress == 99);
     assert(final_snapshot.speed_kbps == 199);
     assert(strcmp(final_snapshot.status, "99") == 0);
+    assert(g_network_runtime_notification_count == 3);
     return 0;
 }

@@ -1,7 +1,6 @@
 // 实现 OTA manifest 的纯 JSON 字段解析和 SHA256 格式校验。
 #include "ota_manifest_parser.h"
 
-#include "app_constexpr.h"
 #include "network_json.h"
 #include "network_json_root.h"
 #include "ota_validation.h"
@@ -15,15 +14,6 @@ constexpr const char *kUrlField = "url";
 constexpr const char *kSha256Field = "sha256";
 constexpr const char *kSizeField = "size";
 constexpr const char *kNotesField = "notes";
-constexpr const char *kManifestFields[] = {
-    kVersionField,
-    kUrlField,
-    kSha256Field,
-    kSizeField,
-    kNotesField,
-};
-static_assert(cstr_array_nonempty(kManifestFields),
-              "OTA manifest JSON fields must be non-empty");
 static_assert(kOtaSha256HexLen + 1 == kOtaSha256Len,
               "OTA SHA256 storage must fit hex text and NUL");
 } // namespace

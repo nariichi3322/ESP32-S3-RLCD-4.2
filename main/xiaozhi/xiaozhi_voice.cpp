@@ -4,6 +4,7 @@
 #include "app_tick_time.h"
 #include "audio_services.h"
 #include "checked_size.h"
+#include "xiaozhi_voice_read_health.h"
 
 #include <esp_codec_dev_types.h>
 #include <esp_afe_config.h>
@@ -32,6 +33,8 @@ constexpr float kWakeNetThreshold = 0.60f;
 constexpr TickType_t kLevelLogIntervalTicks = pdMS_TO_TICKS(3000);
 constexpr TickType_t kFetchWarningIntervalTicks = pdMS_TO_TICKS(3000);
 constexpr uint32_t kStreamFullWarningIntervalMs = 1000;
+constexpr uint32_t kMicrophoneReadRetryDelayMs = 40;
+constexpr uint32_t kMicrophoneReadFailureLimit = 25;
 constexpr TickType_t kStreamFullWarningIntervalTicks =
     pdMS_TO_TICKS(kStreamFullWarningIntervalMs);
 constexpr size_t kProcessedStreamBytes = 16 * 1024;
@@ -46,18 +49,38 @@ std::atomic<bool> s_detected{false};
 std::atomic<bool> s_streaming{false};
 std::atomic<bool> s_feed_exited{true};
 std::atomic<bool> s_detect_exited{true};
+std::atomic<XiaozhiVoiceEventCallback> s_event_callback{nullptr};
 TaskHandle_t s_feed_task = nullptr;
 TaskHandle_t s_detect_task = nullptr;
 StackType_t *s_feed_task_stack = nullptr;
 StackType_t *s_detect_task_stack = nullptr;
 StaticTask_t *s_feed_task_buffer = nullptr;
 StaticTask_t *s_detect_task_buffer = nullptr;
+std::atomic<int16_t *> s_capture_buffer{nullptr};
+int s_capture_codec_bytes = 0;
+int s_capture_chunk_samples = 0;
+int s_capture_channels = 0;
 srmodel_list_t *s_models = nullptr;
 const esp_afe_sr_iface_t *s_afe_iface = nullptr;
 esp_afe_sr_data_t *s_afe_data = nullptr;
 StreamBufferHandle_t s_processed_stream = nullptr;
 uint8_t *s_processed_stream_storage = nullptr;
 StaticStreamBuffer_t *s_processed_stream_control = nullptr;
+
+void notify_voice_event()
+{
+    XiaozhiVoiceEventCallback callback =
+        s_event_callback.load(std::memory_order_acquire);
+    if (callback) {
+        callback();
+    }
+}
+
+void report_voice_runtime_failure()
+{
+    s_running.store(false);
+    notify_voice_event();
+}
 
 bool ensure_processed_stream()
 {
@@ -105,6 +128,10 @@ static_assert(kStreamFullWarningIntervalMs > 0,
               "voice stream-full warning interval must be positive");
 static_assert(kStreamFullWarningIntervalTicks > 0,
               "voice stream-full warning tick conversion must be positive");
+static_assert(kMicrophoneReadRetryDelayMs > 0,
+              "microphone read retry delay must be positive");
+static_assert(kMicrophoneReadFailureLimit > 0,
+              "microphone read failure limit must be positive");
 
 void release_task_storage()
 {
@@ -211,16 +238,27 @@ bool create_model()
     return true;
 }
 
-void feed_task(void *)
+void release_capture_storage()
 {
-    const int chunk_samples = s_afe_iface ? s_afe_iface->get_feed_chunksize(s_afe_data) : 0;
-    const int channels = s_afe_iface ? s_afe_iface->get_feed_channel_num(s_afe_data) : 0;
+    free(s_capture_buffer.exchange(nullptr, std::memory_order_acq_rel));
+    s_capture_codec_bytes = 0;
+    s_capture_chunk_samples = 0;
+    s_capture_channels = 0;
+}
+
+bool allocate_capture_storage()
+{
+    release_capture_storage();
+    const int chunk_samples =
+        s_afe_iface ? s_afe_iface->get_feed_chunksize(s_afe_data) : 0;
+    const int channels =
+        s_afe_iface ? s_afe_iface->get_feed_channel_num(s_afe_data) : 0;
     if (chunk_samples <= 0 || channels != kMicChannels) {
-        ESP_LOGW(kTag, "Unexpected AFE feed format: samples=%d channels=%d", chunk_samples, channels);
-        s_running.store(false);
-        s_feed_exited.store(true);
-        vTaskSuspend(nullptr);
-        return;
+        ESP_LOGW(kTag,
+                 "Unexpected AFE feed format: samples=%d channels=%d",
+                 chunk_samples,
+                 channels);
+        return false;
     }
     size_t capture_samples = 0;
     size_t capture_bytes = 0;
@@ -233,29 +271,66 @@ void feed_task(void *)
                                            &capture_bytes) ||
         !app_memory::checked_size_to_int(capture_bytes, &codec_bytes)) {
         ESP_LOGW(kTag, "%s", kCaptureSizeOverflowLog);
-        s_running.store(false);
-        s_feed_exited.store(true);
-        vTaskSuspend(nullptr);
-        return;
+        return false;
     }
-    int16_t *stereo = static_cast<int16_t *>(heap_caps_malloc(
+    int16_t *capture_buffer = static_cast<int16_t *>(heap_caps_malloc(
         capture_bytes, MALLOC_CAP_SPIRAM));
-    if (!stereo) {
+    if (!capture_buffer) {
         ESP_LOGW(kTag, "MR AEC capture buffer allocation failed");
-        s_running.store(false);
+        return false;
+    }
+    s_capture_codec_bytes = codec_bytes;
+    s_capture_chunk_samples = chunk_samples;
+    s_capture_channels = channels;
+    s_capture_buffer.store(capture_buffer, std::memory_order_release);
+    ESP_LOGI(kTag,
+             "MR AEC capture storage: psram=%u samples=%d channels=%d",
+             static_cast<unsigned>(capture_bytes),
+             chunk_samples,
+             channels);
+    return true;
+}
+
+void feed_task(void *)
+{
+    int16_t *stereo = s_capture_buffer.load(std::memory_order_acquire);
+    const int codec_bytes = s_capture_codec_bytes;
+    const int chunk_samples = s_capture_chunk_samples;
+    const int channels = s_capture_channels;
+    if (!stereo || codec_bytes <= 0 || chunk_samples <= 0 ||
+        channels != kMicChannels) {
+        ESP_LOGW(kTag, "MR AEC capture storage is unavailable");
+        report_voice_runtime_failure();
         s_feed_exited.store(true);
         vTaskSuspend(nullptr);
         return;
     }
     TickType_t next_level_log = xTaskGetTickCount() + kLevelLogIntervalTicks;
+    uint32_t consecutive_read_failures = 0;
     while (s_running.load()) {
         int result = read_xiaozhi_microphone(stereo,
                                              static_cast<size_t>(codec_bytes));
         if (result != ESP_CODEC_DEV_OK) {
-            ESP_LOGW(kTag, "Microphone read failed: %d", result);
-            vTaskDelay(pdMS_TO_TICKS(40));
+            XiaozhiVoiceReadHealthResult health =
+                xiaozhi_voice_read_health_after_result(
+                    consecutive_read_failures,
+                    false,
+                    kMicrophoneReadFailureLimit);
+            consecutive_read_failures = health.consecutive_failures;
+            if (health.should_log) {
+                ESP_LOGW(kTag,
+                         "Microphone read failed: %d consecutive=%u",
+                         result,
+                         static_cast<unsigned>(consecutive_read_failures));
+            }
+            if (health.should_rebuild) {
+                report_voice_runtime_failure();
+                break;
+            }
+            vTaskDelay(pdMS_TO_TICKS(kMicrophoneReadRetryDelayMs));
             continue;
         }
+        consecutive_read_failures = 0;
         TickType_t now = xTaskGetTickCount();
         if (app_tick_deadline_reached(now, next_level_log)) {
             int peak_mic = 0;
@@ -271,11 +346,10 @@ void feed_task(void *)
         }
         if (s_afe_iface->feed(s_afe_data, stereo) < 0) {
             ESP_LOGW(kTag, "AFE feed failed");
-            s_running.store(false);
+            report_voice_runtime_failure();
             break;
         }
     }
-    free(stereo);
     s_feed_exited.store(true);
     vTaskSuspend(nullptr);
 }
@@ -333,6 +407,7 @@ void detect_task(void *)
                      result->trigger_channel_id,
                      static_cast<double>(result->data_volume));
             s_detected.store(true);
+            notify_voice_event();
         }
     }
     s_detect_exited.store(true);
@@ -373,6 +448,11 @@ void delete_voice_tasks()
 }
 } // namespace
 
+void xiaozhi_voice_set_event_callback(XiaozhiVoiceEventCallback callback)
+{
+    s_event_callback.store(callback, std::memory_order_release);
+}
+
 bool xiaozhi_voice_start()
 {
     if (s_running.load()) {
@@ -381,9 +461,11 @@ bool xiaozhi_voice_start()
     // A previous capture error can stop the workers before the page lifecycle
     // reaches xiaozhi_voice_stop(). Reclaim those suspended static tasks before
     // allocating a fresh pair of PSRAM stacks.
-    if (s_feed_task || s_detect_task) {
+    if (s_feed_task || s_detect_task ||
+        s_capture_buffer.load(std::memory_order_acquire)) {
         wait_for_tasks_to_stop();
         delete_voice_tasks();
+        release_capture_storage();
         release_task_storage();
         release_model();
         stop_xiaozhi_audio_session();
@@ -405,7 +487,14 @@ bool xiaozhi_voice_start()
         xStreamBufferReset(s_processed_stream);
         return false;
     }
+    if (!allocate_capture_storage()) {
+        release_model();
+        stop_xiaozhi_audio_session();
+        xStreamBufferReset(s_processed_stream);
+        return false;
+    }
     if (!allocate_task_storage()) {
+        release_capture_storage();
         release_model();
         stop_xiaozhi_audio_session();
         xStreamBufferReset(s_processed_stream);
@@ -445,6 +534,7 @@ bool xiaozhi_voice_start()
         }
         wait_for_tasks_to_stop();
         delete_voice_tasks();
+        release_capture_storage();
         release_task_storage();
         release_model();
         stop_xiaozhi_audio_session();
@@ -460,6 +550,7 @@ void xiaozhi_voice_stop()
     s_streaming.store(false);
     wait_for_tasks_to_stop();
     delete_voice_tasks();
+    release_capture_storage();
     release_task_storage();
     release_model();
     if (s_processed_stream) {
@@ -490,6 +581,8 @@ void xiaozhi_voice_get_runtime_snapshot(XiaozhiVoiceRuntimeSnapshot *out)
     out->afe = s_afe_iface != nullptr || s_afe_data != nullptr;
     out->model = s_models != nullptr;
     out->processed_stream = s_processed_stream != nullptr;
+    out->capture_buffer =
+        s_capture_buffer.load(std::memory_order_acquire) != nullptr;
 }
 
 void xiaozhi_voice_set_streaming(bool enabled)

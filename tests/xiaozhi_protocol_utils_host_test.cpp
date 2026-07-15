@@ -141,6 +141,14 @@ void test_audio_frame_bounds()
            "unaligned decoded PCM accepted");
     expect(!xiaozhi_protocol::decoded_audio_size_valid(5762, 5760),
            "oversized decoded PCM accepted");
+    expect(xiaozhi_protocol::audio_sample_count_valid(1, 1600),
+           "single converted PCM sample rejected");
+    expect(xiaozhi_protocol::audio_sample_count_valid(1600, 1600),
+           "full converted PCM buffer rejected");
+    expect(!xiaozhi_protocol::audio_sample_count_valid(0, 1600),
+           "empty converted PCM accepted");
+    expect(!xiaozhi_protocol::audio_sample_count_valid(1601, 1600),
+           "oversized converted PCM accepted");
 }
 
 void test_audio_payload_range()

@@ -50,6 +50,13 @@ namespace xiaozhi_protocol {
            decoded_size % sizeof(int16_t) == 0;
 }
 
+[[maybe_unused]] static __attribute__((noinline)) bool audio_sample_count_valid(
+    size_t sample_count,
+    size_t buffer_capacity)
+{
+    return sample_count > 0 && sample_count <= buffer_capacity;
+}
+
 [[maybe_unused]] static __attribute__((noinline)) bool audio_payload_range(int version,
                                                           const uint8_t *frame,
                                                           size_t frame_len,

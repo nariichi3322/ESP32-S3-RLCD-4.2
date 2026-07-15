@@ -19,6 +19,7 @@ constexpr int kBootScreenCompletePercent = 100;
 constexpr int kBootNtpMinRemainingMs = 600;
 constexpr size_t kBootSetupDetailTextSize = 64;
 constexpr const char *kBootDetailStartingClock = "Starting clock";
+constexpr const char *kBootDetailPowerLockUnavailable = "Power lock unavailable";
 constexpr const char *kBootDetailSynchronizingTime = "Synchronizing time";
 constexpr const char *kBootDetailPageDataQueued = "Page data queued";
 constexpr const char *kBootDetailBackgroundRefresh = "Refreshing after startup";
@@ -92,6 +93,14 @@ void run_boot_connectivity_sync()
     update_boot_screen(18, "Connecting Wi-Fi", g_wifi_ssid);
     NetworkAwakeLockGuard awake_lock;
     BootSyncDeadlineGuard deadline_guard;
+    if (!awake_lock.locked()) {
+        update_boot_screen(kBootScreenCompletePercent,
+                           kBootDetailPowerLockUnavailable,
+                           kBootDetailStartingClock);
+        vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
+        service_wifi_radio_stop_when_idle();
+        return;
+    }
     if (!start_wifi_radio(false)) {
         update_boot_screen(kBootScreenCompletePercent, "Wi-Fi start failed", kBootDetailStartingClock);
         vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));

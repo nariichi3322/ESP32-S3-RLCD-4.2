@@ -24,6 +24,24 @@ int main()
     assert(!xiaozhi_turn_reply_is_empty(true, true, false));
     assert(!xiaozhi_turn_reply_is_empty(true, false, true));
 
+    constexpr uint32_t kGraceTicks = 350;
+    constexpr uint32_t kTailTicks = 120;
+    assert(!xiaozhi_tts_final_frames_settled(1349, 1000, 0, kGraceTicks, kTailTicks));
+    assert(xiaozhi_tts_final_frames_settled(1350, 1000, 0, kGraceTicks, kTailTicks));
+    assert(!xiaozhi_tts_final_frames_settled(2000, 1000, 1881, kGraceTicks, kTailTicks));
+    assert(xiaozhi_tts_final_frames_settled(2000, 1000, 1880, kGraceTicks, kTailTicks));
+    assert(xiaozhi_tts_final_frames_settled(2000, 0, 0, kGraceTicks, kTailTicks));
+    assert(!xiaozhi_tts_final_frames_settled(20,
+                                             UINT32_MAX - 300,
+                                             0,
+                                             kGraceTicks,
+                                             kTailTicks));
+    assert(xiaozhi_tts_final_frames_settled(80,
+                                            UINT32_MAX - 300,
+                                            UINT32_MAX - 50,
+                                            kGraceTicks,
+                                            kTailTicks));
+
     assert(!xiaozhi_user_requested_exit(nullptr));
     assert(!xiaozhi_user_requested_exit(""));
     assert(xiaozhi_user_requested_exit("关闭小智吧"));

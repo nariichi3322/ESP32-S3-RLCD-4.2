@@ -117,7 +117,8 @@ void boot_connectivity_task(void *);
 void wait_for_network_sync_event(uint32_t timeout_ms);
 uint32_t network_idle_wait_ms(time_t now,
                               time_t next_boot_due_at,
-                              time_t next_ntp_retry_at);
+                              time_t next_ntp_retry_at,
+                              time_t next_daily_ntp_at);
 void network_diag_reset();
 void network_diag_begin();
 void network_diag_finish();

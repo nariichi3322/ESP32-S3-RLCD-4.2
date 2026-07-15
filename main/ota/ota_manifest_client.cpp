@@ -30,26 +30,6 @@ constexpr const char *kManifestResponseAllocFailedLog = "OTA manifest response a
 #define MANIFEST_PARSE_FAILED_FORMAT "OTA manifest parse failed source=%s"
 #define MANIFEST_LOADED_FORMAT "OTA manifest loaded source=%s version=%s"
 #define BACKUP_MANIFEST_MISMATCH_FORMAT "OTA backup manifest mismatch current=%s backup=%s"
-constexpr const char *kManifestTexts[] = {
-    kManifestSourceR2,
-    kManifestSourceGithub,
-    kManifestSourceCustom,
-    kOtaUnknownManifestSource,
-    kOtaPlaceholderManifestHost,
-};
-constexpr const char *kManifestLogTexts[] = {
-    kManifestParseInvalidArgLog,
-    kManifestJsonParseFailedLog,
-    MANIFEST_MISSING_REQUIRED_FIELDS_FORMAT,
-    MANIFEST_SHA_INVALID_FORMAT,
-    MANIFEST_SOURCE_SKIPPED_FORMAT,
-    kManifestResponseAllocFailedLog,
-    MANIFEST_FETCH_FAILED_FORMAT,
-    MANIFEST_PARSE_FAILED_FORMAT,
-    MANIFEST_LOADED_FORMAT,
-    BACKUP_MANIFEST_MISMATCH_FORMAT,
-};
-
 constexpr bool manifest_source_name_fits(const char *text)
 {
     return cstr_nonempty(text) && cstr_length(text) < kOtaManifestSourceNameLen;
@@ -62,10 +42,6 @@ static_assert(array_count(kBuiltInManifestSources) == kBuiltInManifestSourceCoun
 static_assert(kBackupManifestSourceIndex >= 0 &&
                   kBackupManifestSourceIndex < kBuiltInManifestSourceCount,
               "OTA backup manifest source index must stay within built-in source list");
-static_assert(cstr_array_nonempty(kManifestTexts),
-              "OTA manifest field texts must be non-empty");
-static_assert(cstr_array_nonempty(kManifestLogTexts),
-              "OTA manifest diagnostic texts must be non-empty");
 static_assert(manifest_source_name_fits(kManifestSourceR2),
               "R2 OTA manifest source name must fit UI storage");
 static_assert(manifest_source_name_fits(kManifestSourceGithub),

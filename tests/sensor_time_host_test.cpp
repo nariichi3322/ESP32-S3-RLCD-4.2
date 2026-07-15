@@ -78,6 +78,9 @@ int main()
 
     time_t value = local_epoch(2026, 7, 12, 13, 45, 56);
     expect_local_time(hour_start_from_time(value), 2026, 7, 12, 13, 0);
+    expect_local_time(next_local_midnight_time(value), 2026, 7, 13, 0, 0);
+    expect_local_time(next_local_midnight_time(local_epoch(2026, 12, 31, 23, 59, 59)),
+                      2027, 1, 1, 0, 0);
     expect_local_time(next_weather_sync_time(value), 2026, 7, 12, 14, 0);
     expect_local_time(next_weather_sync_time(local_epoch(2026, 7, 12, 21, 30, 0)),
                       2026, 7, 12, 22, 0);
@@ -89,6 +92,7 @@ int main()
                       2026, 7, 13, 6, 0);
 
     time_t invalid = local_epoch(2023, 7, 12, 12, 34, 56);
+    assert(next_local_midnight_time(invalid) == 0);
     assert(next_weather_sync_time(invalid) == invalid + 60 * 60);
     return 0;
 }

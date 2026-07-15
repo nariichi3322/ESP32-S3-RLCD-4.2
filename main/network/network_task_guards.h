@@ -11,8 +11,8 @@ void release_network_http_transaction_lock();
 class NetworkAwakeLockGuard {
 public:
     NetworkAwakeLockGuard()
+        : active_(acquire_network_awake_lock())
     {
-        acquire_network_awake_lock();
     }
 
     ~NetworkAwakeLockGuard()
@@ -23,6 +23,11 @@ public:
     NetworkAwakeLockGuard(const NetworkAwakeLockGuard &) = delete;
     NetworkAwakeLockGuard &operator=(const NetworkAwakeLockGuard &) = delete;
 
+    bool locked() const
+    {
+        return active_;
+    }
+
     void release()
     {
         if (active_) {
@@ -32,7 +37,7 @@ public:
     }
 
 private:
-    bool active_ = true;
+    bool active_ = false;
 };
 
 class NetworkHttpTransactionGuard {

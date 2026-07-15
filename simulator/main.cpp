@@ -17,6 +17,7 @@
 #include "sdl_preview_flip_clock.h"
 #include "sdl_preview_gallery.h"
 #include "sdl_preview_history.h"
+#include "sdl_preview_mode.h"
 #include "sdl_preview_settings.h"
 #include "sdl_preview_weather.h"
 #include "sdl_preview_widgets.h"
@@ -37,7 +38,7 @@ using sdl_preview_widgets::set_obj_black;
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.5.12";
+static const char *APP_VERSION = "v1.5.13";
 static const char *const kPreviewWeekDaysFull[] = {
     "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六",
 };
@@ -111,16 +112,6 @@ static void update_time_ui(const struct tm &local);
 static time_t preview_time();
 static void build_battery_icon(lv_obj_t *parent);
 static void update_battery_icon(int percent);
-
-static bool preview_mode_is(const char *mode, const char *expected)
-{
-    return mode && expected && strcmp(mode, expected) == 0;
-}
-
-static bool preview_mode_has_prefix(const char *mode, const char *prefix)
-{
-    return mode && prefix && strncmp(mode, prefix, strlen(prefix)) == 0;
-}
 
 static const char *preview_weekday_full(int weekday)
 {
@@ -1090,21 +1081,6 @@ static time_t preview_time()
     return time(nullptr);
 }
 
-struct PreviewSelection {
-    bool history = false;
-    bool gallery = false;
-    bool flip_clock = false;
-    bool xiaozhi = false;
-    bool calendar = false;
-    bool weather_board = false;
-    bool info = false;
-
-    bool alternate_work_page() const
-    {
-        return history || gallery || flip_clock || xiaozhi || calendar || weather_board || info;
-    }
-};
-
 static void init_lvgl_preview_display()
 {
     lv_init();
@@ -1132,7 +1108,8 @@ static void settle_preview_frame()
 
 static bool save_boot_preview_if_requested(const char *screenshot_path, const char *preview_mode)
 {
-    if (!screenshot_path || !screenshot_path[0] || !preview_mode_is(preview_mode, "boot")) {
+    if (!screenshot_path || !screenshot_path[0] ||
+        !sdl_preview_mode::is(preview_mode, "boot")) {
         return false;
     }
     settle_preview_frame();
@@ -1166,17 +1143,10 @@ static void run_boot_animation()
     g_boot_anim_canvas = nullptr;
 }
 
-static PreviewSelection build_selected_preview(const char *preview_mode)
+static sdl_preview_mode::Selection build_selected_preview(const char *preview_mode)
 {
-    PreviewSelection selection = {
-        preview_mode_is(preview_mode, "history"),
-        preview_mode_is(preview_mode, "gallery"),
-        preview_mode_is(preview_mode, "flip_clock"),
-        preview_mode_has_prefix(preview_mode, "xiaozhi"),
-        preview_mode_is(preview_mode, "calendar"),
-        preview_mode_is(preview_mode, "weather_board"),
-        preview_mode_is(preview_mode, "info"),
-    };
+    sdl_preview_mode::Selection selection =
+        sdl_preview_mode::selection_for(preview_mode);
     if (selection.history) {
         build_history_preview_ui();
     } else if (selection.gallery) {
@@ -1205,28 +1175,22 @@ static PreviewSelection build_selected_preview(const char *preview_mode)
     return selection;
 }
 
-static bool settings_preview_mode(const char *preview_mode)
-{
-    return preview_mode_is(preview_mode, "settings") ||
-           preview_mode_has_prefix(preview_mode, "settings_");
-}
-
 static void apply_screenshot_preview_state(const char *preview_mode,
-                                           const PreviewSelection &selection)
+                                           const sdl_preview_mode::Selection &selection)
 {
     if (selection.alternate_work_page()) {
             // Alternate work pages are already built above.
-    } else if (settings_preview_mode(preview_mode)) {
+    } else if (sdl_preview_mode::is_settings(preview_mode)) {
         build_settings_preview_page(preview_mode);
-    } else if (preview_mode_is(preview_mode, "setup")) {
+    } else if (sdl_preview_mode::is(preview_mode, "setup")) {
         set_lower_panel_visible(false);
         set_setup_panel_visible(true);
         set_obj_visible(g_chime_status_icon_canvas, false);
         set_obj_visible(g_wifi_status_icon_canvas, false);
         set_obj_visible(g_alarm_status_icon_canvas, false);
-    } else if (preview_mode_is(preview_mode, "alert")) {
+    } else if (sdl_preview_mode::is(preview_mode, "alert")) {
         apply_alert_preview(true);
-    } else if (preview_mode_is(preview_mode, "low")) {
+    } else if (sdl_preview_mode::is(preview_mode, "low")) {
         update_battery_icon(4);
         apply_low_battery_preview(true);
     }
@@ -1234,9 +1198,10 @@ static void apply_screenshot_preview_state(const char *preview_mode,
     time_t now = preview_time();
     struct tm local;
     localtime_r(&now, &local);
-    if (!selection.alternate_work_page() && !settings_preview_mode(preview_mode)) {
+    if (!selection.alternate_work_page() &&
+        !sdl_preview_mode::is_settings(preview_mode)) {
         update_time_ui(local);
-        if (preview_mode_is(preview_mode, "low")) {
+        if (sdl_preview_mode::is(preview_mode, "low")) {
             apply_low_battery_preview(true);
         }
     }
@@ -1244,7 +1209,7 @@ static void apply_screenshot_preview_state(const char *preview_mode,
 
 static bool save_preview_if_requested(const char *screenshot_path,
                                       const char *preview_mode,
-                                      const PreviewSelection &selection)
+                                      const sdl_preview_mode::Selection &selection)
 {
     if (!screenshot_path || !screenshot_path[0]) {
         return false;
@@ -1302,7 +1267,7 @@ int main(int, char **)
         return 0;
     }
     run_boot_animation();
-    PreviewSelection selection = build_selected_preview(preview_mode);
+    sdl_preview_mode::Selection selection = build_selected_preview(preview_mode);
     if (save_preview_if_requested(screenshot_path, preview_mode, selection)) {
         return 0;
     }

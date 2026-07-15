@@ -121,7 +121,7 @@ void play_completion_audio()
     }
     s_stop_alert_requested.store(false);
     set_alerting(true);
-    xiaozhi_ai_set_alarm_suspended(true);
+    xiaozhi_ai_set_pomodoro_audio_suspended(true);
     for (uint32_t waited = 0;
          is_audio_playing() && waited < kAudioReleaseWaitMs && !s_stop_alert_requested.load();
          waited += kAudioReleasePollMs) {
@@ -132,7 +132,7 @@ void play_completion_audio()
                                                  kCompletionSoundRepeats,
                                                  completion_stop_requested);
     }
-    xiaozhi_ai_set_alarm_suspended(false);
+    xiaozhi_ai_set_pomodoro_audio_suspended(false);
     set_alerting(false);
 }
 

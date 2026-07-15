@@ -51,12 +51,16 @@ constexpr uint32_t kMaxCountdownSeconds = 7U * 24U * 60U * 60U;
 constexpr uint32_t kMaxPomodoroSeconds = 99U * 60U + 59U;
 
 using xiaozhi_mcp_json::add_string;
+using xiaozhi_mcp_json::add_owned_item_to_array;
+using xiaozhi_mcp_json::add_owned_item_to_object;
 
 cJSON *create_object_schema()
 {
     cJSON *schema = cJSON_CreateObject();
     if (!schema || !add_string(schema, kJsonFieldType, kJsonTypeObject) ||
-        !cJSON_AddItemToObject(schema, kJsonFieldProperties, cJSON_CreateObject())) {
+        !add_owned_item_to_object(schema,
+                                  kJsonFieldProperties,
+                                  cJSON_CreateObject())) {
         cJSON_Delete(schema);
         return nullptr;
     }
@@ -75,8 +79,24 @@ cJSON *create_tool(const char *name, const char *description, cJSON *input_schem
         cJSON_Delete(input_schema);
         return nullptr;
     }
-    cJSON_AddItemToObject(tool, "inputSchema", input_schema);
+    if (!add_owned_item_to_object(tool, "inputSchema", input_schema)) {
+        cJSON_Delete(tool);
+        return nullptr;
+    }
     return tool;
+}
+
+cJSON *get_or_create_required_array(cJSON *schema)
+{
+    cJSON *required = schema ? cJSON_GetObjectItem(schema, kJsonFieldRequired) : nullptr;
+    if (required) {
+        return cJSON_IsArray(required) ? required : nullptr;
+    }
+    required = cJSON_CreateArray();
+    if (!add_owned_item_to_object(schema, kJsonFieldRequired, required)) {
+        return nullptr;
+    }
+    return required;
 }
 
 bool add_required_integer(cJSON *schema,
@@ -86,23 +106,16 @@ bool add_required_integer(cJSON *schema,
 {
     cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
     cJSON *property = cJSON_CreateObject();
-    cJSON *required = schema ? cJSON_GetObjectItem(schema, kJsonFieldRequired) : nullptr;
-    if (!required) {
-        required = cJSON_CreateArray();
-        if (schema && required) {
-            cJSON_AddItemToObject(schema, kJsonFieldRequired, required);
-        }
-    }
+    cJSON *required = get_or_create_required_array(schema);
     if (!cJSON_IsObject(properties) || !property || !cJSON_IsArray(required) ||
         !add_string(property, kJsonFieldType, kJsonTypeInteger) ||
         !cJSON_AddNumberToObject(property, "minimum", minimum) ||
         !cJSON_AddNumberToObject(property, "maximum", maximum) ||
-        !cJSON_AddItemToArray(required, cJSON_CreateString(name))) {
+        !add_owned_item_to_array(required, cJSON_CreateString(name))) {
         cJSON_Delete(property);
         return false;
     }
-    cJSON_AddItemToObject(properties, name, property);
-    return true;
+    return add_owned_item_to_object(properties, name, property);
 }
 
 bool add_optional_string(cJSON *schema, const char *name)
@@ -114,8 +127,7 @@ bool add_optional_string(cJSON *schema, const char *name)
         cJSON_Delete(property);
         return false;
     }
-    cJSON_AddItemToObject(properties, name, property);
-    return true;
+    return add_owned_item_to_object(properties, name, property);
 }
 
 bool add_optional_boolean(cJSON *schema, const char *name)
@@ -127,29 +139,21 @@ bool add_optional_boolean(cJSON *schema, const char *name)
         cJSON_Delete(property);
         return false;
     }
-    cJSON_AddItemToObject(properties, name, property);
-    return true;
+    return add_owned_item_to_object(properties, name, property);
 }
 
 bool add_required_string(cJSON *schema, const char *name)
 {
     cJSON *properties = schema ? cJSON_GetObjectItem(schema, kJsonFieldProperties) : nullptr;
     cJSON *property = cJSON_CreateObject();
-    cJSON *required = schema ? cJSON_GetObjectItem(schema, kJsonFieldRequired) : nullptr;
-    if (!required) {
-        required = cJSON_CreateArray();
-        if (schema && required) {
-            cJSON_AddItemToObject(schema, kJsonFieldRequired, required);
-        }
-    }
+    cJSON *required = get_or_create_required_array(schema);
     if (!cJSON_IsObject(properties) || !property || !cJSON_IsArray(required) ||
         !add_string(property, kJsonFieldType, kJsonTypeString) ||
-        !cJSON_AddItemToArray(required, cJSON_CreateString(name))) {
+        !add_owned_item_to_array(required, cJSON_CreateString(name))) {
         cJSON_Delete(property);
         return false;
     }
-    cJSON_AddItemToObject(properties, name, property);
-    return true;
+    return add_owned_item_to_object(properties, name, property);
 }
 
 bool add_optional_integer(cJSON *schema, const char *name, int minimum, int maximum)
@@ -163,8 +167,7 @@ bool add_optional_integer(cJSON *schema, const char *name, int minimum, int maxi
         cJSON_Delete(property);
         return false;
     }
-    cJSON_AddItemToObject(properties, name, property);
-    return true;
+    return add_owned_item_to_object(properties, name, property);
 }
 
 bool add_required_action(cJSON *schema)
@@ -175,19 +178,25 @@ bool add_required_action(cJSON *schema)
     cJSON *required = cJSON_CreateArray();
     if (!cJSON_IsObject(properties) || !property || !values || !required ||
         !add_string(property, kJsonFieldType, kJsonTypeString) ||
-        !cJSON_AddItemToArray(values, cJSON_CreateString(kPomodoroActionStart)) ||
-        !cJSON_AddItemToArray(values, cJSON_CreateString(kPomodoroActionCancel)) ||
-        !cJSON_AddItemToArray(values, cJSON_CreateString(kPomodoroActionStatus)) ||
-        !cJSON_AddItemToArray(required, cJSON_CreateString(kJsonFieldAction))) {
+        !add_owned_item_to_array(values, cJSON_CreateString(kPomodoroActionStart)) ||
+        !add_owned_item_to_array(values, cJSON_CreateString(kPomodoroActionCancel)) ||
+        !add_owned_item_to_array(values, cJSON_CreateString(kPomodoroActionStatus)) ||
+        !add_owned_item_to_array(required, cJSON_CreateString(kJsonFieldAction))) {
         cJSON_Delete(property);
         cJSON_Delete(values);
         cJSON_Delete(required);
         return false;
     }
-    cJSON_AddItemToObject(property, "enum", values);
-    cJSON_AddItemToObject(properties, kJsonFieldAction, property);
-    cJSON_AddItemToObject(schema, kJsonFieldRequired, required);
-    return true;
+    if (!add_owned_item_to_object(property, "enum", values)) {
+        cJSON_Delete(property);
+        cJSON_Delete(required);
+        return false;
+    }
+    if (!add_owned_item_to_object(properties, kJsonFieldAction, property)) {
+        cJSON_Delete(required);
+        return false;
+    }
+    return add_owned_item_to_object(schema, kJsonFieldRequired, required);
 }
 
 cJSON *create_integer_tool(const char *name,
@@ -259,7 +268,7 @@ cJSON *create_weather_city_tool()
 
 bool add_tool_if_present(cJSON *tools, cJSON *tool)
 {
-    return tools && tool && cJSON_AddItemToArray(tools, tool);
+    return add_owned_item_to_array(tools, tool);
 }
 } // namespace
 
@@ -270,12 +279,17 @@ cJSON *create_tools_list_result(bool alarm_enabled,
                                 bool weather_city_enabled)
 {
     cJSON *result = cJSON_CreateObject();
+    if (!result) {
+        return nullptr;
+    }
     cJSON *tools = cJSON_CreateArray();
-    cJSON *status_schema = create_object_schema();
-    if (!result || !tools || !status_schema ||
-        !add_tool_if_present(tools, create_tool(kDeviceStatusTool,
+    if (!tools) {
+        cJSON_Delete(result);
+        return nullptr;
+    }
+    if (!add_tool_if_present(tools, create_tool(kDeviceStatusTool,
                                                 kDeviceStatusDescription,
-                                                status_schema)) ||
+                                                create_object_schema())) ||
         !add_tool_if_present(tools, create_integer_tool(kSetVolumeTool,
                                                         kSetVolumeDescription,
                                                         "volume",
@@ -289,22 +303,42 @@ cJSON *create_tools_list_result(bool alarm_enabled,
         (countdown_enabled && !add_tool_if_present(tools, create_countdown_tool())) ||
         (pomodoro_enabled && !add_tool_if_present(tools, create_pomodoro_tool())) ||
         (weather_city_enabled && !add_tool_if_present(tools, create_weather_city_tool()))) {
-        cJSON_Delete(result);
         cJSON_Delete(tools);
+        cJSON_Delete(result);
         return nullptr;
     }
-    cJSON_AddItemToObject(result, "tools", tools);
+    if (!add_owned_item_to_object(result, "tools", tools)) {
+        cJSON_Delete(result);
+        return nullptr;
+    }
     return result;
 }
 
 cJSON *create_initialize_result(const char *app_version)
 {
     cJSON *result = cJSON_CreateObject();
+    if (!result) {
+        return nullptr;
+    }
     cJSON *capabilities = cJSON_CreateObject();
+    if (!capabilities) {
+        cJSON_Delete(result);
+        return nullptr;
+    }
     cJSON *tools = cJSON_CreateObject();
+    if (!tools) {
+        cJSON_Delete(capabilities);
+        cJSON_Delete(result);
+        return nullptr;
+    }
     cJSON *server_info = cJSON_CreateObject();
-    if (!result || !capabilities || !tools || !server_info ||
-        !add_string(result, "protocolVersion", kMcpProtocolVersion) ||
+    if (!server_info) {
+        cJSON_Delete(tools);
+        cJSON_Delete(capabilities);
+        cJSON_Delete(result);
+        return nullptr;
+    }
+    if (!add_string(result, "protocolVersion", kMcpProtocolVersion) ||
         !add_string(server_info, "name", kMcpServerName) ||
         !add_string(server_info, "version", app_version)) {
         cJSON_Delete(result);
@@ -313,9 +347,21 @@ cJSON *create_initialize_result(const char *app_version)
         cJSON_Delete(server_info);
         return nullptr;
     }
-    cJSON_AddItemToObject(capabilities, "tools", tools);
-    cJSON_AddItemToObject(result, "capabilities", capabilities);
-    cJSON_AddItemToObject(result, "serverInfo", server_info);
+    if (!add_owned_item_to_object(capabilities, "tools", tools)) {
+        cJSON_Delete(result);
+        cJSON_Delete(capabilities);
+        cJSON_Delete(server_info);
+        return nullptr;
+    }
+    if (!add_owned_item_to_object(result, "capabilities", capabilities)) {
+        cJSON_Delete(result);
+        cJSON_Delete(server_info);
+        return nullptr;
+    }
+    if (!add_owned_item_to_object(result, "serverInfo", server_info)) {
+        cJSON_Delete(result);
+        return nullptr;
+    }
     return result;
 }
 

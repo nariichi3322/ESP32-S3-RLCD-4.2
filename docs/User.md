@@ -23,17 +23,20 @@ Hardware key behavior:
 
 Settings returns to the current work page after about 30 seconds without activity. Valid operations in the page-order screen restart this timeout.
 
+On low-refresh pages such as Gallery Clock, Weather Board, Calendar, and Temperature/Humidity History, the device waits for a key wakeup while idle to reduce power use. BOOT/KEY short-press and long-press behavior is unchanged.
+
 ## 2. Status Bar and Day Progress
 
 Depending on the page, the status area shows date, weekday, battery, Wi-Fi, reminder, alarm, and local sensor information.
 
 - **Wi-Fi icon:** shown whenever the Wi-Fi radio is on and hidden when it is off, including connection and synchronization periods.
+- If the device cannot temporarily reserve the wake resource required for networking, that operation fails safely or retries later without forcing Wi-Fi on. Wait briefly before trying again.
 - **Sound icon:** shown when an hourly or all-day reminder is enabled.
 - **Alarm icon:** shown while the one-shot alarm is enabled.
 - **Battery icon:** shows estimated charge. During detected charging it blinks on whole-second boundaries. The hardware has no dedicated CHG/VBUS input, so plug/unplug detection based on ADC voltage trends can be delayed briefly.
 - **Day-progress strip:** shared by all seven pages. Its 60 segments each represent about 24 minutes and refresh only on page entry or when crossing a new segment.
 
-The display favors partial refreshes. Second-level pages redraw only changing digits or small regions; low-frequency pages update only when minute, date, sensor, or network data changes.
+The display favors partial refreshes. Second-level pages redraw only changing digits or small regions; low-frequency pages wait until the next minute, date, sensor, or network-data change before waking for an update.
 
 ## 3. Seven Work Pages
 
@@ -44,8 +47,9 @@ Press **BOOT** to follow the saved page order. Disabled pages are skipped. Every
 Shows large time, date, battery, current weather, alerts, local temperature/humidity, trend arrows, status icons, and an animation area.
 
 - Time and required animation regions use second-level partial refresh.
+- Date, minute time, seconds, animation, and second progress use their own change-driven partial refresh rates; hourly chimes continue to follow the saved settings.
 - Entering the page requests weather only when required data is missing or stale.
-- Offline, low-battery, setup, and OTA states block ordinary weather requests.
+- Offline, low-battery, setup, and OTA states block ordinary weather requests. Low-battery and setup screens may reuse the Weather Clock layout, but that display fallback does not turn on networking.
 
 ### 3.2 Picture Clock
 
@@ -70,6 +74,7 @@ Shows three high-contrast hour/minute/second cards plus local temperature, humid
 - Seconds refresh locally once per second.
 - Local temperature/humidity is sampled every minute during the day and every two minutes at night.
 - Trend arrows use the rolling average of valid samples from the latest four-hour window and restart after reboot.
+- Internal page construction and runtime refresh are isolated for stability; this does not change the display, refresh frequency, controls, or stored data.
 
 ### 3.5 Calendar
 
@@ -91,9 +96,16 @@ Provides local wake-word detection, voice conversations, on-screen transcripts, 
 
 - High-power voice services start only while entering the Xiaozhi page.
 - First use may require binding to the Xiaozhi service by following the on-screen prompt.
+- A bound device restores its saved service configuration directly. An unbound device still displays and announces the binding ID first, and activation failures continue to retry automatically.
 - Speak the wake word while waiting. If the page says Xiaozhi is preparing, allow service initialization to finish.
 - If the cloud service recognizes only an incomplete phrase and returns no text or audio reply, the page shows that it did not hear the complete request. Continue or repeat the request; about 12 seconds of silence returns to wake-word standby.
-- Leaving the page stops the ordinary voice session. Alarm and an active Pomodoro keep running in the background.
+- User transcripts, assistant replies, emotions, and playback completion use one conversation-state path so multi-turn listening, farewell return, and minimum transcript visibility remain consistent.
+- Service handshakes, ordinary replies, and MCP tool messages share a bounded session buffer. An invalid oversized text frame ends the current session instead of overwriting adjacent memory.
+- Xiaozhi validates audio lengths before sending, decoding, sample-rate conversion, and playback queueing. An invalid frame ends only the current conversation instead of reading beyond its buffer.
+- Page status, subtitles, and emotion refresh only when their content changes. Offline, unconfigured, or retry states do not repeatedly redraw the same message.
+- While offline mode is enabled or Wi-Fi has not been saved, Xiaozhi waits for a configuration change instead of periodically starting network work. Saving setup, changing offline mode, or leaving the page wakes it immediately.
+- Binding or service connection failures retry automatically at about 15-second intervals. Leaving the page, alarms, and Pomodoro events remain immediately responsive during this wait.
+- Leaving the page or reaching a failed connection retry stops the ordinary voice session and releases its page-owned network/power resources. Alarm and an active Pomodoro keep running in the background.
 - This page consumes substantially more power and warms the PCB, which may make the onboard temperature/humidity reading higher than the surrounding air.
 
 ## 4. Setup Portal
@@ -116,6 +128,10 @@ With no saved online configuration and offline mode disabled, setup starts autom
 Submitting Wi-Fi credentials stores the online configuration and starts connection. QWeather API Key is required only for weather services; NTP and daily text do not use it. If the short boot request obtains current conditions but not forecast or air quality, a staggered background refresh remains scheduled so extended weather-board data is normally ready before first entry.
 
 After setup, NTP, weather, and daily-text requests are staggered to avoid concurrent HTTPS memory peaks. Enabled network pages receive an initial data prefetch even if they are not the first visible page.
+
+The clock synchronizes time once at startup and then at local midnight each day. A failed midnight synchronization remains pending and retries after the normal delay, so crossing past 00:00 does not discard the daily update.
+
+A manual time synchronization is a single user-requested attempt. If it fails, the settings page reports the result without scheduling an otherwise unused background wake-up; startup and midnight synchronization retain their automatic retry behavior.
 
 ### 4.3 Manual Weather City
 
@@ -157,6 +173,8 @@ Press **KEY** to enter Settings. The left column is the primary menu; the right 
 - **Update Daily Text:** refresh the Picture Clock text.
 - **Weather City:** inspect automatic/manual mode or clear a manual city with confirmation.
 
+Each network window reports the requests captured when it started. A new request raised while that window is running is preserved for the next window instead of being cleared by the earlier result.
+
 ### 5.2 Sound
 
 - **Volume:** cycle through 20%, 40%, 60%, 80%, and 100% with preview playback.
@@ -165,6 +183,8 @@ Press **KEY** to enter Settings. The left column is the primary menu; the right 
 - **All-day Reminder 0:00–24:00:** higher priority; chime every hour all day.
 
 When both reminder switches are off, no hourly sound plays. Critical Xiaozhi audio, OTA, and other protected operations avoid concurrent Codec use.
+If the device cannot temporarily reserve the wake and clock resources required for playback, that sound is skipped safely and its playback state is released. Later reminders and previews can try again normally.
+When audio is busy, rapid repeated sound-setting changes keep only one pending preview. Once playback becomes available, the preview uses the latest selection instead of replaying every intermediate choice.
 
 ### 5.3 Display
 
@@ -192,6 +212,7 @@ The single alarm can be set, changed, or disabled through Xiaozhi voice.
 - Example: “Wake me tomorrow at 6:30.”
 - Replacing an existing different alarm requires explicit confirmation.
 - Alarm and Pomodoro completion cannot target the same local minute; the later request is rejected.
+- The enabled alarm keeps running in the background while the device sleeps between minute boundaries. NTP or manually corrected time automatically reschedules it.
 - The alarm repeats after about five seconds for up to one minute.
 - Either hardware key stops it.
 - It disables itself after ringing.
@@ -201,6 +222,7 @@ The single alarm can be set, changed, or disabled through Xiaozhi voice.
 - Say “start a 25-minute Pomodoro” or “focus for 45 minutes.”
 - Default is 25 minutes; valid range is 1 second to 99 minutes 59 seconds. Starting again changes the active duration.
 - Ask for remaining time, or say “cancel the Pomodoro” / “end focus.”
+- If the Pomodoro finishes while Xiaozhi is visible, voice listening pauses only for the completion sound. The service is not restarted while paused, and wake-word standby resumes directly afterward.
 - Ordinary “remind me in 10 minutes” requests remain alarm requests.
 - It continues after changing pages but is cleared by reboot.
 - In the final minute, the minute card shows `00` and the right card shows whole remaining seconds; hundredths are intentionally not displayed.
@@ -220,9 +242,13 @@ Open **Settings > System > Check Update**:
 3. Download percentage, speed, and progress bar remain visible.
 4. After validation, the device shows a reboot notice before restarting.
 
+The firmware follows OTA download redirects and closes the current HTTP connection on failure or early exit. A failed download does not switch the boot partition and can be retried.
+
 OTA uses a primary remote source and a scheduled backup source. The backup may lag behind shortly after a release.
 
 OTA is blocked during offline mode, low-battery mode, setup, or another active OTA flow.
+
+While an OTA check or download is active, ordinary background network synchronization sleeps until the OTA state changes. Download progress continues to update normally without repeatedly waking unrelated weather, time, or daily-text work.
 
 ### 7.1 App bin vs. merged bin
 
@@ -247,6 +273,7 @@ Because `v1.5.0` moved partition addresses, an old desktop client must be update
 
 - Battery is sampled immediately after boot.
 - When not charging, battery ADC follows the same schedule as local temperature/humidity: every minute during the day and every two minutes at night.
+- Temperature and humidity samples notify the active page for an on-demand update. Stable text is not redrawn repeatedly; a roughly one-minute fallback check remains for resilience.
 - During confirmed active charging, battery sampling increases to about once per second.
 - Low battery enters a minimal page and stops non-essential networking, animation, audio, and high-frequency refresh.
 - Charging state and percentage are estimates derived from voltage trends and are not precision battery instrumentation.
@@ -290,7 +317,11 @@ Verify the current partition table, WCA1 package format, required dimensions, an
 
 ### Xiaozhi remains unavailable or preparing
 
-Allow Wi-Fi, model, and Codec initialization to retry. If it does not recover, leave the page and enter it again, then inspect serial logs for network, model, or audio errors.
+Allow Wi-Fi, model, and Codec initialization to retry. If the main task cannot start because resources are temporarily unavailable, it retries about every five seconds without requiring page switching. If it does not recover, leave the page and enter it again, then inspect serial logs for network, model, or audio errors.
+After Wi-Fi startup or connection timeout, the device retries in about 15 seconds. During that wait it releases the failed session's network and voice resources instead of remaining at conversation power.
+An occasional microphone read error is retried briefly. If reads remain unavailable for about one second, the device exits that failing capture loop and automatically rebuilds voice listening instead of staying in a high-frequency error state.
+When an abnormal listener is stopped, its capture buffer is also released centrally, so repeated automatic recovery does not keep consuming additional PSRAM.
+If temporary memory pressure prevents a Xiaozhi tool response from being built, the device discards that response and releases its temporary data safely. Retry the request after the service recovers; a reboot is not required.
 
 ### A just-published OTA version is not found
 

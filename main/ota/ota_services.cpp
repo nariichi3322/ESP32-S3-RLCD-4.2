@@ -1,5 +1,7 @@
 // 处理固件更新检查、下载、校验、写入和重启提示流程。
 #include "ota_services.h"
+#include "ota_download_http.h"
+#include "ota_download_progress_policy.h"
 #include "ota_flow_policy.h"
 #include "ota_manifest_client.h"
 #include "ota_runtime_guards.h"
@@ -26,16 +28,8 @@ struct OtaCrashBreadcrumb {
     int progress = 0;
 };
 
-struct OtaHttpContext {
-    char *redirect_url = nullptr;
-    size_t redirect_url_len = 0;
-};
-
 static RTC_DATA_ATTR OtaCrashBreadcrumb s_ota_breadcrumb;
 static constexpr uint32_t kOtaBreadcrumbMagic = 0x4f544131;
-static constexpr int kOtaMaxRedirects = 5;
-static constexpr size_t kOtaRedirectUrlLen = 1024;
-static constexpr int kOtaHttpTxBufferSize = 2048;
 static constexpr size_t kOtaDownloadStatusTextLen = 48;
 static constexpr int64_t kOtaUsPerMs = 1000;
 static constexpr uint32_t kOtaFailureHoldMs = 5000;
@@ -46,7 +40,6 @@ static constexpr uint32_t kOtaPreRestartDisplayQuietMs = 1500;
 static constexpr uint32_t kOtaWifiConnectTimeoutMs = 45000;
 static constexpr uint32_t kOtaReadRetryDelayMs = 100;
 static constexpr TickType_t kOtaReadRetryDelay = pdMS_TO_TICKS(kOtaReadRetryDelayMs);
-static_assert(kOtaRedirectUrlLen > kOtaUrlLen, "OTA redirect URL buffer must exceed manifest URL storage");
 static_assert(kOtaSha256HexLen + 1 == kOtaSha256Len,
               "OTA SHA256 hex length must match manifest storage");
 static_assert(kOtaDownloadStatusTextLen <= kOtaStatusLen,
@@ -81,15 +74,8 @@ static constexpr const char *kOtaAppMarkedValidLog = "OTA app marked valid";
 #define OTA_PREVIOUS_BREADCRUMB_FORMAT "previous OTA breadcrumb: phase=%d total=%d progress=%d%% reset=%d"
 static constexpr const char *kOtaManifestInvalidForInstallLog = "OTA manifest invalid for install";
 #define OTA_DOWNLOAD_START_FORMAT "OTA start: reset=%d battery=%d%% %.3fV rssi=%d size=%d url=%s"
-#define OTA_HTTP_HEADER_FAILED_FORMAT "OTA http header failed: %s"
-#define OTA_HTTP_OPEN_FAILED_FORMAT "OTA http open failed: %s"
-static constexpr const char *kOtaHttpClientInitFailedLog = "OTA http client init failed";
 static constexpr const char *kOtaHttpTransactionLockTimeoutLog =
     "OTA download deferred: HTTP transaction is busy";
-#define OTA_REDIRECT_STATUS_FORMAT "OTA redirect status=%d location=%s"
-#define OTA_REDIRECT_LOCATION_INVALID_FORMAT "OTA redirect location invalid len=%u"
-#define OTA_HTTP_STATUS_FAILED_FORMAT "OTA http status=%d content_len=%d"
-static constexpr const char *kOtaRedirectLimitReachedLog = "OTA redirect limit reached";
 #define OTA_BEGIN_FAILED_FORMAT "OTA begin failed: %s"
 #define OTA_DOWNLOAD_BUFFER_ALLOC_FAILED_FORMAT "OTA download buffer allocation failed size=%u"
 #define OTA_DOWNLOAD_TIMEOUT_FORMAT "OTA download timed out total=%d"
@@ -195,24 +181,6 @@ static void enter_ota_reboot_quiet_window()
     vTaskDelay(pdMS_TO_TICKS(kOtaPreRestartDisplayQuietMs));
 }
 
-static void cleanup_ota_http_client(esp_http_client_handle_t *client)
-{
-    if (!client || !*client) {
-        return;
-    }
-    esp_http_client_cleanup(*client);
-    *client = nullptr;
-}
-
-static void close_ota_http_client(esp_http_client_handle_t *client)
-{
-    if (!client || !*client) {
-        return;
-    }
-    esp_http_client_close(*client);
-    cleanup_ota_http_client(client);
-}
-
 static bool set_ota_event_bit(EventBits_t bit, const char *name)
 {
     if (!g_app_events) {
@@ -240,25 +208,6 @@ static void keep_ota_settings_panel_visible()
 static void hold_ota_info_page(uint32_t hold_ms = kOtaFailureHoldMs)
 {
     info_page_hold_until_store(xTaskGetTickCount() + pdMS_TO_TICKS(hold_ms));
-}
-
-static esp_err_t ota_http_event_handler(esp_http_client_event_t *evt)
-{
-    if (!evt) {
-        return ESP_OK;
-    }
-    if (evt->event_id != HTTP_EVENT_ON_HEADER || !evt->user_data) {
-        return ESP_OK;
-    }
-    OtaHttpContext *ctx = (OtaHttpContext *)evt->user_data;
-    if (!ctx->redirect_url || ctx->redirect_url_len == 0 ||
-        !evt->header_key || !evt->header_value) {
-        return ESP_OK;
-    }
-    if (strcasecmp(evt->header_key, "Location") == 0) {
-        strlcpy(ctx->redirect_url, evt->header_value, ctx->redirect_url_len);
-    }
-    return ESP_OK;
 }
 
 static bool ota_flow_active_at(TickType_t now)
@@ -334,133 +283,42 @@ void ota_mark_running_app_valid()
     }
 }
 
-static bool open_ota_download_http(const OtaManifest &manifest,
-                                   OtaHttpContext *http_ctx,
-                                   esp_http_client_handle_t *out_client,
-                                   int *out_content_len)
-{
-    if (!http_ctx || !http_ctx->redirect_url || http_ctx->redirect_url_len == 0 ||
-        !out_client || !out_content_len) {
-        ota_set_failed_status(kOtaStatusDownloadFailed);
-        return false;
-    }
-    *out_client = nullptr;
-    *out_content_len = 0;
-    char current_url[kOtaRedirectUrlLen] = {};
-    strlcpy(current_url, manifest.url, sizeof(current_url));
-
-    for (int redirect = 0; redirect <= kOtaMaxRedirects; ++redirect) {
-        http_ctx->redirect_url[0] = '\0';
-        esp_http_client_config_t config = {};
-        config.url = current_url;
-        config.timeout_ms = kOtaHttpTimeoutMs;
-        config.crt_bundle_attach = esp_crt_bundle_attach;
-        config.disable_auto_redirect = true;
-        config.max_redirection_count = kOtaMaxRedirects;
-        config.keep_alive_enable = true;
-        config.buffer_size = kOtaDownloadBufferSize;
-        config.buffer_size_tx = kOtaHttpTxBufferSize;
-        config.event_handler = ota_http_event_handler;
-        config.user_data = http_ctx;
-
-        esp_http_client_handle_t client = esp_http_client_init(&config);
-        if (!client) {
-            ESP_LOGW(TAG, "%s", kOtaHttpClientInitFailedLog);
-            ota_set_failed_status(kOtaStatusDownloadFailed);
-            return false;
-        }
-        esp_err_t err = esp_http_client_set_header(client,
-                                                   "Accept",
-                                                   "application/octet-stream,*/*");
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, OTA_HTTP_HEADER_FAILED_FORMAT, esp_err_to_name(err));
-            cleanup_ota_http_client(&client);
-            ota_set_failed_status(kOtaStatusDownloadFailed);
-            return false;
-        }
-        err = esp_http_client_open(client, 0);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, OTA_HTTP_OPEN_FAILED_FORMAT, esp_err_to_name(err));
-            cleanup_ota_http_client(&client);
-            ota_set_failed_status(kOtaStatusDownloadFailed);
-            return false;
-        }
-        int content_len = esp_http_client_fetch_headers(client);
-        int status = esp_http_client_get_status_code(client);
-        if (ota_is_http_redirect_status(status)) {
-            ESP_LOGI(TAG,
-                     OTA_REDIRECT_STATUS_FORMAT,
-                     status,
-                     http_ctx->redirect_url[0] ? http_ctx->redirect_url : "--");
-            close_ota_http_client(&client);
-            size_t redirect_len = strlen(http_ctx->redirect_url);
-            if (http_ctx->redirect_url[0] == '\0' ||
-                redirect_len >= sizeof(current_url)) {
-                ESP_LOGW(TAG,
-                         OTA_REDIRECT_LOCATION_INVALID_FORMAT,
-                         static_cast<unsigned>(redirect_len));
-                ota_set_failed_status(kOtaStatusDownloadFailed);
-                return false;
-            }
-            strlcpy(current_url, http_ctx->redirect_url, sizeof(current_url));
-            continue;
-        }
-        if (!ota_is_http_success_status(status)) {
-            ESP_LOGW(TAG, OTA_HTTP_STATUS_FAILED_FORMAT, status, content_len);
-            close_ota_http_client(&client);
-            ota_set_failed_status(kOtaStatusDownloadFailed);
-            return false;
-        }
-        *out_client = client;
-        *out_content_len = content_len;
-        return true;
-    }
-
-    ESP_LOGW(TAG, "%s", kOtaRedirectLimitReachedLog);
-    ota_set_failed_status(kOtaStatusDownloadFailed);
-    return false;
-}
-
 static void report_ota_download_progress(int total,
                                          int expected,
                                          int64_t started_us,
-                                         int &last_progress,
-                                         int &last_heap_progress,
-                                         int64_t &last_status_us,
-                                         int &last_status_total)
+                                         OtaDownloadProgressState &state)
 {
     if (expected <= 0) {
         return;
     }
 
-    int progress = (total * 100) / expected;
-    if (progress > 100) {
-        progress = 100;
-    }
-    if (progress != last_progress) {
+    const int progress = ota_download_progress_percent(total, expected);
+    if (ota_download_progress_note_due(state, progress)) {
         ota_note_phase(3, total, progress);
+        ota_download_progress_mark_noted(state, progress);
     }
-    if (progress >= last_heap_progress + 25 || progress >= 100) {
+    if (ota_download_heap_log_due(state, progress)) {
         log_ota_heap("download", total, progress);
-        last_heap_progress = progress;
+        ota_download_progress_mark_heap_logged(state, progress);
     }
 
-    int64_t now_us = esp_timer_get_time();
-    bool progress_step = progress != last_progress;
-    bool status_due = last_status_us == 0 ||
-                      now_us - last_status_us >=
-                          (int64_t)kOtaStatusMinIntervalMs * kOtaUsPerMs ||
-                      progress >= 100;
-    if (!status_due) {
+    const int64_t now_us = esp_timer_get_time();
+    const int64_t status_interval_us =
+        static_cast<int64_t>(kOtaStatusMinIntervalMs) * kOtaUsPerMs;
+    if (!ota_download_status_due(state,
+                                 now_us,
+                                 status_interval_us,
+                                 progress)) {
         return;
     }
 
-    int speed_window_bytes = total - last_status_total;
-    int64_t speed_window_us = last_status_us == 0
-                                  ? now_us - started_us
-                                  : now_us - last_status_us;
-    int speed_kbps = ota_speed_kbps_for_window(speed_window_bytes,
-                                               speed_window_us);
+    const int speed_window_bytes = ota_download_status_window_bytes(state,
+                                                                    total);
+    const int64_t speed_window_us = ota_download_status_window_us(state,
+                                                                  started_us,
+                                                                  now_us);
+    const int speed_kbps = ota_speed_kbps_for_window(speed_window_bytes,
+                                                     speed_window_us);
     char status_text[kOtaDownloadStatusTextLen] = {};
     format_ota_status_text(status_text,
                            sizeof(status_text),
@@ -468,11 +326,7 @@ static void report_ota_download_progress(int total,
                            progress,
                            speed_kbps);
     ota_set_download_status(status_text, progress, speed_kbps);
-    last_status_us = now_us;
-    last_status_total = total;
-    if (progress_step) {
-        last_progress = progress;
-    }
+    ota_download_progress_mark_status_published(state, now_us, total);
 }
 
 static bool stream_ota_image(esp_http_client_handle_t client,
@@ -485,11 +339,8 @@ static bool stream_ota_image(esp_http_client_handle_t client,
                              int64_t started_us,
                              int &total)
 {
-    int last_progress = -1;
-    int last_heap_progress = -25;
+    OtaDownloadProgressState progress_state;
     int64_t last_progress_us = started_us;
-    int64_t last_status_us = 0;
-    int last_status_total = 0;
     for (;;) {
         wdt.reset();
         int64_t now_us = esp_timer_get_time();
@@ -541,10 +392,7 @@ static bool stream_ota_image(esp_http_client_handle_t client,
         report_ota_download_progress(total,
                                      expected,
                                      started_us,
-                                     last_progress,
-                                     last_heap_progress,
-                                     last_status_us,
-                                     last_status_total);
+                                     progress_state);
     }
 }
 
@@ -579,10 +427,6 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
              manifest.url);
     log_ota_heap("start", 0, 0);
 
-    char redirect_url[kOtaRedirectUrlLen] = {};
-    OtaHttpContext http_ctx = {redirect_url, sizeof(redirect_url)};
-    esp_http_client_handle_t client = nullptr;
-    int content_len = 0;
     NetworkHttpTransactionGuard transaction_lock(
         pdMS_TO_TICKS(kOtaWifiConnectTimeoutMs));
     if (!transaction_lock.locked()) {
@@ -590,9 +434,13 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         ota_set_failed_status(kOtaStatusDownloadFailed);
         return false;
     }
-    if (!open_ota_download_http(manifest, &http_ctx, &client, &content_len)) {
+    OtaDownloadHttpSession http_session;
+    if (!http_session.open(manifest.url)) {
+        ota_set_failed_status(kOtaStatusDownloadFailed);
         return false;
     }
+    esp_http_client_handle_t client = http_session.handle();
+    int content_len = http_session.content_length();
 
     esp_ota_handle_t ota_handle = 0;
     ota_note_phase(2, 0, 0);
@@ -601,7 +449,6 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
                                   &ota_handle);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, OTA_BEGIN_FAILED_FORMAT, esp_err_to_name(err));
-        close_ota_http_client(&client);
         ota_set_failed_status(kOtaStatusUpdateFailed);
         return false;
     }
@@ -612,7 +459,6 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
                  OTA_DOWNLOAD_BUFFER_ALLOC_FAILED_FORMAT,
                  static_cast<unsigned>(kOtaDownloadBufferSize));
         esp_ota_abort(ota_handle);
-        close_ota_http_client(&client);
         ota_set_failed_status(kOtaStatusNoMemory);
         return false;
     }
@@ -639,7 +485,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
     mbedtls_sha256_finish(&sha_ctx, hash);
     mbedtls_sha256_free(&sha_ctx);
     bool complete = esp_http_client_is_complete_data_received(client);
-    close_ota_http_client(&client);
+    http_session.close();
 
     if (!ok || !complete) {
         esp_ota_abort(ota_handle);
@@ -699,7 +545,11 @@ static bool prepare_ota_wifi()
         ota_set_failed_status(kOtaStatusLowBattery);
         return false;
     }
-    acquire_network_awake_lock();
+    if (!acquire_network_awake_lock()) {
+        ESP_LOGW(TAG, "OTA network PM lock unavailable");
+        ota_set_failed_status(kOtaStatusWifiFailed);
+        return false;
+    }
     if (!start_wifi_radio(false)) {
         release_network_awake_lock();
         ota_set_failed_status(kOtaStatusWifiFailed);

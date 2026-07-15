@@ -11,23 +11,21 @@
 #include "network_services.h"
 #include "ota_runtime_state.h"
 #include "ota_services.h"
-#include "pomodoro_services.h"
 #include "sensor_services.h"
 #include "ui_battery.h"
 #include "ui_battery_blink.h"
 #include "ui_draw_cache.h"
 #include "ui_info_page_state.h"
-#include "ui_loop_schedule.h"
+#include "ui_runtime_schedule.h"
 #include "ui_setup_status.h"
+#include "ui_status_refresh_policy.h"
 #include "ui_settings_activity_state.h"
 #include "ui_visible_data_sync.h"
-#include "ui_xiaozhi_auto_return.h"
 #include "xiaozhi_ai.h"
 
 #include <stdint.h>
 
 namespace {
-constexpr int kUiStatusRefreshMs = 10000;
 constexpr int kUiInfoPagePollMs = 250;
 constexpr int kUiNetworkDiagRunningPollMs = 250;
 constexpr int kUiNetworkDiagIdlePollMs = 500;
@@ -37,7 +35,6 @@ constexpr int kUiLvglLockTimeoutMs = 80;
 constexpr const char *kUiDatePlaceholder = "----/--/-- / 星期-";
 constexpr const char *kUiTimePlaceholder = "--:--";
 #define UI_SETTINGS_TIMEOUT_RETURN_LOG "settings timeout, returning to clock"
-#define UI_XIAOZHI_AUTO_RETURN_LOG "Xiaozhi idle timeout, returning to home page=%d"
 
 constexpr const char *kUiFormatTexts[] = {
     kUiDatePlaceholder,
@@ -45,20 +42,8 @@ constexpr const char *kUiFormatTexts[] = {
 };
 constexpr const char *kUiLogTexts[] = {
     UI_SETTINGS_TIMEOUT_RETURN_LOG,
-    UI_XIAOZHI_AUTO_RETURN_LOG,
 };
 
-bool settings_timeout_elapsed(TickType_t last_activity)
-{
-    if (last_activity == 0) {
-        return false;
-    }
-    TickType_t now = xTaskGetTickCount();
-    TickType_t timeout_ticks = pdMS_TO_TICKS(kSettingsTimeoutMs);
-    return app_tick_interval_elapsed(now, last_activity, timeout_ticks);
-}
-
-static_assert(kUiStatusRefreshMs > 0, "UI status refresh interval must be positive");
 static_assert(kUiInfoPagePollMs > 0, "UI info page poll interval must be positive");
 static_assert(kUiNetworkDiagRunningPollMs > 0, "network diagnostics running poll interval must be positive");
 static_assert(kUiNetworkDiagIdlePollMs >= kUiNetworkDiagRunningPollMs,
@@ -66,8 +51,6 @@ static_assert(kUiNetworkDiagIdlePollMs >= kUiNetworkDiagRunningPollMs,
 static_assert(kUiSettingsPollMs > 0, "settings poll interval must be positive");
 static_assert(kUiPostPageSwitchPollMs > 0, "post page switch poll interval must be positive");
 static_assert(kUiLvglLockTimeoutMs > 0, "UI LVGL lock timeout must be positive");
-static_assert(sizeof(TickType_t) == sizeof(uint32_t),
-              "UI delay candidates require 32-bit FreeRTOS ticks");
 static_assert(array_count(kUiFormatTexts) > 0, "UI format text registry must not be empty");
 static_assert(array_count(kUiLogTexts) > 0, "UI log text registry must not be empty");
 static_assert(cstr_array_nonempty(kUiFormatTexts), "UI status format and placeholder texts must be non-empty");
@@ -76,16 +59,6 @@ static_assert(cstr_array_nonempty(kUiLogTexts), "UI main-loop log texts must be 
 } // namespace
 
 namespace {
-TickType_t next_second_delay_ticks()
-{
-    return pdMS_TO_TICKS(ui_next_second_delay_ms(esp_timer_get_time()));
-}
-
-TickType_t next_minute_delay_ticks(const struct tm &local)
-{
-    return pdMS_TO_TICKS(ui_next_minute_delay_ms(local.tm_sec));
-}
-
 bool update_invalid_time_labels_for_active_page(int active_work_page)
 {
     int status_page = (battery_low_mode_load() || setup_portal_active_load())
@@ -95,109 +68,6 @@ bool update_invalid_time_labels_for_active_page(int active_work_page)
     bool changed = set_label_text_if_changed(labels.date, kUiDatePlaceholder);
     changed |= set_label_text_if_changed(labels.time, kUiTimePlaceholder);
     return changed;
-}
-
-bool auxiliary_page_requested()
-{
-    return settings_page_requested() ||
-           info_page_requested() ||
-           network_diag_page_requested();
-}
-
-bool low_refresh_work_page_idle(const struct tm &local,
-                                const BatteryRuntimeSnapshot &battery)
-{
-    return work_page_uses_low_refresh_idle(active_work_page_load()) &&
-           !battery.low_battery_mode &&
-           !battery.charging &&
-           !setup_portal_active_load() &&
-           !auxiliary_page_requested() &&
-           is_tm_plausible(local);
-}
-
-bool flip_clock_fast_poll_active(const struct tm &local)
-{
-    return active_work_page_load() == kWorkPageFlipClock &&
-           !battery_low_mode_load() &&
-           !setup_portal_active_load() &&
-           !auxiliary_page_requested() &&
-           is_tm_plausible(local);
-}
-
-TickType_t next_ui_loop_delay_ticks(const struct tm &local, bool battery_blink_visible)
-{
-    BatteryRuntimeSnapshot battery;
-    battery_runtime_snapshot_load(&battery);
-    bool low_idle = battery.low_battery_mode &&
-                    !battery.charging &&
-                    !auxiliary_page_requested() &&
-                    is_tm_plausible(local);
-    bool low_refresh_page_idle = low_refresh_work_page_idle(local, battery);
-    uint32_t delay_candidates[5] = {};
-    delay_candidates[0] = (low_idle || low_refresh_page_idle)
-                              ? next_minute_delay_ticks(local)
-                              : next_second_delay_ticks();
-    if (flip_clock_fast_poll_active(local)) {
-        delay_candidates[1] = pdMS_TO_TICKS(kUiLoopFlipClockPollMs);
-    }
-    if (normal_work_page_active(kWorkPageXiaozhiAI)) {
-        PomodoroSnapshot pomodoro = {};
-        pomodoro_get_snapshot(&pomodoro);
-        if (pomodoro.state == kPomodoroRunning) {
-            uint32_t boundary_ms = pomodoro_next_display_boundary_ms(pomodoro.remaining_ms);
-            if (boundary_ms > 0) {
-                delay_candidates[2] = ui_nonzero_delay_ticks(
-                    pdMS_TO_TICKS(ui_pomodoro_boundary_delay_ms(boundary_ms)));
-            }
-        }
-        uint32_t subtitle_delay_ms = xiaozhi_subtitle_animation_delay_ms();
-        if (subtitle_delay_ms > 0) {
-            delay_candidates[3] = ui_nonzero_delay_ticks(pdMS_TO_TICKS(subtitle_delay_ms));
-        }
-    }
-    if (battery_blink_visible) {
-        delay_candidates[4] = next_second_delay_ticks();
-    }
-    return static_cast<TickType_t>(
-        ui_shortest_delay_ticks(delay_candidates, array_count(delay_candidates)));
-}
-
-void update_xiaozhi_auto_return_state(TickType_t tick_now,
-                                      TickType_t &last_activity_tick,
-                                      uint32_t &last_activity_sequence)
-{
-    int active_page = active_work_page_load();
-    if (active_page == kWorkPageXiaozhiAI &&
-        !battery_low_mode_load() &&
-        !setup_portal_active_load() &&
-        !auxiliary_page_requested()) {
-        XiaozhiAiSnapshot snapshot = {};
-        xiaozhi_ai_get_snapshot(&snapshot);
-        bool conversation_active = snapshot.state == kXiaozhiAiListening ||
-                                   snapshot.state == kXiaozhiAiSpeaking;
-        XiaozhiAutoReturnDecision auto_return = xiaozhi_auto_return_decision(
-            tick_now,
-            last_activity_tick,
-            pdMS_TO_TICKS(kXiaozhiAutoReturnTimeoutMs),
-            g_xiaozhi_auto_return_enabled,
-            pomodoro_is_running(),
-            conversation_active,
-            snapshot.activity_sequence != last_activity_sequence);
-        if (auto_return.record_activity) {
-            last_activity_tick = tick_now;
-            last_activity_sequence = snapshot.activity_sequence;
-        } else if (auto_return.return_home) {
-            int home_page = first_enabled_work_page();
-            if (home_page != kWorkPageXiaozhiAI) {
-                ESP_LOGI(TAG, UI_XIAOZHI_AUTO_RETURN_LOG, home_page);
-                active_work_page_store(home_page);
-            }
-            last_activity_tick = tick_now;
-        }
-    } else if (active_page != kWorkPageXiaozhiAI) {
-        last_activity_tick = 0;
-        last_activity_sequence = 0;
-    }
 }
 
 bool update_visible_work_page_body(const struct tm &local,
@@ -313,9 +183,11 @@ bool update_active_work_page_content(struct tm &local,
 
 void ui_task(void *)
 {
-    TickType_t last_status_update = xTaskGetTickCount() - pdMS_TO_TICKS(kUiStatusRefreshMs);
+    TickType_t last_status_update =
+        xTaskGetTickCount() - pdMS_TO_TICKS(kUiStatusFallbackRefreshMs);
+    UiStatusRefreshSnapshot last_status_snapshot = {};
+    bool last_status_snapshot_valid = false;
     uint32_t last_battery_version = (uint32_t)-1;
-    uint32_t last_alarm_version = 0;
     bool info_page_visible = false;
     bool network_diag_page_visible = false;
     bool settings_page_visible = false;
@@ -346,19 +218,27 @@ void ui_task(void *)
         xiaozhi_ai_set_page_active(active_page == kWorkPageXiaozhiAI &&
                                    !battery.low_battery_mode &&
                                    !setup_portal_active_load() &&
-                                   !auxiliary_page_requested());
+                                   !ui_runtime_auxiliary_page_requested());
 
         TickType_t tick_now = xTaskGetTickCount();
-        if (active_page == kWorkPageXiaozhiAI && auxiliary_page_requested()) {
+        if (active_page == kWorkPageXiaozhiAI &&
+            ui_runtime_auxiliary_page_requested()) {
             xiaozhi_last_activity_tick = tick_now;
         }
-        bool status_due = app_tick_interval_elapsed(tick_now,
-                                                    last_status_update,
-                                                    pdMS_TO_TICKS(kUiStatusRefreshMs));
-        uint32_t current_alarm_version = alarm_state_version();
-        if (current_alarm_version != last_alarm_version) {
-            status_due = true;
-        }
+        UiStatusRefreshSnapshot current_status_snapshot = {
+            local_sensor_state_version(),
+            alarm_state_version(),
+            g_hourly_chime_enabled || g_hourly_chime_all_day,
+            wifi_radio_on_for_status_icon(),
+        };
+        bool status_fallback_elapsed = app_tick_interval_elapsed(
+            tick_now,
+            last_status_update,
+            pdMS_TO_TICKS(kUiStatusFallbackRefreshMs));
+        bool status_due = ui_status_refresh_due(current_status_snapshot,
+                                                last_status_snapshot,
+                                                last_status_snapshot_valid,
+                                                status_fallback_elapsed);
         bool battery_due = battery.version != last_battery_version;
         UiBatteryBlinkState battery_blink = ui_battery_blink_state({
             battery.charging,
@@ -368,7 +248,7 @@ void ui_task(void *)
             active_page,
             kWorkPageCount,
             setup_portal_active_load(),
-            auxiliary_page_requested(),
+            ui_runtime_auxiliary_page_requested(),
             is_tm_plausible(local),
             local.tm_sec,
             xTaskGetTickCount() / pdMS_TO_TICKS(kAppMsPerSecond),
@@ -464,7 +344,8 @@ void ui_task(void *)
             int network_diag_state = network_diag_state_load();
             if (network_diag_requested &&
                 network_diag_state == kNetworkDiagDone &&
-                settings_timeout_elapsed(settings_activity_last_tick())) {
+                ui_runtime_settings_timeout_elapsed(
+                    settings_activity_last_tick())) {
                 network_diag_page_clear();
                 network_diag_requested = false;
             }
@@ -537,7 +418,7 @@ void ui_task(void *)
                     if (!settings_action_handled &&
                         !button_pressed &&
                         !is_settings_sync_busy() && !ota_flow_active() &&
-                        settings_timeout_elapsed(last_activity)) {
+                        ui_runtime_settings_timeout_elapsed(last_activity)) {
                         ESP_LOGI(TAG, "%s", UI_SETTINGS_TIMEOUT_RETURN_LOG);
                         if (g_settings_page_order_mode) {
                             if (save_work_page_order()) {
@@ -574,9 +455,10 @@ void ui_task(void *)
                 ensure_active_work_page_enabled();
             }
             active_page = active_work_page_load();
-            update_xiaozhi_auto_return_state(tick_now,
-                                              xiaozhi_last_activity_tick,
-                                              last_xiaozhi_activity_sequence);
+            ui_runtime_update_xiaozhi_auto_return(
+                tick_now,
+                xiaozhi_last_activity_tick,
+                last_xiaozhi_activity_sequence);
             active_page = active_work_page_load();
             if (visible_work_page != active_page) {
                 show_active_work_page();
@@ -654,7 +536,8 @@ void ui_task(void *)
                         content_changed |= update_work_page_status_icons(active_page);
                     }
                     last_status_update = tick_now;
-                    last_alarm_version = current_alarm_version;
+                    last_status_snapshot = current_status_snapshot;
+                    last_status_snapshot_valid = true;
                 }
                 refresh_now |= content_changed;
             }
@@ -663,7 +546,9 @@ void ui_task(void *)
             }
             Lvgl_unlock();
         }
-        TickType_t delay_ticks = next_ui_loop_delay_ticks(local, battery_blink_visible);
+        TickType_t delay_ticks = ui_runtime_next_loop_delay_ticks(
+            local,
+            battery_blink_visible);
         ulTaskNotifyTake(pdTRUE, delay_ticks);
     }
 }

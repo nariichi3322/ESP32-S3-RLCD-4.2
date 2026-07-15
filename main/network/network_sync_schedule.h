@@ -17,7 +17,7 @@ struct NetworkSyncScheduleInput {
     bool manual_weather_due = false;
     bool manual_saying_due = false;
     bool boot_ntp_due = false;
-    bool midnight_ntp_due = false;
+    bool daily_ntp_due = false;
     bool boot_weather_due = false;
     bool boot_saying_due = false;
 };
@@ -27,6 +27,7 @@ struct NetworkSyncSchedule {
     bool boot_saying_ready = false;
     bool stagger_boot_saying_after_weather = false;
     bool ntp_due = false;
+    bool ntp_retry_required = false;
     bool weather_due = false;
     bool saying_due = false;
     time_t next_boot_due_at = 0;
@@ -36,7 +37,8 @@ NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInp
 int network_boot_budget_remaining_ms(int64_t deadline_us, int64_t now_us);
 uint32_t network_idle_wait_ms(time_t now,
                               time_t next_boot_due_at,
-                              time_t next_ntp_retry_at);
+                              time_t next_ntp_retry_at,
+                              time_t next_daily_ntp_at);
 bool network_cache_age_is_fresh(time_t now, time_t cached_at, time_t max_age);
 bool network_cache_local_hour_matches(const struct tm &now_local,
                                       const struct tm &cached_local);

@@ -1,6 +1,7 @@
 // 管理共享 Codec、音频外设和小智全双工音频会话生命周期。
 #include "audio_services.h"
 
+#include "audio_power_lock_ownership.h"
 #include "audio_services_internal.h"
 #include "checked_size.h"
 #include "sensor_services.h"
@@ -62,7 +63,7 @@ static bool s_xiaozhi_speaker_open = false;
 static size_t s_xiaozhi_speaker_fade_progress = 0;
 static int16_t s_xiaozhi_last_speaker_sample = 0;
 static int s_xiaozhi_applied_volume = -1;
-static bool s_audio_awake_lock_held = false;
+static AudioPowerLockOwnership s_audio_power_lock;
 static bool s_xiaozhi_audio_session_owned = false;
 static void finish_xiaozhi_speaker_stream();
 
@@ -203,19 +204,16 @@ void audio_finish_playback()
 {
     release_audio_codec();
     park_unused_audio_peripherals();
-    if (s_audio_awake_lock_held) {
-        release_audio_awake_lock();
-        s_audio_awake_lock_held = false;
-    }
+    s_audio_power_lock.release();
     s_xiaozhi_audio_session_owned = false;
     audio_clear_playing();
 }
 
 CodecPort *audio_prepare_codec_for_playback()
 {
-    if (!s_audio_awake_lock_held) {
-        acquire_audio_awake_lock();
-        s_audio_awake_lock_held = true;
+    if (!s_audio_power_lock.acquire()) {
+        ESP_LOGW(TAG, "audio PM lock unavailable");
+        return nullptr;
     }
     return ensure_audio_codec();
 }
@@ -251,7 +249,7 @@ void stop_xiaozhi_audio_session()
                  XIAOZHI_AUDIO_RESIDUAL_CLEANUP_LOG_FORMAT,
                  s_xiaozhi_audio_session_owned ? 1 : 0,
                  s_audio_codec ? 1 : 0,
-                 s_audio_awake_lock_held ? 1 : 0,
+                 s_audio_power_lock.active() ? 1 : 0,
                  s_xiaozhi_speaker_open ? 1 : 0,
                  s_xiaozhi_speaker_stream_active ? 1 : 0);
     }

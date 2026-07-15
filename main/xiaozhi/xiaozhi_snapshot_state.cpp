@@ -1,7 +1,8 @@
 // 实现小智状态快照的单一互斥访问边界。
 #include "xiaozhi_snapshot_state.h"
 
-#include "ui_views.h"
+#include "ui_task_notify.h"
+#include "xiaozhi_snapshot_change.h"
 #include "xiaozhi_text_utils.h"
 
 #include <freertos/FreeRTOS.h>
@@ -62,6 +63,7 @@ void xiaozhi_snapshot_set(XiaozhiAiState state,
         xSemaphoreTake(s_snapshot_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
         return;
     }
+    const XiaozhiAiSnapshot before = s_snapshot;
     begin_state_update_locked(state, status);
     xiaozhi_protocol::utf8_safe_copy(s_snapshot.detail,
                                      sizeof(s_snapshot.detail),
@@ -70,8 +72,11 @@ void xiaozhi_snapshot_set(XiaozhiAiState state,
                                      sizeof(s_snapshot.binding_code),
                                      binding_code);
     finish_state_update_locked(state);
+    const bool changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
     xSemaphoreGive(s_snapshot_mutex);
-    notify_ui_task();
+    if (changed) {
+        notify_ui_task();
+    }
 }
 
 void xiaozhi_snapshot_set_status_preserving_detail(XiaozhiAiState state,
@@ -81,10 +86,14 @@ void xiaozhi_snapshot_set_status_preserving_detail(XiaozhiAiState state,
         xSemaphoreTake(s_snapshot_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
         return;
     }
+    const XiaozhiAiSnapshot before = s_snapshot;
     begin_state_update_locked(state, status);
     finish_state_update_locked(state);
+    const bool changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
     xSemaphoreGive(s_snapshot_mutex);
-    notify_ui_task();
+    if (changed) {
+        notify_ui_task();
+    }
 }
 
 void xiaozhi_snapshot_set_emotion(const char *emotion)
@@ -93,11 +102,15 @@ void xiaozhi_snapshot_set_emotion(const char *emotion)
         xSemaphoreTake(s_snapshot_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
         return;
     }
+    const XiaozhiAiSnapshot before = s_snapshot;
     xiaozhi_protocol::utf8_safe_copy(s_snapshot.emotion,
                                      sizeof(s_snapshot.emotion),
                                      emotion);
+    const bool changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
     xSemaphoreGive(s_snapshot_mutex);
-    notify_ui_task();
+    if (changed) {
+        notify_ui_task();
+    }
 }
 
 void xiaozhi_snapshot_mark_user_activity()

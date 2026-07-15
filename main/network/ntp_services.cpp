@@ -1,6 +1,7 @@
 // 执行 NTP 时间同步并维护系统可信时间状态。
 #include "network_services.h"
 
+#include "alarm_services.h"
 #include "app_constexpr.h"
 #include "app_time_constants.h"
 #include "sensor_services.h"
@@ -130,6 +131,7 @@ bool perform_ntp_sync(int max_retries)
         portENTER_CRITICAL(&s_ntp_state_mux);
         s_last_ntp_sync_time = sync_time;
         portEXIT_CRITICAL(&s_ntp_state_mux);
+        alarm_notify_time_changed();
         set_time_synced_event_bit();
         log_ntp_synced_time(local);
         return true;

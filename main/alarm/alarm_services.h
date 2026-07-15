@@ -19,6 +19,7 @@ uint32_t alarm_state_version();
 bool alarm_set_once(int hour, int minute);
 bool alarm_disable();
 bool alarm_stop_ringing_from_button();
+void alarm_notify_time_changed();
 bool alarm_clear_saved_state();
 bool alarm_save_pending();
 bool alarm_flush_pending_save();

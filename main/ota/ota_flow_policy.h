@@ -13,6 +13,18 @@ enum OtaUiState {
     kOtaNoUpdate = 6,
 };
 
+constexpr bool ota_blocks_background_network_sync(int state)
+{
+    return state == kOtaChecking || state == kOtaUpdating;
+}
+
+constexpr bool ota_background_network_block_changed(int previous_state,
+                                                    int current_state)
+{
+    return ota_blocks_background_network_sync(previous_state) !=
+           ota_blocks_background_network_sync(current_state);
+}
+
 template <typename Tick>
 constexpr bool ota_status_hold_active_for_tick(bool hold_set,
                                                Tick now,

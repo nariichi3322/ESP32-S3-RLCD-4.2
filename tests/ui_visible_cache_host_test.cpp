@@ -35,6 +35,12 @@ struct tm normalized_local_value(int year, int month, int day, int hour, int min
 
 int main()
 {
+    assert(ui_visible_weather_sync_active(true, true, false));
+    assert(ui_visible_weather_sync_active(true, false, true));
+    assert(!ui_visible_weather_sync_active(true, false, false));
+    assert(!ui_visible_weather_sync_active(false, true, false));
+    assert(!ui_visible_weather_sync_active(false, false, true));
+
     setenv("TZ", "Asia/Shanghai", 1);
     tzset();
 

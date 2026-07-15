@@ -3,6 +3,7 @@
 
 #include "alarm_replacement_policy.h"
 #include "alarm_storage.h"
+#include "alarm_task_wait_policy.h"
 #include "audio_services.h"
 #include "pomodoro_services.h"
 #include "reminder_schedule.h"
@@ -12,6 +13,7 @@
 #include "xiaozhi_mcp.h"
 
 #include <atomic>
+#include <ctime>
 #include <cstdio>
 #include <cstring>
 
@@ -19,7 +21,6 @@ namespace {
 constexpr int kAlarmSoundIndex = 1; // 设置页“声音选择 2”。
 constexpr uint32_t kAlarmMaximumRingMs = 60U * 1000U;
 constexpr uint32_t kAlarmRepeatPauseMs = 5U * 1000U;
-constexpr uint32_t kAlarmTaskPollMs = 1000U;
 constexpr uint32_t kAlarmAudioReleaseWaitMs = 3000U;
 constexpr uint32_t kAlarmAudioReleasePollMs = 20U;
 constexpr uint32_t kAlarmReplaceConfirmationTimeoutMs = 2U * 60U * 1000U;
@@ -302,13 +303,25 @@ void alarm_task(void *)
     for (;;) {
         AlarmSnapshot snapshot = {};
         alarm_get_snapshot(&snapshot);
+        const int64_t wall_clock_ms = reminder_wall_clock_ms();
+        const time_t wall_clock_seconds =
+            static_cast<time_t>(wall_clock_ms / 1000);
         struct tm local = {};
-        if (snapshot.enabled && !snapshot.ringing &&
-            is_system_time_plausible(&local) &&
+        const bool time_valid = snapshot.enabled && wall_clock_ms >= 0 &&
+                                localtime_r(&wall_clock_seconds, &local) != nullptr &&
+                                is_tm_plausible(local);
+        if (snapshot.enabled && !snapshot.ringing && time_valid &&
             local.tm_hour == snapshot.hour && local.tm_min == snapshot.minute) {
             run_alarm_ring();
         }
-        ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(kAlarmTaskPollMs));
+        const uint32_t wait_ms = alarm_task_wait_ms(snapshot.enabled,
+                                                    time_valid,
+                                                    wall_clock_ms);
+        TickType_t wait_ticks = wait_ms > 0 ? pdMS_TO_TICKS(wait_ms) : portMAX_DELAY;
+        if (wait_ms > 0 && wait_ticks == 0) {
+            wait_ticks = 1;
+        }
+        ulTaskNotifyTake(pdTRUE, wait_ticks);
     }
 }
 
@@ -380,6 +393,13 @@ bool alarm_stop_ringing_from_button()
         xTaskNotifyGive(s_alarm_task_handle);
     }
     return true;
+}
+
+void alarm_notify_time_changed()
+{
+    if (s_alarm_task_handle) {
+        xTaskNotifyGive(s_alarm_task_handle);
+    }
 }
 
 bool alarm_clear_saved_state()

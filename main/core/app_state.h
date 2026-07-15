@@ -69,6 +69,9 @@ inline constexpr int kManualSayingSyncBit = BIT8;
 inline constexpr int kBootSyncDoneBit = BIT9;
 inline constexpr int kBootAnimDoneBit = BIT10;
 inline constexpr int kNetworkDiagBit = BIT11;
+// Wakes the network task when runtime configuration changes. This is not a
+// sync request and must never be cleared with the request-bit group.
+inline constexpr int kNetworkStateChangedBit = BIT12;
 inline constexpr gpio_num_t kBootButtonGpio = GPIO_NUM_0;
 inline constexpr gpio_num_t kKeyButtonGpio = GPIO_NUM_18;
 inline constexpr const char *kSetupApPassword = "12345678";

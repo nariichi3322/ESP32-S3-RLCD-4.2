@@ -11,6 +11,17 @@ int main()
     constexpr Tick kPendingDeadline = 120;
     constexpr Tick kReachedDeadline = 100;
 
+    assert(!ota_blocks_background_network_sync(kOtaIdle));
+    assert(ota_blocks_background_network_sync(kOtaChecking));
+    assert(!ota_blocks_background_network_sync(kOtaAvailable));
+    assert(ota_blocks_background_network_sync(kOtaUpdating));
+    assert(!ota_blocks_background_network_sync(kOtaSucceeded));
+    assert(!ota_background_network_block_changed(kOtaChecking, kOtaUpdating));
+    assert(ota_background_network_block_changed(kOtaIdle, kOtaChecking));
+    assert(ota_background_network_block_changed(kOtaAvailable, kOtaUpdating));
+    assert(ota_background_network_block_changed(kOtaUpdating, kOtaFailed));
+    assert(!ota_background_network_block_changed(kOtaFailed, kOtaIdle));
+
     assert(ota_status_hold_active_for_tick(true, kNow, kPendingDeadline));
     assert(!ota_status_hold_active_for_tick(false, kNow, kPendingDeadline));
     assert(!ota_status_hold_active_for_tick(true, kNow, kReachedDeadline));

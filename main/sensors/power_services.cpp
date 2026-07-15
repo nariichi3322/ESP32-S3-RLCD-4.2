@@ -61,21 +61,22 @@ void give_pm_lock_mutex()
     xSemaphoreGive(s_pm_lock_mutex);
 }
 
-void acquire_pm_lock(esp_pm_lock_handle_t lock, int *depth, const char *name)
+bool acquire_pm_lock(esp_pm_lock_handle_t lock, int *depth, const char *name)
 {
     if (!lock || !depth || !take_pm_lock_mutex(name)) {
-        return;
+        return false;
     }
     if (*depth == 0) {
         esp_err_t err = esp_pm_lock_acquire(lock);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT, name, esp_err_to_name(err));
             give_pm_lock_mutex();
-            return;
+            return false;
         }
     }
     ++(*depth);
     give_pm_lock_mutex();
+    return true;
 }
 
 void release_pm_lock(esp_pm_lock_handle_t lock, int *depth, const char *name)
@@ -99,10 +100,10 @@ void release_pm_lock(esp_pm_lock_handle_t lock, int *depth, const char *name)
     give_pm_lock_mutex();
 }
 
-void set_pm_lock_active(esp_pm_lock_handle_t lock, int *depth, const char *name, bool enabled)
+bool set_pm_lock_active(esp_pm_lock_handle_t lock, int *depth, const char *name, bool enabled)
 {
     if (!lock || !depth || !take_pm_lock_mutex(name)) {
-        return;
+        return false;
     }
     bool active = *depth > 0;
     if (enabled && !active) {
@@ -111,6 +112,8 @@ void set_pm_lock_active(esp_pm_lock_handle_t lock, int *depth, const char *name,
             *depth = 1;
         } else {
             ESP_LOGW(TAG, POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT, name, esp_err_to_name(err));
+            give_pm_lock_mutex();
+            return false;
         }
     } else if (!enabled && active) {
         esp_err_t err = esp_pm_lock_release(lock);
@@ -118,9 +121,12 @@ void set_pm_lock_active(esp_pm_lock_handle_t lock, int *depth, const char *name,
             *depth = 0;
         } else {
             ESP_LOGW(TAG, POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT, name, esp_err_to_name(err));
+            give_pm_lock_mutex();
+            return false;
         }
     }
     give_pm_lock_mutex();
+    return true;
 }
 } // namespace
 #endif
@@ -169,10 +175,12 @@ void init_power_management()
 #endif
 }
 
-void acquire_network_awake_lock()
+bool acquire_network_awake_lock()
 {
 #if CONFIG_PM_ENABLE
-    acquire_pm_lock(s_network_pm_lock, &s_network_pm_lock_depth, kNetworkPmLogName);
+    return acquire_pm_lock(s_network_pm_lock, &s_network_pm_lock_depth, kNetworkPmLogName);
+#else
+    return true;
 #endif
 }
 
@@ -216,13 +224,30 @@ bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out)
     return true;
 }
 
-void acquire_audio_awake_lock()
+bool acquire_audio_awake_lock()
 {
 #if CONFIG_PM_ENABLE
-    acquire_pm_lock(s_audio_pm_lock, &s_audio_pm_lock_depth, kAudioPmLogName);
-    acquire_pm_lock(s_audio_wake_pm_lock, &s_audio_wake_pm_lock_depth, kAudioWakePmLogName);
-    set_audio_performance_mode(true);
+    if (!acquire_pm_lock(s_audio_pm_lock, &s_audio_pm_lock_depth, kAudioPmLogName)) {
+        return false;
+    }
+    if (!acquire_pm_lock(s_audio_wake_pm_lock,
+                         &s_audio_wake_pm_lock_depth,
+                         kAudioWakePmLogName)) {
+        release_pm_lock(s_audio_pm_lock, &s_audio_pm_lock_depth, kAudioPmLogName);
+        return false;
+    }
+    if (!set_pm_lock_active(s_audio_cpu_pm_lock,
+                            &s_audio_cpu_pm_lock_depth,
+                            kAudioCpuPmLogName,
+                            true)) {
+        release_pm_lock(s_audio_wake_pm_lock,
+                        &s_audio_wake_pm_lock_depth,
+                        kAudioWakePmLogName);
+        release_pm_lock(s_audio_pm_lock, &s_audio_pm_lock_depth, kAudioPmLogName);
+        return false;
+    }
 #endif
+    return true;
 }
 
 void release_audio_awake_lock()
@@ -237,10 +262,10 @@ void release_audio_awake_lock()
 void set_audio_performance_mode(bool enabled)
 {
 #if CONFIG_PM_ENABLE
-    set_pm_lock_active(s_audio_cpu_pm_lock,
-                       &s_audio_cpu_pm_lock_depth,
-                       kAudioCpuPmLogName,
-                       enabled);
+    (void)set_pm_lock_active(s_audio_cpu_pm_lock,
+                             &s_audio_cpu_pm_lock_depth,
+                             kAudioCpuPmLogName,
+                             enabled);
 #else
     (void)enabled;
 #endif

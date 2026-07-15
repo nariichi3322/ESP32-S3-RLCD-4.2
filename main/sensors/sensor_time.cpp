@@ -78,6 +78,21 @@ time_t hour_start_from_time(time_t value)
     return mktime(&local);
 }
 
+time_t next_local_midnight_time(time_t from)
+{
+    struct tm local = {};
+    if (!localtime_r(&from, &local) || !is_tm_plausible(local)) {
+        return 0;
+    }
+    local.tm_mday += 1;
+    local.tm_hour = 0;
+    local.tm_min = 0;
+    local.tm_sec = 0;
+    local.tm_isdst = -1;
+    time_t next = mktime(&local);
+    return next > from ? next : 0;
+}
+
 time_t next_weather_sync_time(time_t from)
 {
     struct tm candidate = {};

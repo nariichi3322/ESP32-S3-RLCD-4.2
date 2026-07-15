@@ -7,7 +7,8 @@ namespace {
 constexpr int64_t kMicrosecondsPerMillisecond = 1000;
 constexpr uint32_t kMillisecondsPerSecond = 1000;
 constexpr time_t kSecondsPerMinute = 60;
-constexpr uint32_t kIdleDefaultWaitMs = 5 * kSecondsPerMinute * kMillisecondsPerSecond;
+constexpr uint32_t kIdleFallbackWaitMs = 60 * kSecondsPerMinute * kMillisecondsPerSecond;
+constexpr uint32_t kIdleMaximumWaitMs = 24 * 60 * kSecondsPerMinute * kMillisecondsPerSecond;
 constexpr uint32_t kIdleMinimumWaitMs = 1000;
 constexpr size_t kBootHttpsMinimumInternalFree = 48 * 1024;
 constexpr size_t kBootHttpsMinimumInternalLargest = 24 * 1024;
@@ -19,8 +20,10 @@ constexpr uint32_t kStartupWeatherRequestSettleDelayMs = 300;
 constexpr uint32_t kNetworkOperationSettleDelayMs = 250;
 constexpr uint32_t kStartupNetworkOperationSettleDelayMs = 1000;
 static_assert(kIdleMinimumWaitMs > 0, "network idle minimum wait must be positive");
-static_assert(kIdleDefaultWaitMs >= kIdleMinimumWaitMs,
-              "network idle default wait must cover the minimum wait");
+static_assert(kIdleFallbackWaitMs >= kIdleMinimumWaitMs,
+              "network idle fallback wait must cover the minimum wait");
+static_assert(kIdleMaximumWaitMs >= kIdleFallbackWaitMs,
+              "network idle maximum wait must cover the fallback wait");
 static_assert(kBootHttpsMinimumInternalFree >= kBootHttpsMinimumInternalLargest,
               "boot HTTPS free-memory threshold must cover the largest-block threshold");
 static_assert(kBootHttpsMinimumInternalLargest >= kBootHttpsMinimumDmaLargest,
@@ -48,6 +51,21 @@ time_t earliest_pending_boot_sync(const NetworkSyncScheduleInput &input)
     }
     return next;
 }
+
+uint32_t future_deadline_wait_ms(time_t now,
+                                 time_t deadline,
+                                 uint32_t fallback_ms)
+{
+    if (deadline <= now) {
+        return fallback_ms;
+    }
+    int64_t seconds = static_cast<int64_t>(deadline) - static_cast<int64_t>(now);
+    if (seconds >= static_cast<int64_t>(kIdleMaximumWaitMs) /
+                       kMillisecondsPerSecond) {
+        return kIdleMaximumWaitMs;
+    }
+    return static_cast<uint32_t>(seconds * kMillisecondsPerSecond);
+}
 } // namespace
 
 NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInput &input)
@@ -68,8 +86,9 @@ NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInp
     schedule.ntp_due = (input.manual_ntp_due ||
                         input.provisioning_sync_due ||
                         input.boot_ntp_due ||
-                        input.midnight_ntp_due) &&
+                        input.daily_ntp_due) &&
                        input.now >= input.next_ntp_retry_at;
+    schedule.ntp_retry_required = input.boot_ntp_due || input.daily_ntp_due;
     schedule.saying_due = !input.low_battery_mode &&
                           (input.manual_saying_due ||
                            input.provisioning_sync_due ||
@@ -93,27 +112,34 @@ int network_boot_budget_remaining_ms(int64_t deadline_us, int64_t now_us)
 
 uint32_t network_idle_wait_ms(time_t now,
                               time_t next_boot_due_at,
-                              time_t next_ntp_retry_at)
+                              time_t next_ntp_retry_at,
+                              time_t next_daily_ntp_at)
 {
-    uint32_t wait_ms = kIdleDefaultWaitMs;
+    uint32_t wait_ms = next_daily_ntp_at > now
+                           ? future_deadline_wait_ms(now,
+                                                     next_daily_ntp_at,
+                                                     kIdleFallbackWaitMs)
+                           : kIdleFallbackWaitMs;
     if (next_boot_due_at > now) {
-        uint32_t boot_wait =
-            static_cast<uint32_t>((next_boot_due_at - now) * kMillisecondsPerSecond);
+        uint32_t boot_wait = future_deadline_wait_ms(now,
+                                                     next_boot_due_at,
+                                                     kIdleFallbackWaitMs);
         if (boot_wait < wait_ms) {
             wait_ms = boot_wait;
         }
     }
     if (next_ntp_retry_at > now) {
-        uint32_t ntp_wait =
-            static_cast<uint32_t>((next_ntp_retry_at - now) * kMillisecondsPerSecond);
+        uint32_t ntp_wait = future_deadline_wait_ms(now,
+                                                    next_ntp_retry_at,
+                                                    kIdleFallbackWaitMs);
         if (ntp_wait < wait_ms) {
             wait_ms = ntp_wait;
         }
     }
     if (wait_ms < kIdleMinimumWaitMs) {
         wait_ms = kIdleMinimumWaitMs;
-    } else if (wait_ms > kIdleDefaultWaitMs) {
-        wait_ms = kIdleDefaultWaitMs;
+    } else if (wait_ms > kIdleMaximumWaitMs) {
+        wait_ms = kIdleMaximumWaitMs;
     }
     return wait_ms;
 }

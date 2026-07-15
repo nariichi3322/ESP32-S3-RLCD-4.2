@@ -12,8 +12,12 @@ struct XiaozhiVoiceRuntimeSnapshot {
     bool afe = false;
     bool model = false;
     bool processed_stream = false;
+    bool capture_buffer = false;
 };
 
+using XiaozhiVoiceEventCallback = void (*)();
+
+void xiaozhi_voice_set_event_callback(XiaozhiVoiceEventCallback callback);
 bool xiaozhi_voice_start();
 void xiaozhi_voice_stop();
 bool xiaozhi_voice_take_wake_word();

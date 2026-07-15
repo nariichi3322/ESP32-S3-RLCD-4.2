@@ -79,11 +79,14 @@ int main()
     assert(network_boot_budget_remaining_ms(static_cast<int64_t>(INT32_MAX) * 1000 + 2000,
                                              0) == INT32_MAX);
 
-    assert(network_idle_wait_ms(kNow, 0, 0) == 300000);
-    assert(network_idle_wait_ms(kNow, kNow + 10, 0) == 10000);
-    assert(network_idle_wait_ms(kNow, kNow + 10, kNow + 2) == 2000);
-    assert(network_idle_wait_ms(kNow, kNow, kNow - 1) == 300000);
-    assert(network_idle_wait_ms(kNow, kNow + 600, kNow + 700) == 300000);
+    assert(network_idle_wait_ms(kNow, 0, 0, 0) == 3600000);
+    assert(network_idle_wait_ms(kNow, kNow + 10, 0, 0) == 10000);
+    assert(network_idle_wait_ms(kNow, kNow + 10, kNow + 2, 0) == 2000);
+    assert(network_idle_wait_ms(kNow, kNow, kNow - 1, 0) == 3600000);
+    assert(network_idle_wait_ms(kNow, kNow + 600, kNow + 700, 0) == 600000);
+    assert(network_idle_wait_ms(kNow, 0, 0, kNow + 12 * 60 * 60) == 43200000);
+    assert(network_idle_wait_ms(kNow, 0, 0, kNow + 25 * 60 * 60) == 86400000);
+    assert(network_idle_wait_ms(kNow, kNow + 5, 0, kNow + 12 * 60 * 60) == 5000);
 
     assert(!network_cache_age_is_fresh(kNow, 0, 60));
     assert(!network_cache_age_is_fresh(kNow, kNow - 1, 0));
@@ -150,6 +153,7 @@ int main()
     input.provisioning_sync_due = true;
     schedule = calculate_network_sync_schedule(input);
     assert(schedule.ntp_due);
+    assert(!schedule.ntp_retry_required);
     assert(schedule.weather_due);
     assert(schedule.saying_due);
     assert(!schedule.stagger_boot_saying_after_weather);
@@ -179,6 +183,7 @@ int main()
     input.low_battery_mode = true;
     schedule = calculate_network_sync_schedule(input);
     assert(schedule.ntp_due);
+    assert(!schedule.ntp_retry_required);
     assert(!schedule.weather_due);
     assert(!schedule.saying_due);
 
@@ -203,12 +208,14 @@ int main()
     input.next_ntp_retry_at = kNow;
     schedule = calculate_network_sync_schedule(input);
     assert(schedule.ntp_due);
+    assert(schedule.ntp_retry_required);
 
     input = base_input();
-    input.midnight_ntp_due = true;
+    input.daily_ntp_due = true;
     input.next_ntp_retry_at = kNow - 1;
     schedule = calculate_network_sync_schedule(input);
     assert(schedule.ntp_due);
+    assert(schedule.ntp_retry_required);
 
     return 0;
 }

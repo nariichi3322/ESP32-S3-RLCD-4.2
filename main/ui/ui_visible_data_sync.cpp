@@ -135,7 +135,9 @@ ActiveWorkPageState active_work_page_state(int active_page)
     // Low-battery and setup overlays historically retain the weather clock as
     // their active base page; keep that distinction outside normal-page gates.
     state.weather_clock = active_page == kWorkPageWeatherClock;
-    state.uses_weather_data = state.weather_clock || state.weather_board;
+    state.uses_weather_data = ui_visible_weather_sync_active(normal_mode,
+                                                             state.weather_clock,
+                                                             state.weather_board);
     return state;
 }
 

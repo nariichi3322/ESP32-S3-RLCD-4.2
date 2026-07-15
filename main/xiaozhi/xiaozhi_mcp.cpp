@@ -41,6 +41,8 @@ using xiaozhi_mcp_schema::kSetAlarmTool;
 using xiaozhi_mcp_schema::kSetCountdownTool;
 using xiaozhi_mcp_schema::kSetVolumeTool;
 using xiaozhi_mcp_schema::kSetWeatherCityTool;
+using xiaozhi_mcp_json::add_owned_item_to_array;
+using xiaozhi_mcp_json::add_owned_item_to_object;
 using xiaozhi_mcp_json::add_string;
 
 std::atomic<bool> s_volume_save_pending{false};
@@ -63,9 +65,16 @@ cJSON *create_tool_content(const char *text, bool is_error)
         cJSON_Delete(item);
         return nullptr;
     }
-    cJSON_AddItemToArray(content, item);
-    cJSON_AddItemToObject(result, "content", content);
-    cJSON_AddBoolToObject(result, "isError", is_error);
+    if (!add_owned_item_to_array(content, item)) {
+        cJSON_Delete(result);
+        cJSON_Delete(content);
+        return nullptr;
+    }
+    if (!add_owned_item_to_object(result, "content", content) ||
+        !cJSON_AddBoolToObject(result, "isError", is_error)) {
+        cJSON_Delete(result);
+        return nullptr;
+    }
     return result;
 }
 
@@ -282,9 +291,16 @@ bool write_response(const char *session_id,
         cJSON_Delete(result);
         return false;
     }
-    cJSON_AddItemToObject(payload, "id", id_copy);
+    if (!add_owned_item_to_object(payload, "id", id_copy)) {
+        cJSON_Delete(payload);
+        cJSON_Delete(result);
+        return false;
+    }
     if (result) {
-        cJSON_AddItemToObject(payload, "result", result);
+        if (!add_owned_item_to_object(payload, "result", result)) {
+            cJSON_Delete(payload);
+            return false;
+        }
     } else {
         cJSON *error = cJSON_CreateObject();
         if (!error || !cJSON_AddNumberToObject(error, "code", error_code) ||
@@ -293,9 +309,14 @@ bool write_response(const char *session_id,
             cJSON_Delete(payload);
             return false;
         }
-        cJSON_AddItemToObject(payload, "error", error);
+        if (!add_owned_item_to_object(payload, "error", error)) {
+            cJSON_Delete(payload);
+            return false;
+        }
     }
-    cJSON_AddItemToObject(root.get(), kJsonFieldPayload, payload);
+    if (!add_owned_item_to_object(root.get(), kJsonFieldPayload, payload)) {
+        return false;
+    }
     response[0] = '\0';
     return cJSON_PrintPreallocated(root.get(),
                                    response,

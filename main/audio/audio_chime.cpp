@@ -4,6 +4,7 @@
 #include "audio_chime_policy.h"
 #include "audio_services_internal.h"
 #include "ota_runtime_state.h"
+#include "single_pending_task_gate.h"
 #include "startup_state.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_state.h"
@@ -17,6 +18,7 @@
 
 namespace {
 std::atomic<bool> s_setup_prompt_pending{false};
+SinglePendingTaskGate s_settings_chime_retry_gate;
 constexpr uint32_t kAudioPlaybackTaskStack = 6144;
 constexpr uint32_t kSettingsChimeRetryTaskStack = 3072;
 constexpr UBaseType_t kAudioPlaybackTaskPriority = 4;
@@ -97,12 +99,17 @@ bool create_audio_task(TaskFunction_t task_fn,
 
 void create_settings_chime_retry_task()
 {
-    (void)create_audio_task(settings_confirmation_chime_task,
-                            kSettingsChimeRetryTaskName,
-                            kSettingsChimeRetryTaskStack,
-                            kSettingsChimeRetryTaskPriority,
-                            nullptr,
-                            kSettingsChimeRetryTaskCreateFailedLog);
+    if (!s_settings_chime_retry_gate.try_acquire()) {
+        return;
+    }
+    if (!create_audio_task(settings_confirmation_chime_task,
+                           kSettingsChimeRetryTaskName,
+                           kSettingsChimeRetryTaskStack,
+                           kSettingsChimeRetryTaskPriority,
+                           nullptr,
+                           kSettingsChimeRetryTaskCreateFailedLog)) {
+        s_settings_chime_retry_gate.release();
+    }
 }
 
 void run_hourly_chime(int sound_index)
@@ -188,6 +195,7 @@ void run_settings_confirmation_chime()
 void settings_confirmation_chime_task(void *)
 {
     run_settings_confirmation_chime();
+    s_settings_chime_retry_gate.release();
     vTaskDelete(nullptr);
 }
 } // namespace

@@ -14,11 +14,11 @@ struct PowerLockDepthSnapshot {
 };
 
 void init_power_management();
-void acquire_network_awake_lock();
+[[nodiscard]] bool acquire_network_awake_lock();
 void release_network_awake_lock();
 bool network_awake_lock_active();
 bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out);
-void acquire_audio_awake_lock();
+[[nodiscard]] bool acquire_audio_awake_lock();
 void release_audio_awake_lock();
 void set_audio_performance_mode(bool enabled);
 void restore_system_time_from_rtc();
@@ -38,6 +38,7 @@ bool get_local_sensor_snapshot(float *temperature,
                                float *humidity,
                                int *temperature_trend,
                                int *humidity_trend);
+uint32_t local_sensor_state_version();
 TickType_t next_sensor_sample_tick(TickType_t now);
 TickType_t next_battery_sample_tick(TickType_t now);
 void housekeeping_task(void *);

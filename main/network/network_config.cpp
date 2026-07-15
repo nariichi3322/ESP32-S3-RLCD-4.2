@@ -12,9 +12,11 @@
 #include "network_config_internal.h"
 #include "network_factory_reset.h"
 #include "network_page_storage.h"
+#include "network_runtime_events.h"
 #include "network_page_storage_policy.h"
 #include "network_weather_city_storage.h"
 #include "weather_city_text.h"
+#include "xiaozhi_ai.h"
 
 #include "ui_views.h"
 
@@ -61,6 +63,8 @@ static_assert((kNetworkRequestClearBits & kManualWeatherSyncBit) != 0,
 static_assert((kNetworkRequestClearBits & kOtaCheckBit) != 0 &&
                   (kNetworkRequestClearBits & kOtaInstallBit) != 0,
               "network request clear bits must include OTA request bits");
+static_assert((kNetworkRequestClearBits & kNetworkStateChangedBit) == 0,
+              "network runtime state notification is not a sync request");
 constexpr const char *kConfigEventReasonNetworkRequestReset = "network request reset";
 constexpr const char *kConfigEventReasonFactoryReset = "factory reset";
 constexpr const char *kNvsActionLoadingConfig = "loading config";
@@ -221,6 +225,12 @@ void clear_network_request_bits()
     clear_config_event_bits(kNetworkRequestClearBits, kConfigEventReasonNetworkRequestReset);
 }
 
+static void notify_network_runtime_state_changed()
+{
+    notify_network_sync_runtime_state_changed();
+    xiaozhi_ai_notify_network_configuration_changed();
+}
+
 bool set_offline_mode_enabled(bool enabled)
 {
     ScopedNvsHandle nvs;
@@ -253,6 +263,7 @@ bool set_offline_mode_enabled(bool enabled)
             stop_wifi_radio(true);
         }
     }
+    notify_network_runtime_state_changed();
     return true;
 }
 
@@ -319,6 +330,7 @@ static void reset_saved_config_runtime_state()
     active_work_page_store(first_enabled_work_page());
     clear_config_event_bits(kWifiConnectedBit | kWeatherReadyBit, kConfigEventReasonFactoryReset);
     clear_network_request_bits();
+    notify_network_runtime_state_changed();
 }
 
 static void apply_saved_config_runtime_state(const char *ssid,
@@ -387,6 +399,7 @@ bool save_config(const char *ssid, const char *pass, const char *api_key, const 
     }
     apply_saved_config_runtime_state(ssid, pass, api_key, city);
     g_offline_mode_ui_enabled = false;
+    xiaozhi_ai_notify_network_configuration_changed();
     return true;
 }
 
