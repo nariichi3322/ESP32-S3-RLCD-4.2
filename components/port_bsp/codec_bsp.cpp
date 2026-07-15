@@ -2,21 +2,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <esp_log.h>
-#include <freertos/FreeRTOS.h>
 #include "codec_bsp.h"
 #include "i2c_bsp.h"
 
 static const char *TAG = "CodecPort";
 static constexpr const char *kCodecNameEs8311 = "es8311";
 static constexpr const char *kCodecNameEs7210 = "es7210";
-static constexpr const char *kCodecNamePlaybackAndRecord = "es8311 & es7210";
 static constexpr uint32_t kCodecI2cSpeedHz = 400000;
-static constexpr int kCodecEchoSpeakerVolume = 60;
-static constexpr float kCodecEchoMicGainDb = 25.0f;
-static constexpr size_t kCodecEchoBufferSize = 1024;
-static constexpr int kCodecEchoSampleRateHz = 44100;
-static constexpr int kCodecEchoChannelCount = 2;
-static constexpr int kCodecEchoBitsPerSample = 16;
 static constexpr int kCodecTdmChannelCount = 4;
 static constexpr uint32_t kCodecTdmChannelMask = 0x0F;
 static constexpr uint32_t kCodecXiaozhiInputMask = 0x03;
@@ -28,17 +20,7 @@ static constexpr int kCodecPcmPlaybackBitsPerSample = 16;
 static constexpr int kCodecXiaozhiSampleRateHz = 16000;
 static constexpr int kCodecXiaozhiInputSlotCount = 4;
 static constexpr int kCodecXiaozhiSpeakerVolume = 80;
-static constexpr const char *kCodecMusicTaskName = "CodecPort_MusicTask";
-static constexpr const char *kCodecEchoTaskName = "CodecPort_EchoTask";
-static constexpr uint32_t kCodecTaskStackWords = 4 * 1024;
-static constexpr UBaseType_t kCodecTaskPriority = 2;
 static_assert(kCodecI2cSpeedHz > 0, "Codec I2C speed must be positive");
-static_assert(kCodecEchoSpeakerVolume >= 0, "Echo speaker volume must be non-negative");
-static_assert(kCodecEchoMicGainDb >= 0.0f, "Echo mic gain must be non-negative");
-static_assert(kCodecEchoBufferSize > 0, "Echo buffer size must be positive");
-static_assert(kCodecEchoSampleRateHz > 0, "Echo sample rate must be positive");
-static_assert(kCodecEchoChannelCount > 0, "Echo channel count must be positive");
-static_assert(kCodecEchoBitsPerSample > 0, "Echo bits per sample must be positive");
 static_assert(kCodecTdmChannelCount > 0, "Codec TDM channel count must be positive");
 static_assert(kCodecTdmChannelMask != 0, "Codec TDM channel mask must not be empty");
 static_assert(kCodecXiaozhiInputMask != 0, "Xiaozhi input mask must not be empty");
@@ -50,10 +32,6 @@ static_assert(kCodecPcmPlaybackBitsPerSample > 0, "Codec PCM playback bits per s
 static_assert(kCodecXiaozhiSampleRateHz > 0, "Xiaozhi sample rate must be positive");
 static_assert(kCodecXiaozhiSpeakerVolume >= 0 && kCodecXiaozhiSpeakerVolume <= 100,
               "Xiaozhi speaker volume must be in range");
-static_assert(kCodecMusicTaskName[0] != '\0', "Music task name must not be empty");
-static_assert(kCodecEchoTaskName[0] != '\0', "Echo task name must not be empty");
-static_assert(kCodecTaskStackWords > 0, "Codec task stack size must be positive");
-static_assert(kCodecTaskPriority > 0, "Codec task priority must be positive");
 
 extern const uint8_t hourly_chime_pcm_start[] asm("_binary_hourly_chime_pcm_start");
 extern const uint8_t hourly_chime_pcm_end[] asm("_binary_hourly_chime_pcm_end");
@@ -65,44 +43,6 @@ extern const uint8_t chime_3_pcm_start[] asm("_binary_chime_3_pcm_start");
 extern const uint8_t chime_3_pcm_end[] asm("_binary_chime_3_pcm_end");
 extern const uint8_t wifi_prompt_pcm_start[] asm("_binary_wifi_prompt_pcm_start");
 extern const uint8_t wifi_prompt_pcm_end[] asm("_binary_wifi_prompt_pcm_end");
-
-void CodecPort::CodecPort_MusicTask(void *arg) {
-	CodecPort *codec = (CodecPort *)arg;
-	codec->CodecPort_SetSpeakerVol(60);
-	for(;;) {
-		size_t bytes_write = 0;
-  	  	size_t bytes_sizt = hourly_chime_pcm_end - hourly_chime_pcm_start;
-  	  	uint8_t *data_ptr = (uint8_t *)hourly_chime_pcm_start;
-		codec->CodecPort_SetInfo(kCodecNameEs8311,1,kCodecPcmPlaybackSampleRateHz,kCodecPcmPlaybackChannelCount,kCodecPcmPlaybackBitsPerSample);
-		do
-		{
-			codec->CodecPort_PlayWrite(data_ptr, 256);
-  	  	  	data_ptr += 256;
-  	  	  	bytes_write += 256;
-		} while (bytes_write < bytes_sizt);
-	}
-}
-
-void CodecPort::CodecPort_EchoTask(void *arg) {
-    CodecPort *codec = (CodecPort *)arg;
-    codec->CodecPort_SetSpeakerVol(kCodecEchoSpeakerVolume);
-    codec->CodecPort_SetMicGain(kCodecEchoMicGainDb);
-    uint8_t *data_ptr = (uint8_t *)heap_caps_malloc(kCodecEchoBufferSize * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
-    if (data_ptr == nullptr) {
-        ESP_LOGW(TAG, "echo buffer alloc failed");
-        vTaskDelete(nullptr);
-        return;
-    }
-    codec->CodecPort_SetInfo(kCodecNamePlaybackAndRecord,1,kCodecEchoSampleRateHz,kCodecEchoChannelCount,kCodecEchoBitsPerSample);
-    for(;;)
-    {
-        if(ESP_CODEC_DEV_OK == codec->CodecPort_EchoRead(data_ptr, kCodecEchoBufferSize))
-        {
-            codec->CodecPort_PlayWrite(data_ptr, kCodecEchoBufferSize);
-        }
-    }
-}
-
 
 CodecPort::CodecPort(I2cMasterBus& i2cbus,const char *strName) :
 i2cbus_(i2cbus) 
@@ -431,14 +371,6 @@ static bool play_pcm_to_slot0(CodecPort *codec,
     return true;
 }
 
-bool CodecPort::CodecPort_PlayHourlyChime(void) {
-    return CodecPort_PlayHourlyChimeSlot(3);
-}
-
-bool CodecPort::CodecPort_PlayHourlyChimeSlot(int source_slot) {
-    return play_pcm_to_slot0(this, hourly_chime_pcm_start, hourly_chime_pcm_end, source_slot, 90);
-}
-
 bool CodecPort::CodecPort_PlayChimeSound(int sound_index,
                                          int volume_percent,
                                          bool (*stop_requested)()) {
@@ -474,21 +406,4 @@ bool CodecPort::CodecPort_PlayChimeSound(int sound_index,
 
 bool CodecPort::CodecPort_PlayWifiPrompt(void) {
     return play_pcm_to_slot0(this, wifi_prompt_pcm_start, wifi_prompt_pcm_end, 0, 90);
-}
-
-void CodecPort::CodecPort_CreateMusicTask(void) {
-	xTaskCreate(CodecPort_MusicTask, kCodecMusicTaskName, kCodecTaskStackWords, (void *)this, kCodecTaskPriority, NULL);
-}
-
-void CodecPort::CodecPort_CreateEchoTask(void) {
-	xTaskCreate(CodecPort_EchoTask, kCodecEchoTaskName, kCodecTaskStackWords, (void *)this, kCodecTaskPriority, NULL);
-}
-
-uint8_t *CodecPort::CodecPort_GetPcmData(uint32_t *len) {
-    if (len == nullptr) {
-        ESP_LOGW(TAG, "pcm length output is null");
-        return (uint8_t *)hourly_chime_pcm_start;
-    }
-	*len = (hourly_chime_pcm_end - hourly_chime_pcm_start);
-	return (uint8_t *)hourly_chime_pcm_start;
 }

@@ -20,8 +20,6 @@ private:
     const uint8_t Es8311Address = 0x18;
     const uint8_t Es7210Address = 0x40;
 
-    static void CodecPort_MusicTask(void *arg);
-    static void CodecPort_EchoTask(void *arg);
 public:
     CodecPort(I2cMasterBus& i2cbus,const char *strName);
     ~CodecPort();
@@ -40,18 +38,11 @@ public:
     bool CodecPort_OpenXiaozhiMic(void);
     bool CodecPort_OpenXiaozhiSpeaker(int sample_rate);
     bool CodecPort_IsReady(void) const;
-    bool CodecPort_PlayHourlyChime(void);
-    bool CodecPort_PlayHourlyChimeSlot(int source_slot);
     bool CodecPort_PlayChimeSound(int sound_index,
                                   int volume_percent,
                                   bool (*stop_requested)() = nullptr);
     bool CodecPort_PlayWifiPrompt(void);
 
-    void CodecPort_CreateMusicTask(void);
-    void CodecPort_CreateEchoTask(void);
-
     bool CodecPort_SetInfo(const char *strName,int open_en,int sample_rate,int channel,int bits_per_sample);
-
-    uint8_t *CodecPort_GetPcmData(uint32_t *len);
 
 };

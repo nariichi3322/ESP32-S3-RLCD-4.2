@@ -185,6 +185,7 @@ Each network window reports the requests captured when it started. A new request
 When both reminder switches are off, no hourly sound plays. Critical Xiaozhi audio, OTA, and other protected operations avoid concurrent Codec use.
 If the device cannot temporarily reserve the wake and clock resources required for playback, that sound is skipped safely and its playback state is released. Later reminders and previews can try again normally.
 When audio is busy, rapid repeated sound-setting changes keep only one pending preview. Once playback becomes available, the preview uses the latest selection instead of replaying every intermediate choice.
+No vendor audio demo task runs in the background. Audio resources are opened only for actual chimes, previews, alarms, Pomodoro completion, or Xiaozhi sessions and are released through the shared lifecycle afterward.
 
 ### 5.3 Display
 
@@ -233,7 +234,7 @@ The single alarm can be set, changed, or disabled through Xiaozhi voice.
 
 For each public source release, GitHub Actions automatically attaches two build outputs to the matching GitHub Release: `weather_clock_vX.X.X.bin` for OTA or app-partition flashing, and `weather_clock_vX.X.X_merged.bin` for a complete flash from address `0x0`. The automated build only adds firmware assets and does not rewrite the existing release notes.
 
-After the GitHub build completes, the Cloudflare OTA service imports and verifies both files automatically. It publishes the new online manifests only after both firmware images are available.
+After the GitHub build completes, the Cloudflare OTA service imports and verifies both files automatically. If the automatic notification is delayed, the maintenance release flow requests a protected retry. The previous online manifest remains active until both new firmware images pass validation.
 
 Open **Settings > System > Check Update**:
 
