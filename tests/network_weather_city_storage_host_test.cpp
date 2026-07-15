@@ -15,6 +15,7 @@ int g_get_calls = 0;
 int g_set_calls = 0;
 int g_erase_calls = 0;
 int g_fail_set_call = -1;
+int g_fail_erase_call = -1;
 
 void reset_store()
 {
@@ -24,6 +25,7 @@ void reset_store()
     g_set_calls = 0;
     g_erase_calls = 0;
     g_fail_set_call = -1;
+    g_fail_erase_call = -1;
 }
 
 void expect_value(const char *key, const char *expected)
@@ -87,6 +89,9 @@ esp_err_t nvs_set_str(nvs_handle_t, const char *key, const char *value)
 esp_err_t nvs_erase_key(nvs_handle_t, const char *key)
 {
     ++g_erase_calls;
+    if (g_fail_erase_call == g_erase_calls) {
+        return ESP_FAIL;
+    }
     if (!key) {
         return ESP_ERR_INVALID_ARG;
     }
@@ -219,8 +224,29 @@ int main()
     changed = false;
     assert(network_weather_city_storage::write_manual_city_if_changed(
                kNvs, "上海", &changed) == ESP_FAIL);
-    assert(changed);
+    assert(!changed);
     assert(g_set_calls == 1);
     assert(g_erase_calls == 0);
+
+    reset_store();
+    g_values[network_weather_city_storage::kIgnoredAssetWeatherCityKey] = "杭州";
+    g_fail_erase_call = 1;
+    changed = true;
+    assert(network_weather_city_storage::write_manual_city_if_changed(
+               kNvs, "上海", &changed) == ESP_FAIL);
+    assert(!changed);
+    assert(g_set_calls == 1);
+    assert(g_erase_calls == 1);
+
+    reset_store();
+    g_asset_city = "杭州";
+    g_values[network_weather_city_storage::kManualWeatherCityKey] = "杭州";
+    g_fail_set_call = 1;
+    changed = true;
+    assert(network_weather_city_storage::clear_manual_city(
+               kNvs, "杭州", &changed) == ESP_FAIL);
+    assert(!changed);
+    assert(g_erase_calls == 1);
+    assert(g_set_calls == 1);
     return 0;
 }

@@ -50,41 +50,6 @@ static_assert(kHttpPreviewBufferSize == kHttpPreviewMaxChars + kCStringTerminato
 #define HTTP_GET_OK_FORMAT "http get ok status=%d len=%u gzip=%d"
 #define HTTP_SET_HEADER_FAILED_FORMAT "http set header failed name=%s err=%s"
 
-constexpr const char *const kHttpLogTexts[] = {
-    HTTP_TEMP_BUFFER_ALLOC_FAILED_FORMAT,
-    HTTP_GZIP_HEADER_INVALID_FORMAT,
-    HTTP_GZIP_DECOMPRESS_FAILED_FORMAT,
-    HTTP_GZIP_DECOMPRESSED_FORMAT,
-    HTTP_PARSE_EMPTY_RESPONSE_FORMAT,
-    HTTP_PARSE_FAILED_FORMAT,
-    HTTP_GET_FAILED_WITH_BODY_FORMAT,
-    HTTP_GET_FAILED_FORMAT,
-    HTTP_RESPONSE_TRUNCATED_FORMAT,
-    HTTP_GET_OK_FORMAT,
-    HTTP_SET_HEADER_FAILED_FORMAT,
-};
-
-static_assert(cstr_nonempty(kHttpAcceptHeaderName), "HTTP Accept header name must be non-empty");
-static_assert(cstr_nonempty(kHttpAcceptHeader), "HTTP Accept header value must be non-empty");
-static_assert(cstr_nonempty(kHttpAcceptEncodingHeaderName),
-              "HTTP Accept-Encoding header name must be non-empty");
-static_assert(cstr_nonempty(kHttpAcceptEncodingHeader), "HTTP Accept-Encoding header value must be non-empty");
-static_assert(cstr_nonempty(kQweatherApiKeyHeader), "QWeather API key header name must be non-empty");
-static_assert(cstr_nonempty(kQweatherGeoHost), "QWeather Geo host marker must be non-empty");
-static_assert(cstr_nonempty(kQweatherDevHost), "QWeather Dev host marker must be non-empty");
-static_assert(cstr_nonempty(kHttpPreviewDefaultStage), "HTTP preview default stage must be non-empty");
-static_assert(cstr_nonempty(kHttpDecodeInvalidArgLog), "HTTP decode invalid-argument log must be non-empty");
-static_assert(cstr_nonempty(kHttpGetInvalidArgLog), "HTTP get invalid-argument log must be non-empty");
-static_assert(cstr_nonempty(kHttpBootBudgetExhaustedLog), "HTTP boot-budget log must be non-empty");
-static_assert(cstr_nonempty(kHttpClientInitFailedLog), "HTTP client init-failed log must be non-empty");
-static_assert(cstr_nonempty(kHttpTransactionMutexCreateFailedLog),
-              "HTTP transaction mutex creation log must be non-empty");
-static_assert(cstr_nonempty(kHttpTransactionLockTimeoutLog),
-              "HTTP transaction lock timeout log must be non-empty");
-static_assert(array_count(kHttpLogTexts) > 0,
-              "HTTP log format guard must cover HTTP log formats");
-static_assert(cstr_array_nonempty(kHttpLogTexts), "HTTP log format texts must be non-empty");
-
 bool is_qweather_url(const char *url)
 {
     return url &&

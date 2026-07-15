@@ -86,28 +86,6 @@ constexpr const char *kOfflinePageMaskPersistFailedLog = "failed to persist offl
 #define NVS_SAVE_PAGE_ORDER_FAILED_FORMAT "nvs save page order failed: %s"
 #define NVS_SAVE_XIAOZHI_AUTO_RETURN_FAILED_FORMAT "nvs save Xiaozhi auto return failed: %s"
 #define NVS_CLEAR_CONFIG_FAILED_FORMAT "nvs clear config failed: %s"
-constexpr const char *kConfigEventReasonTexts[] = {
-    kConfigEventReasonNetworkRequestReset,
-    kConfigEventReasonFactoryReset,
-};
-constexpr const char *kNvsActionTexts[] = {
-    kNvsActionLoadingConfig,
-    kNvsActionSavingOfflineMode,
-    kNvsActionSavingConfig,
-    kNvsActionSavingWeatherCity,
-    kNvsActionClearingWeatherCity,
-    kNvsActionSavingHourlyReminder,
-    kNvsActionSavingPageSettings,
-    kNvsActionSavingPageOrder,
-    kNvsActionSavingXiaozhiAutoReturn,
-    kNvsActionClearingConfig,
-};
-constexpr const char *kConfigWarningTexts[] = {
-    kEmptyWifiSsidSaveLog,
-    kInvalidWeatherCitySaveLog,
-    kOfflinePageMaskPersistFailedLog,
-};
-
 struct LoadedNetworkConfig {
     esp_err_t ssid_err = ESP_FAIL;
     esp_err_t pass_err = ESP_FAIL;
@@ -123,14 +101,6 @@ struct LoadedNetworkConfig {
     bool have_page_order = false;
 };
 
-static_assert(array_count(kConfigEventReasonTexts) > 0, "config event reason registry must not be empty");
-static_assert(array_count(kNvsActionTexts) > 0, "NVS action text registry must not be empty");
-static_assert(array_count(kConfigWarningTexts) > 0, "configuration warning text registry must not be empty");
-static_assert(cstr_array_nonempty(kConfigEventReasonTexts),
-              "config event caller reasons must be non-empty");
-static_assert(cstr_array_nonempty(kNvsActionTexts), "NVS action texts must be non-empty");
-static_assert(cstr_array_nonempty(kConfigWarningTexts),
-              "configuration warning texts must be non-empty");
 static_assert(kWorkPageCount <= 8, "work page enabled mask is stored as uint8_t");
 static_assert((kPageMaskV4KnownBits & work_page_mask_bit(kWorkPageXiaozhiAI)) == 0,
               "page mask v4 must not include Xiaozhi AI page");

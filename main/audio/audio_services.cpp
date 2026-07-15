@@ -1,7 +1,6 @@
 // 管理共享 Codec、音频外设和小智全双工音频会话生命周期。
 #include "audio_services.h"
 
-#include "app_constexpr.h"
 #include "audio_services_internal.h"
 #include "checked_size.h"
 #include "sensor_services.h"
@@ -42,26 +41,10 @@ constexpr const char *kXiaozhiSpeakerCloseFailedLog = "xiaozhi speaker close fai
 constexpr const char *kXiaozhiWakeFeedbackWarmupFailedLog = "xiaozhi wake feedback speaker warmup failed";
 constexpr const char *kXiaozhiMicrophoneReadSizeOverflowLog =
     "xiaozhi microphone read size exceeds codec limit";
-constexpr const char *kAudioTexts[] = {
-    kAudioCodecBoardName,
-    kAudioCodecAllocationFailedLog,
-    kXiaozhiAudioStartFailedLog,
-    kXiaozhiSpeakerCloseFailedLog,
-    kXiaozhiWakeFeedbackWarmupFailedLog,
-    kXiaozhiMicrophoneReadSizeOverflowLog,
-    AUDIO_IDLE_GPIO_CONFIG_FAILED_LOG_FORMAT,
-    AUDIO_IDLE_GPIO_LEVEL_FAILED_LOG_FORMAT,
-    XIAOZHI_AUDIO_RESIDUAL_CLEANUP_LOG_FORMAT,
-};
 
-static_assert(kXiaozhiAudioSampleRate > 0, "xiaozhi sample rate must be positive");
 static_assert(kXiaozhiSpeakerFadeSamples > 0, "xiaozhi speaker fade must be positive");
-static_assert(kXiaozhiSpeakerTailSilenceSamples > 0, "xiaozhi speaker tail must be positive");
-static_assert(kXiaozhiWakeFeedbackWarmupMs > 0, "xiaozhi wake feedback warmup must be positive");
 static_assert(kXiaozhiWakeFeedbackWarmupChunkSamples > 0,
               "xiaozhi wake feedback warmup chunk must be positive");
-static_assert(kXiaozhiSpeakerDrainMs > 0, "xiaozhi speaker drain delay must be positive");
-static_assert(kXiaozhiSpeakerCloseRetryMs > 0, "xiaozhi speaker close retry delay must be positive");
 static_assert(kXiaozhiSpeakerCloseAttempts > 0, "xiaozhi speaker close attempts must be positive");
 static_assert(kAudioMclkGpio >= GPIO_NUM_0, "audio MCLK GPIO must be valid");
 static_assert(kAudioBclkGpio >= GPIO_NUM_0, "audio BCLK GPIO must be valid");
@@ -69,8 +52,6 @@ static_assert(kAudioWsGpio >= GPIO_NUM_0, "audio WS GPIO must be valid");
 static_assert(kAudioDinGpio >= GPIO_NUM_0, "audio DIN GPIO must be valid");
 static_assert(kAudioDoutGpio >= GPIO_NUM_0, "audio DOUT GPIO must be valid");
 static_assert(kAudioPaGpio >= GPIO_NUM_0, "audio PA GPIO must be valid");
-static_assert(array_count(kAudioTexts) > 0, "audio text registry must not be empty");
-static_assert(cstr_array_nonempty(kAudioTexts), "audio task names, log names and log formats must be non-empty");
 } // namespace
 
 extern const uint8_t xiaozhi_popup_pcm_start[] asm("_binary_popup_pcm_start");

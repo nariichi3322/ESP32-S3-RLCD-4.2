@@ -1,7 +1,6 @@
 // 负责 RTC 时间校验、系统时间恢复和系统时间回写。
 #include "sensor_services.h"
 
-#include "app_constexpr.h"
 #include "app_time_constants.h"
 
 #include <errno.h>
@@ -23,29 +22,8 @@ constexpr uint16_t kRtcMaxDay = 31;
 constexpr uint16_t kRtcMaxHour = 23;
 constexpr uint16_t kRtcMaxMinute = 59;
 constexpr uint16_t kRtcMaxSecond = 59;
-constexpr const char *const kRtcServiceTexts[] = {
-    RTC_INVALID_TIME_LOG_FORMAT,
-    RTC_MKTIME_FAILED_LOG_FORMAT,
-    RTC_LOCALTIME_FAILED_LOG_FORMAT,
-    RTC_NORMALIZED_MISMATCH_LOG_FORMAT,
-    RTC_SETTIME_FAILED_LOG_FORMAT,
-    RTC_RESTORED_LOG_FORMAT,
-    RTC_SYNC_LOCALTIME_FAILED_LOG_FORMAT,
-    RTC_SYNC_TIME_NOT_PLAUSIBLE_LOG_FORMAT,
-};
 
 static_assert(kMinValidYear <= kMaxValidYear, "valid year range must be ordered");
-static_assert(kRtcMinMonth == 1, "RTC month range must start at 1");
-static_assert(kRtcMaxMonth == 12, "RTC month range must end at 12");
-static_assert(kRtcMinDay == 1, "RTC day range must start at 1");
-static_assert(kRtcMaxDay == 31, "RTC day range must end at 31");
-static_assert(kRtcMaxHour == 23, "RTC hour max must stay 23");
-static_assert(kRtcMaxMinute == 59, "RTC minute max must stay 59");
-static_assert(kRtcMaxSecond == 59, "RTC second max must stay 59");
-static_assert(array_count(kRtcServiceTexts) > 0,
-              "RTC text guard must cover all log texts");
-static_assert(cstr_array_nonempty(kRtcServiceTexts),
-              "RTC service log texts must be non-empty");
 
 bool rtc_time_fields_in_range(const rtcTimeStruct_t &rtc_time)
 {

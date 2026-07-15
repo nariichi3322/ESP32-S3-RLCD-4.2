@@ -1,7 +1,6 @@
 // 解析 QWeather 城市查询首项，不处理 HTTP、业务码或定位策略。
 #include "qweather_city_parser.h"
 
-#include "app_constexpr.h"
 #include "network_json.h"
 
 namespace {
@@ -9,17 +8,6 @@ constexpr const char *kCityIdField = "id";
 constexpr const char *kCityNameField = "name";
 constexpr const char *kCityLatitudeField = "lat";
 constexpr const char *kCityLongitudeField = "lon";
-constexpr const char *kCityLocationFieldTexts[] = {
-    kCityIdField,
-    kCityNameField,
-    kCityLatitudeField,
-    kCityLongitudeField,
-};
-
-static_assert(array_count(kCityLocationFieldTexts) == 4,
-              "city parser must register every copied JSON field");
-static_assert(cstr_array_nonempty(kCityLocationFieldTexts),
-              "city parser JSON field names must be non-empty");
 } // namespace
 
 bool parse_qweather_city_location(const cJSON *location,

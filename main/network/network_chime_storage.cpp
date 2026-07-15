@@ -47,13 +47,14 @@ esp_err_t write_if_changed(nvs_handle_t nvs,
     if (matches(nvs, settings)) {
         return ESP_OK;
     }
-    if (changed) {
-        *changed = true;
-    }
     err = network_config_nvs::set_nvs_u8_if_ok(nvs, err, kHourlyChimeKey, settings.enabled);
     err = network_config_nvs::set_nvs_u8_if_ok(nvs, err, kHourlyAllDayKey, settings.all_day);
     err = network_config_nvs::set_nvs_u8_if_ok(nvs, err, kChimeVolumeKey, settings.volume);
-    return network_config_nvs::set_nvs_u8_if_ok(nvs, err, kChimeSoundKey, settings.sound);
+    err = network_config_nvs::set_nvs_u8_if_ok(nvs, err, kChimeSoundKey, settings.sound);
+    if (err == ESP_OK && changed) {
+        *changed = true;
+    }
+    return err;
 }
 
 } // namespace network_chime_storage

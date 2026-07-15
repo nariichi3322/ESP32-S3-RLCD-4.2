@@ -54,3 +54,11 @@ bool network_startup_followup_https_allowed(bool startup_pressure_active,
                                             size_t internal_free,
                                             size_t internal_largest,
                                             size_t dma_largest);
+bool network_automatic_boot_https_allowed(bool startup_screen_active,
+                                          int64_t uptime_us,
+                                          size_t internal_free,
+                                          size_t internal_largest,
+                                          size_t dma_largest);
+bool network_boot_weather_due_after_update(bool boot_weather_due,
+                                           bool boot_weather_ready,
+                                           bool resource_deferred);

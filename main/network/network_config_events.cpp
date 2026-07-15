@@ -10,17 +10,6 @@ constexpr const char *kConfigEventActionFallback = "action";
 constexpr const char *kConfigEventActionClear = "clear";
 constexpr const char *kConfigEventActionSet = "set";
 #define CONFIG_EVENT_GROUP_UNAVAILABLE_FORMAT "skip %s event bits for %s: event group unavailable"
-constexpr const char *kConfigEventTexts[] = {
-    kConfigEventReasonFallback,
-    kConfigEventActionFallback,
-    kConfigEventActionClear,
-    kConfigEventActionSet,
-};
-
-static_assert(array_count(kConfigEventTexts) > 0, "config event text registry must not be empty");
-static_assert(cstr_array_nonempty(kConfigEventTexts),
-              "config event fallback and action texts must be non-empty");
-
 const char *config_event_reason_text(const char *reason)
 {
     return cstr_nonempty(reason) ? reason : kConfigEventReasonFallback;

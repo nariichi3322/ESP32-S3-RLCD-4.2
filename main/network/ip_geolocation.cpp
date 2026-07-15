@@ -17,16 +17,6 @@ constexpr const char *kIpLocationMissingCoordinateLog =
     "ip location response missing latitude/longitude";
 #define IP_LOCATION_RESOLVED_FORMAT "ip location resolved: %s city=%s"
 
-constexpr const char *kIpGeolocationTexts[] = {
-    kIpGeolocationUrl,
-    kIpGeoStage,
-    kIpGeoJsonLatitudeField,
-    kIpGeoJsonLongitudeField,
-    kIpGeoJsonRegionField,
-    kIpLocationMissingCoordinateLog,
-    IP_LOCATION_RESOLVED_FORMAT,
-};
-
 bool coordinates_available(const cJSON *latitude, const cJSON *longitude)
 {
     return cJSON_IsNumber(latitude) && cJSON_IsNumber(longitude);
@@ -39,10 +29,6 @@ void log_ip_geolocation_warning(const char *message)
 
 static_assert(kIpGeoResponseBufferSize > 1,
               "IP geolocation response buffer must fit text and NUL");
-static_assert(array_count(kIpGeolocationTexts) > 0,
-              "IP geolocation text registry must not be empty");
-static_assert(cstr_array_nonempty(kIpGeolocationTexts),
-              "IP geolocation endpoint, fields and logs must be non-empty");
 } // namespace
 
 bool ip_geolocation_lookup(char *location, size_t location_len, char *city, size_t city_len)

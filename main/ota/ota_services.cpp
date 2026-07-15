@@ -46,20 +46,13 @@ static constexpr uint32_t kOtaPreRestartDisplayQuietMs = 1500;
 static constexpr uint32_t kOtaWifiConnectTimeoutMs = 45000;
 static constexpr uint32_t kOtaReadRetryDelayMs = 100;
 static constexpr TickType_t kOtaReadRetryDelay = pdMS_TO_TICKS(kOtaReadRetryDelayMs);
-static_assert(kOtaMaxRedirects > 0, "OTA redirect limit must be positive");
 static_assert(kOtaRedirectUrlLen > kOtaUrlLen, "OTA redirect URL buffer must exceed manifest URL storage");
-static_assert(kOtaHttpTxBufferSize > 0, "OTA HTTP tx buffer must be positive");
 static_assert(kOtaSha256HexLen + 1 == kOtaSha256Len,
               "OTA SHA256 hex length must match manifest storage");
 static_assert(kOtaDownloadStatusTextLen <= kOtaStatusLen,
               "OTA download status scratch text must fit global OTA status storage");
-static_assert(kOtaFailureHoldMs > 0 && kOtaSuccessHoldMs > 0 && kOtaOfflineHoldMs > 0,
-              "OTA terminal status hold times must be positive");
 static_assert(kOtaRebootNoticeDelayMs >= kOtaPreRestartDisplayQuietMs,
               "OTA reboot notice must outlast pre-restart display quiet window");
-static_assert(kOtaWifiConnectTimeoutMs > 0, "OTA Wi-Fi connect timeout must be positive");
-static_assert(kOtaReadRetryDelayMs > 0, "OTA read retry delay must be positive");
-static_assert(kOtaReadRetryDelay > 0, "OTA read retry tick delay must be positive");
 static constexpr const char *kOtaStatusCheckFailed = "Check failed";
 static constexpr const char *kOtaStatusCheckingUpdate = "Checking update";
 static constexpr const char *kOtaStatusAlreadyLatest = "Already latest";
@@ -112,60 +105,6 @@ static constexpr const char *kOtaTaskEventGroupUnavailableLog = "OTA task stoppe
 #define OTA_UPDATE_CHECK_FORMAT "OTA update check source=%s remote=%s current=%s"
 static constexpr const char *kOtaPrimaryDownloadRetryBackupLog =
     "OTA primary download failed, retrying GitHub backup";
-static constexpr const char *kOtaStatusTexts[] = {
-    kOtaStatusCheckFailed,
-    kOtaStatusCheckingUpdate,
-    kOtaStatusAlreadyLatest,
-    kOtaStatusDownloadFailed,
-    kOtaStatusVerifyFailed,
-    kOtaStatusUpdateFailed,
-    kOtaStatusUpdateDoneRebooting,
-    kOtaStatusNoWifi,
-    kOtaStatusLowBattery,
-    kOtaStatusWifiFailed,
-    kOtaStatusNoOtaSlot,
-    kOtaStatusNoMemory,
-    kOtaStatusOfflineMode,
-    kOtaStatusUnavailable,
-    kOtaStatusIdlePrompt,
-    kOtaStatusInstallingUpdate,
-    kOtaStatusInstallingBackup,
-    kOtaStatusInstallingProgressFormat,
-    kOtaStatusNewVersionFormat,
-    kOtaStatusFallbackError,
-};
-static constexpr const char *kOtaLogTexts[] = {
-    OTA_REQUEST_EVENT_GROUP_UNAVAILABLE_FORMAT,
-    OTA_HEAP_DIAGNOSTIC_FORMAT,
-    kOtaAppMarkedValidLog,
-    OTA_APP_VALID_MARK_FAILED_FORMAT,
-    OTA_PREVIOUS_BREADCRUMB_FORMAT,
-    kOtaManifestInvalidForInstallLog,
-    OTA_DOWNLOAD_START_FORMAT,
-    OTA_HTTP_HEADER_FAILED_FORMAT,
-    OTA_HTTP_OPEN_FAILED_FORMAT,
-    kOtaHttpClientInitFailedLog,
-    kOtaHttpTransactionLockTimeoutLog,
-    OTA_REDIRECT_STATUS_FORMAT,
-    OTA_REDIRECT_LOCATION_INVALID_FORMAT,
-    OTA_HTTP_STATUS_FAILED_FORMAT,
-    kOtaRedirectLimitReachedLog,
-    OTA_BEGIN_FAILED_FORMAT,
-    OTA_DOWNLOAD_BUFFER_ALLOC_FAILED_FORMAT,
-    OTA_DOWNLOAD_TIMEOUT_FORMAT,
-    OTA_READ_FAILED_NO_PROGRESS_FORMAT,
-    OTA_STALLED_FORMAT,
-    OTA_WRITE_FAILED_FORMAT,
-    OTA_SHA_MISMATCH_FORMAT,
-    OTA_END_FAILED_FORMAT,
-    OTA_APP_DESCRIPTION_FAILED_FORMAT,
-    OTA_IMAGE_READY_FORMAT,
-    OTA_BOOT_PARTITION_FAILED_FORMAT,
-    kOtaTaskEventGroupUnavailableLog,
-    OTA_UPDATE_CHECK_FORMAT,
-    kOtaPrimaryDownloadRetryBackupLog,
-};
-
 static const char *ota_request_name_or_fallback(const char *name)
 {
     return cstr_nonempty(name) ? name : kOtaRequestFallbackName;
@@ -193,15 +132,6 @@ static void format_ota_status_text(char *out, size_t out_len, const char *fmt, .
         strlcpy(out, kOtaStatusFallbackError, out_len);
     }
 }
-
-static_assert(array_count(kOtaStatusTexts) > 0,
-              "OTA status text guard must cover status texts");
-static_assert(array_count(kOtaLogTexts) > 0,
-              "OTA log text guard must cover diagnostic texts");
-static_assert(cstr_array_nonempty(kOtaStatusTexts), "OTA status texts must be non-empty");
-static_assert(cstr_array_nonempty(kOtaLogTexts), "OTA diagnostic texts must be non-empty");
-static_assert(cstr_nonempty(kOtaRequestFallbackName),
-              "OTA request fallback name must be non-empty");
 
 static void log_ota_heap(const char *stage, int downloaded, int progress)
 {

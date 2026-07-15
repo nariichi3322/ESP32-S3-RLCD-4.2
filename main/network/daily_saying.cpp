@@ -18,21 +18,10 @@ namespace {
 constexpr size_t kDailySayingResponseBufferSize = 768;
 constexpr int kMaxSayingAttempts = 8;
 constexpr uint32_t kDailySayingRetrySettleMs = 120;
-constexpr const char *const kDailySayingLogTexts[] = {
-    DAILY_SAYING_RESPONSE_ALLOC_FAILED_LOG_FORMAT,
-    DAILY_SAYING_HTTP_FAILED_LOG_FORMAT,
-    DAILY_SAYING_PARSE_FAILED_LOG_FORMAT,
-    DAILY_SAYING_TOO_LONG_LOG_FORMAT,
-    DAILY_SAYING_UPDATE_FAILED_LOG_FORMAT,
-    DAILY_SAYING_UPDATED_LOG_FORMAT,
-};
 portMUX_TYPE s_daily_saying_mux = portMUX_INITIALIZER_UNLOCKED;
 char s_daily_saying[kDailySayingLen] = {};
 time_t s_last_saying_sync_time = 0;
 
-static_assert(array_count(kDailySayingLogTexts) > 0,
-              "daily saying log guard must cover log text");
-static_assert(cstr_array_nonempty(kDailySayingLogTexts), "daily saying log texts must be non-empty");
 static_assert(kDailySayingResponseBufferSize > 0, "daily saying response buffer must be nonzero");
 static_assert(kDailySayingResponseBufferSize >= kDailySayingLen,
               "daily saying response buffer must cover cached saying text");

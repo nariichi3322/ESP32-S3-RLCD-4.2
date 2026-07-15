@@ -72,6 +72,8 @@ static constexpr const char *kNetworkCacheUnknownLabel = "unknown";
     "background boot HTTPS deferred: internal_free=%u internal_largest=%u dma_largest=%u"
 #define NETWORK_BOOT_SAYING_STAGGERED_FORMAT \
     "boot daily saying deferred %lld seconds after weather"
+#define NETWORK_BOOT_WEATHER_RESOURCE_RETRY_FORMAT \
+    "boot weather resource retry deferred %lld seconds"
 static constexpr const char *kNetworkDiagWifiOnLog = "wifi radio on for network diagnostics";
 #define NETWORK_SYNC_WIFI_ON_FORMAT "wifi radio on for sync: ntp=%d weather=%d saying=%d boot_weather=%d boot_saying=%d"
 static constexpr const char *kNetworkSyncWifiStartFailedLog = "wifi start failed during sync window";
@@ -329,14 +331,19 @@ static void settle_between_network_operations(bool more_work_pending)
 static bool background_boot_https_memory_ready()
 {
     const NetworkHttpsMemorySnapshot memory = capture_network_https_memory_snapshot();
-    if (!memory.sufficient) {
+    bool allowed = network_automatic_boot_https_allowed(startup_screen_active(),
+                                                        esp_timer_get_time(),
+                                                        memory.internal_free,
+                                                        memory.internal_largest,
+                                                        memory.dma_largest);
+    if (!allowed) {
         ESP_LOGW(TAG,
                  NETWORK_BOOT_HTTPS_MEMORY_DEFERRED_FORMAT,
                  static_cast<unsigned>(memory.internal_free),
                  static_cast<unsigned>(memory.internal_largest),
                  static_cast<unsigned>(memory.dma_largest));
     }
-    return memory.sufficient;
+    return allowed;
 }
 
 static bool defer_automatic_boot_https_for_memory(NetworkSyncSchedule *schedule,
@@ -460,11 +467,13 @@ static void execute_connected_sync_window(const NetworkSyncSchedule &schedule,
                                           bool &boot_ntp_due,
                                           bool &boot_weather_due,
                                           bool &boot_saying_due,
+                                          time_t &boot_weather_due_at,
                                           time_t &next_ntp_retry_at,
                                           int &last_midnight_ntp_yday)
 {
     bool ntp_ok = false;
     bool weather_ok = false;
+    bool weather_resource_deferred = false;
     bool saying_ok = false;
     NetworkDisplayDmaGuard display_guard(schedule.weather_due || schedule.saying_due);
     if (schedule.ntp_due) {
@@ -483,15 +492,29 @@ static void execute_connected_sync_window(const NetworkSyncSchedule &schedule,
                                           schedule.saying_due);
     }
     if (schedule.weather_due) {
-        weather_ok = perform_weather_update();
+        WeatherUpdateResult result = perform_weather_update();
+        weather_ok = result == WeatherUpdateResult::kSuccess;
+        weather_resource_deferred = result == WeatherUpdateResult::kResourceDeferred;
         settle_between_network_operations(schedule.saying_due);
     }
     if (schedule.saying_due) {
         saying_ok = perform_daily_saying_update();
     }
-    clear_ready_boot_sync_flags(schedule.boot_weather_ready,
+    boot_weather_due = network_boot_weather_due_after_update(
+        boot_weather_due,
+        schedule.boot_weather_ready,
+        weather_resource_deferred);
+    if (schedule.boot_weather_ready && weather_resource_deferred) {
+        time_t now = 0;
+        time(&now);
+        boot_weather_due_at = now + static_cast<time_t>(kBootHttpsMemoryRetryMs / 1000);
+        ESP_LOGI(TAG,
+                 NETWORK_BOOT_WEATHER_RESOURCE_RETRY_FORMAT,
+                 static_cast<long long>(kBootHttpsMemoryRetryMs / 1000));
+    }
+    clear_ready_boot_sync_flags(false,
                                 schedule.boot_saying_ready,
-                                &boot_weather_due,
+                                nullptr,
                                 &boot_saying_due);
     finish_successful_sync_requests(requests,
                                     ntp_ok,
@@ -694,6 +717,7 @@ void network_sync_task(void *)
                                           boot_ntp_due,
                                           boot_weather_due,
                                           boot_saying_due,
+                                          boot_weather_due_at,
                                           next_ntp_retry_at,
                                           last_midnight_ntp_yday);
             stagger_boot_saying_after_weather(schedule,

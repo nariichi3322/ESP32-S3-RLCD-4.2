@@ -93,7 +93,7 @@ int main()
     g_set_calls = 0;
     g_fail_set_call = 2;
     assert(network_chime_storage::write_if_changed(1, ESP_OK, expected, &changed) == ESP_FAIL);
-    assert(changed);
+    assert(!changed);
     assert(g_set_calls == 2);
     return 0;
 }

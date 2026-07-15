@@ -97,37 +97,9 @@ constexpr bool app_task_specs_valid()
     return true;
 }
 
-constexpr const char *const kMainLogTexts[] = {
-    MAIN_INVALID_TASK_CREATE_LOG_FORMAT,
-    MAIN_TASK_CREATE_FAILED_LOG_FORMAT,
-    MAIN_NVS_INIT_REQUIRES_ERASE_LOG_FORMAT,
-    MAIN_NVS_ERASE_FAILED_LOG_FORMAT,
-    MAIN_NVS_REINIT_FAILED_LOG_FORMAT,
-    MAIN_NVS_INIT_FAILED_LOG_FORMAT,
-    MAIN_EVENT_GROUP_CREATE_FAILED_LOG_FORMAT,
-    MAIN_NETIF_INIT_FAILED_LOG_FORMAT,
-    MAIN_EVENT_LOOP_INIT_FAILED_LOG_FORMAT,
-    MAIN_INVALID_BOOT_TASK_LOG_FORMAT,
-    MAIN_BOOT_TASK_CREATE_FAILED_LOG_FORMAT,
-    MAIN_SHTC3_ALLOCATION_FAILED_LOG_FORMAT,
-};
-
-static_assert(kBootAnimTaskStack > 0, "boot animation task stack must be positive");
-static_assert(kBootSyncTaskStack > 0, "boot sync task stack must be positive");
-static_assert(kNetworkSyncTaskStack > 0, "network sync task stack must be positive");
-static_assert(kOtaTaskStack > 0, "OTA task stack must be positive");
-static_assert(kHousekeepingTaskStack > 0, "housekeeping task stack must be positive");
-static_assert(kUiTaskStack > 0, "UI task stack must be positive");
-static_assert(kButtonTaskStack > 0, "button task stack must be positive");
-static_assert(kAlarmTaskStack > 0, "alarm task stack must be positive");
-static_assert(kPomodoroTaskStack > 0, "pomodoro task stack must be positive");
-static_assert(kBootAnimStopWaitMs > 0, "boot animation stop wait must be positive");
 static_assert(array_count(kRegularAppTasks) > 0,
               "regular task table must not be empty");
 static_assert(app_task_specs_valid(), "regular app task specs must be valid");
-static_assert(array_count(kMainLogTexts) > 0,
-              "main startup log guard must cover startup log texts");
-static_assert(cstr_array_nonempty(kMainLogTexts), "main startup log texts must be non-empty");
 } // namespace
 
 static TaskHandle_t create_app_task(TaskFunction_t task,

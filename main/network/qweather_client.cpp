@@ -52,12 +52,6 @@ constexpr const char *kQweatherJsonLocationField = "location";
 constexpr const char *kQweatherJsonNowField = "now";
 constexpr const char *kQweatherAlertJsonAlertsField = "alerts";
 constexpr const char *kQweatherDailyJsonDailyField = "daily";
-constexpr const char *kQweatherJsonFieldTexts[] = {
-    kQweatherJsonLocationField,
-    kQweatherJsonNowField,
-    kQweatherAlertJsonAlertsField,
-    kQweatherDailyJsonDailyField,
-};
 #define QWEATHER_URL_INVALID_ARG_FORMAT "qweather url invalid arg stage=%s"
 #define QWEATHER_URL_TOO_LONG_FORMAT "qweather %s url too long"
 constexpr const char *kQweatherCityInvalidArgLog = "qweather city invalid arg";
@@ -85,47 +79,6 @@ constexpr const char *kQweatherAirLocationTooLongLog = "qweather air location to
 #define QWEATHER_AIR_LOOKUP_FORMAT "qweather air lookup: %s via %s"
 #define QWEATHER_AIR_HTTP_FAILED_FORMAT "qweather air http failed err=%s"
 #define QWEATHER_AIR_FAILED_FORMAT "qweather air failed code=%s"
-constexpr const char *kQweatherFixedWarningTexts[] = {
-    kQweatherCityInvalidArgLog,
-    kQweatherCityLocationTooLongLog,
-    kQweatherCityHttpFailedLog,
-    kQweatherAlertInvalidArgLog,
-    kQweatherAlertHttpFailedLog,
-    kQweatherAlertTitleFormatFailedLog,
-    kQweatherNowInvalidArgLog,
-    kQweatherNowLocationTooLongLog,
-    kQweatherNowHttpFailedLog,
-    kQweatherDailyInvalidArgLog,
-    kQweatherDailyLocationTooLongLog,
-    kQweatherAirInvalidArgLog,
-    kQweatherAirLocationTooLongLog,
-};
-constexpr const char *kQweatherStageAndStatusTexts[] = {
-    kQweatherStageCity,
-    kQweatherStageAlert,
-    kQweatherStageNow,
-    kQweatherStageDaily,
-    kQweatherStageAir,
-    kQweatherPreviewCityLabel,
-    kQweatherPreviewAlertLabel,
-    kQweatherPreviewNowLabel,
-    kQweatherPreviewDailyLabel,
-    kQweatherPreviewAirLabel,
-    kQweatherUnknownStage,
-};
-
-static_assert(array_count(kQweatherJsonFieldTexts) > 0,
-              "QWeather JSON field guard must cover parsed fields");
-static_assert(cstr_array_nonempty(kQweatherJsonFieldTexts),
-              "QWeather JSON field and business code strings must be non-empty");
-static_assert(array_count(kQweatherStageAndStatusTexts) > 0,
-              "QWeather stage/status guard must cover stage and status text");
-static_assert(array_count(kQweatherFixedWarningTexts) > 0,
-              "QWeather fixed warning guard must cover fixed warning text");
-static_assert(cstr_array_nonempty(kQweatherStageAndStatusTexts),
-              "QWeather stage, preview, status and fixed log texts must be non-empty");
-static_assert(cstr_array_nonempty(kQweatherFixedWarningTexts),
-              "QWeather fixed warning texts must be non-empty");
 void log_qweather_fixed_warning(const char *message);
 
 bool qweather_url_ready(QweatherUrlStatus status,

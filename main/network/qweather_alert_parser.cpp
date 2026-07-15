@@ -1,7 +1,6 @@
 // 解析 QWeather 单条预警字段并生成标题，不处理 HTTP、日志或缓存写入。
 #include "qweather_alert_parser.h"
 
-#include "app_constexpr.h"
 #include "network_json.h"
 #include "qweather_alert_text.h"
 
@@ -14,22 +13,11 @@ constexpr const char *kAlertColorField = "color";
 constexpr const char *kAlertEventNameField = "name";
 constexpr const char *kAlertColorCodeField = "code";
 constexpr const char *kAlertHeadlineField = "headline";
-constexpr const char *kAlertFieldTexts[] = {
-    kAlertEventTypeField,
-    kAlertColorField,
-    kAlertEventNameField,
-    kAlertColorCodeField,
-    kAlertHeadlineField,
-};
 
 static_assert(kAlertEventNameSize > 1, "alert event name buffer must fit text and NUL");
 static_assert(kAlertColorCodeSize > 1, "alert color code buffer must fit text and NUL");
 static_assert(kAlertHeadlineSize <= kWeatherAlertTitleLen,
               "temporary alert headline must fit final alert title storage");
-static_assert(array_count(kAlertFieldTexts) == 5,
-              "alert parser must register every inspected JSON field");
-static_assert(cstr_array_nonempty(kAlertFieldTexts),
-              "alert parser JSON field names must be non-empty");
 } // namespace
 
 bool parse_qweather_alert_item(const cJSON *item, QweatherAlertItem *parsed)

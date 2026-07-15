@@ -1,8 +1,6 @@
 // 管理网络和音频期间的电源管理锁，避免关键流程被睡眠打断。
 #include "sensor_services.h"
 
-#include "app_constexpr.h"
-
 #define POWER_PM_LOCK_MUTEX_UNAVAILABLE_LOG_FORMAT "%s pm lock mutex unavailable"
 #define POWER_PM_LOCK_MUTEX_TIMEOUT_LOG_FORMAT "%s pm lock mutex timeout"
 #define POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT "%s pm lock acquire failed: %s"
@@ -26,33 +24,6 @@ constexpr const char *kNetworkPmLogName = "network";
 constexpr const char *kAudioPmLogName = "audio";
 constexpr const char *kAudioWakePmLogName = "audio_wake";
 constexpr const char *kAudioCpuPmLogName = "audio_cpu";
-constexpr const char *const kPowerTexts[] = {
-    kNetworkPmLockName,
-    kAudioPmLockName,
-    kAudioWakePmLockName,
-    kAudioCpuPmLockName,
-    kNetworkPmLogName,
-    kAudioPmLogName,
-    kAudioWakePmLogName,
-    kAudioCpuPmLogName,
-    POWER_PM_LOCK_MUTEX_UNAVAILABLE_LOG_FORMAT,
-    POWER_PM_LOCK_MUTEX_TIMEOUT_LOG_FORMAT,
-    POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT,
-    POWER_PM_LOCK_RELEASE_ZERO_LOG_FORMAT,
-    POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT,
-    POWER_SETUP_FAILED_LOG_FORMAT,
-    POWER_SETUP_OK_LOG_FORMAT,
-    POWER_MUTEX_CREATE_FAILED_LOG_FORMAT,
-    POWER_NETWORK_LOCK_CREATE_FAILED_LOG_FORMAT,
-    POWER_AUDIO_LOCK_CREATE_FAILED_LOG_FORMAT,
-    POWER_AUDIO_WAKE_LOCK_CREATE_FAILED_LOG_FORMAT,
-    POWER_AUDIO_CPU_LOCK_CREATE_FAILED_LOG_FORMAT,
-    POWER_DISABLED_LOG_FORMAT,
-};
-
-static_assert(array_count(kPowerTexts) > 0,
-              "power text guard must cover names and log texts");
-static_assert(cstr_array_nonempty(kPowerTexts), "power management names and log texts must be non-empty");
 } // namespace
 
 #if CONFIG_PM_ENABLE
@@ -70,7 +41,6 @@ int s_audio_wake_pm_lock_depth = 0;
 int s_audio_cpu_pm_lock_depth = 0;
 constexpr uint32_t kPmLockMutexTimeoutMs = 1000;
 constexpr TickType_t kPmLockMutexTimeout = pdMS_TO_TICKS(kPmLockMutexTimeoutMs);
-static_assert(kPmLockMutexTimeoutMs > 0, "PM lock mutex timeout must be positive");
 static_assert(kPmLockMutexTimeout > 0, "PM lock mutex tick timeout must be positive");
 
 bool take_pm_lock_mutex(const char *name)

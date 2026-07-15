@@ -1,16 +1,12 @@
 // 调度本地温湿度、电池采样和传感器相关低频后台任务。
 #include "sensor_services.h"
 
-#include "app_constexpr.h"
 #include "app_tick_time.h"
 #include "ota_services.h"
 #include "ui_views.h"
 
 namespace {
 #define SENSOR_INTERVAL_INVALID_LOG_FORMAT "sensor interval invalid: %d"
-constexpr const char *kSensorServiceTexts[] = {
-    SENSOR_INTERVAL_INVALID_LOG_FORMAT,
-};
 constexpr int kMillisecondsPerSecond = 1000;
 constexpr int kSecondsPerMinute = 60;
 constexpr int kUnknownTimeSensorSampleMs = kSecondsPerMinute * kMillisecondsPerSecond;
@@ -19,12 +15,7 @@ constexpr uint32_t kHousekeepingFallbackDelayMs = 1000;
 constexpr TickType_t kHousekeepingOtaPauseDelay = pdMS_TO_TICKS(kHousekeepingOtaPauseDelayMs);
 constexpr TickType_t kHousekeepingFallbackDelay = pdMS_TO_TICKS(kHousekeepingFallbackDelayMs);
 constexpr TickType_t kBatteryChargingSampleDelay = pdMS_TO_TICKS(kBatteryChargingSampleMs);
-static_assert(kHousekeepingOtaPauseDelayMs > 0, "housekeeping OTA pause delay must be positive");
-static_assert(kHousekeepingFallbackDelayMs > 0, "housekeeping fallback delay must be positive");
-static_assert(kBatteryChargingSampleMs > 0, "battery charging sample delay must be positive");
 static_assert(kUnknownTimeSensorSampleMs > 0, "unknown-time sensor sample interval must be positive");
-static_assert(kSensorSampleDayMinutes > 0, "day sensor sample interval must be positive");
-static_assert(kSensorSampleNightMinutes > 0, "night sensor sample interval must be positive");
 static_assert(kSensorSampleNightMinutes >= kSensorSampleDayMinutes,
               "night sensor sample interval must not be faster than day interval");
 static_assert(kBatteryChargingSampleMs <
@@ -35,10 +26,6 @@ static_assert(kHousekeepingOtaPauseDelayMs >= kHousekeepingFallbackDelayMs,
 static_assert(kHousekeepingOtaPauseDelay > 0, "housekeeping OTA pause tick delay must be positive");
 static_assert(kHousekeepingFallbackDelay > 0, "housekeeping fallback tick delay must be positive");
 static_assert(kBatteryChargingSampleDelay > 0, "battery charging sample tick delay must be positive");
-static_assert(array_count(kSensorServiceTexts) > 0,
-              "sensor service text registry must not be empty");
-static_assert(cstr_array_nonempty(kSensorServiceTexts),
-              "sensor service log texts must be non-empty");
 
 TickType_t next_periodic_sample_tick(TickType_t now,
                                      int day_minutes,

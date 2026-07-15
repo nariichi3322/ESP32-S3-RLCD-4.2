@@ -101,7 +101,12 @@ void get_weather_forecast_snapshot(WeatherForecastData *forecast);
 void get_weather_air_snapshot(WeatherAirData *air);
 time_t get_last_weather_sync_time();
 bool weather_extended_data_ready();
-bool perform_weather_update();
+enum class WeatherUpdateResult {
+    kSuccess,
+    kFailed,
+    kResourceDeferred,
+};
+WeatherUpdateResult perform_weather_update();
 void load_daily_saying_cache();
 bool get_daily_saying_snapshot(char *out, size_t out_len, time_t *last_sync_time = nullptr);
 bool perform_daily_saying_update();

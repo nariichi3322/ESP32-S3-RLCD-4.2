@@ -1,7 +1,6 @@
 // 处理配网页联网凭据和离线日期时间提交，不拥有 NVS key 细节。
 #include "network_services.h"
 
-#include "app_constexpr.h"
 #include "network_config_internal.h"
 #include "manual_time_parser.h"
 #include "provisioning_form_fields.h"
@@ -22,30 +21,6 @@ constexpr const char *kConfigEventReasonProvisioningSave = "provisioning save";
 #define PROVISIONING_EMPTY_API_KEY_LOG "provisioning ignored empty api key for online setup"
 #define PROVISIONING_INVALID_WEATHER_CITY_LOG "provisioning ignored invalid weather city"
 #define PROVISIONING_SAVED_FORMAT "provisioning saved ssid=%s pass_len=%u api_key=%s len=%u weather_city=%s city_len=%u"
-constexpr const char *kProvisioningEventReasons[] = {
-    kConfigEventReasonOfflineManualTime,
-    kConfigEventReasonProvisioningSave,
-};
-constexpr const char *kProvisioningLogTexts[] = {
-    OFFLINE_SETUP_EMPTY_BODY_LOG,
-    OFFLINE_SETUP_INVALID_MANUAL_TIME_LOG,
-    MANUAL_TIME_MKTIME_FAILED_LOG,
-    MANUAL_TIME_SETTIMEOFDAY_FAILED_FORMAT,
-    OFFLINE_MODE_ENABLED_MANUAL_TIME_FORMAT,
-    PROVISIONING_EMPTY_BODY_LOG,
-    PROVISIONING_EMPTY_SSID_LOG,
-    PROVISIONING_EMPTY_API_KEY_LOG,
-    PROVISIONING_INVALID_WEATHER_CITY_LOG,
-    PROVISIONING_SAVED_FORMAT,
-};
-static_assert(array_count(kProvisioningEventReasons) > 0,
-              "provisioning event reasons must not be empty");
-static_assert(cstr_array_nonempty(kProvisioningEventReasons),
-              "provisioning event reasons must contain text");
-static_assert(array_count(kProvisioningLogTexts) > 0,
-              "provisioning log text registry must not be empty");
-static_assert(cstr_array_nonempty(kProvisioningLogTexts),
-              "provisioning log texts must contain text");
 } // namespace
 
 bool save_offline_datetime_from_body(const char *body)

@@ -68,9 +68,10 @@ esp_err_t write_work_page_order_nvs(nvs_handle_t nvs,
     if (saved_page_order_matches(nvs, page_order, page_order_size)) {
         return ESP_OK;
     }
-    if (changed) {
+    esp_err_t write_err = nvs_set_blob(nvs, kPageOrderV5Key, page_order, page_order_size);
+    if (write_err == ESP_OK && changed) {
         *changed = true;
     }
-    return nvs_set_blob(nvs, kPageOrderV5Key, page_order, page_order_size);
+    return write_err;
 }
 } // namespace network_page_storage

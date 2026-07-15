@@ -37,6 +37,7 @@ public:
     }
 };
 
+// Output flags are true only after the corresponding NVS mutation succeeds.
 esp_err_t erase_nvs_key_if_present(nvs_handle_t nvs, const char *key, bool *erased);
 esp_err_t commit_nvs_if_ok(nvs_handle_t nvs, esp_err_t err);
 esp_err_t commit_nvs_if_changed(nvs_handle_t nvs, esp_err_t err, bool changed);
@@ -49,6 +50,7 @@ esp_err_t set_nvs_u8_if_ok(nvs_handle_t nvs,
                            const char *key,
                            uint8_t value);
 esp_err_t write_optional_nvs_string_key(nvs_handle_t nvs, const char *key, const char *value);
+// Failed reads leave a valid output buffer as an empty string.
 esp_err_t read_nvs_string(nvs_handle_t nvs, const char *key, char *out, size_t out_len);
 bool nvs_string_matches(nvs_handle_t nvs,
                         const char *key,

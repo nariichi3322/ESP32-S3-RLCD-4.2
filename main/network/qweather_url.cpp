@@ -1,7 +1,6 @@
 // 集中编码并构建 QWeather 城市、预警、实时、预报和空气质量 URL。
 #include "qweather_url.h"
 
-#include "app_constexpr.h"
 #include "app_text_format.h"
 #include "network_url.h"
 
@@ -21,15 +20,6 @@ constexpr const char *kDailyUrlFormat =
     "https://%s/v7/weather/%dd?location=%s&lang=zh&unit=m";
 constexpr const char *kAirUrlFormat =
     "https://%s/v7/air/now?location=%s&lang=zh";
-constexpr const char *kEndpointTexts[] = {
-    kApiHost,
-    kGeoApiHost,
-    kCityLookupUrlFormat,
-    kAlertUrlFormat,
-    kNowUrlFormat,
-    kDailyUrlFormat,
-    kAirUrlFormat,
-};
 
 QweatherUrlStatus format_url(char *out, size_t out_len, const char *format, ...)
 {
@@ -76,10 +66,6 @@ QweatherUrlStatus build_city_url(char *out,
 
 static_assert(kQweatherEncodedLocationSize > 1,
               "encoded QWeather location buffer must fit text and NUL");
-static_assert(array_count(kEndpointTexts) == 7,
-              "QWeather URL module must register every endpoint text");
-static_assert(cstr_array_nonempty(kEndpointTexts),
-              "QWeather endpoint texts must be non-empty");
 } // namespace
 
 const char *qweather_api_host()

@@ -29,10 +29,6 @@ constexpr uint8_t kSetupApChannel = 1;
 constexpr uint8_t kSetupApMaxConnections = 4;
 constexpr const char *kSetupApSsidFormat = "WeatherClock-%02X%02X";
 constexpr const char *kSetupApSsidFallback = "WeatherClock-0000";
-constexpr const char *kWifiPortalFixedTexts[] = {
-    kSetupApSsidFormat,
-    kSetupApSsidFallback,
-};
 
 enum class StationConnectAttempt {
     Start,
@@ -43,11 +39,6 @@ static_assert(kSetupApChannel > 0, "setup AP channel must be positive");
 static_assert(kSetupApMaxConnections > 0, "setup AP max connections must be positive");
 static_assert(cstr_length(kSetupApSsidFallback) < sizeof(g_ap_ssid),
               "setup AP SSID fallback must fit global buffer");
-static_assert(cstr_nonempty(kSetupApSsidFormat), "setup AP SSID format must be non-empty");
-static_assert(array_count(kWifiPortalFixedTexts) > 0,
-              "Wi-Fi portal fixed text registry must not be empty");
-static_assert(cstr_array_nonempty(kWifiPortalFixedTexts),
-              "Wi-Fi portal fixed texts must be non-empty");
 #define WIFI_START_SKIPPED_OFFLINE_LOG "wifi start skipped in offline mode"
 #define WIFI_STA_ONLY_MODE_FAILED_FORMAT "wifi sta-only mode failed: %s"
 #define WIFI_POWER_SAVE_SETUP_FAILED_FORMAT "wifi power save setup failed: %s"
@@ -81,46 +72,6 @@ static_assert(cstr_array_nonempty(kWifiPortalFixedTexts),
 #define WIFI_INITIAL_MODE_SETUP_FAILED_FORMAT "wifi initial mode setup failed: %s"
 #define WIFI_INITIAL_SOFTAP_SETUP_FAILED_FORMAT "wifi initial softap setup failed: %s"
 #define WIFI_INIT_ROLLBACK_FAILED_FORMAT "wifi init rollback %s failed: %s"
-constexpr const char *kWifiPortalLogTexts[] = {
-    WIFI_START_SKIPPED_OFFLINE_LOG,
-    WIFI_STA_ONLY_MODE_FAILED_FORMAT,
-    WIFI_POWER_SAVE_SETUP_FAILED_FORMAT,
-    WIFI_APSTA_MODE_FAILED_FORMAT,
-    WIFI_SOFTAP_CONFIG_FAILED_FORMAT,
-    WIFI_SETUP_POWER_SAVE_DISABLE_FAILED_FORMAT,
-    WIFI_SETUP_AP_ACTIVE_FORMAT,
-    WIFI_SET_MODE_FAILED_FORMAT,
-    WIFI_START_FAILED_FORMAT,
-    WIFI_STOP_SKIPPED_OTA_LOG,
-    WIFI_STOP_SKIPPED_XIAOZHI_LOG,
-    WIFI_DISCONNECT_DURING_STOP_FAILED_FORMAT,
-    WIFI_STOP_FAILED_FORMAT,
-    WIFI_RADIO_OFF_LOG,
-    WIFI_STA_CONFIG_FAILED_FORMAT,
-    WIFI_CONNECT_START_FAILED_FORMAT,
-    WIFI_DISCONNECTED_FORMAT,
-    WIFI_RECONNECT_START_FAILED_FORMAT,
-    WIFI_GOT_IP_EVENT_MISSING_LOG,
-    WIFI_GOT_IP_FORMAT,
-    WIFI_STA_IP_FORMAT_FAILED_LOG,
-    WIFI_CONNECTION_EVENT_GROUP_UNAVAILABLE_LOG,
-    WIFI_MAC_READ_FAILED_FORMAT,
-    WIFI_SETUP_AP_SSID_FORMAT_FAILED_LOG,
-    WIFI_STA_NETIF_CREATE_FAILED_LOG,
-    WIFI_AP_NETIF_CREATE_FAILED_LOG,
-    WIFI_INIT_FAILED_FORMAT,
-    WIFI_STORAGE_SETUP_FAILED_FORMAT,
-    WIFI_EVENT_HANDLER_REGISTER_FAILED_FORMAT,
-    WIFI_IP_EVENT_HANDLER_REGISTER_FAILED_FORMAT,
-    WIFI_INITIAL_MODE_SETUP_FAILED_FORMAT,
-    WIFI_INITIAL_SOFTAP_SETUP_FAILED_FORMAT,
-    WIFI_INIT_ROLLBACK_FAILED_FORMAT,
-};
-static_assert(array_count(kWifiPortalLogTexts) > 0,
-              "Wi-Fi portal log text registry must not be empty");
-static_assert(cstr_array_nonempty(kWifiPortalLogTexts),
-              "Wi-Fi portal log texts must be non-empty");
-
 void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
 {
     if (!ip) {

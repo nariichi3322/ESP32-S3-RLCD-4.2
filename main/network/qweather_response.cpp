@@ -11,19 +11,8 @@ constexpr const char *kQweatherDefaultStage = "request";
 constexpr const char *kQweatherJsonCodeField = "code";
 constexpr const char *kQweatherSuccessCode = "200";
 constexpr const char *kQweatherMissingCodeText = "missing";
-constexpr const char *kQweatherResponseTexts[] = {
-    kQweatherDefaultStage,
-    kQweatherJsonCodeField,
-    kQweatherSuccessCode,
-    kQweatherMissingCodeText,
-};
 #define QWEATHER_RESPONSE_SIZE_INVALID_FORMAT "qweather %s response size invalid"
 #define QWEATHER_RESPONSE_ALLOC_FAILED_FORMAT "qweather %s response alloc failed"
-
-static_assert(array_count(kQweatherResponseTexts) > 0,
-              "QWeather response text registry must not be empty");
-static_assert(cstr_array_nonempty(kQweatherResponseTexts),
-              "QWeather response stage, field and business code texts must be non-empty");
 } // namespace
 
 const char *qweather_stage_text(const char *stage)

@@ -1,7 +1,6 @@
 // 负责电池电压采样、电量估算和充电状态判断。
 #include "sensor_services.h"
 
-#include "app_constexpr.h"
 #include "app_time_constants.h"
 #include "battery_charging_state.h"
 #include "esp_adc/adc_cali.h"
@@ -24,22 +23,6 @@
 #define BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT "battery charging animation completed voltage=%.3fV soc=%d%%"
 #define BATTERY_CHARGING_STOPPED_LOG_FORMAT "battery charging cleared voltage=%.3fV soc=%d%%"
 
-static constexpr const char *const kBatteryLogTexts[] = {
-    BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT,
-    BATTERY_ADC_UNIT_RELEASE_FAILED_LOG_FORMAT,
-    BATTERY_ADC_READY_WITHOUT_HANDLE_LOG_FORMAT,
-    BATTERY_ADC_CALIBRATION_READY_WITHOUT_HANDLE_LOG,
-    BATTERY_ADC_INIT_FAILED_LOG_FORMAT,
-    BATTERY_ADC_CHANNEL_CONFIG_FAILED_LOG_FORMAT,
-    BATTERY_ADC_CALIBRATION_UNAVAILABLE_LOG_FORMAT,
-    BATTERY_PERCENT_OUTPUT_NULL_LOG_FORMAT,
-    BATTERY_ADC_READ_FAILED_LOG_FORMAT,
-    BATTERY_ADC_CALIBRATION_READ_FAILED_LOG_FORMAT,
-    BATTERY_ADC_SAMPLE_LOG_FORMAT,
-    BATTERY_CHARGING_STARTED_LOG_FORMAT,
-    BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT,
-    BATTERY_CHARGING_STOPPED_LOG_FORMAT,
-};
 static adc_oneshot_unit_handle_t s_battery_adc = nullptr;
 static adc_cali_handle_t s_battery_adc_cali = nullptr;
 static bool s_battery_adc_ready = false;
@@ -84,7 +67,6 @@ struct BatteryReading {
 static_assert(kBatteryVoltageDivider > 0.0f, "battery voltage divider must be positive");
 static_assert(kBatteryMillivoltsToVolts > 0.0f, "millivolts-to-volts scale must be positive");
 static_assert(kBatteryFullVoltage > kBatteryEmptyVoltage, "battery voltage range must be positive");
-static_assert(kBatteryVoltageRange > 0.0f, "battery voltage range must be positive");
 static_assert(kBatteryPercentScale > 0.0f, "battery percent scale must be positive");
 static_assert(kBatteryPercentRoundOffset >= 0.0f && kBatteryPercentRoundOffset < 1.0f,
               "battery percent rounding offset must stay within one percent step");
@@ -92,23 +74,16 @@ static_assert(kBatteryValidPreviousVoltageMin >= kBatteryEmptyVoltage &&
                   kBatteryValidPreviousVoltageMin < kBatteryFullVoltage,
               "battery previous voltage must stay within plausible battery range");
 static_assert(kBatteryAdcReferenceMv > 0, "battery ADC reference voltage must be positive");
-static_assert(kBatteryAdcRawMax > 0, "battery ADC raw max must be positive");
 static_assert(kBatteryAdcRawMax == (1 << 12) - 1, "12-bit battery ADC raw max must stay 4095");
-static_assert(kBatteryPercentMin == 0, "battery percent min is expected to be zero");
-static_assert(kBatteryPercentMax == 100, "battery percent max is expected to be one hundred");
 static_assert(kBatteryPercentMin < kBatteryPercentMax, "battery percent range must be ordered");
 static_assert(kBatteryPercentUnknown < kBatteryPercentMin, "unknown battery percent must be below valid range");
-static_assert(kTmYearOffset > 0, "tm year offset must be positive");
 static_assert(kBatteryMinValidYear > kTmYearOffset, "battery valid year must exceed tm year offset");
-static_assert(kBatteryMinValidTmYear >= 0, "battery valid time year floor must be non-negative");
 static_assert(kBatteryChargingRiseSamples > 0, "charging detection must require at least one rising sample");
 static_assert(kBatteryChargingStopSamples > 0,
               "charging stop detection must require at least one confirming sample");
 static_assert(kBatteryChargingAnimationStopPercent > kBatteryPercentMin &&
                   kBatteryChargingAnimationStopPercent <= kBatteryPercentMax,
               "charging animation stop percent must stay within the battery range");
-static_assert(kBatteryChargingAnimationIdleMs > 0,
-              "charging animation idle timeout must be positive");
 static_assert(kBatteryChargingAnimationIdleTicks > 0,
               "charging animation idle tick timeout must be positive");
 static_assert(sizeof(TickType_t) == sizeof(uint32_t),
@@ -118,9 +93,6 @@ static_assert(kBatteryChargingRiseVoltage > kBatteryChargingStopVoltage,
 static_assert(kBatteryChargingStopVoltage >=
                   kBatteryVoltageDivider * kBatteryMillivoltsToVolts * kBatteryChargingStopAdcSteps,
               "charging stop threshold must cover at least two scaled ADC millivolt steps");
-static_assert(array_count(kBatteryLogTexts) > 0,
-              "battery log guard must cover battery log texts");
-static_assert(cstr_array_nonempty(kBatteryLogTexts), "battery service log texts must be non-empty");
 
 static int clamp_battery_percent(int percent)
 {

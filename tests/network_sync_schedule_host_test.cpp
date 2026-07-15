@@ -47,6 +47,27 @@ int main()
                                                    24 * 1024,
                                                    16 * 1024));
     assert(network_startup_followup_https_allowed(false, 0, 0, 0));
+    assert(!network_automatic_boot_https_allowed(false,
+                                                 59LL * 1000 * 1000,
+                                                 48 * 1024 - 1,
+                                                 24 * 1024,
+                                                 16 * 1024));
+    assert(network_automatic_boot_https_allowed(false,
+                                                60LL * 1000 * 1000,
+                                                0,
+                                                0,
+                                                0));
+    assert(!network_automatic_boot_https_allowed(true,
+                                                 120LL * 1000 * 1000,
+                                                 0,
+                                                 0,
+                                                 0));
+    assert(!network_boot_weather_due_after_update(false, false, false));
+    assert(!network_boot_weather_due_after_update(false, false, true));
+    assert(network_boot_weather_due_after_update(true, false, false));
+    assert(network_boot_weather_due_after_update(true, false, true));
+    assert(!network_boot_weather_due_after_update(true, true, false));
+    assert(network_boot_weather_due_after_update(true, true, true));
 
     assert(network_boot_budget_remaining_ms(0, 1000) == INT32_MAX);
     assert(network_boot_budget_remaining_ms(-1, 1000) == INT32_MAX);

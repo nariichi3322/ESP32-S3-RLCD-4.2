@@ -39,22 +39,6 @@ constexpr const char *kCaptiveDnsTaskName = "captive_dns";
 #define CAPTIVE_DNS_TASK_STILL_STOPPING_LOG "previous captive dns task still stopping"
 #define CAPTIVE_DNS_TASK_START_FAILED_LOG "captive dns task start failed"
 
-constexpr const char *kCaptiveDnsTexts[] = {
-    kCaptiveDnsTaskName,
-    CAPTIVE_DNS_SOCKET_FAILED_LOG,
-    CAPTIVE_DNS_BIND_FAILED_LOG,
-    CAPTIVE_DNS_TIMEOUT_SETUP_FAILED_FORMAT,
-    CAPTIVE_DNS_STARTED_LOG,
-    CAPTIVE_DNS_STOPPED_LOG,
-    CAPTIVE_DHCPS_STOP_FAILED_FORMAT,
-    CAPTIVE_DHCPS_DNS_OPTION_FAILED_FORMAT,
-    CAPTIVE_AP_DNS_SETUP_FAILED_FORMAT,
-    CAPTIVE_DHCPS_URI_OPTION_FAILED_FORMAT,
-    CAPTIVE_DHCPS_RESTART_FAILED_FORMAT,
-    CAPTIVE_DNS_TASK_STILL_STOPPING_LOG,
-    CAPTIVE_DNS_TASK_START_FAILED_LOG,
-};
-
 static_assert(kCaptiveDnsPort > 0, "captive DNS port must be positive");
 static_assert(kCaptiveDnsSocketTimeoutSec > 0, "captive DNS socket timeout must be positive");
 static_assert(kCaptiveDnsStopWaitAttempts > 0, "captive DNS stop wait attempts must be positive");
@@ -65,9 +49,6 @@ static_assert(kCaptiveDnsTaskPriority > tskIDLE_PRIORITY, "captive DNS task prio
 static_assert(kCaptiveDnsTaskCore >= 0, "captive DNS task core must be non-negative");
 static_assert(kCaptivePortalUriSize > cstr_length(kSetupPortalUrl),
               "mutable captive portal URI must fit setup portal URL and NUL");
-static_assert(array_count(kCaptiveDnsTexts) > 0, "captive DNS text registry must not be empty");
-static_assert(cstr_array_nonempty(kCaptiveDnsTexts), "captive DNS texts must be non-empty");
-
 class ScopedSocketDescriptor {
 public:
     explicit ScopedSocketDescriptor(int descriptor)

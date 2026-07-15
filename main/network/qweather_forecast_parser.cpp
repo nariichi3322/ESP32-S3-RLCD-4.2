@@ -1,7 +1,6 @@
 // 解析 QWeather 每日预报字段并生成本地天气建议。
 #include "qweather_forecast_parser.h"
 
-#include "app_constexpr.h"
 #include "network_json.h"
 
 #include <stdlib.h>
@@ -26,23 +25,6 @@ constexpr const char *kQweatherDailyJsonWindDirDayField = "windDirDay";
 constexpr const char *kQweatherDailyJsonWindScaleDayField = "windScaleDay";
 constexpr const char *kQweatherDailyJsonSunriseField = "sunrise";
 constexpr const char *kQweatherDailyJsonSunsetField = "sunset";
-constexpr const char *kForecastParserTexts[] = {
-    kWeatherAdviceRainOrSnow,
-    kWeatherAdviceHot,
-    kWeatherAdviceCold,
-    kWeatherAdviceLargeTempGap,
-    kWeatherAdviceCalm,
-    kQweatherDailyJsonDateField,
-    kQweatherDailyJsonTextDayField,
-    kQweatherDailyJsonIconDayField,
-    kQweatherDailyJsonTempMaxField,
-    kQweatherDailyJsonTempMinField,
-    kQweatherDailyJsonHumidityField,
-    kQweatherDailyJsonWindDirDayField,
-    kQweatherDailyJsonWindScaleDayField,
-    kQweatherDailyJsonSunriseField,
-    kQweatherDailyJsonSunsetField,
-};
 
 int weather_text_to_int(const char *text, int fallback = 0)
 {
@@ -94,9 +76,6 @@ int weather_forecast_parse_count(const cJSON *daily)
 static_assert(kWeatherAdviceColdTempC < kWeatherAdviceHotTempC,
               "weather advice cold threshold must be below hot threshold");
 static_assert(kWeatherAdviceLargeTempGapC > 0, "weather advice temperature gap must be positive");
-static_assert(array_count(kForecastParserTexts) > 0, "forecast parser text registry must not be empty");
-static_assert(cstr_array_nonempty(kForecastParserTexts),
-              "forecast parser field and advice texts must be non-empty");
 } // namespace
 
 const char *weather_advice_for_day(const WeatherForecastDay &today)

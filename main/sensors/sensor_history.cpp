@@ -1,7 +1,6 @@
 // 维护本地温湿度趋势和 24 小时历史样本的内存与 NVS 数据。
 #include "sensor_services.h"
 
-#include "app_constexpr.h"
 #include "app_text_format.h"
 #include "scoped_nvs_handle.h"
 #include "sensor_history_format.h"
@@ -39,25 +38,6 @@ constexpr int kSecondsPerMinute = 60;
 constexpr int kMinutesPerHour = 60;
 constexpr int kSensorTrendWindowHours = 4;
 constexpr int64_t kSensorTrendWindowMs = (int64_t)kSensorTrendWindowHours * kMinutesPerHour * kSecondsPerMinute * kMsPerSecond;
-constexpr const char *kSensorHistoryTexts[] = {
-    kSensorNvsNamespace,
-    kHourlyHistoryMetaKey,
-    kLegacyHourlyHistoryKey,
-    kHourlySlotKeyFormat,
-    HOURLY_SLOT_KEY_INDEX_INVALID_LOG_FORMAT,
-    HOURLY_SLOT_KEY_TRUNCATED_LOG_FORMAT,
-    SENSOR_HISTORY_NVS_OPEN_FAILED_LOG_FORMAT,
-    HOURLY_SLOT_READ_FAILED_LOG_FORMAT,
-    HOURLY_SLOT_INVALID_LOG_FORMAT,
-    HOURLY_META_READ_FAILED_LOG_FORMAT,
-    kHourlyMetaInvalidLog,
-    LEGACY_HOURLY_HISTORY_READ_FAILED_LOG_FORMAT,
-    kLegacyHourlyHistoryInvalidLog,
-    HOURLY_SLOT_INDEX_INVALID_LOG_FORMAT,
-    SENSOR_NVS_OPEN_FAILED_LOG_FORMAT,
-    HOURLY_SLOT_SAVE_FAILED_LOG_FORMAT,
-    HOURLY_SNAPSHOT_INVALID_ARG_LOG,
-};
 portMUX_TYPE s_hourly_history_mux = portMUX_INITIALIZER_UNLOCKED;
 portMUX_TYPE s_local_sensor_mux = portMUX_INITIALIZER_UNLOCKED;
 float s_temperature = 0.0f;
@@ -84,14 +64,9 @@ static_assert(sensor_history_format::kHourlyHistoryMetaVersion >
                   sensor_history_format::kLegacyHourlyHistoryVersion,
               "hourly sensor history meta version must be newer than legacy blob version");
 static_assert(kHourlySlotKeyBufferSize >= sizeof("h00"), "hourly slot key buffer must fit hNN plus terminator");
-static_assert(array_count(kSensorHistoryTexts) > 0,
-              "sensor history text registry must not be empty");
-static_assert(cstr_array_nonempty(kSensorHistoryTexts), "sensor history NVS strings and logs must be non-empty");
 static_assert(kSensorSampleDayMinutes > 0, "day sensor sample interval must be positive");
-static_assert(kSensorSampleNightMinutes > 0, "night sensor sample interval must be positive");
 static_assert(kSensorSampleNightMinutes >= kSensorSampleDayMinutes,
               "night sensor sample interval must not be faster than day interval");
-static_assert(kSensorTrendWindowHours > 0, "sensor trend window must be positive");
 static_assert(kSensorTrendWindowMs > 0, "sensor trend window in ms must be positive");
 static_assert(kSensorHistoryMinutes >= (kSensorTrendWindowHours * kMinutesPerHour) / kSensorSampleDayMinutes,
               "sensor trend history must cover the full day-sampling trend window");

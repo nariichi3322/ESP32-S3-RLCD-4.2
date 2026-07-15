@@ -2,7 +2,6 @@
 #include "input_tasks.h"
 
 #include "alarm_services.h"
-#include "app_constexpr.h"
 #include "audio_services.h"
 #include "network_diagnostics_state.h"
 #include "ota_services.h"
@@ -18,11 +17,6 @@
 #define BUTTON_SHOW_SETTINGS_LOG_FORMAT "key button clicked, showing settings page"
 
 namespace {
-constexpr const char *const kButtonLogTexts[] = {
-    BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT,
-    BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT,
-    BUTTON_SHOW_SETTINGS_LOG_FORMAT,
-};
 constexpr int kButtonDebounceMs = 18;
 constexpr int kButtonLongPressMs = 1200;
 constexpr int kButtonBusyFeedbackMs = 2000;
@@ -33,24 +27,14 @@ constexpr TickType_t kButtonDebounceTicks = pdMS_TO_TICKS(kButtonDebounceMs);
 constexpr TickType_t kButtonLongPressTicks = pdMS_TO_TICKS(kButtonLongPressMs);
 constexpr const char *kSettingsBusyFeedbackText = "请等待操作完成";
 
-static_assert(kButtonDebounceMs > 0, "button debounce duration must be positive");
 static_assert(kButtonLongPressMs > kButtonDebounceMs,
               "button long-press duration must be longer than debounce duration");
-static_assert(kButtonBusyFeedbackMs > 0, "button busy feedback duration must be positive");
-static_assert(array_count(kButtonLogTexts) > 0,
-              "button log guard must cover button log texts");
-static_assert(cstr_array_nonempty(kButtonLogTexts), "button task log texts must be non-empty");
 static_assert(kBootButtonPinMask != 0, "BOOT button pin mask must not be empty");
 static_assert(kKeyButtonPinMask != 0, "KEY button pin mask must not be empty");
 static_assert(kButtonInputPinMask == (kBootButtonPinMask | kKeyButtonPinMask),
               "button input pin mask must include BOOT and KEY");
-static_assert(kButtonDebounceTicks > 0, "button debounce tick duration must be positive");
 static_assert(kButtonLongPressTicks > kButtonDebounceTicks,
               "button long-press tick duration must be longer than debounce duration");
-static_assert(kButtonIdlePollMs > 0, "button idle poll interval must be positive");
-static_assert(kButtonLowRefreshIdlePollMs > 0, "button low-refresh poll interval must be positive");
-static_assert(kButtonActivePollMs > 0, "button active poll interval must be positive");
-static_assert(kButtonPressedPollMs > 0, "button pressed poll interval must be positive");
 static_assert(kButtonLowRefreshIdlePollMs <= kButtonIdlePollMs,
               "low-refresh button polling must stay at least as responsive as idle polling");
 static_assert(kButtonActivePollMs <= kButtonIdlePollMs,

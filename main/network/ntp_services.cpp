@@ -39,18 +39,8 @@ constexpr size_t min_size(size_t a, size_t b)
 constexpr size_t kActiveNtpServerCount = min_size(kNtpServerCount, kConfiguredNtpServerSlots);
 constexpr TickType_t kNtpPollDelay = pdMS_TO_TICKS(kNtpPollDelayMs);
 constexpr const char *kNtpTimeSyncedEventUnavailableLog = "skip time synced event bit: app events unavailable";
-constexpr const char *const kNtpLogTexts[] = {
-    NTP_SYNCED_LOG_FORMAT,
-    NTP_TIMEOUT_LOG_FORMAT,
-    NTP_INVALID_RETRY_COUNT_LOG_FORMAT,
-    kNtpTimeSyncedEventUnavailableLog,
-};
 
 static_assert(cstr_array_nonempty(kNtpServers), "NTP server names must be non-empty");
-static_assert(array_count(kNtpLogTexts) > 0,
-              "NTP log guard must cover log text");
-static_assert(cstr_array_nonempty(kNtpLogTexts), "NTP log texts must be non-empty");
-static_assert(kDefaultConfiguredNtpServerSlots > 0, "default SNTP server slots must be positive");
 static_assert(kActiveNtpServerCount > 0, "active NTP server count must be positive");
 static_assert(kActiveNtpServerCount <= kNtpServerCount, "active NTP server count must fit server list");
 static_assert(kActiveNtpServerCount <= kConfiguredNtpServerSlots, "active NTP server count must fit SNTP slots");

@@ -414,7 +414,7 @@ void run_network_diagnostic_checks()
     bool weather_ok = false;
     if (g_have_weather_key && !battery_low_mode_load()) {
         network_diag_set_checking_line(kNetworkDiagWeatherLine, kNetworkDiagWeatherFormat);
-        weather_ok = perform_weather_update();
+        weather_ok = perform_weather_update() == WeatherUpdateResult::kSuccess;
     }
     network_diag_set_checking_line(kNetworkDiagNtpLine, kNetworkDiagNtpFormat);
     bool ntp_ok = perform_ntp_sync(kNetworkDiagNtpMaxRetries);

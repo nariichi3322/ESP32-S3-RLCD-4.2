@@ -24,6 +24,12 @@ const char *action_or_default(const char *action)
 
 esp_err_t erase_nvs_key_if_present(nvs_handle_t nvs, const char *key, bool *erased)
 {
+    if (erased) {
+        *erased = false;
+    }
+    if (!key) {
+        return ESP_ERR_INVALID_ARG;
+    }
     esp_err_t err = nvs_erase_key(nvs, key);
     if (err == ESP_OK) {
         if (erased) {
@@ -42,6 +48,7 @@ esp_err_t open_wifi_nvs(nvs_open_mode_t mode,
     if (!nvs) {
         return ESP_ERR_INVALID_ARG;
     }
+    *nvs = 0;
     esp_err_t err = nvs_open(kWifiNvsNamespace, mode, nvs);
     if (err != ESP_OK && (log_not_found || err != ESP_ERR_NVS_NOT_FOUND)) {
         ESP_LOGW(TAG, NVS_OPEN_FAILED_FORMAT, action_or_default(action), esp_err_to_name(err));
@@ -96,11 +103,19 @@ esp_err_t write_optional_nvs_string_key(nvs_handle_t nvs, const char *key, const
 
 esp_err_t read_nvs_string(nvs_handle_t nvs, const char *key, char *out, size_t out_len)
 {
-    if (!key || !out || out_len == 0) {
+    if (!out || out_len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    out[0] = '\0';
+    if (!key) {
         return ESP_ERR_INVALID_ARG;
     }
     size_t len = out_len;
-    return nvs_get_str(nvs, key, out, &len);
+    esp_err_t err = nvs_get_str(nvs, key, out, &len);
+    if (err != ESP_OK) {
+        out[0] = '\0';
+    }
+    return err;
 }
 
 bool nvs_string_matches(nvs_handle_t nvs,
@@ -154,10 +169,11 @@ esp_err_t write_changed_nvs_u8(nvs_handle_t nvs,
     if (nvs_u8_matches(nvs, key, value)) {
         return ESP_OK;
     }
-    if (changed) {
+    esp_err_t write_err = set_nvs_u8_if_ok(nvs, err, key, value);
+    if (write_err == ESP_OK && changed) {
         *changed = true;
     }
-    return set_nvs_u8_if_ok(nvs, err, key, value);
+    return write_err;
 }
 
 } // namespace network_config_nvs

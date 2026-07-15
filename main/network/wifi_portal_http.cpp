@@ -33,20 +33,6 @@ constexpr const char *kPortalFaviconUri = "/favicon.ico";
 constexpr const char *kPortalAppleTouchIconUri = "/apple-touch-icon.png";
 constexpr const char *kPortalAppleTouchIconPrecomposedUri = "/apple-touch-icon-precomposed.png";
 constexpr const char *kPortalWildcardUri = "/*";
-constexpr const char *kPortalHttpFixedTexts[] = {
-    kPortalHttpStatusBadRequest,
-    kPortalHttpStatusNoContent,
-    kPortalErrorMissingQuery,
-    kPortalWeatherCityInvalidMessage,
-    kPortalWeatherCityDeferredMessage,
-    kPortalRootUri,
-    kPortalSaveUri,
-    kPortalFaviconUri,
-    kPortalAppleTouchIconUri,
-    kPortalAppleTouchIconPrecomposedUri,
-    kPortalWildcardUri,
-};
-
 struct PortalHttpRoute {
     const char *uri;
     httpd_method_t method;
@@ -86,10 +72,6 @@ static_assert(kPortalRequestBufferSize > kPortalSubmitSsidFieldSize,
 static_assert(kPortalWeatherCityIdSize > 1, "portal weather city id buffer must fit text and NUL");
 static_assert(kPortalWeatherCityNameSize > 1, "portal weather city name buffer must fit text and NUL");
 static_assert(kPortalSaveWifiConnectWaitMs > 0, "portal save Wi-Fi wait must be positive");
-static_assert(array_count(kPortalHttpFixedTexts) > 0,
-              "portal HTTP fixed text registry must not be empty");
-static_assert(cstr_array_nonempty(kPortalHttpFixedTexts),
-              "portal HTTP fixed texts must be non-empty");
 static_assert(array_count(kPortalHttpRoutes) > 0, "portal HTTP route table must not be empty");
 static_assert(portal_http_routes_valid(), "portal HTTP routes must have URI and handler");
 
@@ -103,23 +85,6 @@ static_assert(portal_http_routes_valid(), "portal HTTP routes must have URI and 
 #define MANUAL_WEATHER_CITY_VALIDATION_FAILED_LOG "manual weather city validation failed, restoring auto location"
 #define MANUAL_WEATHER_CITY_VALIDATION_DEFERRED_LOG "manual weather city validation deferred after network/API error"
 #define PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG "setup save skipped initial sync request: app events unavailable"
-
-constexpr const char *kPortalHttpLogTexts[] = {
-    SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG,
-    PORTAL_HTTP_SERVER_START_FAILED_FORMAT,
-    PORTAL_HTTP_SERVER_STOP_FAILED_FORMAT,
-    PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT,
-    PORTAL_POST_BODY_TRUNCATED_FORMAT,
-    PORTAL_POST_BODY_RECEIVE_FAILED_FORMAT,
-    MANUAL_WEATHER_CITY_VALIDATED_FORMAT,
-    MANUAL_WEATHER_CITY_VALIDATION_FAILED_LOG,
-    MANUAL_WEATHER_CITY_VALIDATION_DEFERRED_LOG,
-    PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG,
-};
-static_assert(array_count(kPortalHttpLogTexts) > 0,
-              "portal HTTP log text registry must not be empty");
-static_assert(cstr_array_nonempty(kPortalHttpLogTexts),
-              "portal HTTP log texts must be non-empty");
 
 void request_provisioning_sync_after_save()
 {

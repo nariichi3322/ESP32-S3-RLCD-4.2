@@ -1,7 +1,6 @@
 // 编排整点提醒、设置试听和配网提示音任务。
 #include "audio_services.h"
 
-#include "app_constexpr.h"
 #include "audio_chime_policy.h"
 #include "audio_services_internal.h"
 #include "ota_runtime_state.h"
@@ -41,28 +40,7 @@ constexpr const char *kSetupPromptSkippedLog = "setup prompt skipped";
 constexpr const char *kSetupPromptPendingLog = "setup prompt pending";
 constexpr const char *kSettingsChimeRetryTaskCreateFailedLog = "failed to create settings chime retry task";
 constexpr const char *kHourlyChimeRadioSetupSkippedLog = "hourly chime skipped while radio or setup is active";
-constexpr const char *kAudioChimeTexts[] = {
-    kDefaultAudioTaskName,
-    kHourlyChimeTaskName,
-    kSetupPromptTaskName,
-    kSettingsChimeRetryTaskName,
-    kDefaultAudioLogName,
-    kHourlyChimeLogName,
-    kSetupPromptLogName,
-    kSettingsChimeBusyLog,
-    kSetupPromptPlayedLog,
-    kSetupPromptSkippedLog,
-    kSetupPromptPendingLog,
-    kSettingsChimeRetryTaskCreateFailedLog,
-    kHourlyChimeRadioSetupSkippedLog,
-    AUDIO_TASK_FUNCTION_UNAVAILABLE_LOG_FORMAT,
-    AUDIO_TASK_CREATE_FAILED_LOG_FORMAT,
-    HOURLY_CHIME_PLAYED_LOG_FORMAT,
-    HOURLY_CHIME_SKIPPED_LOG_FORMAT,
-};
 
-static_assert(kAudioPlaybackTaskStack > 0, "audio playback task stack must be positive");
-static_assert(kSettingsChimeRetryTaskStack > 0, "settings chime retry task stack must be positive");
 static_assert(kAudioPlaybackTaskPriority > tskIDLE_PRIORITY,
               "audio playback task priority must exceed idle");
 static_assert(kSettingsChimeRetryTaskPriority > tskIDLE_PRIORITY,
@@ -71,14 +49,10 @@ static_assert(kAudioTaskCore >= 0 && kAudioTaskCore < portNUM_PROCESSORS,
               "audio task core must exist on the target");
 static_assert(kSettingsChimeRetryAttempts > 0,
               "settings chime retry attempts must be positive");
-static_assert(kSettingsChimeRetryDelayMs > 0 && kSettingsChimeRetryDelay > 0,
+static_assert(kSettingsChimeRetryDelay > 0,
               "settings chime retry delay must be positive");
-static_assert(kSetupPromptChainDelayMs > 0 && kSetupPromptChainDelay > 0,
+static_assert(kSetupPromptChainDelay > 0,
               "setup prompt chain delay must be positive");
-static_assert(array_count(kAudioChimeTexts) > 0,
-              "audio chime text registry must not be empty");
-static_assert(cstr_array_nonempty(kAudioChimeTexts),
-              "audio chime task names and logs must be non-empty");
 
 const char *audio_text_or_default(const char *text, const char *fallback)
 {

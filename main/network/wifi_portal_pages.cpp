@@ -1,7 +1,6 @@
 // 生成配网页 HTML、Wi-Fi 扫描列表和保存结果页面。
 #include "wifi_portal_pages.h"
 
-#include "app_constexpr.h"
 #include "app_text_format.h"
 #include "app_state.h"
 #include "scoped_heap_buffer.h"
@@ -48,34 +47,6 @@ constexpr const char *kPortalHtmlHeadPrefix =
 #define PORTAL_HTML_APPEND_FAILED_LOG "setup html append failed"
 #define PORTAL_HTML_TRUNCATED_FORMAT "setup html truncated buffer=%u"
 
-constexpr const char *kPortalPageTexts[] = {
-    kPortalSectionCloseHtml,
-    kPortalHtmlContentType,
-    kPortalHttpStatusInternalError,
-    kPortalHttpStatusFound,
-    kPortalHeaderLocation,
-    kPortalHeaderCacheControl,
-    kPortalCacheNoStore,
-    kPortalErrorNotEnoughMemory,
-    kPortalSaveConnectedTitle,
-    kPortalSaveConnectingTitle,
-    kPortalSaveMissingTitle,
-    kPortalSaveConnectedBody,
-    kPortalSaveConnectingBody,
-    kPortalSaveMissingBody,
-    kPortalOfflineSavedTitle,
-    kPortalOfflineInvalidTitle,
-    kPortalOfflineSavedBody,
-    kPortalOfflineInvalidBody,
-    kPortalWifiScanBusyMessage,
-    kPortalWifiScanFailedMessage,
-    kPortalWifiScanEmptyMessage,
-    kPortalWifiScanNoMemoryMessage,
-    kPortalHtmlHeadPrefix,
-    PORTAL_HTML_APPEND_FAILED_LOG,
-    PORTAL_HTML_TRUNCATED_FORMAT,
-};
-
 static_assert(kMaxListedApCount > 0, "listed AP count must be positive");
 static_assert(kPortalEscapedSsidSize > kPortalSubmitSsidFieldSize,
               "escaped SSID buffer must exceed submitted SSID field size");
@@ -86,9 +57,6 @@ static_assert(kPortalRootHtmlSize > kPortalSaveResultHtmlSize,
 static_assert(kPortalRootHtmlSize > kPortalOfflineResultHtmlSize,
               "portal root HTML buffer must exceed offline result buffer");
 static_assert(kPortalSaveExtraTextSize > 1, "portal save extra text buffer must fit text and NUL");
-static_assert(array_count(kPortalPageTexts) > 0, "portal page text registry must not be empty");
-static_assert(cstr_array_nonempty(kPortalPageTexts), "portal page texts must be non-empty");
-
 class WifiScanRecords {
 public:
     explicit WifiScanRecords(uint16_t count)

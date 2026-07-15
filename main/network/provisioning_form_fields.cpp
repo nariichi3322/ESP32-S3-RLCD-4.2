@@ -1,7 +1,6 @@
 // 解析配网页字段别名并规范化需要去除空白的文本。
 #include "provisioning_form_fields.h"
 
-#include "app_constexpr.h"
 #include "network_form.h"
 #include "network_text.h"
 
@@ -24,18 +23,6 @@ constexpr const char *kFormApiKeyKey = "api_key";
 constexpr const char *kFormApiKeyFallbackKey = "weather";
 constexpr const char *kFormWeatherCityKey = "weather_city";
 constexpr const char *kFormWeatherCityFallbackKey = "city";
-constexpr const char *kFormConfigTexts[] = {
-    kFormManualTimeKey,
-    kFormManualTimeFallbackKey,
-    kFormSsidKey,
-    kFormPasswordKey,
-    kFormPasswordFallbackKey,
-    kFormApiKeyKey,
-    kFormApiKeyFallbackKey,
-    kFormWeatherCityKey,
-    kFormWeatherCityFallbackKey,
-};
-
 void form_value_fallback_trimmed(const char *body,
                                  const char *primary_key,
                                  const char *fallback_key,
@@ -54,8 +41,6 @@ static_assert(kProvisioningPasswordFieldSize > 1, "setup password field must fit
 static_assert(kProvisioningApiKeyFieldSize > 1, "setup API key field must fit text and NUL");
 static_assert(kProvisioningWeatherCityFieldSize == kManualWeatherCityLen,
               "setup weather city field must match runtime city buffer");
-static_assert(array_count(kFormConfigTexts) > 0, "form config text registry must not be empty");
-static_assert(cstr_array_nonempty(kFormConfigTexts), "setup form keys must be non-empty");
 } // namespace
 
 void read_provisioning_form_fields(const char *body, ProvisioningFormFields *fields)
