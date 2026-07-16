@@ -8,7 +8,6 @@
 static const char *TAG = "CodecPort";
 static constexpr const char *kCodecNameEs8311 = "es8311";
 static constexpr const char *kCodecNameEs7210 = "es7210";
-static constexpr uint32_t kCodecI2cSpeedHz = 400000;
 static constexpr int kCodecTdmChannelCount = 4;
 static constexpr uint32_t kCodecTdmChannelMask = 0x0F;
 static constexpr uint32_t kCodecXiaozhiInputMask = 0x03;
@@ -20,7 +19,6 @@ static constexpr int kCodecPcmPlaybackBitsPerSample = 16;
 static constexpr int kCodecXiaozhiSampleRateHz = 16000;
 static constexpr int kCodecXiaozhiInputSlotCount = 4;
 static constexpr int kCodecXiaozhiSpeakerVolume = 80;
-static_assert(kCodecI2cSpeedHz > 0, "Codec I2C speed must be positive");
 static_assert(kCodecTdmChannelCount > 0, "Codec TDM channel count must be positive");
 static_assert(kCodecTdmChannelMask != 0, "Codec TDM channel mask must not be empty");
 static_assert(kCodecXiaozhiInputMask != 0, "Xiaozhi input mask must not be empty");
@@ -44,9 +42,12 @@ extern const uint8_t chime_3_pcm_end[] asm("_binary_chime_3_pcm_end");
 extern const uint8_t wifi_prompt_pcm_start[] asm("_binary_wifi_prompt_pcm_start");
 extern const uint8_t wifi_prompt_pcm_end[] asm("_binary_wifi_prompt_pcm_end");
 
-CodecPort::CodecPort(I2cMasterBus& i2cbus,const char *strName) :
-i2cbus_(i2cbus) 
+CodecPort::CodecPort(I2cMasterBus& i2cbus,const char *strName)
 {
+    if (!i2cbus.IsReady()) {
+        ESP_LOGW(TAG, "codec init failed: %s", esp_err_to_name(ESP_ERR_INVALID_STATE));
+        return;
+    }
     set_codec_board_type(strName);
     codec_init_cfg_t codec_cfg = {};
     // 与官方同板卡 BoxAudioCodec 保持一致：ES8311 走标准 TX，ES7210
@@ -63,61 +64,15 @@ i2cbus_(i2cbus)
     playback = get_playback_handle();
     record   = get_record_handle();
     initialized = playback != NULL;
-
-    i2c_master_bus_handle_t I2cMasterBus = i2cbus_.Get_I2cBusHandle();
-    i2c_device_config_t dev_cfg = {};
-    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
-    dev_cfg.device_address  = Es8311Address;
-    dev_cfg.scl_speed_hz    = kCodecI2cSpeedHz;
-    err = i2c_master_bus_add_device(I2cMasterBus, &dev_cfg, &I2c_DevEs8311);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "%s i2c add failed: %s", kCodecNameEs8311, esp_err_to_name(err));
-    }
-
-    dev_cfg.device_address  = Es7210Address;
-    err = i2c_master_bus_add_device(I2cMasterBus, &dev_cfg, &I2c_DevEs7210);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "%s i2c add failed: %s", kCodecNameEs7210, esp_err_to_name(err));
-    }
 }
 
 CodecPort::~CodecPort() {
     CodecPort_CloseSpeaker();
     CodecPort_CloseMic();
     deinit_codec();
-    if (I2c_DevEs8311) {
-        esp_err_t err = i2c_master_bus_rm_device(I2c_DevEs8311);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "%s i2c remove failed: %s", kCodecNameEs8311, esp_err_to_name(err));
-        }
-        I2c_DevEs8311 = nullptr;
-    }
-    if (I2c_DevEs7210) {
-        esp_err_t err = i2c_master_bus_rm_device(I2c_DevEs7210);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "%s i2c remove failed: %s", kCodecNameEs7210, esp_err_to_name(err));
-        }
-        I2c_DevEs7210 = nullptr;
-    }
     initialized = false;
     playback = nullptr;
     record = nullptr;
-}
-
-void CodecPort::Codec_SetCodecReg(const char *str, uint8_t reg, uint8_t data) {
-    if (!strcmp(str, kCodecNameEs8311))
-        i2cbus_.i2c_write_buff(I2c_DevEs8311, reg, &data, 1);
-    if (!strcmp(str, kCodecNameEs7210))
-        i2cbus_.i2c_write_buff(I2c_DevEs7210, reg, &data, 1);
-}
-
-uint8_t CodecPort::Codec_GetCodecReg(const char *str, uint8_t reg) {
-    uint8_t data = 0x00;
-    if (!strcmp(str, kCodecNameEs8311))
-        i2cbus_.i2c_read_buff(I2c_DevEs8311, reg, &data, 1);
-    if (!strcmp(str, kCodecNameEs7210))
-        i2cbus_.i2c_read_buff(I2c_DevEs7210, reg, &data, 1);
-    return data;
 }
 
 void CodecPort::CodecPort_SetSpeakerVol(int vol) {
@@ -164,6 +119,10 @@ int CodecPort::CodecPort_EchoRead(void *ptr,int ptr_len) {
 }
 
 bool CodecPort::CodecPort_OpenXiaozhiMic(void) {
+    if (!CodecPort_IsMicrophoneReady()) {
+        ESP_LOGW(TAG, "Xiaozhi microphone handle is unavailable");
+        return false;
+    }
     if (mic_open) {
         return true;
     }
@@ -226,13 +185,22 @@ bool CodecPort::CodecPort_SetInfo(const char *strName,
         }
         int ret = ESP_CODEC_DEV_OK;
         if (!strcmp(strName, kCodecNameEs8311)) {
+            if (!playback) {
+                return false;
+            }
             ret = esp_codec_dev_open(playback, &fs);
             speaker_open = ret == ESP_CODEC_DEV_OK;
             speaker_sample_rate = speaker_open ? sample_rate : 0;
         } else if (!strcmp(strName, kCodecNameEs7210)) {
+            if (!record) {
+                return false;
+            }
             ret = esp_codec_dev_open(record, &fs);
             mic_open = ret == ESP_CODEC_DEV_OK;
         } else {
+            if (!playback || !record) {
+                return false;
+            }
             ret = esp_codec_dev_open(playback, &fs);
             speaker_open = ret == ESP_CODEC_DEV_OK;
             speaker_sample_rate = speaker_open ? sample_rate : 0;
@@ -251,6 +219,10 @@ bool CodecPort::CodecPort_SetInfo(const char *strName,
 
 bool CodecPort::CodecPort_IsReady(void) const {
     return initialized && playback != NULL;
+}
+
+bool CodecPort::CodecPort_IsMicrophoneReady(void) const {
+    return initialized && record != NULL;
 }
 
 static bool play_pcm_to_slot0(CodecPort *codec,
