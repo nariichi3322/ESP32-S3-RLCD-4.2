@@ -3,15 +3,15 @@
   "items": [
     {
       "version": "v1.5.18",
-      "notes": "v1.5.18：共 23 项更新。\n重点：将与常驻 LVGL handler task 同生命周期的显示互斥锁改为 FreeRTOS 静态控制块，减少冷启动内部堆分配和长期碎片来源，显…\n完整说明见同版本 Release。",
+      "notes": "v1.5.18：共 24 项更新。\n1. 将与常驻 LVGL handler task 同生命周期的显示互斥锁改为 FreeRT…\n2. 将小智页面状态快照 mutex 改为 FreeRTOS 静态控制块，消除启动时动态内部…\n3. 将小智页面活动、唤醒和暂停协调 EventGroup 改为 FreeRTOS 静态控制…\n4. 将整机常驻的 LVGL handler task 由动态任务创建改为文件私有静态栈和…\n5. 修复按键 GPIO 初始化失败时 FreeRTOS 任务入口直接返回的未定义行为，并基…\n6. 将应用期唯一的 SHTC3 传感器对象由普通堆 new 改为 I2C 就绪后在对齐静态…\n其余 18 项见源码仓库同版本 Release。",
       "app": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.18.bin",
-        "sha256": "a4c57a0d602b4aa72e3b6f8e03739e9d8683bdec552585b3291c4f692fc2d8d9",
+        "sha256": "288c1395e65e8ab5dc5b9700c7e524ab9edce09c9ebdb73f5e7d48b76c7a044c",
         "size": 6223312
       },
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.18_merged.bin",
-        "sha256": "4a91309757ea3e2b28c96143de9a71aab554a9b14e3e10de2e8808ecf2a6886a",
+        "sha256": "334f948638de5549cea71bf5cb43c705b9e845738539e0d91ed7a1362e884624",
         "size": 16509951
       }
     },
