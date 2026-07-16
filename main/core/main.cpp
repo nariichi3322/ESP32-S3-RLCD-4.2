@@ -67,6 +67,7 @@ constexpr const char *kBootAnimTaskCreateFailed = "boot animation task create fa
 constexpr const char *kBootConnectivityTaskCreateFailed = "boot connectivity task create failed";
 constexpr const char *kBootReadyStatus = "Ready";
 constexpr const char *kBootReadyDetail = "Starting clock";
+StaticEventGroup_t s_app_event_group_storage = {};
 
 struct AppTaskSpec {
     TaskFunction_t task;
@@ -171,7 +172,10 @@ static void release_app_event_group()
 
 static bool init_system_event_services()
 {
-    g_app_events = xEventGroupCreate();
+    if (g_app_events) {
+        return true;
+    }
+    g_app_events = xEventGroupCreateStatic(&s_app_event_group_storage);
     if (!g_app_events) {
         ESP_LOGE(TAG, MAIN_EVENT_GROUP_CREATE_FAILED_LOG_FORMAT);
         return false;
