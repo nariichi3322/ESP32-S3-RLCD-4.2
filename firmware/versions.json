@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.15",
+  "latest": "v1.5.16",
   "items": [
+    {
+      "version": "v1.5.16",
+      "notes": "ESP32-S3 RLCD 4.2 天气时钟 v1.5.16 源码发布。\n\n`v1.5.16`：\n  1. 将应用全生命周期常驻的 HTTPS/WSS 全局事务锁改为 FreeRTOS 静态互斥量，消除冷启动内部堆分配失败点和长期堆碎片来源，锁范围与超时语义保持不变。\n  2. 新增 HTTPS 事务锁源码契约测试，固定幂等初始化、静态存储和 acquire/release 边界，禁止后续维护时退回动态 mutex 或缩短天气、每日文字、小智及 OTA 的串行保护范围。\n  3. 本版通过 153 组主机测试、SDL 和 ESP-IDF 构建验证；不改变七个工作页 UI、联网顺序、用户操作、分区表、NVS key、资源格式、OTA 协议或上位机接口，已使用 v1.5.x 分区表的设备可直接 OTA 升级。\n\n本 Release 仅包含公开的 RLCD_CLOCK 时钟源码；严禁商用。",
+      "app": {
+        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.16.bin",
+        "sha256": "41066715b97faf7ea8cde0241224326e7c852be20082a214f97f6e90792bd567",
+        "size": 6223168
+      },
+      "merged": {
+        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.16_merged.bin",
+        "sha256": "0f41e567c6ac0c9f0a4f160b6626a152e7fada30152ba1027973da15664917b8",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.15",
       "notes": "ESP32-S3 RLCD 4.2 天气时钟 v1.5.15 源码发布。\n\n`v1.5.15`：\n  1. 收敛跨任务状态一致性：统一 UI、按键、闹钟和番茄钟任务通知边界，将联网配置、页面开关与顺序、设置导航、手动天气城市、本地 IP 等共享状态迁入原子或完整快照，避免跨核心读取半完成数据。\n  2. 加固网络与配网失败恢复：修复配网 DNS 超时配置失败后的永久阻塞、运行中 SoftAP/HTTP 启动失败残留 APSTA 和高功耗状态，并为小智 MCP 天气城市刷新增加有界等待，异常时页面可正常恢复。\n  3. 优化小智语音稳定性与空闲功耗：绑定码仅在完整播放后确认，TTS 空队列改为事件等待，扬声器写入失败可完整清理，网络失败会释放 Wi-Fi、PM 锁和语音资源，保持既有唤醒、字幕、闹钟和番茄钟交互。\n  4. 加固显示启动与运行边界：LVGL 和 RLCD 底层资源改为事务式初始化与逆序回滚；运行时命令、参数和像素传输使用有界重试，瞬时 DMA 不足或超时只放弃当前帧，不再触发整机重启。\n  5. 精简 I2C 与音频资源：I2C 写入改用有界栈帧，总线和 RTC/SHTC3 子设备增加就绪及析构保护；Codec 区分播放/录音就绪，并移除与 codec_board 重复的 ES8311/ES7210 控制句柄及无人调用接口。\n  6. 完善 OTA 稳定性：精简 manifest 运行态并确定化解析失败输出，修复 GitHub 自动构建未注入 R2/GitHub 备用地址的问题，保持双源、双固件、SHA256 和原子导入协议不变。\n  7. 修复公开源码 Release 说明生成：缺少真实版本说明时发布脚本直接中止，自动提交摘要按编号逐行输出，避免再次生成“自动化发布版本”等通用占位文案。\n  8. 本版通过 152 组主机测试、SDL 和 ESP-IDF 构建验证；不改变七个工作页 UI、用户操作、分区表、NVS key、资源格式、OTA 协议或上位机接口，已使用 v1.5.x 分区表的设备可直接 OTA 升级。\n\n本 Release 仅包含公开的 RLCD_CLOCK 时钟源码；严禁商用。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.7_merged.bin",
         "sha256": "2b56436e0bda60380dc9d5098bcf3a97acc8f07fe897611cfc7872d9fed26e3b",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.6",
-      "notes": "`v1.5.6`：1. 统一七个工作页的全天进度条与可见页刷新边界，进度仅在跨越约 24 分钟分段时局部更新；日历主体位置同步微调，页面布局和交互保持不变。\\n2. 修复番茄钟倒计时偶发视觉跳秒，并为覆盖已有闹钟增加二次确认；闹钟、番茄钟与小智自动返回的既有互斥和后台计时规则保持不变。\\n3. 加固充电与电池显示：提取充电趋势状态机、统一整秒闪烁判定、只刷新当前可见页电池对象，并修复长期运行 Tick 回绕附近的状态异常风险。\\n4. 加固天气与每日文字按需同步：统一可见页重试状态机、缓存过期规则和失败退避，并修复系统长期运行后 Tick 回绕可能导致补拉失效的问题。\\n5. 加固 OTA 时序与校验：统一清单来源、版本、SHA256、下载展示和状态保持规则，保留 R2 主源与 GitHub 备用源协议、双 OTA 分区及回滚行为。\\n6. 收敛启动与传感器调度：启动联网预算、温湿度/电池采样时序、四小时趋势及小时历史职责分离，保持原采样频率、NVS 格式和页面数据不变。\\n7. 拆分联网配置职责：配网页字段解析、在线/离线提交、业务 NVS、EventGroup 安全适配和通用 NVS 原语分别维护，补齐半初始化和异常输入回归。\\n8. 拆分网络与天气基础模块：强制门户 DNS/DHCP、QWeather 响应、定位、预警、预报、空气质量、共享天气快照和每日文字解析形成清晰边界，保持 API、缓存与 UI 结…",
-      "app": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.6.bin",
-        "sha256": "142ecd89057125b531a08b597f88acb303cdf8db77caf43bbcf9674d0846f9a6",
-        "size": 6204496
-      },
-      "merged": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.6_merged.bin",
-        "sha256": "b93e0fd05647cf0574310118e8b5ec71657f238e79d2459132aadc6882901aea",
         "size": 16509951
       }
     }
