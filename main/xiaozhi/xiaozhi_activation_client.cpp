@@ -5,7 +5,6 @@
 #include "network_services.h"
 #include "network_https_resources.h"
 #include "network_task_guards.h"
-#include "scoped_heap_buffer.h"
 #include "scoped_http_client.h"
 #include "xiaozhi_activation_storage.h"
 
@@ -13,25 +12,23 @@
 #include <esp_chip_info.h>
 #include <esp_crt_bundle.h>
 #include <esp_flash.h>
-#include <esp_heap_caps.h>
 #include <esp_http_client.h>
 #include <esp_mac.h>
 #include <esp_ota_ops.h>
 #include <esp_system.h>
 
 #include <cstdio>
-#include <cstdlib>
 #include <cstring>
 
 namespace {
-constexpr size_t kActivationRequestSize = 1536;
 constexpr uint32_t kActivationHttpTimeoutMs = 12000;
 constexpr const char *kActivationUrl = CONFIG_XIAOZHI_AI_OTA_URL;
 
 #define XIAOZHI_ACTIVATION_HEADER_FAILED_FORMAT "xiaozhi activation header %s failed: %s"
 #define XIAOZHI_ACTIVATION_BODY_FAILED_FORMAT "xiaozhi activation body failed: %s"
 
-static_assert(kActivationRequestSize > 0, "Xiaozhi activation request buffer must be positive");
+static_assert(kXiaozhiActivationRequestSize > 0,
+              "Xiaozhi activation request buffer must be positive");
 static_assert(kActivationHttpTimeoutMs > 0, "Xiaozhi activation timeout must be positive");
 static_assert(kXiaozhiActivationResponseSize > 1,
               "Xiaozhi activation response must fit data and a terminator");
@@ -156,23 +153,18 @@ void xiaozhi_format_device_id(char *out, size_t out_len)
              mac[5]);
 }
 
-bool xiaozhi_request_activation(XiaozhiActivationResponse *response)
+bool xiaozhi_request_activation(XiaozhiActivationScratch *scratch)
 {
-    if (!response) {
+    if (!scratch) {
         return false;
     }
+    XiaozhiActivationResponse *response = &scratch->response;
     xiaozhi_reset_activation_response(response);
+    scratch->request[0] = '\0';
     char device_id[kXiaozhiDeviceIdSize] = {};
     char client_id[kXiaozhiClientIdSize] = {};
     xiaozhi_format_device_id(device_id, sizeof(device_id));
     if (!xiaozhi_load_or_create_client_id(client_id, sizeof(client_id))) {
-        return false;
-    }
-    ScopedHeapBuffer<char> body(
-        static_cast<char *>(heap_caps_calloc(
-            1, kActivationRequestSize, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)),
-        kActivationRequestSize);
-    if (!body) {
         return false;
     }
     uint32_t flash_size = 0;
@@ -182,8 +174,8 @@ bool xiaozhi_request_activation(XiaozhiActivationResponse *response)
     const esp_app_desc_t *app = esp_app_get_description();
     const esp_partition_t *running = esp_ota_get_running_partition();
     int written = snprintf(
-        body.data(),
-        body.size(),
+        scratch->request,
+        sizeof(scratch->request),
         "{\"version\":2,\"language\":\"zh-CN\",\"flash_size\":%lu,"
         "\"minimum_free_heap_size\":\"%lu\",\"mac_address\":\"%s\",\"uuid\":\"%s\","
         "\"chip_model_name\":\"esp32s3\",\"chip_info\":{\"model\":%d,\"cores\":%d,\"revision\":%d,\"features\":%lu},"
@@ -207,7 +199,7 @@ bool xiaozhi_request_activation(XiaozhiActivationResponse *response)
         kDisplayWidth,
         kDisplayHeight,
         device_id);
-    if (written < 0 || static_cast<size_t>(written) >= body.size()) {
+    if (written < 0 || static_cast<size_t>(written) >= sizeof(scratch->request)) {
         return false;
     }
     esp_http_client_config_t config = {};
@@ -224,7 +216,7 @@ bool xiaozhi_request_activation(XiaozhiActivationResponse *response)
                                          user_agent,
                                          device_id,
                                          client_id,
-                                         body.data(),
+                                         scratch->request,
                                          &result)) {
         return false;
     }

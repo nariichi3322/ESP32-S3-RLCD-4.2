@@ -484,7 +484,8 @@ bool DisplayPort::RLCD_SendParamChecked(int command,
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
     if (initializing_) {
-        ESP_ERROR_CHECK(err);
+        LogDisplayStageFailure("panel register initialization", err);
+        ReleaseResources();
     }
     return false;
 }

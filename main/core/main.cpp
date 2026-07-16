@@ -29,7 +29,6 @@
 #define MAIN_EVENT_LOOP_INIT_FAILED_LOG_FORMAT "event loop init failed: %s"
 #define MAIN_INVALID_BOOT_TASK_LOG_FORMAT "%s: invalid boot task request"
 #define MAIN_BOOT_TASK_CREATE_FAILED_LOG_FORMAT "%s"
-#define MAIN_SHTC3_ALLOCATION_FAILED_LOG_FORMAT "shtc3 allocation failed"
 #define MAIN_DISPLAY_UNAVAILABLE_LOG_FORMAT "RLCD display resources unavailable; startup stopped"
 #define MAIN_I2C_UNAVAILABLE_LOG_FORMAT "I2C master bus unavailable; startup stopped"
 #define MAIN_LVGL_INIT_FAILED_LOG_FORMAT "LVGL initialization failed; startup stopped"
@@ -68,6 +67,7 @@ constexpr const char *kBootConnectivityTaskCreateFailed = "boot connectivity tas
 constexpr const char *kBootReadyStatus = "Ready";
 constexpr const char *kBootReadyDetail = "Starting clock";
 StaticEventGroup_t s_app_event_group_storage = {};
+alignas(Shtc3Port) unsigned char s_shtc3_storage[sizeof(Shtc3Port)] = {};
 
 struct AppTaskSpec {
     TaskFunction_t task;
@@ -104,6 +104,13 @@ constexpr bool app_task_specs_valid()
 static_assert(array_count(kRegularAppTasks) > 0,
               "regular task table must not be empty");
 static_assert(app_task_specs_valid(), "regular app task specs must be valid");
+
+void init_shtc3_sensor()
+{
+    if (!g_shtc3) {
+        g_shtc3 = new (s_shtc3_storage) Shtc3Port(g_i2c);
+    }
+}
 } // namespace
 
 static TaskHandle_t create_app_task(TaskFunction_t task,
@@ -254,10 +261,7 @@ extern "C" void app_main(void)
     setenv("TZ", "CST-8", 1);
     tzset();
     restore_system_time_from_rtc();
-    g_shtc3 = new (std::nothrow) Shtc3Port(g_i2c);
-    if (!g_shtc3) {
-        ESP_LOGW(TAG, MAIN_SHTC3_ALLOCATION_FAILED_LOG_FORMAT);
-    }
+    init_shtc3_sensor();
     sample_battery();
     if (!battery_low_mode_load()) {
         sample_sensor();
@@ -270,6 +274,10 @@ extern "C" void app_main(void)
     weather_city_mcp_init();
 
     g_display.RLCD_Init();
+    if (!g_display.IsReady()) {
+        ESP_LOGE(TAG, MAIN_DISPLAY_UNAVAILABLE_LOG_FORMAT);
+        return;
+    }
     g_display.RLCD_ColorClear(ColorWhite);
     g_display.RLCD_Display();
     if (!Lvgl_PortInit(kDisplayWidth, kDisplayHeight, flush_callback)) {

@@ -1,13 +1,12 @@
 // 验证小智编解码运行时成功持有、失败回滚和重复初始化资源语义。
 #include "xiaozhi_voice_codec.h"
 
-#include "esp_heap_caps.h"
 #include "esp_opus_dec.h"
 #include "esp_opus_enc.h"
 
 #include <assert.h>
+#include <cstring>
 #include <initializer_list>
-#include <stdlib.h>
 
 namespace {
 enum class FailurePoint {
@@ -16,7 +15,6 @@ enum class FailurePoint {
     Decoder,
     RateConverter,
     FrameSize,
-    Allocation,
 };
 
 FailurePoint s_failure = FailurePoint::None;
@@ -49,6 +47,14 @@ void assert_runtime_empty(const VoiceCodecRuntime &runtime)
     assert(runtime.encode_buffers == nullptr);
     assert(runtime.encoder_input_size == 0);
     assert(runtime.encoder_output_size == 0);
+}
+
+void assert_buffers_zero(const VoiceEncodeBuffers &buffers)
+{
+    const auto *bytes = reinterpret_cast<const unsigned char *>(&buffers);
+    for (size_t index = 0; index < sizeof(buffers); ++index) {
+        assert(bytes[index] == 0);
+    }
 }
 } // namespace
 
@@ -100,21 +106,19 @@ extern "C" void esp_ae_rate_cvt_close(esp_ae_rate_cvt_handle_t)
     ++s_rate_close_count;
 }
 
-extern "C" void *heap_caps_calloc(size_t count, size_t size, unsigned)
-{
-    return s_failure == FailurePoint::Allocation ? nullptr : calloc(count, size);
-}
-
 int main()
 {
     {
         reset_fakes();
+        VoiceEncodeBuffers buffers;
+        std::memset(&buffers, 0xa5, sizeof(buffers));
         VoiceCodecRuntime runtime;
-        assert(runtime.initialize(16000));
+        assert(runtime.initialize(16000, &buffers));
         assert(runtime.encoder != nullptr);
         assert(runtime.decoder != nullptr);
         assert(runtime.rate_converter == nullptr);
-        assert(runtime.encode_buffers != nullptr);
+        assert(runtime.encode_buffers == &buffers);
+        assert_buffers_zero(buffers);
         assert(runtime.encoder_input_size == static_cast<int>(sizeof(VoiceEncodeBuffers::mono)));
         assert(runtime.encoder_output_size == static_cast<int>(sizeof(VoiceEncodeBuffers::opus)));
         runtime.release();
@@ -126,10 +130,11 @@ int main()
 
     {
         reset_fakes();
+        VoiceEncodeBuffers buffers = {};
         VoiceCodecRuntime runtime;
-        assert(runtime.initialize(24000));
+        assert(runtime.initialize(24000, &buffers));
         assert(runtime.rate_converter != nullptr);
-        assert(runtime.initialize(16000));
+        assert(runtime.initialize(16000, &buffers));
         assert(runtime.rate_converter == nullptr);
         assert(s_encoder_open_count == 2);
         assert(s_encoder_close_count == 1);
@@ -142,12 +147,12 @@ int main()
     for (FailurePoint failure : {FailurePoint::Encoder,
                                  FailurePoint::Decoder,
                                  FailurePoint::RateConverter,
-                                 FailurePoint::FrameSize,
-                                 FailurePoint::Allocation}) {
+                                 FailurePoint::FrameSize}) {
         reset_fakes(failure);
+        VoiceEncodeBuffers buffers = {};
         VoiceCodecRuntime runtime;
         const int output_rate = failure == FailurePoint::RateConverter ? 24000 : 16000;
-        assert(!runtime.initialize(output_rate));
+        assert(!runtime.initialize(output_rate, &buffers));
         assert_runtime_empty(runtime);
         assert(s_encoder_open_count == 1);
         assert(s_decoder_open_count == (failure == FailurePoint::Encoder ? 0 : 1));
@@ -159,9 +164,9 @@ int main()
     }
 
     {
-        reset_fakes(FailurePoint::Allocation);
+        reset_fakes();
         VoiceCodecRuntime runtime;
-        assert(!runtime.initialize(24000));
+        assert(!runtime.initialize(24000, nullptr));
         assert_runtime_empty(runtime);
         assert(s_rate_open_count == 1);
         assert(s_encoder_close_count == 1);

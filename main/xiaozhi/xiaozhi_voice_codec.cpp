@@ -3,12 +3,11 @@
 
 #include "app_state.h"
 
-#include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_opus_dec.h>
 #include <esp_opus_enc.h>
 
-#include <stdlib.h>
+#include <cstring>
 
 namespace {
 constexpr int kXiaozhiHardwareSampleRate = 16000;
@@ -19,7 +18,8 @@ VoiceCodecRuntime::~VoiceCodecRuntime()
     release();
 }
 
-bool VoiceCodecRuntime::initialize(int output_sample_rate)
+bool VoiceCodecRuntime::initialize(int output_sample_rate,
+                                   VoiceEncodeBuffers *borrowed_encode_buffers)
 {
     release();
 
@@ -72,12 +72,11 @@ bool VoiceCodecRuntime::initialize(int output_sample_rate)
                  static_cast<unsigned>(sizeof(VoiceEncodeBuffers::opus)));
         ready = false;
     }
-    if (ready) {
-        encode_buffers = static_cast<VoiceEncodeBuffers *>(
-            heap_caps_calloc(1,
-                             sizeof(VoiceEncodeBuffers),
-                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-        ready = encode_buffers != nullptr;
+    if (ready && borrowed_encode_buffers) {
+        std::memset(borrowed_encode_buffers, 0, sizeof(VoiceEncodeBuffers));
+        encode_buffers = borrowed_encode_buffers;
+    } else if (ready) {
+        ready = false;
     }
     if (!ready) {
         release();
@@ -99,7 +98,6 @@ void VoiceCodecRuntime::release()
         esp_ae_rate_cvt_close(rate_converter);
         rate_converter = nullptr;
     }
-    free(encode_buffers);
     encode_buffers = nullptr;
     encoder_input_size = 0;
     encoder_output_size = 0;

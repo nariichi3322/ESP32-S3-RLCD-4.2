@@ -4,11 +4,17 @@
 #include <stddef.h>
 
 inline constexpr size_t kXiaozhiActivationResponseSize = 3072;
+inline constexpr size_t kXiaozhiActivationRequestSize = 1536;
 inline constexpr size_t kXiaozhiDeviceIdSize = 18;
 
 struct XiaozhiActivationResponse {
     char data[kXiaozhiActivationResponseSize] = {};
     size_t len = 0;
+};
+
+struct XiaozhiActivationScratch {
+    char request[kXiaozhiActivationRequestSize] = {};
+    XiaozhiActivationResponse response;
 };
 
 inline void xiaozhi_reset_activation_response(XiaozhiActivationResponse *response)
@@ -30,4 +36,4 @@ inline size_t xiaozhi_activation_response_writable_bytes(
 }
 
 void xiaozhi_format_device_id(char *out, size_t out_len);
-bool xiaozhi_request_activation(XiaozhiActivationResponse *response);
+bool xiaozhi_request_activation(XiaozhiActivationScratch *scratch);

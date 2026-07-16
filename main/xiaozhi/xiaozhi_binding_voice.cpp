@@ -3,7 +3,6 @@
 
 #include "app_state.h"
 #include "audio_services.h"
-#include "scoped_heap_buffer.h"
 #include "single_pending_task_gate.h"
 
 #include <esp_codec_dev_types.h>
@@ -18,7 +17,6 @@ constexpr size_t kBindingPauseSamples = 1280;
 constexpr uint32_t kBindingVoiceTaskStackBytes = 6144;
 constexpr UBaseType_t kBindingVoiceTaskPriority = 3;
 constexpr size_t kBindingCodeStorageSize = 24;
-#define XIAOZHI_BINDING_COPY_ALLOC_FAILED_LOG "xiaozhi binding code copy allocation failed"
 #define XIAOZHI_BINDING_TASK_CREATE_FAILED_LOG "xiaozhi binding voice task creation failed"
 
 static_assert(kBindingVoiceTaskStackBytes > 0,
@@ -71,6 +69,7 @@ static_assert(sizeof(kBindingDigitPcm) / sizeof(kBindingDigitPcm[0]) == 10,
               "Xiaozhi binding digit audio must cover 0 through 9");
 
 char s_last_announced_binding_code[kBindingCodeStorageSize] = {};
+char s_pending_binding_code[kBindingCodeStorageSize] = {};
 portMUX_TYPE s_binding_code_mux = portMUX_INITIALIZER_UNLOCKED;
 SinglePendingTaskGate s_binding_voice_task_gate;
 
@@ -94,6 +93,26 @@ void record_announced_binding_code(const char *binding_code)
     portEXIT_CRITICAL(&s_binding_code_mux);
 }
 
+void store_pending_binding_code(const char *binding_code)
+{
+    portENTER_CRITICAL(&s_binding_code_mux);
+    strlcpy(s_pending_binding_code,
+            binding_code ? binding_code : "",
+            sizeof(s_pending_binding_code));
+    portEXIT_CRITICAL(&s_binding_code_mux);
+}
+
+void take_pending_binding_code(char *out, size_t out_len)
+{
+    if (!out || out_len == 0) {
+        return;
+    }
+    portENTER_CRITICAL(&s_binding_code_mux);
+    strlcpy(out, s_pending_binding_code, out_len);
+    s_pending_binding_code[0] = '\0';
+    portEXIT_CRITICAL(&s_binding_code_mux);
+}
+
 bool play_embedded_pcm(const EmbeddedPcm &pcm)
 {
     if (!pcm.start || !pcm.end || pcm.end <= pcm.start) {
@@ -108,13 +127,9 @@ bool play_embedded_pcm(const EmbeddedPcm &pcm)
                                  kBindingPcmSampleRate) == ESP_CODEC_DEV_OK;
 }
 
-bool play_binding_id_voice(char *raw_binding_code)
+bool play_binding_id_voice(const char *binding_code)
 {
-    ScopedHeapBuffer<char> binding_code(raw_binding_code, kBindingCodeStorageSize);
-    if (!binding_code) {
-        return false;
-    }
-    if (!start_xiaozhi_audio_session()) {
+    if (!binding_code || !start_xiaozhi_audio_session()) {
         return false;
     }
     bool played = play_embedded_pcm(kBindingPromptPcm);
@@ -124,7 +139,7 @@ bool play_binding_id_voice(char *raw_binding_code)
                                        kBindingPauseSamples,
                                        kBindingPcmSampleRate) == ESP_CODEC_DEV_OK;
     }
-    for (const char *cursor = binding_code.data(); played && *cursor; ++cursor) {
+    for (const char *cursor = binding_code; played && *cursor; ++cursor) {
         int index = xiaozhi_binding_voice::digit_index(*cursor);
         if (index < 0) {
             continue;
@@ -143,12 +158,12 @@ bool play_binding_id_voice(char *raw_binding_code)
 
 void binding_id_voice_task(void *arg)
 {
-    char *binding_code = static_cast<char *>(arg);
-    char announced_code[kBindingCodeStorageSize] = {};
-    strlcpy(announced_code, binding_code ? binding_code : "", sizeof(announced_code));
+    (void)arg;
+    char binding_code[kBindingCodeStorageSize] = {};
+    take_pending_binding_code(binding_code, sizeof(binding_code));
     bool played = play_binding_id_voice(binding_code);
     if (played) {
-        record_announced_binding_code(announced_code);
+        record_announced_binding_code(binding_code);
     }
     s_binding_voice_task_gate.release();
     vTaskDelete(nullptr);
@@ -161,22 +176,16 @@ void xiaozhi_announce_binding_id_once(const char *binding_code)
         !s_binding_voice_task_gate.try_acquire()) {
         return;
     }
-    ScopedHeapBuffer<char> code_copy(kBindingCodeStorageSize, HeapBufferInit::kZeroed);
-    if (!code_copy) {
-        ESP_LOGW(TAG, XIAOZHI_BINDING_COPY_ALLOC_FAILED_LOG);
-        s_binding_voice_task_gate.release();
-        return;
-    }
-    strlcpy(code_copy.data(), binding_code, code_copy.size());
+    store_pending_binding_code(binding_code);
     if (xTaskCreate(binding_id_voice_task,
                     "xiaozhi_bind",
                     kBindingVoiceTaskStackBytes,
-                    code_copy.data(),
+                    nullptr,
                     kBindingVoiceTaskPriority,
                     nullptr) != pdPASS) {
         ESP_LOGW(TAG, XIAOZHI_BINDING_TASK_CREATE_FAILED_LOG);
+        store_pending_binding_code(nullptr);
         s_binding_voice_task_gate.release();
         return;
     }
-    (void)code_copy.release();
 }

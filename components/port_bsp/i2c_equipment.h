@@ -36,6 +36,7 @@ private:
 	etError Shtc3_GetId();
 	etError Shtc3_CheckCrc(uint8_t data[], uint8_t nbrOfBytes,uint8_t checksum);
 	etError Shtc3_GetTempAndHumiPolling(float *temp, float *humi);
+	etError Shtc3_SleepWithRetry();
 	float Shtc3_CalcTemperature(uint16_t rawValue);
 	float Shtc3_CalcHumidity(uint16_t rawValue);
 

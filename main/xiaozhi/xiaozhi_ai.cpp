@@ -8,7 +8,6 @@
 #include "network_services.h"
 #include "network_credentials_state.h"
 #include "network_https_resources.h"
-#include "scoped_heap_buffer.h"
 #include "ui_views.h"
 #include "xiaozhi_activation_flow.h"
 #include "xiaozhi_activation_retry_policy.h"
@@ -27,6 +26,7 @@
 #include "xiaozhi_tts_playback.h"
 #include "xiaozhi_voice.h"
 #include "xiaozhi_voice_codec.h"
+#include "xiaozhi_voice_io_storage.h"
 #include "xiaozhi_websocket_session.h"
 #include "weather_city_mcp.h"
 
@@ -57,7 +57,6 @@ constexpr uint32_t kWakeAudioPerformanceSettleMs = 40;
 constexpr uint32_t kConversationIdleTimeoutMs = 30000;
 constexpr uint32_t kMcpWeatherRefreshPollMs = 500;
 constexpr uint32_t kMcpWeatherRefreshTimeoutMs = 150000;
-constexpr int kIncomingAudioBufferSize = 4096;
 // 官方实现为 Opus 编解码任务预留 24 KiB。这里的任务还负责 WebSocket
 // 协议，因此至少保持相同栈空间，避免进入 SILK 编码器后破坏任务栈。
 constexpr uint32_t kXiaozhiTaskStackSize = 24 * 1024;
@@ -72,11 +71,7 @@ constexpr EventBits_t kAiPageActiveBit = BIT0;
 constexpr EventBits_t kAiWakeBit = BIT1;
 #define XIAOZHI_STATE_INIT_FAILED_LOG "Xiaozhi AI state initialization failed"
 
-struct VoiceIoBuffers {
-    char incoming[kIncomingAudioBufferSize] = {};
-    XiaozhiAudioDecodeBuffers audio;
-};
-
+StaticEventGroup_t s_event_group_storage = {};
 EventGroupHandle_t s_events = nullptr;
 TaskHandle_t s_task_handle = nullptr;
 std::atomic<bool> s_task_exited{true};
@@ -204,24 +199,22 @@ bool run_voice_conversation()
         return false;
     }
     log_voice_resources("websocket connected");
-    ScopedHeapBuffer<uint8_t> buffers_storage(
-        static_cast<uint8_t *>(heap_caps_calloc(
-            1, sizeof(VoiceIoBuffers), MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)),
-        sizeof(VoiceIoBuffers));
-    if (!buffers_storage) {
+    XiaozhiVoiceIoLease buffers_lease;
+    if (!buffers_lease) {
         close_websocket(&session);
         return false;
     }
-    VoiceIoBuffers *buffers = reinterpret_cast<VoiceIoBuffers *>(buffers_storage.data());
+    XiaozhiVoiceIoBuffers *buffers = buffers_lease.get();
     if (!xiaozhi_start_voice_protocol_session(&session,
                                                buffers->incoming,
                                                sizeof(buffers->incoming))) {
-        buffers_storage.reset();
+        buffers_lease.reset();
         close_websocket(&session);
         return false;
     }
     VoiceCodecRuntime codec_runtime;
-    bool ready = codec_runtime.initialize(session.output_sample_rate);
+    bool ready = codec_runtime.initialize(session.output_sample_rate,
+                                          &buffers->encode);
     if (ready) {
         ready = xiaozhi_tts_playback_start();
     }
@@ -394,7 +387,7 @@ bool run_voice_conversation()
     xiaozhi_tts_playback_stop();
     xiaozhi_voice_set_streaming(false);
     codec_runtime.release();
-    buffers_storage.reset();
+    buffers_lease.reset();
     close_websocket(&session);
     log_voice_resources("conversation closed");
     return ready;
@@ -624,7 +617,7 @@ void xiaozhi_ai_init()
     if (s_events) {
         return;
     }
-    s_events = xEventGroupCreate();
+    s_events = xEventGroupCreateStatic(&s_event_group_storage);
     bool snapshot_ready = xiaozhi_snapshot_state_init();
     if (!s_events || !snapshot_ready) {
         ESP_LOGW(TAG, "%s", XIAOZHI_STATE_INIT_FAILED_LOG);

@@ -1,4 +1,4 @@
-// 管理小智一轮实时会话的 Opus 编解码器、采样率转换器和编码缓冲。
+// 管理小智一轮实时会话的 Opus 编解码器、采样率转换器和借用编码缓冲。
 #pragma once
 
 #include <stddef.h>
@@ -31,6 +31,6 @@ struct VoiceCodecRuntime {
     VoiceCodecRuntime(const VoiceCodecRuntime &) = delete;
     VoiceCodecRuntime &operator=(const VoiceCodecRuntime &) = delete;
 
-    bool initialize(int output_sample_rate);
+    bool initialize(int output_sample_rate, VoiceEncodeBuffers *borrowed_encode_buffers);
     void release();
 };

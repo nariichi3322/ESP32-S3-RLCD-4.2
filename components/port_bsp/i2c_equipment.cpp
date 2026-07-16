@@ -10,6 +10,8 @@ namespace {
 constexpr uint32_t kShtc3PostResetDelayMs = 20;
 constexpr uint32_t kShtc3WakeupDelayMs = 50;
 constexpr uint32_t kShtc3MeasureDelayMs = 20;
+constexpr uint32_t kShtc3SleepRetryDelayMs = 10;
+constexpr uint8_t kShtc3SleepAttempts = 2;
 constexpr uint32_t kShtc3I2cSpeedHz = 400000;
 constexpr uint32_t kRtcI2cSpeedHz = 300000;
 constexpr const char *kShtc3LogTag = "shtc3";
@@ -23,9 +25,12 @@ constexpr float kShtc3HumidityScalePercent = 100.0f;
 constexpr TickType_t kShtc3PostResetDelay = pdMS_TO_TICKS(kShtc3PostResetDelayMs);
 constexpr TickType_t kShtc3WakeupDelay = pdMS_TO_TICKS(kShtc3WakeupDelayMs);
 constexpr TickType_t kShtc3MeasureDelay = pdMS_TO_TICKS(kShtc3MeasureDelayMs);
+constexpr TickType_t kShtc3SleepRetryDelay = pdMS_TO_TICKS(kShtc3SleepRetryDelayMs);
 static_assert(kShtc3PostResetDelayMs > 0, "SHTC3 post-reset delay must be positive");
 static_assert(kShtc3WakeupDelayMs > 0, "SHTC3 wakeup delay must be positive");
 static_assert(kShtc3MeasureDelayMs > 0, "SHTC3 measure delay must be positive");
+static_assert(kShtc3SleepRetryDelayMs > 0, "SHTC3 sleep retry delay must be positive");
+static_assert(kShtc3SleepAttempts > 1, "SHTC3 sleep must have a bounded retry");
 static_assert(kShtc3I2cSpeedHz > 0, "SHTC3 I2C speed must be positive");
 static_assert(kRtcI2cSpeedHz > 0, "RTC I2C speed must be positive");
 static_assert(kShtc3LogTag[0] != '\0', "SHTC3 log tag must not be empty");
@@ -36,6 +41,7 @@ static_assert(kShtc3HumidityScalePercent > 0.0f, "SHTC3 humidity scale must be p
 static_assert(kShtc3PostResetDelay > 0, "SHTC3 post-reset tick delay must be positive");
 static_assert(kShtc3WakeupDelay > 0, "SHTC3 wakeup tick delay must be positive");
 static_assert(kShtc3MeasureDelay > 0, "SHTC3 measure tick delay must be positive");
+static_assert(kShtc3SleepRetryDelay > 0, "SHTC3 sleep retry tick delay must be positive");
 } // namespace
 
 Shtc3Port::Shtc3Port(I2cMasterBus& i2cbus) :
@@ -61,7 +67,7 @@ i2cbus_(i2cbus) {
     Shtc3_SoftReset();
     vTaskDelay(kShtc3PostResetDelay);
     Shtc3_GetId();
-    Shtc3_Sleep();
+    Shtc3_SleepWithRetry();
     ESP_LOGI(TAG, "ID:%04x", shtc3_id);
 }
 
@@ -207,18 +213,37 @@ etError Shtc3Port::Shtc3_Sleep() {
     return error;
 }
 
+etError Shtc3Port::Shtc3_SleepWithRetry() {
+    etError error = ACK_ERROR;
+    for (uint8_t attempt = 0; attempt < kShtc3SleepAttempts; ++attempt) {
+        error = Shtc3_Sleep();
+        if (error == NO_ERROR) {
+            return NO_ERROR;
+        }
+        if (attempt + 1 < kShtc3SleepAttempts) {
+            vTaskDelay(kShtc3SleepRetryDelay);
+        }
+    }
+    ESP_LOGW(kShtc3LogTag, "Sleep retry exhausted");
+    return error;
+}
+
 uint8_t Shtc3Port::Shtc3_ReadTempHumi(float *t,float *h) {
     if (!I2c_DevShtc3 || !t || !h) {
         return 1;
     }
-    etError      error;
-    Shtc3_Wakeup();
-    error = Shtc3_GetTempAndHumiPolling(t, h);
-    if (error != NO_ERROR) {
-        ESP_LOGW(kShtc3LogTag, "error:%d", error);
+    const etError wake_error = Shtc3_Wakeup();
+    if (wake_error != NO_ERROR) {
+        (void) Shtc3_SleepWithRetry();
+        return 1;
     }
-    Shtc3_Sleep();
-    return error == NO_ERROR ? 0 : 1;
+
+    const etError measure_error = Shtc3_GetTempAndHumiPolling(t, h);
+    if (measure_error != NO_ERROR) {
+        ESP_LOGW(kShtc3LogTag, "error:%d", measure_error);
+    }
+    const etError sleep_error = Shtc3_SleepWithRetry();
+    return measure_error == NO_ERROR && sleep_error == NO_ERROR ? 0 : 1;
 }
 
 static i2c_master_dev_handle_t I2cRTCdev = NULL;

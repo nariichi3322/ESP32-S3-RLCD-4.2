@@ -3,6 +3,7 @@
 
 #include "app_text_format.h"
 #include "app_state.h"
+#include "checked_size.h"
 #include "manual_weather_city_state.h"
 #include "network_credentials_state.h"
 #include "scoped_heap_buffer.h"
@@ -59,52 +60,6 @@ static_assert(kPortalRootHtmlSize > kPortalSaveResultHtmlSize,
 static_assert(kPortalRootHtmlSize > kPortalOfflineResultHtmlSize,
               "portal root HTML buffer must exceed offline result buffer");
 static_assert(kPortalSaveExtraTextSize > 1, "portal save extra text buffer must fit text and NUL");
-class WifiScanRecords {
-public:
-    explicit WifiScanRecords(uint16_t count)
-        : records_((wifi_ap_record_t *)calloc(count, sizeof(wifi_ap_record_t))),
-          capacity_(count)
-    {
-    }
-
-    ~WifiScanRecords()
-    {
-        free(records_);
-    }
-
-    WifiScanRecords(const WifiScanRecords &) = delete;
-    WifiScanRecords &operator=(const WifiScanRecords &) = delete;
-
-    wifi_ap_record_t *data() const
-    {
-        return records_;
-    }
-
-    uint16_t capacity() const
-    {
-        return capacity_;
-    }
-
-    uint16_t count() const
-    {
-        return count_;
-    }
-
-    explicit operator bool() const
-    {
-        return records_ != nullptr;
-    }
-
-    void set_count(uint16_t count)
-    {
-        count_ = count <= capacity_ ? count : capacity_;
-    }
-
-private:
-    wifi_ap_record_t *records_ = nullptr;
-    uint16_t capacity_ = 0;
-    uint16_t count_ = 0;
-};
 
 esp_err_t send_portal_html(httpd_req_t *req, const char *html)
 {
@@ -264,30 +219,42 @@ void append_wifi_scan_list(char *html, size_t html_len)
         if (max_records > kMaxListedApCount) {
             max_records = kMaxListedApCount;
         }
-        WifiScanRecords records(max_records);
-        if (!records) {
+        size_t records_bytes = 0;
+        if (!app_memory::checked_size_multiply(max_records,
+                                               sizeof(wifi_ap_record_t),
+                                               &records_bytes)) {
             append_wifi_scan_message_and_close(html, html_len, kPortalWifiScanNoMemoryMessage);
             return;
         }
-        uint16_t record_count = records.capacity();
-        err = esp_wifi_scan_get_ap_records(&record_count, records.data());
+        ScopedHeapBuffer<uint8_t> records_storage(records_bytes,
+                                                  HeapBufferInit::kZeroed);
+        if (!records_storage) {
+            append_wifi_scan_message_and_close(html, html_len, kPortalWifiScanNoMemoryMessage);
+            return;
+        }
+        wifi_ap_record_t *records =
+            reinterpret_cast<wifi_ap_record_t *>(records_storage.data());
+        uint16_t record_count = max_records;
+        err = esp_wifi_scan_get_ap_records(&record_count, records);
         if (err != ESP_OK) {
             append_wifi_scan_message_and_close(html, html_len, kPortalWifiScanFailedMessage);
             return;
         }
-        records.set_count(record_count);
-        if (records.count() == 0) {
+        if (record_count > max_records) {
+            record_count = max_records;
+        }
+        if (record_count == 0) {
             append_wifi_scan_message(html, html_len, kPortalWifiScanEmptyMessage);
         }
-        for (uint16_t i = 0; i < records.count(); ++i) {
-            if (records.data()[i].ssid[0] == '\0') {
+        for (uint16_t i = 0; i < record_count; ++i) {
+            if (records[i].ssid[0] == '\0') {
                 continue;
             }
             char ssid[kPortalEscapedSsidSize] = {};
-            html_escape((const char *)records.data()[i].ssid, ssid, sizeof(ssid));
+            html_escape((const char *)records[i].ssid, ssid, sizeof(ssid));
             html_append(html, html_len,
                         "<button type='button' class='wifi' data-ssid=\"%s\" onclick=\"pick(this.dataset.ssid)\"><span>%s</span><b>%d dBm</b></button>",
-                        ssid, ssid, records.data()[i].rssi);
+                        ssid, ssid, records[i].rssi);
         }
     }
     html_append(html, html_len, kPortalSectionCloseHtml);

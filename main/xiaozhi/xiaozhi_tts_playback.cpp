@@ -42,9 +42,9 @@ std::atomic<bool> s_busy{false};
 std::atomic<bool> s_failed{false};
 TaskHandle_t s_task = nullptr;
 StackType_t *s_task_stack = nullptr;
-StaticTask_t *s_task_buffer = nullptr;
+StaticTask_t s_task_buffer = {};
 uint8_t *s_storage = nullptr;
-StaticStreamBuffer_t *s_stream_buffer = nullptr;
+StaticStreamBuffer_t s_stream_buffer = {};
 StreamBufferHandle_t s_stream = nullptr;
 StaticSemaphore_t s_wake_signal_storage = {};
 SemaphoreHandle_t s_wake_signal = nullptr;
@@ -62,13 +62,9 @@ void release_storage()
     }
     s_stream = nullptr;
     free(s_storage);
-    free(s_stream_buffer);
     free(s_task_stack);
-    free(s_task_buffer);
     s_storage = nullptr;
-    s_stream_buffer = nullptr;
     s_task_stack = nullptr;
-    s_task_buffer = nullptr;
 }
 
 bool prepare_wake_signal()
@@ -185,13 +181,9 @@ bool xiaozhi_tts_playback_start()
     }
     s_storage = static_cast<uint8_t *>(heap_caps_calloc(
         1, kStreamBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    s_stream_buffer = static_cast<StaticStreamBuffer_t *>(heap_caps_calloc(
-        1, sizeof(StaticStreamBuffer_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
     s_task_stack = static_cast<StackType_t *>(heap_caps_calloc(
         1, kTaskStackBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    s_task_buffer = static_cast<StaticTask_t *>(heap_caps_calloc(
-        1, sizeof(StaticTask_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    if (!s_storage || !s_stream_buffer || !s_task_stack || !s_task_buffer) {
+    if (!s_storage || !s_task_stack) {
         ESP_LOGW(TAG, "Xiaozhi TTS playback storage allocation failed");
         release_storage();
         return false;
@@ -199,7 +191,7 @@ bool xiaozhi_tts_playback_start()
     s_stream = xStreamBufferCreateStatic(kStreamBytes,
                                          sizeof(int16_t),
                                          s_storage,
-                                         s_stream_buffer);
+                                         &s_stream_buffer);
     if (!s_stream) {
         ESP_LOGW(TAG, "%s", kStreamCreateFailedLog);
         release_storage();
@@ -215,7 +207,7 @@ bool xiaozhi_tts_playback_start()
                                            nullptr,
                                            kTaskPriority,
                                            s_task_stack,
-                                           s_task_buffer,
+                                           &s_task_buffer,
                                            1);
     if (!s_task) {
         ESP_LOGW(TAG, "%s", kTaskCreateFailedLog);

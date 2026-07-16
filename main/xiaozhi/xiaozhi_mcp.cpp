@@ -107,13 +107,14 @@ cJSON *create_device_status_result()
     cJSON_AddNumberToObject(status.get(),
                             "volume_percent",
                             static_cast<int>(g_chime_volume_percent));
-    char *status_text = cJSON_PrintUnformatted(status.get());
-    if (!status_text) {
+    char status_text[kToolResultTextLen] = {};
+    if (!cJSON_PrintPreallocated(status.get(),
+                                 status_text,
+                                 static_cast<int>(sizeof(status_text)),
+                                 false)) {
         return nullptr;
     }
-    cJSON *result = create_tool_content(status_text, false);
-    cJSON_free(status_text);
-    return result;
+    return create_tool_content(status_text, false);
 }
 
 cJSON *call_set_volume(const cJSON *arguments)

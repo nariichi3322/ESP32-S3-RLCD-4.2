@@ -1,4 +1,4 @@
-// 实现闹钟 NVS 三键记录的读取、提交和整命名空间清除。
+// 实现闹钟 NVS 三键记录的读取、无变化免提交和整命名空间清除。
 #include "alarm_storage.h"
 
 #include "scoped_nvs_handle.h"
@@ -28,6 +28,18 @@ esp_err_t first_read_error(esp_err_t enabled_err, esp_err_t hour_err, esp_err_t 
         return hour_err;
     }
     return minute_err;
+}
+
+bool stored_alarm_matches(nvs_handle_t nvs, bool enabled, uint8_t hour, uint8_t minute)
+{
+    uint8_t stored_enabled = 0;
+    uint8_t stored_hour = 0;
+    uint8_t stored_minute = 0;
+    return nvs_get_u8(nvs, kEnabledKey, &stored_enabled) == ESP_OK &&
+           nvs_get_u8(nvs, kHourKey, &stored_hour) == ESP_OK &&
+           nvs_get_u8(nvs, kMinuteKey, &stored_minute) == ESP_OK &&
+           stored_enabled == (enabled ? 1 : 0) &&
+           stored_hour == hour && stored_minute == minute;
 }
 } // namespace
 
@@ -68,6 +80,11 @@ WriteResult write(bool enabled, uint8_t hour, uint8_t minute)
     esp_err_t err = nvs.open(kNamespace, NVS_READWRITE);
     if (err != ESP_OK) {
         return {WriteStatus::kOpenFailed, err};
+    }
+
+    if (stored_alarm_matches(nvs.get(), enabled, hour, minute)) {
+        nvs.close();
+        return {WriteStatus::kSaved, ESP_OK};
     }
 
     err = nvs_set_u8(nvs.get(), kEnabledKey, enabled ? 1 : 0);

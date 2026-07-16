@@ -18,6 +18,7 @@
     "xiaozhi audio residual cleanup: owner=%d codec=%d lock=%d speaker=%d stream=%d"
 
 namespace {
+alignas(CodecPort) unsigned char s_audio_codec_storage[sizeof(CodecPort)] = {};
 CodecPort *s_audio_codec = nullptr;
 std::atomic<bool> s_audio_codec_present{false};
 portMUX_TYPE s_audio_state_mux = portMUX_INITIALIZER_UNLOCKED;
@@ -38,7 +39,6 @@ constexpr gpio_num_t kAudioDinGpio = GPIO_NUM_10;
 constexpr gpio_num_t kAudioDoutGpio = GPIO_NUM_8;
 constexpr gpio_num_t kAudioPaGpio = GPIO_NUM_46;
 constexpr const char *kAudioCodecBoardName = "S3_RLCD_4_2";
-constexpr const char *kAudioCodecAllocationFailedLog = "audio codec allocation failed";
 constexpr const char *kXiaozhiAudioStartFailedLog = "xiaozhi audio session start failed";
 constexpr const char *kXiaozhiSpeakerCloseFailedLog = "xiaozhi speaker close failed after retry";
 constexpr const char *kXiaozhiWakeFeedbackWarmupFailedLog = "xiaozhi wake feedback speaker warmup failed";
@@ -186,12 +186,11 @@ bool audio_codec_active()
 static CodecPort *ensure_audio_codec()
 {
     if (!s_audio_codec) {
-        CodecPort *codec = new (std::nothrow) CodecPort(g_i2c, kAudioCodecBoardName);
-        if (!codec) {
-            ESP_LOGW(TAG, "%s", kAudioCodecAllocationFailedLog);
-        } else if (!codec->CodecPort_IsReady()) {
+        CodecPort *codec = new (s_audio_codec_storage) CodecPort(g_i2c,
+                                                                 kAudioCodecBoardName);
+        if (!codec->CodecPort_IsReady()) {
             ESP_LOGW(TAG, "audio codec playback handle unavailable");
-            delete codec;
+            codec->~CodecPort();
         } else {
             s_audio_codec = codec;
             s_audio_codec_present.store(true, std::memory_order_release);
@@ -204,7 +203,7 @@ static void release_audio_codec()
 {
     if (s_audio_codec) {
         s_audio_codec_present.store(false, std::memory_order_release);
-        delete s_audio_codec;
+        s_audio_codec->~CodecPort();
         s_audio_codec = nullptr;
     }
 }

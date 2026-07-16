@@ -11,10 +11,14 @@
 namespace {
 int s_notify_count = 0;
 int s_mutex_token = 0;
+int s_mutex_create_count = 0;
+int s_mutex_delete_count = 0;
 } // namespace
 
-SemaphoreHandle_t xSemaphoreCreateMutex()
+SemaphoreHandle_t xSemaphoreCreateMutexStatic(StaticSemaphore_t *storage)
 {
+    assert(storage != nullptr);
+    ++s_mutex_create_count;
     return &s_mutex_token;
 }
 
@@ -30,6 +34,7 @@ BaseType_t xSemaphoreGive(SemaphoreHandle_t)
 
 void vSemaphoreDelete(SemaphoreHandle_t)
 {
+    ++s_mutex_delete_count;
 }
 
 void notify_ui_task()
@@ -44,6 +49,9 @@ void register_ui_task_handle(TaskHandle_t)
 int main()
 {
     assert(xiaozhi_snapshot_state_init());
+    assert(s_mutex_create_count == 1);
+    assert(xiaozhi_snapshot_state_init());
+    assert(s_mutex_create_count == 1);
 
     xiaozhi_snapshot_set(kXiaozhiAiReady, "等待唤醒词", "请说你好，小智", "123456");
     assert(s_notify_count == 1);
@@ -75,8 +83,14 @@ int main()
     assert(snapshot.activity_sequence == 2);
 
     xiaozhi_snapshot_state_deinit();
+    assert(s_mutex_delete_count == 1);
     xiaozhi_snapshot_set(kXiaozhiAiError, "error", "ignored");
     assert(s_notify_count == 5);
+
+    assert(xiaozhi_snapshot_state_init());
+    assert(s_mutex_create_count == 2);
+    xiaozhi_snapshot_state_deinit();
+    assert(s_mutex_delete_count == 2);
     puts("Xiaozhi snapshot state host tests passed");
     return 0;
 }

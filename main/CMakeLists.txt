@@ -160,6 +160,7 @@ idf_component_register(
         "xiaozhi/xiaozhi_tts_playback.cpp"
         "xiaozhi/xiaozhi_voice.cpp"
         "xiaozhi/xiaozhi_voice_codec.cpp"
+        "xiaozhi/xiaozhi_voice_io_storage.cpp"
         "xiaozhi/xiaozhi_websocket_session.cpp"
         "input/input_tasks.cpp"
         "assets/boot_anim.c"

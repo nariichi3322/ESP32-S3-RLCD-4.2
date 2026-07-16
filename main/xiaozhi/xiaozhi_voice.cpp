@@ -54,8 +54,8 @@ TaskHandle_t s_feed_task = nullptr;
 TaskHandle_t s_detect_task = nullptr;
 StackType_t *s_feed_task_stack = nullptr;
 StackType_t *s_detect_task_stack = nullptr;
-StaticTask_t *s_feed_task_buffer = nullptr;
-StaticTask_t *s_detect_task_buffer = nullptr;
+StaticTask_t s_feed_task_buffer = {};
+StaticTask_t s_detect_task_buffer = {};
 std::atomic<int16_t *> s_capture_buffer{nullptr};
 int s_capture_codec_bytes = 0;
 int s_capture_chunk_samples = 0;
@@ -65,7 +65,7 @@ const esp_afe_sr_iface_t *s_afe_iface = nullptr;
 esp_afe_sr_data_t *s_afe_data = nullptr;
 StreamBufferHandle_t s_processed_stream = nullptr;
 uint8_t *s_processed_stream_storage = nullptr;
-StaticStreamBuffer_t *s_processed_stream_control = nullptr;
+StaticStreamBuffer_t s_processed_stream_control = {};
 
 void notify_voice_event()
 {
@@ -90,26 +90,22 @@ bool ensure_processed_stream()
     }
     s_processed_stream_storage = static_cast<uint8_t *>(heap_caps_calloc(
         1, kProcessedStreamBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    s_processed_stream_control = static_cast<StaticStreamBuffer_t *>(heap_caps_calloc(
-        1, sizeof(StaticStreamBuffer_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    if (s_processed_stream_storage && s_processed_stream_control) {
+    if (s_processed_stream_storage) {
         s_processed_stream = xStreamBufferCreateStatic(kProcessedStreamBytes,
                                                         1,
                                                         s_processed_stream_storage,
-                                                        s_processed_stream_control);
+                                                        &s_processed_stream_control);
     }
     if (!s_processed_stream) {
         ESP_LOGW(kTag,
                  "AEC output stream allocation failed: storage=%p control=%p "
                  "internal_largest=%u psram_largest=%u",
                  s_processed_stream_storage,
-                 s_processed_stream_control,
+                 static_cast<void *>(&s_processed_stream_control),
                  static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
                  static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)));
         free(s_processed_stream_storage);
-        free(s_processed_stream_control);
         s_processed_stream_storage = nullptr;
-        s_processed_stream_control = nullptr;
         return false;
     }
     ESP_LOGI(kTag,
@@ -137,12 +133,8 @@ void release_task_storage()
 {
     free(s_feed_task_stack);
     free(s_detect_task_stack);
-    free(s_feed_task_buffer);
-    free(s_detect_task_buffer);
     s_feed_task_stack = nullptr;
     s_detect_task_stack = nullptr;
-    s_feed_task_buffer = nullptr;
-    s_detect_task_buffer = nullptr;
 }
 
 bool allocate_task_storage()
@@ -150,29 +142,25 @@ bool allocate_task_storage()
     release_task_storage();
     // ESP-IDF accepts the static stack depth in bytes.  Keeping the large stacks
     // in PSRAM avoids depending on a pair of contiguous internal-RAM blocks after
-    // ESP-SR has created its AFE/AEC pipeline.  TCBs must remain in internal RAM.
+    // ESP-SR has created its AFE/AEC pipeline. The small TCBs use fixed internal
+    // storage and are reused only after delete_voice_tasks() completes.
     s_feed_task_stack = static_cast<StackType_t *>(heap_caps_calloc(
         1, kFeedTaskStackBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     s_detect_task_stack = static_cast<StackType_t *>(heap_caps_calloc(
         1, kDetectTaskStackBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
-    s_feed_task_buffer = static_cast<StaticTask_t *>(heap_caps_calloc(
-        1, sizeof(StaticTask_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    s_detect_task_buffer = static_cast<StaticTask_t *>(heap_caps_calloc(
-        1, sizeof(StaticTask_t), MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    if (!s_feed_task_stack || !s_detect_task_stack ||
-        !s_feed_task_buffer || !s_detect_task_buffer) {
+    if (!s_feed_task_stack || !s_detect_task_stack) {
         ESP_LOGW(kTag,
                  "MR AEC task storage allocation failed: feed_stack=%p detect_stack=%p "
                  "feed_tcb=%p detect_tcb=%p",
                  s_feed_task_stack,
                  s_detect_task_stack,
-                 s_feed_task_buffer,
-                 s_detect_task_buffer);
+                 static_cast<void *>(&s_feed_task_buffer),
+                 static_cast<void *>(&s_detect_task_buffer));
         release_task_storage();
         return false;
     }
     ESP_LOGI(kTag,
-             "MR AEC task storage: feed_psram=%u detect_psram=%u tcb_internal=%u",
+             "MR AEC task storage: feed_psram=%u detect_psram=%u tcb_static=%u",
              static_cast<unsigned>(kFeedTaskStackBytes),
              static_cast<unsigned>(kDetectTaskStackBytes),
              static_cast<unsigned>(sizeof(StaticTask_t) * 2));
@@ -475,7 +463,10 @@ bool xiaozhi_voice_start()
     if (!ensure_processed_stream()) {
         return false;
     }
-    if (!is_audio_playing() && !start_xiaozhi_audio_session()) {
+    // A fresh listener must own the Codec/I2S session before any AFE worker is
+    // created. If another alert is using audio, fail this attempt and let the
+    // coordinator retry instead of starting microphone tasks without hardware.
+    if (!start_xiaozhi_audio_session()) {
         xStreamBufferReset(s_processed_stream);
         return false;
     }
@@ -511,11 +502,11 @@ bool xiaozhi_voice_start()
     s_detect_exited.store(false);
     s_feed_task = xTaskCreateStaticPinnedToCore(
         feed_task, "xiaozhi_feed", kFeedTaskStackBytes, nullptr,
-        kTaskPriority, s_feed_task_stack, s_feed_task_buffer, 0);
+        kTaskPriority, s_feed_task_stack, &s_feed_task_buffer, 0);
     if (s_feed_task) {
         s_detect_task = xTaskCreateStaticPinnedToCore(
             detect_task, "xiaozhi_detect", kDetectTaskStackBytes, nullptr,
-            kTaskPriority, s_detect_task_stack, s_detect_task_buffer, 1);
+            kTaskPriority, s_detect_task_stack, &s_detect_task_buffer, 1);
     }
     if (!s_feed_task || !s_detect_task) {
         ESP_LOGW(kTag,

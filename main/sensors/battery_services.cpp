@@ -265,6 +265,7 @@ bool read_battery_percent(int *percent)
     *percent = reading.percent;
     // Preserve the existing public helper behavior for any external caller.
     battery_runtime_voltage_store(reading.voltage);
+    release_battery_gauge();
     return true;
 }
 

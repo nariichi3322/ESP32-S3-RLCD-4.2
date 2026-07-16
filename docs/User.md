@@ -100,15 +100,23 @@ Provides local wake-word detection, voice conversations, on-screen transcripts, 
 - While waiting for cloud reply audio, an empty playback queue sleeps until new data arrives instead of polling every few milliseconds. Voice content, initial buffering, and playback order are unchanged.
 - First use may require binding to the Xiaozhi service by following the on-screen prompt.
 - A bound device restores its saved service configuration directly. An unbound device still displays and announces the binding ID first. It is marked announced only after the prompt and all digits finish; if audio is temporarily busy or the task cannot start, a later activation cycle retries without requiring page switching or a reboot.
+- An unbound device or failed service activation still retries at the existing interval. Request and response scratch memory is cleared and reused between attempts to reduce long-running heap fragmentation without changing the binding procedure or prompts.
 - Speak the wake word while waiting. If the page says Xiaozhi is preparing, allow service initialization to finish.
 - If the cloud service recognizes only an incomplete phrase and returns no text or audio reply, the page shows that it did not hear the complete request. Continue or repeat the request; about 12 seconds of silence returns to wake-word standby.
 - User transcripts, assistant replies, emotions, and playback completion use one conversation-state path so multi-turn listening, farewell return, and minimum transcript visibility remain consistent.
 - Service handshakes, ordinary replies, and MCP tool messages share a bounded session buffer. An invalid oversized text frame ends the current session instead of overwriting adjacent memory.
+- Wake-word listening starts only after Xiaozhi has acquired the microphone and audio hardware. If an alarm, Pomodoro alert, or prompt is using audio, the existing recovery path retries after the hardware is released instead of starting a partial listener.
+- Device-status queries format sensor, battery, and volume data in a fixed-capacity buffer. Under memory pressure, the current query fails cleanly without retaining temporary memory or disrupting later conversations.
 - Xiaozhi validates audio lengths before sending, decoding, sample-rate conversion, and playback queueing. An invalid frame ends only the current conversation instead of reading beyond its buffer.
+- WebSocket receive, Opus encode, and audio-decode scratch now share one PSRAM lease across conversations and are cleared before and after each one. The encoder no longer allocates a separate buffer per conversation; microphone, speaker, Wi-Fi, and voice tasks still stop after leaving the Xiaozhi page.
+- The short first-binding code now crosses into its playback task through a fixed protected slot instead of a per-announcement heap allocation. Prompt and digit order are unchanged, and a failed playback remains eligible for a later activation retry.
 - Page status, subtitles, and emotion refresh only when their content changes. Offline, unconfigured, or retry states do not repeatedly redraw the same message.
 - While offline mode is enabled or Wi-Fi has not been saved, Xiaozhi waits for a configuration change instead of periodically starting network work. Saving setup, changing offline mode, or leaving the page wakes it immediately.
 - Binding or service connection failures retry automatically at about 15-second intervals. Leaving the page, alarms, and Pomodoro events remain immediately responsive during this wait.
 - Leaving the page or reaching a failed connection retry stops the ordinary voice session and releases its page-owned network/power resources. Alarm and an active Pomodoro keep running in the background.
+- Audio hardware still shuts down after prompts, alarms, chimes, and Xiaozhi sessions. Repeated audio use reuses fixed object storage to reduce long-running heap fragmentation without keeping the codec powered while idle.
+- Xiaozhi reply queues and playback tasks still run only during a conversation. Their small control metadata now reuses fixed storage to reduce internal-heap fragmentation across repeated conversations without changing page-exit cleanup.
+- The intermediate wake-word and speech-processing queue, plus the two recognition tasks' small control blocks, reuse fixed storage. Their larger task stacks still exist only while the Xiaozhi page is active and are released on exit. Leaving the page still stops the microphone, recognition tasks, and audio hardware; fixed control metadata does not mean the device keeps listening.
 - This page consumes substantially more power and warms the PCB, which may make the onboard temperature/humidity reading higher than the surrounding air.
 
 ## 4. Setup Portal
@@ -120,7 +128,7 @@ With no saved online configuration and offline mode disabled, setup starts autom
 1. Join `WeatherClock-xxxx`.
 2. Wait for the captive portal or open `http://192.168.4.1/`.
 3. Fill the required fields:
-   - **Wi-Fi SSID:** select from the scan list or enter manually.
+   - **Wi-Fi SSID:** select from the scan list or enter manually. The list shows up to 32 access points; refreshing scans again, and a temporary memory warning does not prevent manual entry.
    - **Wi-Fi password:** password for the selected network.
    - **QWeather API Key:** required for current weather, alerts, forecast, and air quality.
    - **Weather city (optional):** for example Hangzhou. Chinese names ending in `市` are normalized and validated through QWeather. Leave empty for public-IP location.
@@ -204,7 +212,10 @@ Production audio now reuses the ES8311/ES7210 I2C controls already owned by the 
 The network transaction lock shared by weather, daily text, Xiaozhi, and OTA is now a static lifetime resource. This removes a cold-start heap allocation and a source of long-lived fragmentation without changing request order, timeouts, or user operation.
 The depth counter mutex used by network and audio power locks is also a static lifetime resource. This reduces startup heap allocation and long-lived fragmentation without changing light sleep, network, or audio behavior.
 The application event group shared by provisioning, synchronization, OTA, and startup is also a static lifetime resource. This removes another cold-start allocation without changing event delivery, wait timeouts, or user operation.
-RTC and SHTC3 setup also rejects an unavailable shared I2C bus, and owned sensor handles are released when their object is destroyed. Sensor addresses, intervals, and displayed readings are unchanged.
+The Xiaozhi page snapshot lock also uses a static control block, reducing startup internal-memory allocation and long-term fragmentation without changing wake-up, subtitles, expressions, Pomodoro, or page controls.
+The internal Xiaozhi event group used for page activity, wake-up, and suspension also uses a static control block, further reducing startup allocation without changing page transitions, alarms, or Pomodoro behavior.
+If button GPIO setup fails during a rare hardware initialization fault, the firmware now shuts down the button task cleanly while leaving other background services intact instead of returning directly from a FreeRTOS task entry. Normal button, debounce, and page-switch behavior is unchanged.
+RTC and SHTC3 setup also rejects an unavailable shared I2C bus. The application-lifetime SHTC3 object now uses static storage to reduce startup heap-allocation failure and long-term fragmentation, while complete destruction still releases its owned device handle. Each sample starts only after a confirmed wake command and verifies that the sensor returns to sleep, with one short retry for a transient sleep-command failure to avoid excess idle power. Sensor addresses, intervals, and displayed readings are unchanged.
 
 ### 5.3 Display
 
@@ -236,6 +247,7 @@ The single alarm can be set, changed, or disabled through Xiaozhi voice.
 - The alarm repeats after about five seconds for up to one minute.
 - Either hardware key stops it.
 - It disables itself after ringing.
+- Saving an identical alarm state does not perform another Flash commit; set, disable, and reboot-restore behavior is unchanged.
 
 ### 6.2 Pomodoro
 
@@ -255,6 +267,8 @@ For each public source release, GitHub Actions automatically attaches two build 
 
 After the GitHub build completes, the Cloudflare OTA service imports and verifies both files automatically. If the automatic notification is delayed, the maintenance release flow requests a protected retry. The previous online manifest remains active until both new firmware images pass validation.
 
+The GitHub OTA fallback repository is updated from the same source build. The source repository dispatches an event after its app, merged image, and manifests are ready; the fallback repository then downloads both Release assets, verifies size and SHA256, and only afterward updates its own Releases and manifests. It no longer polls Cloudflare on a daily schedule, and fallback manifest URLs point to the fallback repository's own Release assets.
+
 Internally, provisioning, offline mode, chime, volume, and Xiaozhi auto-return settings are safely published to background tasks. This maintenance does not change where settings are edited, how they are saved, or how they are restored after restart.
 
 The online manifest may include release notes for publishing tools and the desktop client. The device retains only the version, download URL, file size, and SHA256 metadata required for installation instead of keeping unused release-note text in memory.
@@ -268,7 +282,7 @@ Open **Settings > System > Check Update**:
 
 The firmware follows OTA download redirects and closes the current HTTP connection on failure or early exit. A failed download does not switch the boot partition and can be retried.
 
-OTA uses a primary remote source and a scheduled backup source. The backup may lag behind shortly after a release.
+OTA uses a primary remote source and an event-driven GitHub fallback. The fallback may briefly remain on the previous version while source build and mirror validation are still running.
 
 OTA is blocked during offline mode, low-battery mode, setup, or another active OTA flow.
 
@@ -299,6 +313,7 @@ Because `v1.5.0` moved partition addresses, an old desktop client must be update
 - When not charging, battery ADC follows the same schedule as local temperature/humidity: every minute during the day and every two minutes at night.
 - Temperature and humidity samples notify the active page for an on-demand update. Stable text is not redrawn repeatedly; a roughly one-minute fallback check remains for resilience.
 - During confirmed active charging, battery sampling increases to about once per second.
+- Each battery reading releases the ADC and calibration resources after publishing the result, so the measurement peripheral is not kept active between samples.
 - Low battery enters a minimal page and stops non-essential networking, animation, audio, and high-frequency refresh.
 - Charging state and percentage are estimates derived from voltage trends and are not precision battery instrumentation.
 
@@ -353,7 +368,7 @@ After Xiaozhi changes the weather city, the device releases real-time voice reso
 
 ### A just-published OTA version is not found
 
-Check access to the primary manifest. The GitHub backup is synchronized on a schedule and may temporarily remain on the previous version.
+Check access to the primary manifest. The GitHub fallback is synchronized by the source-build completion event and may briefly remain on the previous version while the build or mirror job is still running.
 
 If the serial log shows both `OTA manifest source skipped: R2` and `OTA manifest source skipped: GitHub`, the firmware was built without production OTA endpoints and did not make an HTTP request. This is not caused by Wi-Fi or manifest length. Recover by flashing a corrected App image over serial while preserving NVS, or by provisioning a valid custom OTA endpoint with the desktop client.
 
@@ -363,7 +378,7 @@ With an implausible RTC time, the device first shows placeholders and attempts N
 
 ### Startup screen does not continue
 
-In the rare event of a display startup failure, the firmware releases any acquired SPI bus, panel interface, reset GPIO, display buffers, lookup tables, LVGL buffers, timer, and lock instead of rebooting repeatedly or continuing periodic wake-ups in an unusable state. Power-cycle the device; if it still cannot enter a work page, inspect the serial log for `RLCD display resources unavailable` or `LVGL initialization failed` and the preceding specific error.
+In the rare event of a display-resource or panel-register startup failure, the firmware releases any acquired SPI bus, panel interface, reset GPIO, display buffers, lookup tables, LVGL buffers, timer, and lock instead of rebooting repeatedly or continuing periodic wake-ups in an unusable state. The long-lived LVGL display lock, handler-task stack, and task control block use static storage to reduce internal-heap allocation and long-term fragmentation at startup; page, button, and refresh behavior are unchanged. Power-cycle the device; if it still cannot enter a work page, inspect the serial log for `RLCD display resources unavailable`, `RLCD panel register initialization failed`, or `LVGL initialization failed` and the preceding specific error.
 
 If the shared I2C master bus itself cannot be created, startup stops before RTC, sensor, audio, networking, and application tasks are initialized instead of entering a reset loop. Power-cycle the device and inspect the serial log for `I2C master bus unavailable` and the preceding driver error. A missing individual RTC or temperature/humidity sensor remains a separate recoverable device error and does not by itself stop the clock.
 

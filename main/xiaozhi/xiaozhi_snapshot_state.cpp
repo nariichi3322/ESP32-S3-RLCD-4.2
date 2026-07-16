@@ -13,6 +13,7 @@
 namespace {
 constexpr const char *kNeutralEmotion = "neutral";
 
+StaticSemaphore_t s_snapshot_mutex_storage = {};
 SemaphoreHandle_t s_snapshot_mutex = nullptr;
 // 固定 char 数组的静态聚合初始化需要字符串字面量。
 XiaozhiAiSnapshot s_snapshot = {
@@ -41,7 +42,7 @@ bool xiaozhi_snapshot_state_init()
     if (s_snapshot_mutex) {
         return true;
     }
-    s_snapshot_mutex = xSemaphoreCreateMutex();
+    s_snapshot_mutex = xSemaphoreCreateMutexStatic(&s_snapshot_mutex_storage);
     return s_snapshot_mutex != nullptr;
 }
 

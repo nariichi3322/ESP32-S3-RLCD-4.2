@@ -16,6 +16,7 @@
 #include "wifi_radio_state.h"
 
 #include "esp_sleep.h"
+#include "freertos/task.h"
 
 #define BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT "button gpio config failed: %s"
 #define BUTTON_ISR_SERVICE_FAILED_LOG_FORMAT "button gpio isr service failed: %s; using polling fallback"
@@ -191,6 +192,7 @@ void button_task(void *)
     esp_err_t err = gpio_config(&button);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT, esp_err_to_name(err));
+        vTaskDelete(nullptr);
         return;
     }
 

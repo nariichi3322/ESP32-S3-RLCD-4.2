@@ -1,6 +1,7 @@
 // 封装 LVGL 初始化、锁和显示驱动对接逻辑。
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
+#include <freertos/task.h>
 #include <esp_err.h>
 #include <esp_log.h>
 #include <esp_heap_caps.h>
@@ -16,6 +17,7 @@
 
 static lv_disp_draw_buf_t disp_buf; 		// contains internal graphic buffer(s) called draw buffer(s)
 static lv_disp_drv_t disp_drv;      		// contains callback functions
+static StaticSemaphore_t lvgl_mux_storage = {};
 static SemaphoreHandle_t lvgl_mux = NULL;
 
 static const char *TAG = "LvglPort";
@@ -29,7 +31,7 @@ static constexpr const char *kLvglDisplayRegisterFailedLog = "LVGL display regis
 static constexpr const char *kLvglRegisterDisplayLog = "Register display driver to LVGL";
 static constexpr const char *kLvglInstallTickTimerLog = "Install LVGL tick timer";
 static constexpr const char *kLvglTaskCreateFailedLog = "LVGL task creation failed";
-static constexpr uint32_t kLvglTaskStackWords = 8 * 1024;
+static constexpr uint32_t kLvglTaskStackBytes = 8 * 1024;
 static constexpr UBaseType_t kLvglTaskPriority = 5;
 static constexpr BaseType_t kLvglTaskCore = 0;
 static constexpr uint64_t kMicrosecondsPerMillisecond = 1000;
@@ -44,11 +46,16 @@ static_assert(kLvglDisplayRegisterFailedLog[0] != '\0', "LVGL display failure lo
 static_assert(kLvglRegisterDisplayLog[0] != '\0', "LVGL register-display log must not be empty");
 static_assert(kLvglInstallTickTimerLog[0] != '\0', "LVGL tick timer install log must not be empty");
 static_assert(kLvglTaskCreateFailedLog[0] != '\0', "LVGL task failure log must not be empty");
-static_assert(kLvglTaskStackWords > 0, "LVGL task stack size must be positive");
+static_assert(kLvglTaskStackBytes > 0, "LVGL task stack size must be positive");
+static_assert(kLvglTaskStackBytes % sizeof(StackType_t) == 0,
+              "LVGL task stack must align to StackType_t");
 static_assert(kLvglTaskPriority > tskIDLE_PRIORITY, "LVGL task priority must exceed idle");
 static_assert(kLvglTaskCore >= 0, "LVGL task core must be non-negative");
 static_assert(kMicrosecondsPerMillisecond == 1000, "millisecond to microsecond conversion must stay stable");
 static_assert(kLvglTickPeriodUs > 0, "LVGL tick period must be positive");
+
+static StackType_t lvgl_task_stack[kLvglTaskStackBytes / sizeof(StackType_t)] = {};
+static StaticTask_t lvgl_task_storage = {};
 
 static void LogLvglBufferAllocationFailure(const char *name, size_t bytes)
 {
@@ -146,7 +153,10 @@ static void Lvgl_port_task(void *arg)
 
 
 bool Lvgl_PortInit(int width, int height,DispFlushCb flush_cb) {
-    lvgl_mux = xSemaphoreCreateMutex();
+    if (lvgl_mux != NULL) {
+        return true;
+    }
+    lvgl_mux = xSemaphoreCreateMutexStatic(&lvgl_mux_storage);
     if (lvgl_mux == NULL) {
         ESP_LOGE(TAG, "%s", kLvglMutexCreateFailedLog);
         return false;
@@ -207,14 +217,15 @@ bool Lvgl_PortInit(int width, int height,DispFlushCb flush_cb) {
         return false;
     }
 
-    BaseType_t task_created = xTaskCreatePinnedToCore(Lvgl_port_task,
-                                                      kLvglTaskName,
-                                                      kLvglTaskStackWords,
-                                                      NULL,
-                                                      kLvglTaskPriority,
-                                                      NULL,
-                                                      kLvglTaskCore);
-    if (task_created != pdPASS) {
+    TaskHandle_t task_handle = xTaskCreateStaticPinnedToCore(Lvgl_port_task,
+                                                              kLvglTaskName,
+                                                              kLvglTaskStackBytes,
+                                                              NULL,
+                                                              kLvglTaskPriority,
+                                                              lvgl_task_stack,
+                                                              &lvgl_task_storage,
+                                                              kLvglTaskCore);
+    if (task_handle == NULL) {
         ESP_LOGE(TAG, "%s", kLvglTaskCreateFailedLog);
         ReleaseLvglInitResources(display, lvgl_tick_timer, true, buffer1, buffer2);
         return false;

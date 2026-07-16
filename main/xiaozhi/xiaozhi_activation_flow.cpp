@@ -1,7 +1,6 @@
 // 处理小智激活配置恢复、首次绑定和激活响应应用。
 #include "xiaozhi_activation_flow.h"
 
-#include "scoped_heap_buffer.h"
 #include "xiaozhi_activation_client.h"
 #include "xiaozhi_activation_response_parser.h"
 #include "xiaozhi_activation_storage.h"
@@ -10,6 +9,9 @@
 
 #include <esp_heap_caps.h>
 #include <esp_log.h>
+
+#include <atomic>
+#include <cstring>
 
 namespace {
 
@@ -21,6 +23,67 @@ constexpr const char *kErrorStatus = "小智服务不可用";
 constexpr const char *kBoundDetail = "说出唤醒词即可开始对话";
 constexpr const char *kActivationFailureDetail = "稍后将自动重试";
 constexpr const char *kBindingFallbackDetail = "请在小智服务中输入绑定 ID";
+
+std::atomic<bool> s_activation_scratch_in_use{false};
+XiaozhiActivationScratch *s_activation_scratch = nullptr;
+
+class ActivationScratchLease {
+public:
+    ActivationScratchLease()
+    {
+        bool expected = false;
+        if (!s_activation_scratch_in_use.compare_exchange_strong(
+                expected,
+                true,
+                std::memory_order_acq_rel,
+                std::memory_order_acquire)) {
+            return;
+        }
+        if (!s_activation_scratch) {
+            s_activation_scratch = static_cast<XiaozhiActivationScratch *>(heap_caps_calloc(
+                1,
+                sizeof(XiaozhiActivationScratch),
+                MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        }
+        if (!s_activation_scratch) {
+            s_activation_scratch_in_use.store(false, std::memory_order_release);
+            return;
+        }
+        std::memset(s_activation_scratch, 0, sizeof(XiaozhiActivationScratch));
+        scratch_ = s_activation_scratch;
+    }
+
+    ~ActivationScratchLease()
+    {
+        reset();
+    }
+
+    ActivationScratchLease(const ActivationScratchLease &) = delete;
+    ActivationScratchLease &operator=(const ActivationScratchLease &) = delete;
+
+    XiaozhiActivationScratch *get() const
+    {
+        return scratch_;
+    }
+
+    explicit operator bool() const
+    {
+        return scratch_ != nullptr;
+    }
+
+    void reset()
+    {
+        if (!scratch_) {
+            return;
+        }
+        std::memset(scratch_, 0, sizeof(XiaozhiActivationScratch));
+        scratch_ = nullptr;
+        s_activation_scratch_in_use.store(false, std::memory_order_release);
+    }
+
+private:
+    XiaozhiActivationScratch *scratch_ = nullptr;
+};
 
 bool apply_activation_response(const XiaozhiActivationResponse &response)
 {
@@ -69,23 +132,17 @@ void xiaozhi_activate_or_restore_session()
     xiaozhi_snapshot_set(kXiaozhiAiActivating,
                          kActivatingStatus,
                          "正在请求设备绑定信息");
-    ScopedHeapBuffer<uint8_t> response_storage(
-        static_cast<uint8_t *>(heap_caps_calloc(
-            1,
-            sizeof(XiaozhiActivationResponse),
-            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)),
-        sizeof(XiaozhiActivationResponse));
-    if (!response_storage) {
+    ActivationScratchLease scratch_lease;
+    if (!scratch_lease) {
         xiaozhi_snapshot_set(kXiaozhiAiError,
                              kErrorStatus,
                              "小智内存不足，请稍后重试");
         return;
     }
-    XiaozhiActivationResponse *response =
-        reinterpret_cast<XiaozhiActivationResponse *>(response_storage.data());
-    bool activated = xiaozhi_request_activation(response) &&
-                     apply_activation_response(*response);
-    response_storage.reset();
+    XiaozhiActivationScratch *scratch = scratch_lease.get();
+    bool activated = xiaozhi_request_activation(scratch) &&
+                     apply_activation_response(scratch->response);
+    scratch_lease.reset();
     if (!activated) {
         xiaozhi_snapshot_set(kXiaozhiAiError,
                              kErrorStatus,
