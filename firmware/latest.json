@@ -1,7 +1,7 @@
 {
-  "version": "v1.5.19",
-  "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.19.bin",
-  "sha256": "c756e8a41fa07d23799de744afe487c6ae78ae09bda30c94c72b3e202ca2c140",
-  "size": 6227120,
-  "notes": "v1.5.19：共 9 项更新。\n1. 修复 RTC 完全丢时后，设置页手动 NTP 被启动/每日同步旧退避截止时间阻塞的问题…\n2. RTC 时间不可信时，自动 NTP 失败重试缩短为约 15 秒；同步成功立即刷新日期、…\n3. 温湿时钟秒牌改为按变化数字的实际字形范围局部刷新，普通秒跳由完整 112px 卡片收敛…\n4. 天气、网络凭据、网络检测、每日文字、温湿度小时历史和 OTA 运行态统一使用启动期静态…\n5. 新增公共作用域 semaphore 锁，消除天气、历史、OTA 和每日文字模块的重复锁…\n其余 4 项见源码仓库同版本 Release。"
+  "version": "v1.5.20",
+  "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.20.bin",
+  "sha256": "2fadff3e491113e8770a722251ed33dbe05a1ba2a7d40bf1e43d6c38803821d6",
+  "size": 6227472,
+  "notes": "v1.5.20：共 3 项更新。\n1. GitHub 源码仓库固件构建完成后新增飞书机器人通知，自动推送版本、构建结果和 Ac…\n2. 本地温湿度当前值、可用状态、趋势和刷新版本改用启动期静态任务互斥发布一致快照，页面、小…\n3. 新增本地温湿度 10000 批并发交错测试与构建通知安全契约，保持采样频率、四小时趋势…\n完整说明见源码仓库同版本 Release。"
 }
