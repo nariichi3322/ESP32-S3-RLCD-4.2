@@ -201,6 +201,7 @@ Codec and sensor I2C register writes no longer allocate internal heap memory on 
 Xiaozhi shutdown diagnostics now use a separately synchronized audio-resource state instead of reading a Codec pointer while another task may create or release it. This improves diagnostic stability without changing sound controls or use.
 The audio layer validates speaker and microphone readiness separately. A partial Codec startup cannot publish an unusable audio resource or pass a missing microphone handle to the driver; the current attempt ends safely and a later reminder or Xiaozhi entry may retry.
 Production audio now reuses the ES8311/ES7210 I2C controls already owned by the board Codec layer instead of registering duplicate, unused device handles for every session. Sound behavior and hardware addresses are unchanged.
+The network transaction lock shared by weather, daily text, Xiaozhi, and OTA is now a static lifetime resource. This removes a cold-start heap allocation and a source of long-lived fragmentation without changing request order, timeouts, or user operation.
 RTC and SHTC3 setup also rejects an unavailable shared I2C bus, and owned sensor handles are released when their object is destroyed. Sensor addresses, intervals, and displayed readings are unchanged.
 
 ### 5.3 Display
