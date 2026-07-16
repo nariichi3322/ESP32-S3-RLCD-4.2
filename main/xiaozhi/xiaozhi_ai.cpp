@@ -187,8 +187,8 @@ bool run_voice_conversation()
     // 在小智会话期间让 RLCD 使用 512 字节分块，避免 SPI 临时缓冲分配失败。
     NetworkDisplayDmaGuard display_guard(true);
     log_voice_resources("before websocket");
-    char url[256] = {};
-    char token[256] = {};
+    char url[kXiaozhiWebsocketConfigFieldSize] = {};
+    char token[kXiaozhiWebsocketConfigFieldSize] = {};
     int32_t version = 1;
     if (!xiaozhi_load_websocket_config(url, sizeof(url), token, sizeof(token), &version)) {
         return false;

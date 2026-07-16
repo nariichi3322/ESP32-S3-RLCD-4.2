@@ -100,6 +100,8 @@ RLCD 屏幕适合长时间显示，因此固件尽量只刷新变化区域：
 
 设备端通过固件内置的 OTA 清单地址获取最新版本信息，再下载对应 app 固件。每次公开源码发布新版本标签后，GitHub Actions 会使用固定 ESP-IDF 工具链自动构建，并在同版本 Release 中追加两个附件：`weather_clock_vX.X.X.bin` 是 OTA App 固件，`weather_clock_vX.X.X_merged.bin` 是包含 bootloader、分区表、OTA data、语音模型和 App 的完整刷写固件。Actions 只追加或覆盖这两个附件，不修改既有中文发布说明。
 
+`firmware/OTA_RELEASE_NOTES.md` 保存当前版本面向 OTA 的简化中文说明。它由完整发布说明自动生成并保留连续编号，GitHub Actions 使用它生成 `latest.json` 和 `versions.json`；Cloudflare 与 GitHub OTA 备用仓库随后同步同一份摘要，避免三个下游各自生成不同文案。
+
 Cloudflare R2、Gitea、私有部署配置和本地发布脚本仍不在本公开仓库中提供。自动构建完成后会通知 GitHub OTA 备用仓库独立校验并镜像同一组 Release 产物；自动构建附件用于公开验证和下载，完整刷写前仍应阅读对应版本说明并确认分区变化与 NVS 影响。
 
 项目还预留了自定义资源分区，用于后续通过上位机写入图片时钟和天气时钟相关素材。内置素材会作为兜底存在，避免用户资源损坏导致页面空白。

@@ -118,8 +118,8 @@ bool apply_activation_response(const XiaozhiActivationResponse &response)
 
 void xiaozhi_activate_or_restore_session()
 {
-    char url[256] = {};
-    char token[256] = {};
+    char url[kXiaozhiWebsocketConfigFieldSize] = {};
+    char token[kXiaozhiWebsocketConfigFieldSize] = {};
     int32_t version = 1;
     if (xiaozhi_load_websocket_config(url,
                                       sizeof(url),

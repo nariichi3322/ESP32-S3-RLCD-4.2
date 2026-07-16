@@ -11,6 +11,7 @@
 #include "qweather_alert_text.h"
 #include "qweather_icons.h"
 #include "qweather_url.h"
+#include "weather_state.h"
 #include "wifi_portal_pages.h"
 #include "wifi_portal_state.h"
 
@@ -92,15 +93,6 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
 bool qweather_fetch_now(const char *city_id, WeatherData *weather);
 bool qweather_fetch_daily(const char *city_id, WeatherForecastData *forecast);
 bool qweather_fetch_air(const char *city_id, WeatherAirData *air);
-void get_weather_full_snapshot(WeatherData *weather,
-                               WeatherAlertData *alert,
-                               WeatherForecastData *forecast,
-                               WeatherAirData *air);
-void get_weather_snapshot(WeatherData *weather, WeatherAlertData *alert);
-void get_weather_forecast_snapshot(WeatherForecastData *forecast);
-void get_weather_air_snapshot(WeatherAirData *air);
-time_t get_last_weather_sync_time();
-bool weather_extended_data_ready();
 enum class WeatherUpdateResult {
     kSuccess,
     kFailed,

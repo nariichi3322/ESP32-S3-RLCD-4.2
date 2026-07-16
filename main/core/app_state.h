@@ -42,6 +42,7 @@
 #include "lvgl_bsp.h"
 #include "dseg_digits.h"
 #include "network_diagnostics_catalog.h"
+#include "weather_types.h"
 #include "ota_flow_policy.h"
 #include "status_gif_60.h"
 #include "ui_icons.h"
@@ -143,10 +144,6 @@ inline constexpr int kSensorHistoryMinutes = 240;
 inline constexpr int kHourlyHistoryCount = 48;
 inline constexpr int kLegacyHourlyHistoryCount = 24;
 inline constexpr uint32_t kHourlyHistoryMagic = 0x48543234;
-inline constexpr int kMaxWeatherAlerts = 6;
-inline constexpr int kWeatherAlertTitleLen = 64;
-inline constexpr int kWeatherForecastDays = 6;
-inline constexpr int kWeatherAdviceLen = 96;
 inline constexpr int kManualWeatherCityLen = 32;
 inline constexpr int kDailySayingLen = 160;
 inline constexpr float kTrendEpsilon = 0.01f;
@@ -227,55 +224,6 @@ extern std::atomic<bool> g_settings_page_order_mode;
 extern std::atomic<int> g_settings_primary_selection;
 extern std::atomic<int> g_settings_selection;
 extern std::atomic<int> g_settings_page_order_selection;
-struct WeatherData {
-    char city[32] = {};
-    char text[32] = {};
-    char icon[8] = {};
-    char temp[8] = {};
-    char humidity[8] = {};
-    char lat[16] = {};
-    char lon[16] = {};
-};
-
-struct WeatherAlertData {
-    bool active = false;
-    int count = 0;
-    char titles[kMaxWeatherAlerts][kWeatherAlertTitleLen] = {};
-    int ranks[kMaxWeatherAlerts] = {};
-    time_t updated_at = 0;
-};
-
-struct WeatherForecastDay {
-    bool valid = false;
-    char date[12] = {};
-    char text[24] = {};
-    char icon[8] = {};
-    char temp_max[8] = {};
-    char temp_min[8] = {};
-    char humidity[8] = {};
-    char wind_dir[16] = {};
-    char wind_scale[8] = {};
-    char sunrise[8] = {};
-    char sunset[8] = {};
-};
-
-struct WeatherForecastData {
-    bool ready = false;
-    int count = 0;
-    WeatherForecastDay days[kWeatherForecastDays] = {};
-    char advice[kWeatherAdviceLen] = {};
-    time_t updated_at = 0;
-};
-
-struct WeatherAirData {
-    bool ready = false;
-    char aqi[8] = {};
-    char category[16] = {};
-    char primary[16] = {};
-    char pm2p5[8] = {};
-    time_t updated_at = 0;
-};
-
 struct SensorSample {
     int64_t sampled_at_ms = 0;
     float temperature = 0.0f;

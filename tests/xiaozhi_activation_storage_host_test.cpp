@@ -215,6 +215,13 @@ int main()
     assert(g_strings["act_chal"] == "challenge");
     assert(g_i32_values["ws_ver"] == 2 && g_u8_values["bound_v1"] == 1);
     assert(g_close_calls == 1);
+
+    g_operations.clear();
+    g_open_calls = 0;
+    g_close_calls = 0;
+    assert(xiaozhi_save_activation_config(root, "challenge"));
+    assert(g_operations.empty());
+    assert(g_open_calls == 1 && g_close_calls == 1);
     cJSON_Delete(root);
 
     reset_store();
@@ -225,6 +232,45 @@ int main()
     assert(g_i32_values["ws_ver"] == 1);
     assert((g_operations == std::vector<std::string>{
         "str:ws_url", "i32:ws_ver", "u8:bound_v1", "commit"}));
+    cJSON_Delete(root);
+
+    reset_store();
+    g_strings["ws_url"] = "ws://example.test/ws";
+    g_strings["ws_token"] = "old-token";
+    g_strings["act_chal"] = "old-challenge";
+    g_i32_values["ws_ver"] = 1;
+    g_u8_values["bound_v1"] = 1;
+    root = parse_json("{\"url\":\"ws://example.test/ws\"}");
+    assert(xiaozhi_save_activation_config(root, ""));
+    assert(g_operations.empty());
+    assert(g_strings["ws_token"] == "old-token");
+    assert(g_strings["act_chal"] == "old-challenge");
+    assert(g_close_calls == 1);
+    cJSON_Delete(root);
+
+    reset_store();
+    g_strings["ws_url"] = "wss://example.test/ws";
+    g_strings["ws_token"] = "secret";
+    g_strings["act_chal"] = "old-challenge";
+    g_i32_values["ws_ver"] = 2;
+    g_u8_values["bound_v1"] = 1;
+    root = parse_json("{\"url\":\"wss://example.test/ws\",\"token\":\"secret\",\"version\":2}");
+    assert(xiaozhi_save_activation_config(root, "new-challenge"));
+    assert((g_operations == std::vector<std::string>{
+        "str:ws_url", "str:ws_token", "i32:ws_ver", "u8:bound_v1",
+        "str:act_chal", "commit"}));
+    assert(g_strings["act_chal"] == "new-challenge");
+    cJSON_Delete(root);
+
+    reset_store();
+    g_strings["ws_url"] = "wss://example.test/ws";
+    g_strings["ws_token"] = "";
+    g_i32_values["ws_ver"] = 1;
+    g_u8_values["bound_v1"] = 1;
+    root = parse_json("{\"url\":\"wss://example.test/ws\",\"token\":\"\"}");
+    assert(xiaozhi_save_activation_config(root, nullptr));
+    assert(g_operations.empty());
+    assert(g_close_calls == 1);
     cJSON_Delete(root);
 
     reset_store();

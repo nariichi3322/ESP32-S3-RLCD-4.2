@@ -106,6 +106,7 @@ idf_component_register(
         "network/qweather_location_text.cpp"
         "network/qweather_response.cpp"
         "network/qweather_url.cpp"
+        "network/weather_snapshot_store.cpp"
         "network/weather_state.cpp"
         "network/weather_update.cpp"
         "network/ip_geolocation.cpp"

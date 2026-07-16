@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import re
 import sys
+import tempfile
+from pathlib import Path
 
 
 MAX_OTA_NOTES_BYTES = 768
@@ -86,16 +88,52 @@ def compact_ota_notes(version: str, release_notes: str) -> str:
     if not detail:
         detail = "包含本版本功能修复、稳定性与资源优化。"
     return fit_utf8(
-        f"{version}：{detail}\n完整说明见源码仓库同版本 Release。",
+        f"{version}：共 1 项更新。\n"
+        f"1. {detail}\n"
+        "完整说明见源码仓库同版本 Release。",
         MAX_OTA_NOTES_BYTES,
     )
 
 
+def write_atomic(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            delete=False,
+        ) as handle:
+            temporary_path = Path(handle.name)
+            handle.write(text)
+            handle.write("\n")
+        temporary_path.replace(path)
+    except Exception:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+        raise
+
+
 def main() -> int:
-    if len(sys.argv) != 2 or re.fullmatch(r"v\d+\.\d+\.\d+", sys.argv[1]) is None:
-        print("usage: ota_release_notes.py vX.Y.Z < release-notes.txt", file=sys.stderr)
+    if len(sys.argv) not in (2, 4) or re.fullmatch(r"v\d+\.\d+\.\d+", sys.argv[1]) is None:
+        print(
+            "usage: ota_release_notes.py vX.Y.Z [--output path] < release-notes.txt",
+            file=sys.stderr,
+        )
         return 2
-    print(compact_ota_notes(sys.argv[1], sys.stdin.read()))
+    if len(sys.argv) == 4 and sys.argv[2] != "--output":
+        print(
+            "usage: ota_release_notes.py vX.Y.Z [--output path] < release-notes.txt",
+            file=sys.stderr,
+        )
+        return 2
+    compact = compact_ota_notes(sys.argv[1], sys.stdin.read())
+    if len(sys.argv) == 4:
+        write_atomic(Path(sys.argv[3]), compact)
+    else:
+        print(compact)
     return 0
 
 

@@ -110,7 +110,6 @@ jobs:
             echo "等待同版本 Release 超时：$VERSION" >&2
             exit 1
           fi
-          gh release view "$VERSION" --json body --jq .body > "$RUNNER_TEMP/release-notes.txt"
 
       - name: 生成 OTA 清单
         env:
@@ -139,7 +138,7 @@ jobs:
             --app "weather_clock_${VERSION}.bin" \
             --merged "weather_clock_${VERSION}_merged.bin" \
             --public-base "$OTA_PUBLIC_BASE" \
-            --notes-file "$RUNNER_TEMP/release-notes.txt" \
+            --notes-file firmware/OTA_RELEASE_NOTES.md \
             --latest firmware/latest.json \
             --versions firmware/versions.json
 

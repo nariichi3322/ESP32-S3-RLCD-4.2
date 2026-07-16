@@ -45,6 +45,8 @@ static_assert(kBootHttpsInterRequestGapSec > 0,
               "boot HTTPS inter-request gap must be positive");
 static_assert(kBootHttpsMemoryRetryMs >= 1000,
               "boot HTTPS memory retry must avoid a tight loop");
+static_assert(kBootHttpsMemoryRetryMs % 1000 == 0,
+              "boot HTTPS memory retry must convert exactly to seconds");
 static_assert(kNetworkBootSyncGateWarningMs > 0,
               "boot sync gate warning delay must be positive");
 static_assert(kNetworkDiagOtaLine == kNetworkDiagLineCount - 1,
@@ -260,24 +262,6 @@ static void settle_between_network_operations(bool more_work_pending)
     }
 }
 
-static bool background_boot_https_memory_ready()
-{
-    const NetworkHttpsMemorySnapshot memory = capture_network_https_memory_snapshot();
-    bool allowed = network_automatic_boot_https_allowed(startup_screen_active(),
-                                                        esp_timer_get_time(),
-                                                        memory.internal_free,
-                                                        memory.internal_largest,
-                                                        memory.dma_largest);
-    if (!allowed) {
-        ESP_LOGW(TAG,
-                 NETWORK_BOOT_HTTPS_MEMORY_DEFERRED_FORMAT,
-                 static_cast<unsigned>(memory.internal_free),
-                 static_cast<unsigned>(memory.internal_largest),
-                 static_cast<unsigned>(memory.dma_largest));
-    }
-    return allowed;
-}
-
 static bool defer_automatic_boot_https_for_memory(NetworkSyncSchedule *schedule,
                                                   const NetworkSyncRequestSnapshot &requests,
                                                   time_t now,
@@ -287,27 +271,42 @@ static bool defer_automatic_boot_https_for_memory(NetworkSyncSchedule *schedule,
     if (!schedule) {
         return false;
     }
-    bool auto_weather = schedule->boot_weather_ready &&
-                        !requests.provisioning && !requests.manual_weather;
-    bool auto_saying = schedule->boot_saying_ready &&
-                       !requests.provisioning && !requests.manual_saying;
-    if ((!auto_weather && !auto_saying) || background_boot_https_memory_ready()) {
+    NetworkBootHttpsDeferralInput input = {};
+    input.now = now;
+    input.retry_delay_seconds =
+        static_cast<time_t>(kBootHttpsMemoryRetryMs / 1000);
+    input.provisioning_sync_due = requests.provisioning;
+    input.manual_weather_due = requests.manual_weather;
+    input.manual_saying_due = requests.manual_saying;
+    if (!network_automatic_boot_https_pending(*schedule, input)) {
         return false;
     }
-    time_t retry_at = now + static_cast<time_t>(kBootHttpsMemoryRetryMs / 1000);
-    if (auto_weather) {
-        schedule->weather_due = false;
-        schedule->boot_weather_ready = false;
-        schedule->stagger_boot_saying_after_weather = false;
+    const NetworkHttpsMemorySnapshot memory = capture_network_https_memory_snapshot();
+    input.memory_allowed = network_automatic_boot_https_allowed(
+        startup_screen_active(),
+        esp_timer_get_time(),
+        memory.internal_free,
+        memory.internal_largest,
+        memory.dma_largest);
+    NetworkBootHttpsDeferralResult result =
+        calculate_network_boot_https_deferral(*schedule, input);
+    if (!result.deferred) {
+        return false;
+    }
+    ESP_LOGW(TAG,
+             NETWORK_BOOT_HTTPS_MEMORY_DEFERRED_FORMAT,
+             static_cast<unsigned>(memory.internal_free),
+             static_cast<unsigned>(memory.internal_largest),
+             static_cast<unsigned>(memory.dma_largest));
+    *schedule = result.schedule;
+    if (result.weather_deferred) {
         if (boot_weather_due_at) {
-            *boot_weather_due_at = retry_at;
+            *boot_weather_due_at = result.retry_at;
         }
     }
-    if (auto_saying) {
-        schedule->saying_due = false;
-        schedule->boot_saying_ready = false;
+    if (result.saying_deferred) {
         if (boot_saying_due_at) {
-            *boot_saying_due_at = retry_at;
+            *boot_saying_due_at = result.retry_at;
         }
     }
     return true;

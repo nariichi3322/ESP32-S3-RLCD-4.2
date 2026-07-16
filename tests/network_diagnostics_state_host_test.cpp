@@ -8,6 +8,12 @@
 
 int main()
 {
+    static_assert(sizeof(NetworkDiagnosticsSnapshot) >=
+                      static_cast<size_t>(kNetworkDiagLineCount * kNetworkDiagLineLen),
+                  "network diagnostics snapshot must include every result line");
+    assert(network_diagnostics_state_init());
+    assert(network_diagnostics_state_init());
+
     assert(!network_diag_page_requested());
     network_diag_page_request();
     assert(network_diag_page_requested());
@@ -71,5 +77,28 @@ int main()
     writer.join();
     reader.join();
     assert(!network_diag_page_requested());
+
+    start.store(false, std::memory_order_release);
+    std::thread line_writer([&start]() {
+        while (!start.load(std::memory_order_acquire)) {
+        }
+        for (int iteration = 0; iteration < 1000; ++iteration) {
+            network_diag_line_store(kNetworkDiagWeatherLine,
+                                    iteration % 2 == 0 ? "weather-ok-a" : "weather-ok-b");
+        }
+    });
+    std::thread snapshot_reader([&start]() {
+        start.store(true, std::memory_order_release);
+        for (int iteration = 0; iteration < 1000; ++iteration) {
+            NetworkDiagnosticsSnapshot current = {};
+            network_diag_snapshot_load(&current);
+            const char *line = current.lines[kNetworkDiagWeatherLine];
+            assert(line[0] == '\0' ||
+                   strcmp(line, "weather-ok-a") == 0 ||
+                   strcmp(line, "weather-ok-b") == 0);
+        }
+    });
+    line_writer.join();
+    snapshot_reader.join();
     return 0;
 }

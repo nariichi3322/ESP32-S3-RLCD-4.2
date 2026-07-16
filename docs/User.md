@@ -33,6 +33,8 @@ Depending on the page, the status area shows date, weekday, battery, Wi-Fi, remi
 
 - **Wi-Fi icon:** shown whenever the Wi-Fi radio is on and hidden when it is off, including connection and synchronization periods.
 - If the device cannot temporarily reserve the wake resource required for networking, that operation fails safely or retries later without forcing Wi-Fi on. Wait briefly before trying again.
+- During automatic startup weather or daily-saying refresh, insufficient contiguous memory postpones the saved task for about 10 seconds. Manual synchronization and the first synchronization after provisioning are not postponed by this automatic gate.
+- Current weather, alerts, forecasts, and air quality are published as one consistent snapshot. If an extended endpoint temporarily fails, the last valid extended data remains visible instead of mixing a partial update into the page.
 - **Sound icon:** shown when an hourly or all-day reminder is enabled.
 - **Alarm icon:** shown while the one-shot alarm is enabled.
 - **Battery icon:** shows estimated charge. During detected charging it blinks on whole-second boundaries. The hardware has no dedicated CHG/VBUS input, so plug/unplug detection based on ADC voltage trends can be delayed briefly.
@@ -101,6 +103,7 @@ Provides local wake-word detection, voice conversations, on-screen transcripts, 
 - First use may require binding to the Xiaozhi service by following the on-screen prompt.
 - A bound device restores its saved service configuration directly. An unbound device still displays and announces the binding ID first. It is marked announced only after the prompt and all digits finish; if audio is temporarily busy or the task cannot start, a later activation cycle retries without requiring page switching or a reboot.
 - An unbound device or failed service activation still retries at the existing interval. Request and response scratch memory is cleared and reused between attempts to reduce long-running heap fragmentation without changing the binding procedure or prompts.
+- When the service repeats an identical activation configuration, the device reuses the stored values instead of writing them to flash again. Binding recovery, rebinding, and factory-reset retention behavior are unchanged.
 - Speak the wake word while waiting. If the page says Xiaozhi is preparing, allow service initialization to finish.
 - If the cloud service recognizes only an incomplete phrase and returns no text or audio reply, the page shows that it did not hear the complete request. Continue or repeat the request; about 12 seconds of silence returns to wake-word standby.
 - User transcripts, assistant replies, emotions, and playback completion use one conversation-state path so multi-turn listening, farewell return, and minimum transcript visibility remain consistent.
@@ -229,7 +232,7 @@ Xiaozhi AI cannot be the first page because its high-power service is unsuitable
 ### 5.4 System
 
 - **Offline Mode**
-- **Network Diagnostics**: checks local IP, public IP, IP location, DNS, QWeather, NTP, Daily Saying, internet access, and the OTA manifest. The local IP is updated as one complete address during connection, lease renewal, or disconnection, so a partial address is never shown.
+- **Network Diagnostics**: checks local IP, public IP, IP location, DNS, QWeather, NTP, Daily Saying, internet access, and the OTA manifest. The local IP and all nine results are published as one consistent snapshot, so connection, lease, disconnection, or background updates never expose a partial address or status line.
 - **Factory Reset** (requires confirmation)
 - **About Device** (version, battery, voltage, last-charge time, device information, and source repository)
 - **Check Update**
@@ -263,7 +266,7 @@ The single alarm can be set, changed, or disabled through Xiaozhi voice.
 
 ## 7. OTA and Flashing
 
-For each public source release, GitHub Actions automatically attaches two build outputs to the matching GitHub Release: `weather_clock_vX.X.X.bin` for OTA or app-partition flashing, and `weather_clock_vX.X.X_merged.bin` for a complete flash from address `0x0`. The automated build only adds firmware assets and does not rewrite the existing release notes. Release notes use a numbered list to summarize all user-visible fixes and maintenance changes since the previous formal release.
+For each public source release, GitHub Actions automatically attaches two build outputs to the matching GitHub Release: `weather_clock_vX.X.X.bin` for OTA or app-partition flashing, and `weather_clock_vX.X.X_merged.bin` for a complete flash from address `0x0`. The automated build only adds firmware assets and does not rewrite the complete source Release notes. The source tag also contains one bounded, numbered OTA summary shared by the Cloudflare manifests and the GitHub OTA fallback repository.
 
 After the GitHub build completes, the Cloudflare OTA service imports and verifies both files automatically. If the automatic notification is delayed, the maintenance release flow requests a protected retry. The previous online manifest remains active until both new firmware images pass validation.
 
@@ -272,7 +275,7 @@ The GitHub OTA fallback repository is updated from the same source build. The so
 Internally, provisioning, offline mode, chime, volume, and Xiaozhi auto-return settings are safely published to background tasks. This maintenance does not change where settings are edited, how they are saved, or how they are restored after restart.
 
 The online manifest may include release notes for publishing tools and the desktop client. The device retains only the version, download URL, file size, and SHA256 metadata required for installation instead of keeping unused release-note text in memory.
-OTA manifests use a bounded short summary. Complete numbered notes remain in the matching Gitea/GitHub Release so long descriptions cannot interfere with device update checks.
+OTA manifests and the GitHub OTA fallback Release use the same bounded summary from the source tag. Complete numbered notes remain in the matching Gitea/GitHub source Release so long descriptions cannot interfere with device update checks.
 
 Open **Settings > System > Check Update**:
 

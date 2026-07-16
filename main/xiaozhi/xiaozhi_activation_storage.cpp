@@ -46,6 +46,37 @@ bool nvs_read_string(nvs_handle_t nvs, const char *key, char *out, size_t out_le
     }
     return true;
 }
+
+bool nvs_string_equals(nvs_handle_t nvs, const char *key, const char *expected)
+{
+    if (!key || !expected || strlen(expected) >= kXiaozhiWebsocketConfigFieldSize) {
+        return false;
+    }
+    char stored[kXiaozhiWebsocketConfigFieldSize] = {};
+    size_t stored_len = sizeof(stored);
+    return nvs_get_str(nvs, key, stored, &stored_len) == ESP_OK &&
+           strcmp(stored, expected) == 0;
+}
+
+bool activation_config_matches(nvs_handle_t nvs,
+                               const char *url,
+                               const char *token,
+                               int32_t version,
+                               const char *challenge)
+{
+    int32_t stored_version = 0;
+    uint8_t stored_binding = 0;
+    if (!nvs_string_equals(nvs, kWebsocketUrlKey, url) ||
+        (token && !nvs_string_equals(nvs, kWebsocketTokenKey, token)) ||
+        nvs_get_i32(nvs, kWebsocketVersionKey, &stored_version) != ESP_OK ||
+        stored_version != version ||
+        nvs_get_u8(nvs, kBindingConfirmedKey, &stored_binding) != ESP_OK ||
+        stored_binding != 1) {
+        return false;
+    }
+    return !challenge || challenge[0] == '\0' ||
+           nvs_string_equals(nvs, kActivationChallengeKey, challenge);
+}
 } // namespace
 
 bool xiaozhi_load_websocket_config(char *url,
@@ -85,18 +116,29 @@ bool xiaozhi_save_activation_config(cJSON *websocket, const char *challenge)
     if (!cJSON_IsString(url) || !url->valuestring || url->valuestring[0] == '\0') {
         return false;
     }
+    const char *token_value =
+        cJSON_IsString(token) && token->valuestring ? token->valuestring : nullptr;
+    const int32_t version_value = cJSON_IsNumber(version) ? version->valueint : 1;
     ScopedNvsHandle nvs;
     esp_err_t err = nvs.open(kNvsNamespace, NVS_READWRITE);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, XIAOZHI_ACTIVATION_NVS_OPEN_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
+    if (activation_config_matches(nvs.get(),
+                                  url->valuestring,
+                                  token_value,
+                                  version_value,
+                                  challenge)) {
+        nvs.close();
+        return true;
+    }
     err = nvs_set_str(nvs.get(), kWebsocketUrlKey, url->valuestring);
-    if (err == ESP_OK && cJSON_IsString(token) && token->valuestring) {
-        err = nvs_set_str(nvs.get(), kWebsocketTokenKey, token->valuestring);
+    if (err == ESP_OK && token_value) {
+        err = nvs_set_str(nvs.get(), kWebsocketTokenKey, token_value);
     }
     if (err == ESP_OK) {
-        err = nvs_set_i32(nvs.get(), kWebsocketVersionKey, cJSON_IsNumber(version) ? version->valueint : 1);
+        err = nvs_set_i32(nvs.get(), kWebsocketVersionKey, version_value);
     }
     if (err == ESP_OK) {
         err = nvs_set_u8(nvs.get(), kBindingConfirmedKey, 1);

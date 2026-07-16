@@ -19,6 +19,8 @@ constexpr uint32_t kWeatherRequestSettleDelayMs = 120;
 constexpr uint32_t kStartupWeatherRequestSettleDelayMs = 300;
 constexpr uint32_t kNetworkOperationSettleDelayMs = 250;
 constexpr uint32_t kStartupNetworkOperationSettleDelayMs = 1000;
+constexpr uint8_t kAutomaticBootHttpsWeatherBit = 1u << 0;
+constexpr uint8_t kAutomaticBootHttpsSayingBit = 1u << 1;
 static_assert(kIdleMinimumWaitMs > 0, "network idle minimum wait must be positive");
 static_assert(kIdleFallbackWaitMs >= kIdleMinimumWaitMs,
               "network idle fallback wait must cover the minimum wait");
@@ -66,6 +68,24 @@ uint32_t future_deadline_wait_ms(time_t now,
     }
     return static_cast<uint32_t>(seconds * kMillisecondsPerSecond);
 }
+
+uint8_t automatic_boot_https_mask(
+    const NetworkSyncSchedule &schedule,
+    const NetworkBootHttpsDeferralInput &input)
+{
+    uint8_t mask = 0;
+    if (schedule.boot_weather_ready &&
+        !input.provisioning_sync_due &&
+        !input.manual_weather_due) {
+        mask |= kAutomaticBootHttpsWeatherBit;
+    }
+    if (schedule.boot_saying_ready &&
+        !input.provisioning_sync_due &&
+        !input.manual_saying_due) {
+        mask |= kAutomaticBootHttpsSayingBit;
+    }
+    return mask;
+}
 } // namespace
 
 NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInput &input)
@@ -95,6 +115,40 @@ NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInp
                            schedule.boot_saying_ready);
     schedule.next_boot_due_at = earliest_pending_boot_sync(input);
     return schedule;
+}
+
+NetworkBootHttpsDeferralResult calculate_network_boot_https_deferral(
+    const NetworkSyncSchedule &schedule,
+    const NetworkBootHttpsDeferralInput &input)
+{
+    NetworkBootHttpsDeferralResult result = {};
+    result.schedule = schedule;
+    uint8_t automatic_mask = automatic_boot_https_mask(schedule, input);
+    if (automatic_mask == 0 || input.memory_allowed) {
+        return result;
+    }
+
+    result.deferred = true;
+    result.retry_at = input.now + input.retry_delay_seconds;
+    if ((automatic_mask & kAutomaticBootHttpsWeatherBit) != 0) {
+        result.weather_deferred = true;
+        result.schedule.weather_due = false;
+        result.schedule.boot_weather_ready = false;
+        result.schedule.stagger_boot_saying_after_weather = false;
+    }
+    if ((automatic_mask & kAutomaticBootHttpsSayingBit) != 0) {
+        result.saying_deferred = true;
+        result.schedule.saying_due = false;
+        result.schedule.boot_saying_ready = false;
+    }
+    return result;
+}
+
+bool network_automatic_boot_https_pending(
+    const NetworkSyncSchedule &schedule,
+    const NetworkBootHttpsDeferralInput &input)
+{
+    return automatic_boot_https_mask(schedule, input) != 0;
 }
 
 int network_boot_budget_remaining_ms(int64_t deadline_us, int64_t now_us)

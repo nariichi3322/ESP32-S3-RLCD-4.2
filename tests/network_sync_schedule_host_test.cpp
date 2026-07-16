@@ -69,6 +69,66 @@ int main()
     assert(!network_boot_weather_due_after_update(true, true, false));
     assert(network_boot_weather_due_after_update(true, true, true));
 
+    NetworkSyncSchedule boot_https_schedule = {};
+    boot_https_schedule.boot_weather_ready = true;
+    boot_https_schedule.boot_saying_ready = true;
+    boot_https_schedule.stagger_boot_saying_after_weather = true;
+    boot_https_schedule.weather_due = true;
+    boot_https_schedule.saying_due = true;
+    NetworkBootHttpsDeferralInput boot_https_input = {};
+    boot_https_input.now = kNow;
+    boot_https_input.retry_delay_seconds = 10;
+    assert(network_automatic_boot_https_pending(boot_https_schedule,
+                                                boot_https_input));
+    NetworkBootHttpsDeferralResult deferral =
+        calculate_network_boot_https_deferral(boot_https_schedule,
+                                              boot_https_input);
+    assert(deferral.deferred);
+    assert(deferral.weather_deferred);
+    assert(deferral.saying_deferred);
+    assert(deferral.retry_at == kNow + 10);
+    assert(!deferral.schedule.boot_weather_ready);
+    assert(!deferral.schedule.boot_saying_ready);
+    assert(!deferral.schedule.stagger_boot_saying_after_weather);
+    assert(!deferral.schedule.weather_due);
+    assert(!deferral.schedule.saying_due);
+
+    boot_https_input.memory_allowed = true;
+    deferral = calculate_network_boot_https_deferral(boot_https_schedule,
+                                                     boot_https_input);
+    assert(!deferral.deferred);
+    assert(deferral.schedule.weather_due);
+    assert(deferral.schedule.saying_due);
+
+    boot_https_input.memory_allowed = false;
+    boot_https_input.manual_weather_due = true;
+    deferral = calculate_network_boot_https_deferral(boot_https_schedule,
+                                                     boot_https_input);
+    assert(deferral.deferred);
+    assert(!deferral.weather_deferred);
+    assert(deferral.saying_deferred);
+    assert(deferral.schedule.weather_due);
+    assert(!deferral.schedule.saying_due);
+
+    boot_https_input.manual_weather_due = false;
+    boot_https_input.manual_saying_due = true;
+    deferral = calculate_network_boot_https_deferral(boot_https_schedule,
+                                                     boot_https_input);
+    assert(deferral.deferred);
+    assert(deferral.weather_deferred);
+    assert(!deferral.saying_deferred);
+    assert(!deferral.schedule.weather_due);
+    assert(deferral.schedule.saying_due);
+
+    boot_https_input.provisioning_sync_due = true;
+    assert(!network_automatic_boot_https_pending(boot_https_schedule,
+                                                 boot_https_input));
+    deferral = calculate_network_boot_https_deferral(boot_https_schedule,
+                                                     boot_https_input);
+    assert(!deferral.deferred);
+    assert(deferral.schedule.weather_due);
+    assert(deferral.schedule.saying_due);
+
     assert(network_boot_budget_remaining_ms(0, 1000) == INT32_MAX);
     assert(network_boot_budget_remaining_ms(-1, 1000) == INT32_MAX);
     assert(network_boot_budget_remaining_ms(1000, 1000) == 0);

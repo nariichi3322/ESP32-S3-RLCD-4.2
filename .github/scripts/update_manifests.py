@@ -52,6 +52,19 @@ def normalize_public_base(value: str) -> str:
     return normalized
 
 
+def load_release_notes(path: Path, version: str) -> str:
+    try:
+        source = path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ValueError(f"unable to read OTA release notes: {exc}") from exc
+    if not source.startswith(f"{version}："):
+        raise ValueError("OTA release notes version does not match the build version")
+    notes = compact_ota_notes(version, source)
+    if not notes.startswith(f"{version}："):
+        raise ValueError("compacted OTA release notes lost their version header")
+    return notes
+
+
 def file_metadata(path: Path) -> tuple[str, int]:
     if not path.is_file() or path.stat().st_size <= 0:
         raise ValueError(f"firmware file is missing or empty: {path}")
@@ -125,9 +138,7 @@ def main() -> int:
     args = parse_args()
     require_version(args.version)
     public_base = normalize_public_base(args.public_base)
-    notes = compact_ota_notes(
-        args.version, args.notes_file.read_text(encoding="utf-8").strip()
-    )
+    notes = load_release_notes(args.notes_file, args.version)
     app_sha, app_size = file_metadata(args.app)
     merged_sha, merged_size = file_metadata(args.merged)
 

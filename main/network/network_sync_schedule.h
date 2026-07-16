@@ -33,7 +33,30 @@ struct NetworkSyncSchedule {
     time_t next_boot_due_at = 0;
 };
 
+struct NetworkBootHttpsDeferralInput {
+    time_t now = 0;
+    time_t retry_delay_seconds = 0;
+    bool provisioning_sync_due = false;
+    bool manual_weather_due = false;
+    bool manual_saying_due = false;
+    bool memory_allowed = false;
+};
+
+struct NetworkBootHttpsDeferralResult {
+    NetworkSyncSchedule schedule = {};
+    bool deferred = false;
+    bool weather_deferred = false;
+    bool saying_deferred = false;
+    time_t retry_at = 0;
+};
+
 NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInput &input);
+bool network_automatic_boot_https_pending(
+    const NetworkSyncSchedule &schedule,
+    const NetworkBootHttpsDeferralInput &input);
+NetworkBootHttpsDeferralResult calculate_network_boot_https_deferral(
+    const NetworkSyncSchedule &schedule,
+    const NetworkBootHttpsDeferralInput &input);
 int network_boot_budget_remaining_ms(int64_t deadline_us, int64_t now_us);
 uint32_t network_idle_wait_ms(time_t now,
                               time_t next_boot_due_at,

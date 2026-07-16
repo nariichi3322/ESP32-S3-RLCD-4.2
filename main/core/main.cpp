@@ -7,6 +7,7 @@
 #include "audio_services.h"
 #include "custom_assets.h"
 #include "input_tasks.h"
+#include "network_diagnostics_state.h"
 #include "network_services.h"
 #include "ota_services.h"
 #include "sensor_services.h"
@@ -27,6 +28,8 @@
 #define MAIN_EVENT_GROUP_CREATE_FAILED_LOG_FORMAT "app event group create failed"
 #define MAIN_NETIF_INIT_FAILED_LOG_FORMAT "netif init failed: %s"
 #define MAIN_EVENT_LOOP_INIT_FAILED_LOG_FORMAT "event loop init failed: %s"
+#define MAIN_WEATHER_STATE_INIT_FAILED_LOG_FORMAT "weather state initialization failed"
+#define MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT "network diagnostics state initialization failed"
 #define MAIN_INVALID_BOOT_TASK_LOG_FORMAT "%s: invalid boot task request"
 #define MAIN_BOOT_TASK_CREATE_FAILED_LOG_FORMAT "%s"
 #define MAIN_DISPLAY_UNAVAILABLE_LOG_FORMAT "RLCD display resources unavailable; startup stopped"
@@ -249,6 +252,14 @@ extern "C" void app_main(void)
         return;
     }
     if (!init_network_http_transaction_lock()) {
+        return;
+    }
+    if (!init_weather_state()) {
+        ESP_LOGE(TAG, MAIN_WEATHER_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
+    if (!network_diagnostics_state_init()) {
+        ESP_LOGE(TAG, MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT);
         return;
     }
     init_power_management();

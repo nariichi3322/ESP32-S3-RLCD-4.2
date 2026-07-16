@@ -8,6 +8,7 @@ struct NetworkDiagnosticsSnapshot {
     char lines[kNetworkDiagLineCount][kNetworkDiagLineLen] = {};
 };
 
+bool network_diagnostics_state_init();
 void network_diag_state_clear(int state);
 void network_diag_state_store(int state);
 int network_diag_state_load();

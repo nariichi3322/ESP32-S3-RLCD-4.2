@@ -7,6 +7,7 @@
 struct cJSON;
 
 inline constexpr size_t kXiaozhiClientIdSize = 37;
+inline constexpr size_t kXiaozhiWebsocketConfigFieldSize = 256;
 
 bool xiaozhi_load_websocket_config(char *url,
                                     size_t url_len,
