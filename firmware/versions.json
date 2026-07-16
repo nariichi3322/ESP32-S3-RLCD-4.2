@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.18",
+  "latest": "v1.5.19",
   "items": [
+    {
+      "version": "v1.5.19",
+      "notes": "v1.5.19：共 9 项更新。\n1. 修复 RTC 完全丢时后，设置页手动 NTP 被启动/每日同步旧退避截止时间阻塞的问题…\n2. RTC 时间不可信时，自动 NTP 失败重试缩短为约 15 秒；同步成功立即刷新日期、…\n3. 温湿时钟秒牌改为按变化数字的实际字形范围局部刷新，普通秒跳由完整 112px 卡片收敛…\n4. 天气、网络凭据、网络检测、每日文字、温湿度小时历史和 OTA 运行态统一使用启动期静态…\n5. 新增公共作用域 semaphore 锁，消除天气、历史、OTA 和每日文字模块的重复锁…\n其余 4 项见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.19.bin",
+        "sha256": "c756e8a41fa07d23799de744afe487c6ae78ae09bda30c94c72b3e202ca2c140",
+        "size": 6227120
+      },
+      "merged": {
+        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.19_merged.bin",
+        "sha256": "8fdc4f1a5a19cca4e957c7766e49f2736df83d692024c511cf20ae637ab7f91a",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.18",
       "notes": "v1.5.18：共 25 项更新。\n1. 将与常驻 LVGL handler task 同生命周期的显示互斥锁改为 FreeRT…\n2. 将小智页面状态快照 mutex 改为 FreeRTOS 静态控制块，消除启动时动态内部…\n3. 将小智页面活动、唤醒和暂停协调 EventGroup 改为 FreeRTOS 静态控制…\n4. 将整机常驻的 LVGL handler task 由动态任务创建改为文件私有静态栈和…\n5. 修复按键 GPIO 初始化失败时 FreeRTOS 任务入口直接返回的未定义行为，并基…\n6. 将应用期唯一的 SHTC3 传感器对象由普通堆 new 改为 I2C 就绪后在对齐静态…\n其余 19 项见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.10_merged.bin",
         "sha256": "f560e7fd69210353f6bb4b7f26cadffe806b6bf3ff9c0aef98b7fe6fb88ebf2f",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.9",
-      "notes": "v1.5.9：共 7 项更新。\n重点：继续按稳定优先原则拆分启动联网、后台同步和可见页数据补拉职责；天气与每日文字仍由单一常驻网络任务串行错峰，页面 UI 不直接执行 HTTP/H…\n完整说明见同版本 Release。",
-      "app": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.9.bin",
-        "sha256": "cd21709fd9ac0ea232563b56f0f7db9093a59ccc40824d568d2c22dcb7b9f942",
-        "size": 6209104
-      },
-      "merged": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.9_merged.bin",
-        "sha256": "4411a1aebb13423a2b0f5cbeca6cdd87825ecf8a0ea6d654a0857d44dbd3bde3",
         "size": 16509951
       }
     }
