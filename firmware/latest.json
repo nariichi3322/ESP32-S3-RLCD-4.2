@@ -1,7 +1,7 @@
 {
-  "version": "v1.5.14",
-  "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.14.bin",
-  "sha256": "f68ce32bedbc6cc1a18876800f04a0320946ea5a8e80346add681a113d7546bb",
-  "size": 6215328,
-  "notes": "ESP32-S3 RLCD 4.2 天气时钟 v1.5.14 源码发布。\n\n`v1.5.14`：\n  自动化发布版本，包含本次代码迭代、构建产物和 OTA 更新清单。\n\n本 Release 仅包含公开的 RLCD_CLOCK 时钟源码；严禁商用。"
+  "version": "v1.5.15",
+  "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.15.bin",
+  "sha256": "ecd3b8295960572d0a695fdd2342c4d2fa5b72afd80fe37d5feefd9a22213811",
+  "size": 6223168,
+  "notes": "ESP32-S3 RLCD 4.2 天气时钟 v1.5.15 源码发布。\n\n`v1.5.15`：\n  1. 收敛跨任务状态一致性：统一 UI、按键、闹钟和番茄钟任务通知边界，将联网配置、页面开关与顺序、设置导航、手动天气城市、本地 IP 等共享状态迁入原子或完整快照，避免跨核心读取半完成数据。\n  2. 加固网络与配网失败恢复：修复配网 DNS 超时配置失败后的永久阻塞、运行中 SoftAP/HTTP 启动失败残留 APSTA 和高功耗状态，并为小智 MCP 天气城市刷新增加有界等待，异常时页面可正常恢复。\n  3. 优化小智语音稳定性与空闲功耗：绑定码仅在完整播放后确认，TTS 空队列改为事件等待，扬声器写入失败可完整清理，网络失败会释放 Wi-Fi、PM 锁和语音资源，保持既有唤醒、字幕、闹钟和番茄钟交互。\n  4. 加固显示启动与运行边界：LVGL 和 RLCD 底层资源改为事务式初始化与逆序回滚；运行时命令、参数和像素传输使用有界重试，瞬时 DMA 不足或超时只放弃当前帧，不再触发整机重启。\n  5. 精简 I2C 与音频资源：I2C 写入改用有界栈帧，总线和 RTC/SHTC3 子设备增加就绪及析构保护；Codec 区分播放/录音就绪，并移除与 codec_board 重复的 ES8311/ES7210 控制句柄及无人调用接口。\n  6. 完善 OTA 稳定性：精简 manifest 运行态并确定化解析失败输出，修复 GitHub 自动构建未注入 R2/GitHub 备用地址的问题，保持双源、双固件、SHA256 和原子导…"
 }
