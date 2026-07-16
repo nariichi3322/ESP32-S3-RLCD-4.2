@@ -1,7 +1,7 @@
 {
-  "version": "v1.5.16",
-  "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.16.bin",
-  "sha256": "41066715b97faf7ea8cde0241224326e7c852be20082a214f97f6e90792bd567",
-  "size": 6223168,
-  "notes": "ESP32-S3 RLCD 4.2 天气时钟 v1.5.16 源码发布。\n\n`v1.5.16`：\n  1. 将应用全生命周期常驻的 HTTPS/WSS 全局事务锁改为 FreeRTOS 静态互斥量，消除冷启动内部堆分配失败点和长期堆碎片来源，锁范围与超时语义保持不变。\n  2. 新增 HTTPS 事务锁源码契约测试，固定幂等初始化、静态存储和 acquire/release 边界，禁止后续维护时退回动态 mutex 或缩短天气、每日文字、小智及 OTA 的串行保护范围。\n  3. 本版通过 153 组主机测试、SDL 和 ESP-IDF 构建验证；不改变七个工作页 UI、联网顺序、用户操作、分区表、NVS key、资源格式、OTA 协议或上位机接口，已使用 v1.5.x 分区表的设备可直接 OTA 升级。\n\n本 Release 仅包含公开的 RLCD_CLOCK 时钟源码；严禁商用。"
+  "version": "v1.5.17",
+  "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.17.bin",
+  "sha256": "de726a7db96fe7782e525b89487174ae127e94e469a681f4bb34d423f1863cbf",
+  "size": 6223312,
+  "notes": "ESP32-S3 RLCD 4.2 天气时钟 v1.5.17 源码发布。\n\n`v1.5.17`：\n  1. 将应用全生命周期常驻的网络/音频 PM 锁深度计数 mutex 改为 FreeRTOS 静态互斥量，减少冷启动内部堆分配和长期碎片来源，四类性能锁与 light sleep 行为保持不变。\n  2. 将配网、联网同步、OTA、启动任务和小智共用的应用 EventGroup 改为 FreeRTOS 静态控制块，减少冷启动动态分配和长期堆碎片，事件位及失败回滚语义保持不变。\n  3. 新增并强化 PM 锁所有权及应用事件组生命周期专项测试；本版不改变七个工作页 UI、联网流程、用户操作、分区表、NVS key、资源格式、OTA 协议或上位机接口，已使用 v1.5.x 分区表的设备可直接 OTA 升级。\n\n本 Release 仅包含公开的 RLCD_CLOCK 时钟源码；严禁商用。"
 }

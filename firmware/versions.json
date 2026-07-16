@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.16",
+  "latest": "v1.5.17",
   "items": [
+    {
+      "version": "v1.5.17",
+      "notes": "ESP32-S3 RLCD 4.2 天气时钟 v1.5.17 源码发布。\n\n`v1.5.17`：\n  1. 将应用全生命周期常驻的网络/音频 PM 锁深度计数 mutex 改为 FreeRTOS 静态互斥量，减少冷启动内部堆分配和长期碎片来源，四类性能锁与 light sleep 行为保持不变。\n  2. 将配网、联网同步、OTA、启动任务和小智共用的应用 EventGroup 改为 FreeRTOS 静态控制块，减少冷启动动态分配和长期堆碎片，事件位及失败回滚语义保持不变。\n  3. 新增并强化 PM 锁所有权及应用事件组生命周期专项测试；本版不改变七个工作页 UI、联网流程、用户操作、分区表、NVS key、资源格式、OTA 协议或上位机接口，已使用 v1.5.x 分区表的设备可直接 OTA 升级。\n\n本 Release 仅包含公开的 RLCD_CLOCK 时钟源码；严禁商用。",
+      "app": {
+        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.17.bin",
+        "sha256": "de726a7db96fe7782e525b89487174ae127e94e469a681f4bb34d423f1863cbf",
+        "size": 6223312
+      },
+      "merged": {
+        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.17_merged.bin",
+        "sha256": "f397985ca5b0f840480541e53f3eea2b05dac67902424559a0b1b1c002a7719e",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.16",
       "notes": "ESP32-S3 RLCD 4.2 天气时钟 v1.5.16 源码发布。\n\n`v1.5.16`：\n  1. 将应用全生命周期常驻的 HTTPS/WSS 全局事务锁改为 FreeRTOS 静态互斥量，消除冷启动内部堆分配失败点和长期堆碎片来源，锁范围与超时语义保持不变。\n  2. 新增 HTTPS 事务锁源码契约测试，固定幂等初始化、静态存储和 acquire/release 边界，禁止后续维护时退回动态 mutex 或缩短天气、每日文字、小智及 OTA 的串行保护范围。\n  3. 本版通过 153 组主机测试、SDL 和 ESP-IDF 构建验证；不改变七个工作页 UI、联网顺序、用户操作、分区表、NVS key、资源格式、OTA 协议或上位机接口，已使用 v1.5.x 分区表的设备可直接 OTA 升级。\n\n本 Release 仅包含公开的 RLCD_CLOCK 时钟源码；严禁商用。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.8_merged.bin",
         "sha256": "24e7772b77e69e7738613eb0f4531bbb5c4d538a217f259e3669120fcb9b8e3e",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.7",
-      "notes": "`v1.5.7`：\n  1. 统一未充电电池 ADC 与本地温湿度的日夜采样节奏：白天每个整分钟、夜间每 2 分钟整边界采样；开机首样、时间不可信 60 秒兜底和确认充电后的约 1 秒快速采样保持不变。\n  2. 修复并加固小智 AI 音频链路：避免 TTS 回复被 WakeNet 回声误中断，增加唤醒音静音预热和外设稳定等待，并在 Codec 关闭异常时保留可恢复状态，降低回复中途停止和偶发沙哑风险。\n  3. 继续收敛七页显示刷新：全天进度条共用单一模块，日历星期条与日期区独立定位，反显数字牌形成共享绘制组件；隐藏页、低频页和秒级页仍按原可见性及局部刷新规则运行。\n  4. 加固 FreeRTOS Tick 长期运行边界：UI 短截止时间、传感器 housekeeping、可见页同步退避、OTA 状态保持、小智自动返回和音频等待统一使用回绕安全判断，避免长时间运行后出现误超时或高频空转。\n  5. 拆分天气组合更新职责：手动城市、IP 定位回退、实时天气、预警、未来预报和空气质量保持原请求顺序与缓存提交语义，endpoint 客户端与批量业务编排分别维护。\n  6. 加固网络输入处理：JSON 根对象、字段复制、URL component 编码和 gzip payload 解析形成独立模块，补充损坏数据、超长字段和边界输入主机测试，天气 API、每日文字和配网表单行为不变。\n  7. 拆分并测试 OTA manifest 解析，修复超长版本组件比较可能溢出的边界；R2 主…",
-      "app": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.7.bin",
-        "sha256": "d76eb178e18593df745684ab8c86e34e28d2f7e9fa23a4bc15960dc9380459fc",
-        "size": 6205648
-      },
-      "merged": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.7_merged.bin",
-        "sha256": "2b56436e0bda60380dc9d5098bcf3a97acc8f07fe897611cfc7872d9fed26e3b",
         "size": 16509951
       }
     }
