@@ -272,6 +272,7 @@ The GitHub OTA fallback repository is updated from the same source build. The so
 Internally, provisioning, offline mode, chime, volume, and Xiaozhi auto-return settings are safely published to background tasks. This maintenance does not change where settings are edited, how they are saved, or how they are restored after restart.
 
 The online manifest may include release notes for publishing tools and the desktop client. The device retains only the version, download URL, file size, and SHA256 metadata required for installation instead of keeping unused release-note text in memory.
+OTA manifests use a bounded short summary. Complete numbered notes remain in the matching Gitea/GitHub Release so long descriptions cannot interfere with device update checks.
 
 Open **Settings > System > Check Update**:
 

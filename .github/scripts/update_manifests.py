@@ -8,9 +8,16 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
+
+try:
+    from ota_release_notes import compact_ota_notes
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    from ota_release_notes import compact_ota_notes
 
 
 VERSION_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
@@ -118,7 +125,9 @@ def main() -> int:
     args = parse_args()
     require_version(args.version)
     public_base = normalize_public_base(args.public_base)
-    notes = args.notes_file.read_text(encoding="utf-8").strip()
+    notes = compact_ota_notes(
+        args.version, args.notes_file.read_text(encoding="utf-8").strip()
+    )
     app_sha, app_size = file_metadata(args.app)
     merged_sha, merged_size = file_metadata(args.merged)
 
@@ -140,6 +149,10 @@ def main() -> int:
     }
 
     existing = [item for item in load_versions(args.versions) if item.get("version") != args.version]
+    for item in existing:
+        version = str(item.get("version", ""))
+        if VERSION_RE.fullmatch(version):
+            item["notes"] = compact_ota_notes(version, str(item.get("notes", "")))
     sortable = [current, *existing]
     sortable.sort(key=lambda item: require_version(str(item.get("version", ""))), reverse=True)
     versions = {"latest": args.version, "items": sortable[:VERSIONS_KEEP]}
