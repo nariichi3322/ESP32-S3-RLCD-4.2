@@ -8,7 +8,7 @@ import sys
 
 
 MAX_OTA_NOTES_BYTES = 768
-MAX_PRIMARY_ITEM_CHARS = 72
+MAX_NUMBERED_ITEM_CHARS = 44
 MAX_FALLBACK_CHARS = 96
 NUMBERED_ITEM_RE = re.compile(r"^\s*\d+\.\s+(.+?)\s*$")
 
@@ -37,7 +37,10 @@ def fit_utf8(value: str, limit: int) -> str:
 
 def compact_ota_notes(version: str, release_notes: str) -> str:
     text = release_notes.strip()
-    if text.startswith(f"{version}：") and "完整说明见同版本 Release。" in text:
+    if text.startswith(f"{version}：") and (
+        "源码仓库同版本 Release。" in text
+        or "完整说明见同版本 Release。" in text
+    ):
         return fit_utf8(text, MAX_OTA_NOTES_BYTES)
 
     items = [
@@ -46,12 +49,34 @@ def compact_ota_notes(version: str, release_notes: str) -> str:
         if (match := NUMBERED_ITEM_RE.match(line)) is not None
     ]
     if items:
-        result = (
-            f"{version}：共 {len(items)} 项更新。\n"
-            f"重点：{shorten_text(items[0], MAX_PRIMARY_ITEM_CHARS)}\n"
-            "完整说明见同版本 Release。"
+        header = f"{version}：共 {len(items)} 项更新。"
+        selected: list[str] = []
+        for index, item in enumerate(items, start=1):
+            candidate = [
+                *selected,
+                f"{index}. {shorten_text(item, MAX_NUMBERED_ITEM_CHARS)}",
+            ]
+            omitted = len(items) - len(candidate)
+            footer = (
+                f"其余 {omitted} 项见源码仓库同版本 Release。"
+                if omitted
+                else "完整说明见源码仓库同版本 Release。"
+            )
+            result = "\n".join((header, *candidate, footer))
+            if len(result.encode("utf-8")) > MAX_OTA_NOTES_BYTES:
+                break
+            selected = candidate
+
+        omitted = len(items) - len(selected)
+        footer = (
+            f"其余 {omitted} 项见源码仓库同版本 Release。"
+            if omitted
+            else "完整说明见源码仓库同版本 Release。"
         )
-        return fit_utf8(result, MAX_OTA_NOTES_BYTES)
+        return fit_utf8(
+            "\n".join((header, *selected, footer)),
+            MAX_OTA_NOTES_BYTES,
+        )
 
     detail = text
     header_match = re.match(rf"^`?{re.escape(version)}`?：\s*", detail)
@@ -61,7 +86,7 @@ def compact_ota_notes(version: str, release_notes: str) -> str:
     if not detail:
         detail = "包含本版本功能修复、稳定性与资源优化。"
     return fit_utf8(
-        f"{version}：{detail}\n完整说明见同版本 Release。",
+        f"{version}：{detail}\n完整说明见源码仓库同版本 Release。",
         MAX_OTA_NOTES_BYTES,
     )
 
