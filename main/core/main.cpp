@@ -6,9 +6,12 @@
 #include "weather_city_mcp.h"
 #include "audio_services.h"
 #include "custom_assets.h"
+#include "daily_saying_state.h"
 #include "input_tasks.h"
+#include "network_credentials_state.h"
 #include "network_diagnostics_state.h"
 #include "network_services.h"
+#include "ota_runtime_state.h"
 #include "ota_services.h"
 #include "sensor_services.h"
 #include "startup_state.h"
@@ -29,7 +32,11 @@
 #define MAIN_NETIF_INIT_FAILED_LOG_FORMAT "netif init failed: %s"
 #define MAIN_EVENT_LOOP_INIT_FAILED_LOG_FORMAT "event loop init failed: %s"
 #define MAIN_WEATHER_STATE_INIT_FAILED_LOG_FORMAT "weather state initialization failed"
+#define MAIN_NETWORK_CREDENTIALS_STATE_INIT_FAILED_LOG_FORMAT "network credentials state initialization failed"
 #define MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT "network diagnostics state initialization failed"
+#define MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT "hourly sensor history state initialization failed"
+#define MAIN_OTA_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT "OTA runtime state initialization failed"
+#define MAIN_DAILY_SAYING_STATE_INIT_FAILED_LOG_FORMAT "daily saying state initialization failed"
 #define MAIN_INVALID_BOOT_TASK_LOG_FORMAT "%s: invalid boot task request"
 #define MAIN_BOOT_TASK_CREATE_FAILED_LOG_FORMAT "%s"
 #define MAIN_DISPLAY_UNAVAILABLE_LOG_FORMAT "RLCD display resources unavailable; startup stopped"
@@ -247,6 +254,10 @@ extern "C" void app_main(void)
         return;
     }
 
+    if (!ota_runtime_state_init()) {
+        ESP_LOGE(TAG, MAIN_OTA_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
     ota_mark_running_app_valid();
     if (!init_system_event_services()) {
         return;
@@ -258,8 +269,20 @@ extern "C" void app_main(void)
         ESP_LOGE(TAG, MAIN_WEATHER_STATE_INIT_FAILED_LOG_FORMAT);
         return;
     }
+    if (!network_credentials_state_init()) {
+        ESP_LOGE(TAG, MAIN_NETWORK_CREDENTIALS_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
     if (!network_diagnostics_state_init()) {
         ESP_LOGE(TAG, MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
+    if (!init_hourly_sensor_history_state()) {
+        ESP_LOGE(TAG, MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
+    if (!daily_saying_state_init()) {
+        ESP_LOGE(TAG, MAIN_DAILY_SAYING_STATE_INIT_FAILED_LOG_FORMAT);
         return;
     }
     init_power_management();

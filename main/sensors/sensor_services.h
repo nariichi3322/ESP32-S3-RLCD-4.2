@@ -28,6 +28,7 @@ bool init_battery_gauge();
 int battery_percent_from_voltage(float voltage);
 bool read_battery_percent(int *percent);
 void sample_battery();
+bool init_hourly_sensor_history_state();
 void reset_hourly_sensor_history();
 void load_hourly_sensor_history();
 void record_hourly_sensor_sample(float temp, float humi);

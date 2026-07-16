@@ -41,6 +41,38 @@ int main()
                                                                   40);
     static_assert(invalid.first_origin_x == 0 && invalid.second_origin_x == 0);
 
+    constexpr DsegGlyphBounds zero = dseg_scaled_glyph_bounds(4,
+                                                               84,
+                                                               3,
+                                                               4,
+                                                               8,
+                                                               -84,
+                                                               53,
+                                                               84);
+    static_assert(zero.x1 == 10 && zero.y1 == 21);
+    static_assert(zero.x2 == 49 && zero.y2 == 83);
+    static_assert(dseg_glyph_bounds_valid(zero));
+
+    constexpr DsegGlyphBounds one = dseg_scaled_glyph_bounds(4,
+                                                              84,
+                                                              3,
+                                                              4,
+                                                              50,
+                                                              -80,
+                                                              11,
+                                                              76);
+    static_assert(one.x1 == 41 && one.y1 == 24);
+    static_assert(one.x2 == 49 && one.y2 == 80);
+    static_assert(!dseg_glyph_bounds_equal(zero, one));
+    static_assert(dseg_glyph_bounds_overlap(zero, one));
+
+    constexpr DsegGlyphBounds combined = dseg_union_glyph_bounds(zero, one);
+    static_assert(combined.x1 == 10 && combined.y1 == 21);
+    static_assert(combined.x2 == 49 && combined.y2 == 83);
+    constexpr DsegGlyphBounds empty = {0, 0, -1, -1};
+    static_assert(dseg_glyph_bounds_equal(dseg_union_glyph_bounds(empty, zero),
+                                          zero));
+
     assert(equal.second_origin_x > equal.first_origin_x);
     return 0;
 }

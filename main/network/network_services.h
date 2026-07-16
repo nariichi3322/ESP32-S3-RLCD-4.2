@@ -99,8 +99,6 @@ enum class WeatherUpdateResult {
     kResourceDeferred,
 };
 WeatherUpdateResult perform_weather_update();
-void load_daily_saying_cache();
-bool get_daily_saying_snapshot(char *out, size_t out_len, time_t *last_sync_time = nullptr);
 bool perform_daily_saying_update();
 bool wait_for_wifi_connected(uint32_t timeout_ms);
 bool is_time_valid(struct tm *local_out = nullptr);

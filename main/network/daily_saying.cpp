@@ -2,7 +2,7 @@
 #include "network_services.h"
 
 #include "app_constexpr.h"
-#include "app_text_format.h"
+#include "daily_saying_state.h"
 #include "daily_saying_parser.h"
 #include "scoped_heap_buffer.h"
 #include "ui_views.h"
@@ -12,15 +12,13 @@
 #define DAILY_SAYING_PARSE_FAILED_LOG_FORMAT "daily saying parse failed"
 #define DAILY_SAYING_TOO_LONG_LOG_FORMAT "daily saying too long chars=%d attempt=%d"
 #define DAILY_SAYING_UPDATE_FAILED_LOG_FORMAT "daily saying update failed attempts=%d http=%d parse=%d long=%d"
+#define DAILY_SAYING_STATE_PUBLISH_FAILED_LOG_FORMAT "daily saying state publish failed"
 #define DAILY_SAYING_UPDATED_LOG_FORMAT "daily saying updated"
 
 namespace {
 constexpr size_t kDailySayingResponseBufferSize = 768;
 constexpr int kMaxSayingAttempts = 8;
 constexpr uint32_t kDailySayingRetrySettleMs = 120;
-portMUX_TYPE s_daily_saying_mux = portMUX_INITIALIZER_UNLOCKED;
-char s_daily_saying[kDailySayingLen] = {};
-time_t s_last_saying_sync_time = 0;
 
 static_assert(kDailySayingResponseBufferSize > 0, "daily saying response buffer must be nonzero");
 static_assert(kDailySayingResponseBufferSize >= kDailySayingLen,
@@ -93,37 +91,6 @@ void settle_before_next_daily_saying_attempt(int attempt)
 }
 } // namespace
 
-void load_daily_saying_cache()
-{
-    portENTER_CRITICAL(&s_daily_saying_mux);
-    s_daily_saying[0] = '\0';
-    s_last_saying_sync_time = 0;
-    portEXIT_CRITICAL(&s_daily_saying_mux);
-}
-
-bool get_daily_saying_snapshot(char *out, size_t out_len, time_t *last_sync_time)
-{
-    if (!app_text::output_buffer_available(out, out_len)) {
-        return false;
-    }
-    portENTER_CRITICAL(&s_daily_saying_mux);
-    strlcpy(out, s_daily_saying, out_len);
-    if (last_sync_time) {
-        *last_sync_time = s_last_saying_sync_time;
-    }
-    bool available = out[0] != '\0';
-    portEXIT_CRITICAL(&s_daily_saying_mux);
-    return available;
-}
-
-static void publish_daily_saying(const char *text, time_t synced_at)
-{
-    portENTER_CRITICAL(&s_daily_saying_mux);
-    strlcpy(s_daily_saying, text, sizeof(s_daily_saying));
-    s_last_saying_sync_time = synced_at;
-    portEXIT_CRITICAL(&s_daily_saying_mux);
-}
-
 bool perform_daily_saying_update()
 {
     if (battery_low_mode_load()) {
@@ -157,7 +124,10 @@ bool perform_daily_saying_update()
     }
     time_t synced_at = 0;
     time(&synced_at);
-    publish_daily_saying(next, synced_at);
+    if (!daily_saying_state_publish(next, synced_at)) {
+        ESP_LOGW(TAG, DAILY_SAYING_STATE_PUBLISH_FAILED_LOG_FORMAT);
+        return false;
+    }
     notify_ui_task();
     ESP_LOGI(TAG, DAILY_SAYING_UPDATED_LOG_FORMAT);
     return true;

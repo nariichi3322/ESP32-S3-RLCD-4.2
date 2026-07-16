@@ -2,11 +2,18 @@
 #include "sensor_services.h"
 
 #include "app_text_format.h"
+#include "hourly_sensor_history_state.h"
+#include "scoped_heap_buffer.h"
 #include "scoped_nvs_handle.h"
 #include "sensor_history_format.h"
 #include "sensor_trend.h"
 
 #include "ui_views.h"
+
+#include "esp_heap_caps.h"
+
+#include <new>
+#include <type_traits>
 
 #define HOURLY_SLOT_KEY_INDEX_INVALID_LOG_FORMAT "hourly sensor slot key index invalid: %d"
 #define HOURLY_SLOT_KEY_TRUNCATED_LOG_FORMAT "hourly sensor slot key truncated index=%d"
@@ -21,6 +28,9 @@ constexpr const char *kLegacyHourlyHistoryInvalidLog = "legacy hourly sensor his
 #define SENSOR_NVS_OPEN_FAILED_LOG_FORMAT "open sensor nvs failed: %s"
 #define HOURLY_SLOT_SAVE_FAILED_LOG_FORMAT "save hourly sensor slot failed: %s"
 #define HOURLY_SNAPSHOT_INVALID_ARG_LOG "hourly sensor snapshot invalid arg"
+constexpr const char *kHourlyLoadBufferAllocFailedLog = "hourly sensor load buffer alloc failed";
+constexpr const char *kHourlyStateResetFailedLog = "hourly sensor history state reset failed";
+constexpr const char *kHourlyStatePublishFailedLog = "hourly sensor history state publish failed";
 
 namespace {
 using sensor_history_format::HourlySensorHistoryMeta;
@@ -38,7 +48,6 @@ constexpr int kSecondsPerMinute = 60;
 constexpr int kMinutesPerHour = 60;
 constexpr int kSensorTrendWindowHours = 4;
 constexpr int64_t kSensorTrendWindowMs = (int64_t)kSensorTrendWindowHours * kMinutesPerHour * kSecondsPerMinute * kMsPerSecond;
-portMUX_TYPE s_hourly_history_mux = portMUX_INITIALIZER_UNLOCKED;
 portMUX_TYPE s_local_sensor_mux = portMUX_INITIALIZER_UNLOCKED;
 float s_temperature = 0.0f;
 float s_humidity = 0.0f;
@@ -52,10 +61,6 @@ int s_sensor_trend_count = 0;
 bool s_sensor_average_valid = false;
 float s_last_temperature_average = 0.0f;
 float s_last_humidity_average = 0.0f;
-HourlySensorHistoryBlob s_hourly_history;
-int64_t s_last_hourly_saved_at = 0;
-uint32_t s_hourly_history_version = 0;
-
 static_assert(kHourlyHistoryCount > 0, "hourly history must keep at least one slot");
 static_assert(kLegacyHourlyHistoryCount > 0, "legacy hourly history must keep at least one sample");
 static_assert(kHourlyHistoryCount <= 99, "hourly slot key format h%02d supports two-digit indexes");
@@ -71,39 +76,42 @@ static_assert(kSensorSampleNightMinutes >= kSensorSampleDayMinutes,
 static_assert(kSensorTrendWindowMs > 0, "sensor trend window in ms must be positive");
 static_assert(kSensorHistoryMinutes >= (kSensorTrendWindowHours * kMinutesPerHour) / kSensorSampleDayMinutes,
               "sensor trend history must cover the full day-sampling trend window");
+static_assert(std::is_trivially_destructible<HourlySensorHistoryBlob>::value,
+              "hourly history staging storage releases raw memory without a destructor call");
 bool should_log_nvs_read_error(esp_err_t err)
 {
     return err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND;
 }
 
-void store_loaded_hourly_sample(int index, const HourlySensorSample &sample, int64_t *newest_slot)
+HourlySensorHistoryBlob empty_hourly_sensor_history()
 {
-    portENTER_CRITICAL(&s_hourly_history_mux);
-    s_hourly_history.samples[index] = sample;
+    HourlySensorHistoryBlob history = {};
+    history.magic = kHourlyHistoryMagic;
+    history.version = sensor_history_format::kLegacyHourlyHistoryVersion;
+    history.count = kHourlyHistoryCount;
+    return history;
+}
+
+void store_loaded_hourly_sample(HourlySensorHistoryBlob *history,
+                                int index,
+                                const HourlySensorSample &sample,
+                                int64_t *newest_slot)
+{
+    if (!history || !sensor_history_format::hourly_index_valid(index)) {
+        return;
+    }
+    history->samples[index] = sample;
     if (newest_slot && sample.valid && sample.timestamp > *newest_slot) {
         *newest_slot = sample.timestamp;
     }
-    portEXIT_CRITICAL(&s_hourly_history_mux);
 }
 
-void store_loaded_hourly_timestamp(int64_t last_saved_at)
-{
-    portENTER_CRITICAL(&s_hourly_history_mux);
-    s_last_hourly_saved_at = last_saved_at;
-    portEXIT_CRITICAL(&s_hourly_history_mux);
-}
-
-void mark_hourly_history_loaded()
-{
-    portENTER_CRITICAL(&s_hourly_history_mux);
-    ++s_hourly_history_version;
-    portEXIT_CRITICAL(&s_hourly_history_mux);
-}
-
-void store_legacy_hourly_history_samples(const LegacyHourlySensorHistoryBlob &legacy)
+void store_legacy_hourly_history_samples(const LegacyHourlySensorHistoryBlob &legacy,
+                                         HourlySensorHistoryBlob *history,
+                                         int64_t *newest_slot)
 {
     for (int i = 0; i < kLegacyHourlyHistoryCount; ++i) {
-        store_loaded_hourly_sample(i, legacy.samples[i], &s_last_hourly_saved_at);
+        store_loaded_hourly_sample(history, i, legacy.samples[i], newest_slot);
     }
 }
 
@@ -177,7 +185,10 @@ static bool hourly_slot_key(int index, char *out, size_t out_len)
     return true;
 }
 
-static bool load_hourly_sensor_slot(nvs_handle_t nvs, int index, int64_t *newest_slot)
+static bool load_hourly_sensor_slot(nvs_handle_t nvs,
+                                    int index,
+                                    HourlySensorHistoryBlob *history,
+                                    int64_t *newest_slot)
 {
     HourlySensorSample sample = {};
     size_t sample_len = sizeof(sample);
@@ -187,7 +198,7 @@ static bool load_hourly_sensor_slot(nvs_handle_t nvs, int index, int64_t *newest
     }
     esp_err_t err = nvs_get_blob(nvs, key, &sample, &sample_len);
     if (err == ESP_OK && sample_len == sizeof(sample)) {
-        store_loaded_hourly_sample(index, sample, newest_slot);
+        store_loaded_hourly_sample(history, index, sample, newest_slot);
         return true;
     }
     if (err == ESP_OK) {
@@ -201,21 +212,26 @@ static bool load_hourly_sensor_slot(nvs_handle_t nvs, int index, int64_t *newest
 }
 
 static inline bool load_current_hourly_sensor_slots(nvs_handle_t nvs,
-                                                    const HourlySensorHistoryMeta &meta)
+                                                    const HourlySensorHistoryMeta &meta,
+                                                    HourlySensorHistoryBlob *history,
+                                                    int64_t *last_saved_at)
 {
+    if (!history || !last_saved_at) {
+        return false;
+    }
     int loaded = 0;
     int64_t newest_slot = 0;
     for (int i = 0; i < kHourlyHistoryCount; ++i) {
-        if (load_hourly_sensor_slot(nvs, i, &newest_slot)) {
+        if (load_hourly_sensor_slot(nvs, i, history, &newest_slot)) {
             ++loaded;
         }
     }
     if (loaded <= 0) {
         return false;
     }
-    store_loaded_hourly_timestamp(meta.last_saved_at > newest_slot
-                                      ? meta.last_saved_at
-                                      : newest_slot);
+    *last_saved_at = meta.last_saved_at > newest_slot
+                         ? meta.last_saved_at
+                         : newest_slot;
     return true;
 }
 
@@ -261,14 +277,9 @@ static esp_err_t save_hourly_sensor_meta_and_slot(nvs_handle_t nvs,
 
 void reset_hourly_sensor_history()
 {
-    portENTER_CRITICAL(&s_hourly_history_mux);
-    memset(&s_hourly_history, 0, sizeof(s_hourly_history));
-    s_hourly_history.magic = kHourlyHistoryMagic;
-    s_hourly_history.version = sensor_history_format::kLegacyHourlyHistoryVersion;
-    s_hourly_history.count = kHourlyHistoryCount;
-    s_last_hourly_saved_at = 0;
-    ++s_hourly_history_version;
-    portEXIT_CRITICAL(&s_hourly_history_mux);
+    if (!reset_hourly_sensor_history_state()) {
+        ESP_LOGW(TAG, "%s", kHourlyStateResetFailedLog);
+    }
 }
 
 void load_hourly_sensor_history()
@@ -282,13 +293,37 @@ void load_hourly_sensor_history()
         }
         return;
     }
+
+    void *load_memory = heap_caps_calloc(1,
+                                         sizeof(HourlySensorHistoryBlob),
+                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!load_memory) {
+        load_memory = calloc(1, sizeof(HourlySensorHistoryBlob));
+    }
+    ScopedHeapBuffer<uint8_t> load_storage(
+        static_cast<uint8_t *>(load_memory),
+        sizeof(HourlySensorHistoryBlob));
+    if (!load_storage) {
+        ESP_LOGW(TAG, "%s", kHourlyLoadBufferAllocFailedLog);
+        return;
+    }
+    HourlySensorHistoryBlob *loaded_history =
+        new (load_storage.get()) HourlySensorHistoryBlob(empty_hourly_sensor_history());
+    int64_t loaded_last_saved_at = 0;
     HourlySensorHistoryMeta meta = {};
     size_t meta_len = sizeof(meta);
     err = nvs_get_blob(nvs.get(), kHourlyHistoryMetaKey, &meta, &meta_len);
     bool meta_valid = err == ESP_OK && sensor_history_format::hourly_meta_valid(meta, meta_len);
-    if (meta_valid && load_current_hourly_sensor_slots(nvs.get(), meta)) {
+    if (meta_valid &&
+        load_current_hourly_sensor_slots(nvs.get(),
+                                         meta,
+                                         loaded_history,
+                                         &loaded_last_saved_at)) {
         nvs.close();
-        mark_hourly_history_loaded();
+        if (!publish_loaded_hourly_sensor_history(*loaded_history,
+                                                  loaded_last_saved_at)) {
+            ESP_LOGW(TAG, "%s", kHourlyStatePublishFailedLog);
+        }
         return;
     }
     if (err == ESP_OK && !meta_valid) {
@@ -303,8 +338,15 @@ void load_hourly_sensor_history()
     if (!legacy_loaded) {
         return;
     }
-    store_legacy_hourly_history_samples(legacy);
-    mark_hourly_history_loaded();
+    *loaded_history = empty_hourly_sensor_history();
+    loaded_last_saved_at = 0;
+    store_legacy_hourly_history_samples(legacy,
+                                        loaded_history,
+                                        &loaded_last_saved_at);
+    if (!publish_loaded_hourly_sensor_history(*loaded_history,
+                                              loaded_last_saved_at)) {
+        ESP_LOGW(TAG, "%s", kHourlyStatePublishFailedLog);
+    }
 }
 
 static bool save_hourly_sensor_slot(int index,
@@ -341,9 +383,7 @@ void record_hourly_sensor_sample(float temp, float humi)
     }
     time_t now = mktime(&local);
     time_t hour_start = hour_start_from_time(now);
-    portENTER_CRITICAL(&s_hourly_history_mux);
-    bool already_saved = hour_start == s_last_hourly_saved_at;
-    portEXIT_CRITICAL(&s_hourly_history_mux);
+    bool already_saved = hour_start == hourly_sensor_history_last_saved_at();
     if (hour_start <= 0 || already_saved) {
         return;
     }
@@ -356,11 +396,10 @@ void record_hourly_sensor_sample(float temp, float humi)
     if (!save_hourly_sensor_slot(index, hour_start, sample)) {
         return;
     }
-    portENTER_CRITICAL(&s_hourly_history_mux);
-    s_hourly_history.samples[index] = sample;
-    s_last_hourly_saved_at = hour_start;
-    ++s_hourly_history_version;
-    portEXIT_CRITICAL(&s_hourly_history_mux);
+    if (!publish_hourly_sensor_sample(index, hour_start, sample)) {
+        ESP_LOGW(TAG, "%s", kHourlyStatePublishFailedLog);
+        return;
+    }
     notify_ui_task();
 }
 
@@ -370,15 +409,7 @@ bool get_hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history, uint32
         ESP_LOGW(TAG, "%s", HOURLY_SNAPSHOT_INVALID_ARG_LOG);
         return false;
     }
-    portENTER_CRITICAL(&s_hourly_history_mux);
-    if (history) {
-        *history = s_hourly_history;
-    }
-    if (version) {
-        *version = s_hourly_history_version;
-    }
-    portEXIT_CRITICAL(&s_hourly_history_mux);
-    return true;
+    return hourly_sensor_history_snapshot(history, version);
 }
 
 static void calculate_updated_sensor_trends(float temp,

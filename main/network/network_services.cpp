@@ -1,6 +1,7 @@
 // 调度 NTP、天气、预警、每日文字和 OTA 等联网同步流程。
 #include "network_services.h"
 
+#include "daily_saying_state.h"
 #include "ota_runtime_state.h"
 
 #include "network_https_resources.h"
@@ -32,7 +33,6 @@ static constexpr EventBits_t kNetworkSyncWakeBits = kProvisioningSyncBit |
                                                      kManualSayingSyncBit |
                                                      kNetworkDiagBit |
                                                      kNetworkStateChangedBit;
-static constexpr time_t kNetworkNtpRetryDelaySec = 5 * kSecondsPerMinute;
 static constexpr time_t kBootWeatherRefreshDelaySec = 10;
 static constexpr time_t kBootSayingRefreshDelaySec = 25;
 static constexpr time_t kBootHttpsInterRequestGapSec = 8;
@@ -67,6 +67,8 @@ static constexpr const char *kNetworkCacheUnknownLabel = "unknown";
     "boot daily saying deferred %lld seconds after weather"
 #define NETWORK_BOOT_WEATHER_RESOURCE_RETRY_FORMAT \
     "boot weather resource retry deferred %lld seconds"
+#define NETWORK_NTP_RETRY_SCHEDULED_FORMAT \
+    "ntp retry scheduled: delay=%llds time_valid=%d"
 static constexpr const char *kNetworkDiagWifiOnLog = "wifi radio on for network diagnostics";
 #define NETWORK_SYNC_WIFI_ON_FORMAT "wifi radio on for sync: ntp=%d weather=%d saying=%d boot_weather=%d boot_saying=%d"
 static constexpr const char *kNetworkSyncWifiStartFailedLog = "wifi start failed during sync window";
@@ -159,8 +161,14 @@ void schedule_ntp_retry(time_t *next_ntp_retry_at)
     if (!next_ntp_retry_at) {
         return;
     }
+    const bool time_valid = is_system_time_plausible();
+    const time_t delay_seconds = network_ntp_retry_delay_seconds(time_valid);
     time(next_ntp_retry_at);
-    *next_ntp_retry_at += kNetworkNtpRetryDelaySec;
+    *next_ntp_retry_at += delay_seconds;
+    ESP_LOGI(TAG,
+             NETWORK_NTP_RETRY_SCHEDULED_FORMAT,
+             static_cast<long long>(delay_seconds),
+             time_valid);
 }
 
 static void update_ntp_retry_deadline(bool retry_required,

@@ -7,6 +7,8 @@ namespace {
 constexpr int64_t kMicrosecondsPerMillisecond = 1000;
 constexpr uint32_t kMillisecondsPerSecond = 1000;
 constexpr time_t kSecondsPerMinute = 60;
+constexpr time_t kInvalidTimeNtpRetryDelaySeconds = 15;
+constexpr time_t kValidTimeNtpRetryDelaySeconds = 5 * kSecondsPerMinute;
 constexpr uint32_t kIdleFallbackWaitMs = 60 * kSecondsPerMinute * kMillisecondsPerSecond;
 constexpr uint32_t kIdleMaximumWaitMs = 24 * 60 * kSecondsPerMinute * kMillisecondsPerSecond;
 constexpr uint32_t kIdleMinimumWaitMs = 1000;
@@ -22,6 +24,10 @@ constexpr uint32_t kStartupNetworkOperationSettleDelayMs = 1000;
 constexpr uint8_t kAutomaticBootHttpsWeatherBit = 1u << 0;
 constexpr uint8_t kAutomaticBootHttpsSayingBit = 1u << 1;
 static_assert(kIdleMinimumWaitMs > 0, "network idle minimum wait must be positive");
+static_assert(kInvalidTimeNtpRetryDelaySeconds > 0,
+              "invalid-time NTP retry delay must be positive");
+static_assert(kValidTimeNtpRetryDelaySeconds > kInvalidTimeNtpRetryDelaySeconds,
+              "valid-time NTP retry delay must remain longer than recovery retry");
 static_assert(kIdleFallbackWaitMs >= kIdleMinimumWaitMs,
               "network idle fallback wait must cover the minimum wait");
 static_assert(kIdleMaximumWaitMs >= kIdleFallbackWaitMs,
@@ -103,11 +109,12 @@ NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInp
                            (input.manual_weather_due ||
                             input.provisioning_sync_due ||
                             schedule.boot_weather_ready);
-    schedule.ntp_due = (input.manual_ntp_due ||
-                        input.provisioning_sync_due ||
-                        input.boot_ntp_due ||
-                        input.daily_ntp_due) &&
-                       input.now >= input.next_ntp_retry_at;
+    const bool explicit_ntp_due = input.manual_ntp_due ||
+                                  input.provisioning_sync_due;
+    const bool automatic_ntp_due = input.boot_ntp_due ||
+                                   input.daily_ntp_due;
+    schedule.ntp_due = explicit_ntp_due ||
+                       (automatic_ntp_due && input.now >= input.next_ntp_retry_at);
     schedule.ntp_retry_required = input.boot_ntp_due || input.daily_ntp_due;
     schedule.saying_due = !input.low_battery_mode &&
                           (input.manual_saying_due ||
@@ -115,6 +122,12 @@ NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInp
                            schedule.boot_saying_ready);
     schedule.next_boot_due_at = earliest_pending_boot_sync(input);
     return schedule;
+}
+
+time_t network_ntp_retry_delay_seconds(bool time_plausible)
+{
+    return time_plausible ? kValidTimeNtpRetryDelaySeconds
+                          : kInvalidTimeNtpRetryDelaySeconds;
 }
 
 NetworkBootHttpsDeferralResult calculate_network_boot_https_deferral(
@@ -230,8 +243,13 @@ bool network_boot_https_memory_sufficient(size_t internal_free,
 bool network_startup_pressure_window_active(bool startup_screen_active,
                                             int64_t uptime_us)
 {
-    return startup_screen_active ||
-           (uptime_us >= 0 && uptime_us < kStartupPressureWindowUs);
+    if (uptime_us >= 0) {
+        // The boot-screen flag is an additional early-start signal, not an
+        // unbounded HTTPS gate. A stale lifecycle flag must not postpone page
+        // data forever after the fixed startup pressure window has elapsed.
+        return uptime_us < kStartupPressureWindowUs;
+    }
+    return startup_screen_active;
 }
 
 uint32_t network_weather_request_settle_delay_ms(bool startup_pressure_active)

@@ -51,6 +51,7 @@ struct NetworkBootHttpsDeferralResult {
 };
 
 NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInput &input);
+time_t network_ntp_retry_delay_seconds(bool time_plausible);
 bool network_automatic_boot_https_pending(
     const NetworkSyncSchedule &schedule,
     const NetworkBootHttpsDeferralInput &input);

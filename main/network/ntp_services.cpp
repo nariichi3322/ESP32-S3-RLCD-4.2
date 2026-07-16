@@ -5,6 +5,7 @@
 #include "app_constexpr.h"
 #include "app_time_constants.h"
 #include "sensor_services.h"
+#include "ui_task_notify.h"
 
 #include "sdkconfig.h"
 
@@ -133,6 +134,7 @@ bool perform_ntp_sync(int max_retries)
         portEXIT_CRITICAL(&s_ntp_state_mux);
         alarm_notify_time_changed();
         set_time_synced_event_bit();
+        notify_ui_task();
         log_ntp_synced_time(local);
         return true;
     }

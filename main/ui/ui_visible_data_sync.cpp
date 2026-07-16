@@ -2,6 +2,7 @@
 #include "ui_visible_data_sync.h"
 
 #include "app_constexpr.h"
+#include "daily_saying_state.h"
 #include "network_credentials_state.h"
 #include "network_services.h"
 #include "network_sync_schedule.h"

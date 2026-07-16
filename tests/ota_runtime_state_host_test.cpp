@@ -11,6 +11,9 @@ int g_network_runtime_notification_count = 0;
 
 int main()
 {
+    assert(ota_runtime_state_init());
+    assert(ota_runtime_state_init());
+
     OtaRuntimeSnapshot initial;
     ota_runtime_snapshot_load(nullptr);
     ota_runtime_snapshot_load(&initial);

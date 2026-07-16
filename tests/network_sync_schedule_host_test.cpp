@@ -25,15 +25,18 @@ int main()
     assert(!network_boot_https_memory_sufficient(48 * 1024 - 1, 24 * 1024, 16 * 1024));
     assert(!network_boot_https_memory_sufficient(48 * 1024, 24 * 1024 - 1, 16 * 1024));
     assert(!network_boot_https_memory_sufficient(48 * 1024, 24 * 1024, 16 * 1024 - 1));
-    assert(network_startup_pressure_window_active(true, 120LL * 1000 * 1000));
+    assert(!network_startup_pressure_window_active(true, 120LL * 1000 * 1000));
     assert(network_startup_pressure_window_active(false, 0));
     assert(network_startup_pressure_window_active(false, 59LL * 1000 * 1000));
     assert(!network_startup_pressure_window_active(false, 60LL * 1000 * 1000));
     assert(!network_startup_pressure_window_active(false, -1));
+    assert(network_startup_pressure_window_active(true, -1));
     assert(network_weather_request_settle_delay_ms(true) == 300);
     assert(network_weather_request_settle_delay_ms(false) == 120);
     assert(network_inter_operation_settle_delay_ms(true) == 1000);
     assert(network_inter_operation_settle_delay_ms(false) == 250);
+    assert(network_ntp_retry_delay_seconds(false) == 15);
+    assert(network_ntp_retry_delay_seconds(true) == 5 * 60);
     assert(!network_visible_auto_sync_allowed(0));
     assert(!network_visible_auto_sync_allowed(29LL * 1000 * 1000));
     assert(network_visible_auto_sync_allowed(30LL * 1000 * 1000));
@@ -57,11 +60,11 @@ int main()
                                                 0,
                                                 0,
                                                 0));
-    assert(!network_automatic_boot_https_allowed(true,
-                                                 120LL * 1000 * 1000,
-                                                 0,
-                                                 0,
-                                                 0));
+    assert(network_automatic_boot_https_allowed(true,
+                                                120LL * 1000 * 1000,
+                                                0,
+                                                0,
+                                                0));
     assert(!network_boot_weather_due_after_update(false, false, false));
     assert(!network_boot_weather_due_after_update(false, false, true));
     assert(network_boot_weather_due_after_update(true, false, false));
@@ -265,10 +268,22 @@ int main()
 
     input = base_input();
     input.boot_ntp_due = true;
-    input.next_ntp_retry_at = kNow;
+    input.next_ntp_retry_at = kNow + 1;
+    schedule = calculate_network_sync_schedule(input);
+    assert(!schedule.ntp_due);
+    assert(schedule.ntp_retry_required);
+
+    input.manual_ntp_due = true;
     schedule = calculate_network_sync_schedule(input);
     assert(schedule.ntp_due);
     assert(schedule.ntp_retry_required);
+
+    input = base_input();
+    input.provisioning_sync_due = true;
+    input.next_ntp_retry_at = kNow + 1;
+    schedule = calculate_network_sync_schedule(input);
+    assert(schedule.ntp_due);
+    assert(!schedule.ntp_retry_required);
 
     input = base_input();
     input.daily_ntp_due = true;

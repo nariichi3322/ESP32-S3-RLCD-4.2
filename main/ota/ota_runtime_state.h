@@ -17,6 +17,7 @@ struct OtaRuntimeSnapshot {
     char status[kOtaStatusLen] = {};
 };
 
+bool ota_runtime_state_init();
 void ota_runtime_snapshot_load(OtaRuntimeSnapshot *snapshot);
 int ota_runtime_state_load();
 bool ota_runtime_reboot_pending_load();

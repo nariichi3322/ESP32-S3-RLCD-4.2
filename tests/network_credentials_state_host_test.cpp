@@ -29,6 +29,8 @@ bool snapshot_matches(const NetworkCredentialsSnapshot &snapshot,
 
 int main()
 {
+    assert(network_credentials_state_init());
+    assert(network_credentials_state_init());
     network_credentials_clear();
     NetworkCredentialsSnapshot snapshot = {};
     network_credentials_snapshot(&snapshot);
@@ -72,6 +74,25 @@ int main()
                snapshot_matches(snapshot, kSsidB, kPasswordB, kApiKeyB));
     } while (!writer_done.load(std::memory_order_acquire));
     writer.join();
+
+    writer_done.store(false, std::memory_order_release);
+    std::thread availability_writer([&]() {
+        for (int i = 0; i < 10000; ++i) {
+            if (i & 1) {
+                network_credentials_store(kSsidA, kPasswordA, kApiKeyA, true, true);
+            } else {
+                network_credentials_clear();
+            }
+        }
+        writer_done.store(true, std::memory_order_release);
+    });
+    do {
+        const NetworkCredentialsAvailability availability =
+            network_credentials_availability();
+        assert(availability.wifi_configured ==
+               availability.weather_api_key_configured);
+    } while (!writer_done.load(std::memory_order_acquire));
+    availability_writer.join();
 
     network_credentials_store("", "unused", "", true, true);
     network_credentials_snapshot(&snapshot);

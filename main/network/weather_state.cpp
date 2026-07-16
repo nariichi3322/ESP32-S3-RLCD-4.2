@@ -2,6 +2,7 @@
 #include "weather_state.h"
 
 #include "app_state.h"
+#include "scoped_semaphore_lock.h"
 #include "weather_snapshot_store.h"
 
 #include <freertos/semphr.h>
@@ -15,33 +16,6 @@ constexpr const char *kWeatherFetchStatusOk = "ok";
 constexpr const char *kWeatherFetchStatusCached = "cached";
 constexpr const char *kWeatherReadyEventUnavailableLog =
     "weather ready event skipped: app events unavailable";
-
-class WeatherStateLockGuard {
-public:
-    WeatherStateLockGuard()
-        : locked_(s_weather_state_mutex &&
-                  xSemaphoreTake(s_weather_state_mutex, portMAX_DELAY) == pdTRUE)
-    {
-    }
-
-    ~WeatherStateLockGuard()
-    {
-        if (locked_) {
-            xSemaphoreGive(s_weather_state_mutex);
-        }
-    }
-
-    explicit operator bool() const
-    {
-        return locked_;
-    }
-
-    WeatherStateLockGuard(const WeatherStateLockGuard &) = delete;
-    WeatherStateLockGuard &operator=(const WeatherStateLockGuard &) = delete;
-
-private:
-    bool locked_;
-};
 
 void publish_weather_ready_event()
 {
@@ -68,7 +42,7 @@ void get_weather_full_snapshot(WeatherData *weather,
                                WeatherForecastData *forecast,
                                WeatherAirData *air)
 {
-    WeatherStateLockGuard lock;
+    ScopedSemaphoreLock lock(s_weather_state_mutex);
     if (!lock) {
         return;
     }
@@ -98,13 +72,13 @@ void get_weather_air_snapshot(WeatherAirData *air)
 
 time_t get_last_weather_sync_time()
 {
-    WeatherStateLockGuard lock;
+    ScopedSemaphoreLock lock(s_weather_state_mutex);
     return lock ? s_weather_store.last_sync_time : 0;
 }
 
 bool weather_extended_data_ready()
 {
-    WeatherStateLockGuard lock;
+    ScopedSemaphoreLock lock(s_weather_state_mutex);
     return lock && weather_snapshot_store_extended_ready(s_weather_store);
 }
 
@@ -127,7 +101,7 @@ void commit_weather_update_snapshot(const WeatherData &next,
     time_t now = 0;
     time(&now);
     {
-        WeatherStateLockGuard lock;
+        ScopedSemaphoreLock lock(s_weather_state_mutex);
         if (!lock) {
             return;
         }

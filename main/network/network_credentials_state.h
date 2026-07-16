@@ -20,6 +20,7 @@ struct NetworkCredentialsAvailability {
     bool weather_api_key_configured = false;
 };
 
+bool network_credentials_state_init();
 void network_credentials_snapshot(NetworkCredentialsSnapshot *out);
 NetworkCredentialsAvailability network_credentials_availability();
 void network_credentials_store(const char *ssid,

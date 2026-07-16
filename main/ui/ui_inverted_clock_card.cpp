@@ -13,6 +13,17 @@ constexpr int kRadius = 8;
 constexpr int kDigitScaleNumerator = 3;
 constexpr int kDigitScaleDenominator = 4;
 constexpr int kDigitBaselineY = 84;
+constexpr int kPairDigitCount = 2;
+
+struct DigitPlacement {
+    const DsegGlyph *glyph;
+    int origin_x;
+    DsegGlyphBounds bounds;
+};
+
+struct PairPlacement {
+    DigitPlacement digits[kPairDigitCount];
+};
 
 static_assert(kRadius > 0 && kRadius * 2 <= kWidth && kRadius * 2 <= kHeight,
               "inverted clock card radius must fit card");
@@ -55,6 +66,50 @@ bool dseg_pixel_on(const DsegFont &font, const DsegGlyph *glyph, int x, int y)
     return packed_1bit_bit_is_set(font.bitmap + glyph->bitmap_offset, bit);
 }
 
+DigitPlacement digit_placement(const DsegGlyph *glyph, int origin_x)
+{
+    if (!glyph) {
+        return {nullptr, origin_x, {0, 0, -1, -1}};
+    }
+    return {
+        glyph,
+        origin_x,
+        dseg_scaled_glyph_bounds(origin_x,
+                                 kDigitBaselineY,
+                                 kDigitScaleNumerator,
+                                 kDigitScaleDenominator,
+                                 glyph->x_offset,
+                                 glyph->y_offset,
+                                 glyph->width,
+                                 glyph->height),
+    };
+}
+
+bool pair_placement(int value, PairPlacement *placement)
+{
+    if (!placement || value < 0 || value > 99) {
+        return false;
+    }
+    const DsegGlyph *tens = find_dseg_glyph(kDSEG84Font,
+                                            static_cast<char>('0' + value / 10));
+    const DsegGlyph *ones = find_dseg_glyph(kDSEG84Font,
+                                            static_cast<char>('0' + value % 10));
+    if (!tens || !ones) {
+        return false;
+    }
+    const DsegPairLayout layout = centered_dseg_pair_layout(kWidth,
+                                                            kDigitScaleNumerator,
+                                                            kDigitScaleDenominator,
+                                                            tens->x_offset,
+                                                            tens->width,
+                                                            tens->x_advance,
+                                                            ones->x_offset,
+                                                            ones->width);
+    placement->digits[0] = digit_placement(tens, layout.first_origin_x);
+    placement->digits[1] = digit_placement(ones, layout.second_origin_x);
+    return true;
+}
+
 void draw_scaled_dseg_digit(lv_obj_t *canvas,
                             const DsegGlyph *glyph,
                             int origin_x,
@@ -91,40 +146,106 @@ void draw_scaled_dseg_digit(lv_obj_t *canvas,
 
 void draw_digits(lv_obj_t *canvas, int value, int clip_y0 = 0, int clip_y1 = kHeight)
 {
-    const DsegGlyph *tens = find_dseg_glyph(kDSEG84Font, static_cast<char>('0' + value / 10));
-    const DsegGlyph *ones = find_dseg_glyph(kDSEG84Font, static_cast<char>('0' + value % 10));
-    if (!tens || !ones) {
+    PairPlacement placement = {};
+    if (!pair_placement(value, &placement)) {
         return;
     }
-    DsegPairLayout layout = centered_dseg_pair_layout(kWidth,
-                                                       kDigitScaleNumerator,
-                                                       kDigitScaleDenominator,
-                                                       tens->x_offset,
-                                                       tens->width,
-                                                       tens->x_advance,
-                                                       ones->x_offset,
-                                                       ones->width);
-    draw_scaled_dseg_digit(canvas,
-                           tens,
-                           layout.first_origin_x,
-                           kDigitBaselineY,
-                           kDigitScaleNumerator,
-                           kDigitScaleDenominator,
-                           clip_y0,
-                           clip_y1);
-    draw_scaled_dseg_digit(canvas,
-                           ones,
-                           layout.second_origin_x,
-                           kDigitBaselineY,
-                           kDigitScaleNumerator,
-                           kDigitScaleDenominator,
-                           clip_y0,
-                           clip_y1);
+    for (const DigitPlacement &digit : placement.digits) {
+        draw_scaled_dseg_digit(canvas,
+                               digit.glyph,
+                               digit.origin_x,
+                               kDigitBaselineY,
+                               kDigitScaleNumerator,
+                               kDigitScaleDenominator,
+                               clip_y0,
+                               clip_y1);
+    }
 }
 
 void draw_shell(lv_obj_t *canvas)
 {
     lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_COVER);
+}
+
+bool digit_placement_equal(const DigitPlacement &left,
+                           const DigitPlacement &right)
+{
+    return left.glyph == right.glyph &&
+           left.origin_x == right.origin_x &&
+           dseg_glyph_bounds_equal(left.bounds, right.bounds);
+}
+
+void fill_digit_bounds(lv_obj_t *canvas,
+                       const DsegGlyphBounds &bounds,
+                       lv_color_t color)
+{
+    if (!canvas || !dseg_glyph_bounds_valid(bounds)) {
+        return;
+    }
+    for (int y = bounds.y1; y <= bounds.y2; ++y) {
+        for (int x = bounds.x1; x <= bounds.x2; ++x) {
+            canvas_set_px_safe(canvas, x, y, kWidth, kHeight, color);
+        }
+    }
+}
+
+void render_transition(lv_obj_t *canvas, int previous_value, int next_value)
+{
+    PairPlacement previous = {};
+    PairPlacement next = {};
+    if (!pair_placement(previous_value, &previous) ||
+        !pair_placement(next_value, &next)) {
+        draw_shell(canvas);
+        draw_digits(canvas, next_value);
+        apply_rounding(canvas);
+        lv_obj_invalidate(canvas);
+        return;
+    }
+
+    bool dirty[kPairDigitCount] = {};
+    DsegGlyphBounds dirty_bounds[kPairDigitCount] = {};
+    for (int i = 0; i < kPairDigitCount; ++i) {
+        dirty[i] = !digit_placement_equal(previous.digits[i], next.digits[i]);
+        dirty_bounds[i] = dseg_union_glyph_bounds(previous.digits[i].bounds,
+                                                  next.digits[i].bounds);
+    }
+    for (int i = 0; i < kPairDigitCount; ++i) {
+        if (!dirty[i]) {
+            continue;
+        }
+        for (int j = 0; j < kPairDigitCount; ++j) {
+            if (!dirty[j] &&
+                (dseg_glyph_bounds_overlap(dirty_bounds[i], previous.digits[j].bounds) ||
+                 dseg_glyph_bounds_overlap(dirty_bounds[i], next.digits[j].bounds))) {
+                dirty[j] = true;
+            }
+        }
+    }
+    for (int i = 0; i < kPairDigitCount; ++i) {
+        if (dirty[i]) {
+            fill_digit_bounds(canvas, dirty_bounds[i], lv_color_black());
+        }
+    }
+    for (int i = 0; i < kPairDigitCount; ++i) {
+        if (!dirty[i]) {
+            continue;
+        }
+        draw_scaled_dseg_digit(canvas,
+                               next.digits[i].glyph,
+                               next.digits[i].origin_x,
+                               kDigitBaselineY,
+                               kDigitScaleNumerator,
+                               kDigitScaleDenominator);
+    }
+    for (int i = 0; i < kPairDigitCount; ++i) {
+        if (dirty[i]) {
+            invalidate_canvas_rect(canvas,
+                                   dirty_bounds[i].x1,
+                                   dirty_bounds[i].y1,
+                                   dirty_bounds[i].x2,
+                                   dirty_bounds[i].y2);
+        }
+    }
 }
 
 } // namespace
@@ -215,7 +336,14 @@ bool update_inverted_clock_card_value(lv_obj_t *card_canvas,
     if (!card_canvas || !last_value || value < 0 || value > 99 || value == *last_value) {
         return false;
     }
+    const int previous_value = *last_value;
+    if (previous_value >= 0 && previous_value <= 99) {
+        inverted_clock_card::render_transition(card_canvas,
+                                               previous_value,
+                                               value);
+    } else {
+        inverted_clock_card::render(card_canvas, value);
+    }
     *last_value = value;
-    inverted_clock_card::render(card_canvas, value);
     return true;
 }

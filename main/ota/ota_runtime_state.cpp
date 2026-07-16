@@ -1,13 +1,18 @@
-// 管理 OTA 状态、进度、速度和提示文本的短临界区存储。
+// 使用静态任务互斥管理 OTA 状态、进度、速度和提示文本快照。
 #include "ota_runtime_state.h"
 
 #include "network_runtime_events.h"
 #include "ota_flow_policy.h"
+#include "scoped_semaphore_lock.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include <cstring>
 
 namespace {
-portMUX_TYPE s_ota_runtime_mux = portMUX_INITIALIZER_UNLOCKED;
+StaticSemaphore_t s_ota_runtime_mutex_storage = {};
+SemaphoreHandle_t s_ota_runtime_mutex = nullptr;
 OtaRuntimeSnapshot s_ota_runtime = {
     kOtaIdle,
     -1,
@@ -37,30 +42,38 @@ void notify_background_network_block_changed(int previous_state,
 }
 } // namespace
 
+bool ota_runtime_state_init()
+{
+    if (s_ota_runtime_mutex) {
+        return true;
+    }
+    s_ota_runtime_mutex =
+        xSemaphoreCreateMutexStatic(&s_ota_runtime_mutex_storage);
+    return s_ota_runtime_mutex != nullptr;
+}
+
 void ota_runtime_snapshot_load(OtaRuntimeSnapshot *snapshot)
 {
     if (!snapshot) {
         return;
     }
-    portENTER_CRITICAL(&s_ota_runtime_mux);
+    ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+    if (!lock) {
+        return;
+    }
     *snapshot = s_ota_runtime;
-    portEXIT_CRITICAL(&s_ota_runtime_mux);
 }
 
 int ota_runtime_state_load()
 {
-    portENTER_CRITICAL(&s_ota_runtime_mux);
-    int state = s_ota_runtime.state;
-    portEXIT_CRITICAL(&s_ota_runtime_mux);
-    return state;
+    ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+    return lock ? s_ota_runtime.state : kOtaIdle;
 }
 
 bool ota_runtime_reboot_pending_load()
 {
-    portENTER_CRITICAL(&s_ota_runtime_mux);
-    bool pending = s_ota_runtime.reboot_pending;
-    portEXIT_CRITICAL(&s_ota_runtime_mux);
-    return pending;
+    ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+    return lock && s_ota_runtime.reboot_pending;
 }
 
 void ota_runtime_publish_status(int state,
@@ -69,16 +82,23 @@ void ota_runtime_publish_status(int state,
                                 TickType_t status_until_tick,
                                 bool status_hold_set)
 {
+    char prepared_status[kOtaStatusLen] = {};
+    copy_status(prepared_status, status);
+
     int previous_state = kOtaIdle;
-    portENTER_CRITICAL(&s_ota_runtime_mux);
-    previous_state = s_ota_runtime.state;
-    s_ota_runtime.reboot_pending = false;
-    s_ota_runtime.state = state;
-    s_ota_runtime.progress = progress;
-    copy_status(s_ota_runtime.status, status);
-    s_ota_runtime.status_hold_set = status_hold_set;
-    s_ota_runtime.status_until_tick = status_hold_set ? status_until_tick : 0;
-    portEXIT_CRITICAL(&s_ota_runtime_mux);
+    {
+        ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+        if (!lock) {
+            return;
+        }
+        previous_state = s_ota_runtime.state;
+        s_ota_runtime.reboot_pending = false;
+        s_ota_runtime.state = state;
+        s_ota_runtime.progress = progress;
+        memcpy(s_ota_runtime.status, prepared_status, sizeof(prepared_status));
+        s_ota_runtime.status_hold_set = status_hold_set;
+        s_ota_runtime.status_until_tick = status_hold_set ? status_until_tick : 0;
+    }
     notify_background_network_block_changed(previous_state, state);
 }
 
@@ -86,47 +106,65 @@ void ota_runtime_publish_download_status(const char *status,
                                          int progress,
                                          int speed_kbps)
 {
+    char prepared_status[kOtaStatusLen] = {};
+    copy_status(prepared_status, status);
+
     int previous_state = kOtaIdle;
-    portENTER_CRITICAL(&s_ota_runtime_mux);
-    previous_state = s_ota_runtime.state;
-    s_ota_runtime.reboot_pending = false;
-    s_ota_runtime.state = kOtaUpdating;
-    s_ota_runtime.progress = progress;
-    s_ota_runtime.speed_kbps = speed_kbps;
-    copy_status(s_ota_runtime.status, status);
-    s_ota_runtime.status_hold_set = false;
-    s_ota_runtime.status_until_tick = 0;
-    portEXIT_CRITICAL(&s_ota_runtime_mux);
+    {
+        ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+        if (!lock) {
+            return;
+        }
+        previous_state = s_ota_runtime.state;
+        s_ota_runtime.reboot_pending = false;
+        s_ota_runtime.state = kOtaUpdating;
+        s_ota_runtime.progress = progress;
+        s_ota_runtime.speed_kbps = speed_kbps;
+        memcpy(s_ota_runtime.status, prepared_status, sizeof(prepared_status));
+        s_ota_runtime.status_hold_set = false;
+        s_ota_runtime.status_until_tick = 0;
+    }
     notify_background_network_block_changed(previous_state, kOtaUpdating);
 }
 
 void ota_runtime_reboot_pending_store(bool pending)
 {
-    portENTER_CRITICAL(&s_ota_runtime_mux);
+    ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+    if (!lock) {
+        return;
+    }
     s_ota_runtime.reboot_pending = pending;
-    portEXIT_CRITICAL(&s_ota_runtime_mux);
 }
 
 void ota_runtime_reset_status_if_idle(TickType_t now, const char *idle_status)
 {
+    char prepared_idle_status[kOtaStatusLen] = {};
+    copy_status(prepared_idle_status, idle_status);
+
     int previous_state = kOtaIdle;
     int current_state = kOtaIdle;
-    portENTER_CRITICAL(&s_ota_runtime_mux);
-    previous_state = s_ota_runtime.state;
-    if (ota_status_should_reset_to_idle(s_ota_runtime.state,
-                                        s_ota_runtime.status_hold_set,
-                                        now,
-                                        s_ota_runtime.status_until_tick)) {
-        s_ota_runtime.state = kOtaIdle;
-        s_ota_runtime.status_hold_set = false;
-        s_ota_runtime.status_until_tick = 0;
+    {
+        ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+        if (!lock) {
+            return;
+        }
+        previous_state = s_ota_runtime.state;
+        if (ota_status_should_reset_to_idle(s_ota_runtime.state,
+                                            s_ota_runtime.status_hold_set,
+                                            now,
+                                            s_ota_runtime.status_until_tick)) {
+            s_ota_runtime.state = kOtaIdle;
+            s_ota_runtime.status_hold_set = false;
+            s_ota_runtime.status_until_tick = 0;
+        }
+        if (s_ota_runtime.state == kOtaIdle) {
+            memcpy(s_ota_runtime.status,
+                   prepared_idle_status,
+                   sizeof(prepared_idle_status));
+            s_ota_runtime.progress = -1;
+            s_ota_runtime.speed_kbps = -1;
+        }
+        current_state = s_ota_runtime.state;
     }
-    if (s_ota_runtime.state == kOtaIdle) {
-        copy_status(s_ota_runtime.status, idle_status);
-        s_ota_runtime.progress = -1;
-        s_ota_runtime.speed_kbps = -1;
-    }
-    current_state = s_ota_runtime.state;
-    portEXIT_CRITICAL(&s_ota_runtime_mux);
     notify_background_network_block_changed(previous_state, current_state);
 }

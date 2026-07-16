@@ -75,7 +75,7 @@ Shows city, current temperature and condition, air quality, humidity, wind, sunr
 
 Shows three high-contrast hour/minute/second cards plus local temperature, humidity, trend arrows, comfort faces, date, and lunar date.
 
-- Seconds refresh locally once per second.
+- Seconds refresh locally once per second; ordinary ticks update only the changed digit region instead of redrawing the whole card.
 - Local temperature/humidity is sampled every minute during the day and every two minutes at night.
 - Trend arrows use the rolling average of valid samples from the latest four-hour window and restart after reboot.
 - Internal page construction and runtime refresh are isolated for stability; this does not change the display, refresh frequency, controls, or stored data.
@@ -93,6 +93,7 @@ Shows rolling 24-hour local temperature and humidity curves. Background sensing 
 
 - This page can be enabled, disabled, and reordered like other pages.
 - If it is the only enabled page, the device remains on it and does not create an auto-return conflict.
+- Hourly samples are published to the chart only after a complete save. History readers cannot observe a mixture of old and new slots, while existing NVS records and upgrade compatibility remain unchanged.
 
 ### 3.7 Xiaozhi AI
 
@@ -149,7 +150,7 @@ After setup, NTP, weather, and daily-text requests are staggered to avoid concur
 
 The clock synchronizes time once at startup and then at local midnight each day. A failed midnight synchronization remains pending and retries after the normal delay, so crossing past 00:00 does not discard the daily update.
 
-A manual time synchronization is a single user-requested attempt. If it fails, the settings page reports the result without scheduling an otherwise unused background wake-up; startup and midnight synchronization retain their automatic retry behavior.
+A manual time synchronization is an explicit user request and bypasses any retry deadline left by an earlier startup or midnight failure. If it fails, the settings page reports the result without scheduling an otherwise unused background wake-up. Startup and midnight synchronization retain automatic retries: about 15 seconds while RTC time is implausible and about 5 minutes after time is already valid.
 
 ### 4.3 Manual Weather City
 
@@ -188,6 +189,8 @@ Press **KEY** to enter Settings. The left column is the primary menu; the right 
 
 Settings navigation and confirmation state are handed off safely between input, UI, and OTA tasks. Rapid key use, returning from About Device or Network Diagnostics, and keeping the update panel visible no longer reuse stale focus or confirmation state. Key behavior and the 30-second inactivity timeout are unchanged.
 
+When network settings are saved or restored, Wi-Fi data and the weather API key become active as one complete configuration. Background tasks never consume a half-updated configuration, and passwords or API keys are never written to the serial log.
+
 ### 5.1 Network
 
 - **Sync Time:** run NTP now.
@@ -213,6 +216,7 @@ Xiaozhi shutdown diagnostics now use a separately synchronized audio-resource st
 The audio layer validates speaker and microphone readiness separately. A partial Codec startup cannot publish an unusable audio resource or pass a missing microphone handle to the driver; the current attempt ends safely and a later reminder or Xiaozhi entry may retry.
 Production audio now reuses the ES8311/ES7210 I2C controls already owned by the board Codec layer instead of registering duplicate, unused device handles for every session. Sound behavior and hardware addresses are unchanged.
 The network transaction lock shared by weather, daily text, Xiaozhi, and OTA is now a static lifetime resource. This removes a cold-start heap allocation and a source of long-lived fragmentation without changing request order, timeouts, or user operation.
+Daily text and its successful synchronization time are now published as one consistent snapshot, preventing a page refresh from pairing new text with an older timestamp. Text content, fetch timing, and display behavior are unchanged.
 The depth counter mutex used by network and audio power locks is also a static lifetime resource. This reduces startup heap allocation and long-lived fragmentation without changing light sleep, network, or audio behavior.
 The application event group shared by provisioning, synchronization, OTA, and startup is also a static lifetime resource. This removes another cold-start allocation without changing event delivery, wait timeouts, or user operation.
 The Xiaozhi page snapshot lock also uses a static control block, reducing startup internal-memory allocation and long-term fragmentation without changing wake-up, subtitles, expressions, Pomodoro, or page controls.
@@ -273,6 +277,8 @@ After the GitHub build completes, the Cloudflare OTA service imports and verifie
 The GitHub OTA fallback repository is updated from the same source build. The source repository dispatches an event after its app, merged image, and manifests are ready; the fallback repository then downloads both Release assets, verifies size and SHA256, and only afterward updates its own Releases and manifests. It no longer polls Cloudflare on a daily schedule, and fallback manifest URLs point to the fallback repository's own Release assets.
 
 Internally, provisioning, offline mode, chime, volume, and Xiaozhi auto-return settings are safely published to background tasks. This maintenance does not change where settings are edited, how they are saved, or how they are restored after restart.
+
+OTA check state, download progress, speed, and reboot notices are likewise published as one consistent snapshot between background tasks and the UI. The check, confirmation, download, and restart workflow is unchanged.
 
 The online manifest may include release notes for publishing tools and the desktop client. The device retains only the version, download URL, file size, and SHA256 metadata required for installation instead of keeping unused release-note text in memory.
 OTA manifests and the GitHub OTA fallback Release use the same bounded summary from the source tag. Complete numbered notes remain in the matching Gitea/GitHub source Release so long descriptions cannot interfere with device update checks.
@@ -378,7 +384,7 @@ If the serial log shows both `OTA manifest source skipped: R2` and `OTA manifest
 
 ### Time was lost and data is initially blank
 
-With an implausible RTC time, the device first shows placeholders and attempts NTP. Local sensors sample immediately when no cached value exists. Date and network data recover after synchronization.
+With an implausible RTC time, the device first shows placeholders and attempts NTP. Local sensors sample immediately when no cached value exists. A failed automatic NTP attempt retries after about 15 seconds, while a manual request bypasses that delay. Successful synchronization immediately refreshes date, weekday, and time; staggered weather and daily text then continue in the background. Repeated `task_wdt` reports naming `network_sync` indicate an abnormal busy loop rather than normal waiting and should be retained for diagnosis.
 
 ### Startup screen does not continue
 
