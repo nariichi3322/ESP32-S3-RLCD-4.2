@@ -1,6 +1,7 @@
 // 声明传感器、电池、历史数据和电源服务的公共接口。
 #pragma once
 #include "app_state.h"
+#include "local_sensor_state.h"
 #include "sensor_time.h"
 
 inline constexpr int kSensorSampleDayMinutes = 1;
@@ -35,11 +36,6 @@ void record_hourly_sensor_sample(float temp, float humi);
 bool get_hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history, uint32_t *version);
 void update_sensor_history(float temp, float humi);
 void sample_sensor();
-bool get_local_sensor_snapshot(float *temperature,
-                               float *humidity,
-                               int *temperature_trend,
-                               int *humidity_trend);
-uint32_t local_sensor_state_version();
 TickType_t next_sensor_sample_tick(TickType_t now);
 TickType_t next_battery_sample_tick(TickType_t now);
 void housekeeping_task(void *);

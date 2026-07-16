@@ -3,6 +3,7 @@
 
 #include "app_text_format.h"
 #include "hourly_sensor_history_state.h"
+#include "local_sensor_state.h"
 #include "scoped_heap_buffer.h"
 #include "scoped_nvs_handle.h"
 #include "sensor_history_format.h"
@@ -31,6 +32,10 @@ constexpr const char *kLegacyHourlyHistoryInvalidLog = "legacy hourly sensor his
 constexpr const char *kHourlyLoadBufferAllocFailedLog = "hourly sensor load buffer alloc failed";
 constexpr const char *kHourlyStateResetFailedLog = "hourly sensor history state reset failed";
 constexpr const char *kHourlyStatePublishFailedLog = "hourly sensor history state publish failed";
+constexpr const char *kLocalSensorTrendPublishFailedLog = "local sensor trend publish failed";
+constexpr const char *kLocalSensorSamplePublishFailedLog = "local sensor sample publish failed";
+constexpr const char *kLocalSensorUnavailablePublishFailedLog =
+    "local sensor unavailable state publish failed";
 
 namespace {
 using sensor_history_format::HourlySensorHistoryMeta;
@@ -48,13 +53,6 @@ constexpr int kSecondsPerMinute = 60;
 constexpr int kMinutesPerHour = 60;
 constexpr int kSensorTrendWindowHours = 4;
 constexpr int64_t kSensorTrendWindowMs = (int64_t)kSensorTrendWindowHours * kMinutesPerHour * kSecondsPerMinute * kMsPerSecond;
-portMUX_TYPE s_local_sensor_mux = portMUX_INITIALIZER_UNLOCKED;
-float s_temperature = 0.0f;
-float s_humidity = 0.0f;
-bool s_sensor_ok = false;
-uint32_t s_local_sensor_version = 0;
-int s_temperature_trend = 0;
-int s_humidity_trend = 0;
 SensorSample s_sensor_trend_samples[kSensorHistoryMinutes] = {};
 int s_sensor_trend_next = 0;
 int s_sensor_trend_count = 0;
@@ -428,10 +426,9 @@ void update_sensor_history(float temp, float humi)
     int temperature_trend = 0;
     int humidity_trend = 0;
     calculate_updated_sensor_trends(temp, humi, &temperature_trend, &humidity_trend);
-    portENTER_CRITICAL(&s_local_sensor_mux);
-    s_temperature_trend = temperature_trend;
-    s_humidity_trend = humidity_trend;
-    portEXIT_CRITICAL(&s_local_sensor_mux);
+    if (!local_sensor_state_publish_trends(temperature_trend, humidity_trend)) {
+        ESP_LOGW(TAG, "%s", kLocalSensorTrendPublishFailedLog);
+    }
 }
 
 void sample_sensor()
@@ -443,51 +440,17 @@ void sample_sensor()
         int temperature_trend = 0;
         int humidity_trend = 0;
         calculate_updated_sensor_trends(temp, humi, &temperature_trend, &humidity_trend);
-        portENTER_CRITICAL(&s_local_sensor_mux);
-        s_sensor_ok = true;
-        s_temperature = temp;
-        s_humidity = humi;
-        s_temperature_trend = temperature_trend;
-        s_humidity_trend = humidity_trend;
-        ++s_local_sensor_version;
-        portEXIT_CRITICAL(&s_local_sensor_mux);
+        if (!local_sensor_state_publish_sample(temp,
+                                               humi,
+                                               temperature_trend,
+                                               humidity_trend)) {
+            ESP_LOGW(TAG, "%s", kLocalSensorSamplePublishFailedLog);
+        }
         record_hourly_sensor_sample(temp, humi);
     } else {
-        portENTER_CRITICAL(&s_local_sensor_mux);
-        s_sensor_ok = false;
-        ++s_local_sensor_version;
-        portEXIT_CRITICAL(&s_local_sensor_mux);
+        if (!local_sensor_state_publish_unavailable()) {
+            ESP_LOGW(TAG, "%s", kLocalSensorUnavailablePublishFailedLog);
+        }
     }
     notify_ui_task();
-}
-
-bool get_local_sensor_snapshot(float *temperature,
-                               float *humidity,
-                               int *temperature_trend,
-                               int *humidity_trend)
-{
-    portENTER_CRITICAL(&s_local_sensor_mux);
-    bool sensor_ok = s_sensor_ok;
-    if (temperature) {
-        *temperature = s_temperature;
-    }
-    if (humidity) {
-        *humidity = s_humidity;
-    }
-    if (temperature_trend) {
-        *temperature_trend = s_temperature_trend;
-    }
-    if (humidity_trend) {
-        *humidity_trend = s_humidity_trend;
-    }
-    portEXIT_CRITICAL(&s_local_sensor_mux);
-    return sensor_ok;
-}
-
-uint32_t local_sensor_state_version()
-{
-    portENTER_CRITICAL(&s_local_sensor_mux);
-    uint32_t version = s_local_sensor_version;
-    portEXIT_CRITICAL(&s_local_sensor_mux);
-    return version;
 }

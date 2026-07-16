@@ -35,6 +35,7 @@
 #define MAIN_NETWORK_CREDENTIALS_STATE_INIT_FAILED_LOG_FORMAT "network credentials state initialization failed"
 #define MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT "network diagnostics state initialization failed"
 #define MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT "hourly sensor history state initialization failed"
+#define MAIN_LOCAL_SENSOR_STATE_INIT_FAILED_LOG_FORMAT "local sensor state initialization failed"
 #define MAIN_OTA_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT "OTA runtime state initialization failed"
 #define MAIN_DAILY_SAYING_STATE_INIT_FAILED_LOG_FORMAT "daily saying state initialization failed"
 #define MAIN_INVALID_BOOT_TASK_LOG_FORMAT "%s: invalid boot task request"
@@ -279,6 +280,10 @@ extern "C" void app_main(void)
     }
     if (!init_hourly_sensor_history_state()) {
         ESP_LOGE(TAG, MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
+    if (!init_local_sensor_state()) {
+        ESP_LOGE(TAG, MAIN_LOCAL_SENSOR_STATE_INIT_FAILED_LOG_FORMAT);
         return;
     }
     if (!daily_saying_state_init()) {

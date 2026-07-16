@@ -132,6 +132,7 @@ idf_component_register(
         "sensors/battery_charging_state.cpp"
         "sensors/battery_services.cpp"
         "sensors/hourly_sensor_history_state.cpp"
+        "sensors/local_sensor_state.cpp"
         "sensors/sensor_history.cpp"
         "sensors/sensor_trend.cpp"
         "sensors/sensor_time.cpp"
