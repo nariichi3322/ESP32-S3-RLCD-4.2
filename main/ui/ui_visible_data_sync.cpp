@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "daily_saying_state.h"
 #include "network_credentials_state.h"
+#include "offline_mode_state.h"
 #include "network_services.h"
 #include "network_sync_schedule.h"
 #include "ota_services.h"
@@ -147,9 +148,10 @@ void update_visible_weather_sync(const ActiveWorkPageState &state,
                                  TickType_t tick_now,
                                  VisibleSyncRetryState<TickType_t> &retry)
 {
+    const bool offline_mode = offline_mode_enabled_load();
     if (!state.uses_weather_data ||
         !network_weather_api_key_configured() ||
-        g_offline_mode_ui_enabled ||
+        offline_mode ||
         ota_flow_active()) {
         retry.reset_request();
         return;
@@ -177,8 +179,9 @@ void update_visible_daily_saying_sync(const ActiveWorkPageState &state,
                                       TickType_t tick_now,
                                       VisibleSyncRetryState<TickType_t> &retry)
 {
+    const bool offline_mode = offline_mode_enabled_load();
     bool needs_sync = state.gallery &&
-                      !g_offline_mode_ui_enabled &&
+                      !offline_mode &&
                       saying_cache_stale(local, now);
     if (!state.gallery) {
         retry.reset_request();
@@ -212,6 +215,7 @@ bool update_weather_clock_network_status(EventBits_t bits,
                                          TickType_t tick_now,
                                          VisibleSyncRetryState<TickType_t> &retry)
 {
+    const bool offline_mode = offline_mode_enabled_load();
     if (bits & kWeatherReadyBit) {
         WeatherData weather = {};
         get_weather_snapshot(&weather, nullptr);
@@ -232,7 +236,7 @@ bool update_weather_clock_network_status(EventBits_t bits,
                                                        weather.icon);
         if (!weather_cache_stale(now)) {
             retry.reset();
-        } else if (network_weather_api_key_configured() && !g_offline_mode_ui_enabled) {
+        } else if (network_weather_api_key_configured() && !offline_mode) {
             EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
             bool sync_in_flight =
                 (sync_bits & (kManualWeatherSyncBit | kProvisioningSyncBit)) != 0;
@@ -244,7 +248,7 @@ bool update_weather_clock_network_status(EventBits_t bits,
         return changed;
     }
 
-    if (network_weather_api_key_configured() && !g_offline_mode_ui_enabled) {
+    if (network_weather_api_key_configured() && !offline_mode) {
         EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
         bool sync_in_flight =
             (sync_bits & (kManualWeatherSyncBit | kProvisioningSyncBit)) != 0;
@@ -265,8 +269,8 @@ bool update_weather_clock_network_status(EventBits_t bits,
     retry.reset();
     return update_clock_weather_panel_text(
         kClockWeatherCityPlaceholder,
-        g_offline_mode_ui_enabled ? kClockWeatherInfoWaitingText
-                                  : kClockWeatherInfoMissingApiKeyText,
+        offline_mode ? kClockWeatherInfoWaitingText
+                     : kClockWeatherInfoMissingApiKeyText,
         kClockWeatherTempPlaceholder,
         kClockWeatherHumidityPlaceholder,
         kClockWeatherUnknownIconCode);

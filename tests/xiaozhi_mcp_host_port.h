@@ -21,7 +21,6 @@ static inline size_t strlcpy(char *destination, const char *source, size_t desti
 #endif
 
 extern const char *const APP_VERSION;
-extern int g_chime_volume_percent;
 
 bool get_local_sensor_snapshot(float *temperature,
                                float *humidity,

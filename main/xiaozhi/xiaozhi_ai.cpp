@@ -8,6 +8,7 @@
 #include "network_services.h"
 #include "network_credentials_state.h"
 #include "network_https_resources.h"
+#include "offline_mode_state.h"
 #include "ui_views.h"
 #include "xiaozhi_activation_flow.h"
 #include "xiaozhi_activation_retry_policy.h"
@@ -502,10 +503,11 @@ void xiaozhi_ai_task(void *)
             snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
             ESP_LOGI(TAG, "Xiaozhi audio resuming after pomodoro completion");
         }
-        if (xiaozhi_ai_configuration_blocked(g_offline_mode_ui_enabled,
+        const bool offline_mode = offline_mode_enabled_load();
+        if (xiaozhi_ai_configuration_blocked(offline_mode,
                                              network_wifi_credentials_configured())) {
             release_realtime_network();
-            if (g_offline_mode_ui_enabled) {
+            if (offline_mode) {
                 snapshot_set(kXiaozhiAiError, kErrorStatus, kOfflineDetail);
             } else {
                 snapshot_set(kXiaozhiAiWaitingForWifi, kWifiStatus, kNoWifiDetail);

@@ -5,6 +5,7 @@
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "app_tick_time.h"
+#include "chime_runtime_state.h"
 
 #include "ota_runtime_state.h"
 #include "ota_services.h"
@@ -397,7 +398,8 @@ void update_settings_switch_slot(int index,
     if (visible && primary == kSettingsPrimarySound) {
         if (index >= kSoundSettingsHourlyItem) {
             dot_visible = true;
-            dot_on = index == kSoundSettingsHourlyItem ? g_hourly_chime_enabled : g_hourly_chime_all_day;
+            const ChimeRuntimeSnapshot chime = chime_runtime_snapshot_load();
+            dot_on = index == kSoundSettingsHourlyItem ? chime.hourly_enabled : chime.all_day;
         }
     } else if (visible &&
                primary == kSettingsPrimaryDisplay &&

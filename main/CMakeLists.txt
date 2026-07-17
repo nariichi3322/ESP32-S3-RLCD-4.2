@@ -3,6 +3,7 @@ idf_component_register(
     SRCS
         "core/main.cpp"
         "core/app_state.cpp"
+        "core/chime_runtime_state.cpp"
         "core/active_work_page_state.cpp"
         "core/startup_state.cpp"
         "core/ascii_text.cpp"
@@ -74,6 +75,7 @@ idf_component_register(
         "network/network_factory_reset.cpp"
         "network/network_config_nvs.cpp"
         "network/network_credentials_state.cpp"
+        "network/offline_mode_state.cpp"
         "network/manual_weather_city_state.cpp"
         "network/network_weather_city_storage.cpp"
         "network/network_page_storage.cpp"

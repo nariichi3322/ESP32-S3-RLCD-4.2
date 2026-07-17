@@ -3,6 +3,7 @@
 
 #include "app_text_format.h"
 #include "network_credentials_state.h"
+#include "offline_mode_state.h"
 #include "network_sync_schedule.h"
 #include "network_task_guards.h"
 #include "ui_views.h"
@@ -81,7 +82,7 @@ int boot_sync_remaining_ms()
 
 void run_boot_connectivity_sync()
 {
-    if (g_offline_mode_ui_enabled) {
+    if (offline_mode_enabled_load()) {
         update_boot_screen(kBootScreenCompletePercent, "Offline mode", "Using RTC time");
         vTaskDelay(pdMS_TO_TICKS(kBootScreenOfflineDelayMs));
         return;

@@ -3,6 +3,7 @@
 
 #include "app_state.h"
 #include "network_credentials_state.h"
+#include "offline_mode_state.h"
 #include "network_services.h"
 #include "ui_views.h"
 #include "weather_city_pending_state.h"
@@ -50,7 +51,7 @@ bool handle_weather_city(const XiaozhiMcpWeatherCityRequest &request,
         }
         return true;
     }
-    if (g_offline_mode_ui_enabled || !network_weather_api_key_configured()) {
+    if (offline_mode_enabled_load() || !network_weather_api_key_configured()) {
         if (result && result_len > 0) {
             std::snprintf(result, result_len, "weather service is not configured");
         }
@@ -130,7 +131,7 @@ bool weather_city_mcp_flush_pending_save()
         return false;
     }
     (void)weather_city_pending_clear(snapshot.generation);
-    if (!g_offline_mode_ui_enabled && g_app_events) {
+    if (!offline_mode_enabled_load() && g_app_events) {
         xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
     }
     notify_ui_task();

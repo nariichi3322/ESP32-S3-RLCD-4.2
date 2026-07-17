@@ -2,6 +2,7 @@
 #include "audio_services.h"
 
 #include "app_state.h"
+#include "chime_runtime_state.h"
 #include "audio_power_lock_ownership.h"
 #include "audio_services_internal.h"
 #include "atomic_ownership_gate.h"
@@ -291,7 +292,7 @@ int write_xiaozhi_speaker(const int16_t *mono_samples, size_t sample_count, int 
         return ESP_FAIL;
     }
     s_xiaozhi_speaker_open = true;
-    apply_xiaozhi_speaker_volume(g_chime_volume_percent);
+    apply_xiaozhi_speaker_volume(chime_runtime_volume_percent());
     // 官方同板卡使用标准单声道 TX；RX 的四时隙 TDM 麦克风/参考声道
     // 与播放并行运行，因此这里直接写入服务器提供的 mono PCM。
     constexpr size_t kFramesPerChunk = 160;

@@ -4,7 +4,9 @@
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "app_state.h"
+#include "chime_runtime_state.h"
 #include "manual_weather_city_state.h"
+#include "offline_mode_state.h"
 #include "ui_settings_confirmation_state.h"
 #include "ui_text_format.h"
 #include "weather_city_contract.h"
@@ -137,8 +139,9 @@ void populate_settings_secondary_items(
                                kSettingsWeatherCityAutoText);
         }
     } else if (primary == kSettingsPrimarySound) {
-        const int volume_percent = static_cast<int>(g_chime_volume_percent);
-        const int sound_index = static_cast<int>(g_chime_sound_index);
+        const ChimeRuntimeSnapshot chime = chime_runtime_snapshot_load();
+        const int volume_percent = static_cast<int>(chime.volume_percent);
+        const int sound_index = static_cast<int>(chime.sound_index);
         format_secondary_text(secondary_items,
                               kSoundSettingsVolumeItem,
                               kSettingsSoundVolumeFormat,
@@ -176,8 +179,8 @@ void populate_settings_secondary_items(
         format_secondary_text(secondary_items,
                               kSystemSettingsOfflineItem,
                               kSettingsOfflineFormat,
-                              g_offline_mode_ui_enabled ? kSettingsOfflineOnText
-                                                        : kSettingsOfflineOffText);
+                              offline_mode_enabled_load() ? kSettingsOfflineOnText
+                                                          : kSettingsOfflineOffText);
         set_secondary_text(secondary_items,
                            kSystemSettingsNetworkDiagItem,
                            kSettingsNetworkDiagText);

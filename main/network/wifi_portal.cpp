@@ -6,6 +6,7 @@
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "network_credentials_state.h"
+#include "offline_mode_state.h"
 #include "wifi_idle_stop_policy.h"
 #include "wifi_portal_dns.h"
 #include "wifi_portal_state.h"
@@ -406,7 +407,7 @@ static bool start_stopped_wifi_radio(bool enable_setup_portal,
 
 bool start_wifi_radio(bool enable_setup_portal)
 {
-    if (g_offline_mode_ui_enabled && !enable_setup_portal) {
+    if (offline_mode_enabled_load() && !enable_setup_portal) {
         ESP_LOGI(TAG, WIFI_START_SKIPPED_OFFLINE_LOG);
         return false;
     }
@@ -566,7 +567,7 @@ void init_wifi()
         return;
     }
 
-    if (!network_wifi_credentials_configured() && !g_offline_mode_ui_enabled) {
+    if (!network_wifi_credentials_configured() && !offline_mode_enabled_load()) {
         start_wifi_radio(true);
     }
 }

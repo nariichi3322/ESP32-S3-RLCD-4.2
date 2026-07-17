@@ -3,6 +3,7 @@
 
 #include "alarm_services.h"
 #include "app_constexpr.h"
+#include "chime_runtime_state.h"
 #include "sensor_services.h"
 #include "ui_clock_header_objects.h"
 #include "ui_clock_sensor_objects.h"
@@ -411,7 +412,7 @@ bool update_work_page_status_icons(int page)
         return false;
     }
     bool allow = !battery_low_mode_load() && !setup_portal_active_load();
-    bool chime_visible = allow && (g_hourly_chime_enabled || g_hourly_chime_all_day);
+    bool chime_visible = allow && chime_runtime_any_enabled();
     bool wifi_visible = allow && wifi_radio_on_for_status_icon();
     const WorkPageStatusIcons &icons = s_work_status_pages[page].icons;
     lv_obj_t *chime = icons.chime.canvas;

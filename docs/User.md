@@ -199,6 +199,7 @@ While offline:
 - Weather Clock, Picture Clock, Weather Board, and Xiaozhi AI are disabled and cannot be re-enabled until online mode returns.
 - Calendar, Temperature/Humidity Clock, and History remain available.
 - Cached data is not actively deleted.
+- Offline state is saved across restarts. Settings, page availability, weather, OTA, and Xiaozhi immediately use the same state without requiring it to be enabled again.
 
 To leave offline mode:
 

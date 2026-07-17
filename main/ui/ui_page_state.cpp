@@ -5,6 +5,7 @@
 
 #include "alarm_services.h"
 #include "app_constexpr.h"
+#include "chime_runtime_state.h"
 #include "network_services.h"
 #include "ui_clock.h"
 #include "ui_clock_header_objects.h"
@@ -298,7 +299,7 @@ bool update_top_status_icons(bool alert_visible)
     bool allow = !alert_visible && !battery_low_mode_load() && !setup_portal_active_load();
     bool changed = false;
     changed |= set_obj_visible(header.chime_status_icon_canvas,
-                               allow && (g_hourly_chime_enabled || g_hourly_chime_all_day));
+                               allow && chime_runtime_any_enabled());
     changed |= set_obj_visible(header.wifi_status_icon_canvas,
                                allow && wifi_radio_on_for_status_icon());
     changed |= set_obj_visible(header.alarm_status_icon_canvas,

@@ -7,6 +7,7 @@
 #include "app_constexpr.h"
 #include "app_tick_time.h"
 #include "audio_services.h"
+#include "chime_runtime_state.h"
 #include "network_diagnostics_state.h"
 #include "network_services.h"
 #include "ota_runtime_state.h"
@@ -232,7 +233,7 @@ void ui_task(void *)
         UiStatusRefreshSnapshot current_status_snapshot = {
             local_sensor_state_version(),
             alarm_state_version(),
-            g_hourly_chime_enabled || g_hourly_chime_all_day,
+            chime_runtime_any_enabled(),
             wifi_radio_on_for_status_icon(),
         };
         bool status_fallback_elapsed = app_tick_interval_elapsed(

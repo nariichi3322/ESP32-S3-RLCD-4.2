@@ -13,6 +13,7 @@
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "network_credentials_state.h"
+#include "offline_mode_state.h"
 #include "network_services.h"
 #include "network_task_guards.h"
 #include "scoped_heap_buffer.h"
@@ -234,7 +235,7 @@ void ota_reset_status_if_idle()
 void ota_handle_info_key()
 {
     ota_reset_status_if_idle();
-    if (g_offline_mode_ui_enabled) {
+    if (offline_mode_enabled_load()) {
         keep_ota_settings_panel_visible();
         ota_set_failed_status(kOtaStatusOfflineMode, kOtaOfflineHoldMs);
         return;

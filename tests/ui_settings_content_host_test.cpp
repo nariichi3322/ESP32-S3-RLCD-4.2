@@ -2,16 +2,14 @@
 #include "ui_settings_content.h"
 
 #include "alarm_services.h"
+#include "chime_runtime_state.h"
 #include "manual_weather_city_state.h"
+#include "offline_mode_state.h"
 #include "ui_settings_confirmation_state.h"
 #include "weather_city_contract.h"
 
 #include <assert.h>
 #include <string.h>
-
-bool g_offline_mode_ui_enabled = false;
-int g_chime_volume_percent = 60;
-int g_chime_sound_index = 2;
 
 namespace {
 AlarmSnapshot s_alarm = {};
@@ -51,6 +49,7 @@ void alarm_get_snapshot(AlarmSnapshot *out)
 
 int main()
 {
+    chime_runtime_snapshot_store({false, false, 60, 2});
     char items[kSettingsSecondaryMaxCount][kSettingsSecondaryTextSize] = {};
 
     assert(!settings_secondary_index_valid(-1));
@@ -90,7 +89,7 @@ int main()
     populate_settings_secondary_items(kSettingsPrimaryDisplay, items);
     expect_text(items, kDisplaySettingsAlarmItem, "闹钟 06:30");
 
-    g_offline_mode_ui_enabled = true;
+    offline_mode_enabled_store(true);
     settings_confirmation_request(SettingsConfirmation::kFactoryReset);
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimarySystem, items);

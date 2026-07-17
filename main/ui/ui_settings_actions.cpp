@@ -4,9 +4,11 @@
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "audio_services.h"
+#include "chime_runtime_state.h"
 #include "chime_settings.h"
 #include "manual_weather_city_state.h"
 #include "network_diagnostics_state.h"
+#include "offline_mode_state.h"
 #include "network_services.h"
 #include "ota_services.h"
 #include "pomodoro_services.h"
@@ -159,13 +161,12 @@ void set_formatted_settings_feedback(const char *format, ...)
     set_settings_feedback(feedback, kSettingsFeedbackDefaultMs);
 }
 
-template <typename Setting, typename Value>
-bool save_chime_setting_or_restore(Setting &setting, Value previous)
+bool save_chime_setting_or_restore(const ChimeRuntimeSnapshot &previous)
 {
     if (save_hourly_chime_setting()) {
         return true;
     }
-    setting = previous;
+    chime_runtime_snapshot_store(previous);
     set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
     return false;
 }
@@ -238,7 +239,7 @@ void handle_network_settings_action(int selected)
             return;
         }
         settings_confirmation_clear(SettingsConfirmation::kWeatherCityClear);
-        if (g_offline_mode_ui_enabled) {
+        if (offline_mode_enabled_load()) {
             set_settings_feedback(kManualWeatherCityAutoFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
@@ -248,7 +249,7 @@ void handle_network_settings_action(int selected)
                                    kManualWeatherSyncBit);
         return;
     }
-    if (g_offline_mode_ui_enabled) {
+    if (offline_mode_enabled_load()) {
         set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
         return;
     }
@@ -273,30 +274,35 @@ void handle_network_settings_action(int selected)
 void handle_sound_settings_action(int selected)
 {
     if (selected == kSoundSettingsVolumeItem) {
-        const int previous = g_chime_volume_percent.load(std::memory_order_acquire);
-        const int next = chime_settings::next_volume_percent(previous);
-        g_chime_volume_percent = next;
-        if (!save_chime_setting_or_restore(g_chime_volume_percent, previous)) {
+        const ChimeRuntimeSnapshot previous = chime_runtime_snapshot_load();
+        ChimeRuntimeSnapshot next = previous;
+        next.volume_percent = static_cast<uint8_t>(
+            chime_settings::next_volume_percent(previous.volume_percent));
+        chime_runtime_snapshot_store(next);
+        if (!save_chime_setting_or_restore(previous)) {
             return;
         }
-        set_formatted_settings_feedback(kSoundVolumeFeedbackFormat, next);
+        set_formatted_settings_feedback(kSoundVolumeFeedbackFormat, next.volume_percent);
         request_settings_confirmation_chime();
     } else if (selected == kSoundSettingsSoundItem) {
-        const int previous = g_chime_sound_index.load(std::memory_order_acquire);
-        const int next = (previous + 1) % kChimeSoundCount;
-        g_chime_sound_index = next;
-        if (!save_chime_setting_or_restore(g_chime_sound_index, previous)) {
+        const ChimeRuntimeSnapshot previous = chime_runtime_snapshot_load();
+        ChimeRuntimeSnapshot next = previous;
+        next.sound_index = static_cast<uint8_t>((previous.sound_index + 1) % kChimeSoundCount);
+        chime_runtime_snapshot_store(next);
+        if (!save_chime_setting_or_restore(previous)) {
             return;
         }
-        set_formatted_settings_feedback(kSoundIndexFeedbackFormat, next + 1);
+        set_formatted_settings_feedback(kSoundIndexFeedbackFormat, next.sound_index + 1);
         request_settings_confirmation_chime();
     } else if (selected == kSoundSettingsHourlyItem) {
-        const bool previous = g_hourly_chime_enabled.load(std::memory_order_acquire);
-        const bool enabled = !previous;
-        g_hourly_chime_enabled = enabled;
-        if (!save_chime_setting_or_restore(g_hourly_chime_enabled, previous)) {
+        const ChimeRuntimeSnapshot previous = chime_runtime_snapshot_load();
+        ChimeRuntimeSnapshot next = previous;
+        next.hourly_enabled = !previous.hourly_enabled;
+        chime_runtime_snapshot_store(next);
+        if (!save_chime_setting_or_restore(previous)) {
             return;
         }
+        const bool enabled = next.hourly_enabled;
         set_settings_feedback(enabled ? kHourlyChimeEnabledFeedback : kHourlyChimeDisabledFeedback,
                               kSettingsFeedbackDefaultMs);
         ESP_LOGI(TAG,
@@ -306,12 +312,14 @@ void handle_sound_settings_action(int selected)
             request_settings_confirmation_chime();
         }
     } else if (selected == kSoundSettingsAllDayItem) {
-        const bool previous = g_hourly_chime_all_day.load(std::memory_order_acquire);
-        const bool enabled = !previous;
-        g_hourly_chime_all_day = enabled;
-        if (!save_chime_setting_or_restore(g_hourly_chime_all_day, previous)) {
+        const ChimeRuntimeSnapshot previous = chime_runtime_snapshot_load();
+        ChimeRuntimeSnapshot next = previous;
+        next.all_day = !previous.all_day;
+        chime_runtime_snapshot_store(next);
+        if (!save_chime_setting_or_restore(previous)) {
             return;
         }
+        const bool enabled = next.all_day;
         set_settings_feedback(enabled ? kAllDayChimeEnabledFeedback : kAllDayChimeDisabledFeedback,
                               kSettingsFeedbackDefaultMs);
         ESP_LOGI(TAG,
@@ -331,7 +339,7 @@ void handle_display_settings_action(int selected)
         if (!work_page_index_valid(page)) {
             page = kWorkPageWeatherClock;
         }
-        if (g_offline_mode_ui_enabled &&
+        if (offline_mode_enabled_load() &&
             !is_work_page_enabled(page) &&
             work_page_requires_network(page)) {
             set_settings_feedback(kOfflinePageUnavailableFeedback, kSettingsFeedbackDefaultMs);
@@ -415,7 +423,7 @@ void handle_display_settings_action(int selected)
 void handle_system_settings_action(int selected)
 {
     if (selected == kSystemSettingsOfflineItem) {
-        if (!g_offline_mode_ui_enabled) {
+        if (!offline_mode_enabled_load()) {
             if (!set_offline_mode_enabled(true)) {
                 set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
                 return;
@@ -445,7 +453,7 @@ void handle_system_settings_action(int selected)
         settings_confirmation_clear(SettingsConfirmation::kOfflineDisable);
         set_settings_feedback(kOfflineSetupInstructionFeedback, kSettingsFeedbackInstructionMs);
     } else if (selected == kSystemSettingsNetworkDiagItem) {
-        if (g_offline_mode_ui_enabled) {
+        if (offline_mode_enabled_load()) {
             set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
@@ -494,7 +502,7 @@ void handle_system_settings_action(int selected)
         info_page_request(xTaskGetTickCount() + pdMS_TO_TICKS(kSettingsTimeoutMs));
         ESP_LOGI(TAG, "%s", SYSTEM_INFO_REQUESTED_LOG);
     } else if (selected == kSystemSettingsOtaItem) {
-        if (g_offline_mode_ui_enabled) {
+        if (offline_mode_enabled_load()) {
             set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
             return;
         }

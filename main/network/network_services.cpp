@@ -6,6 +6,7 @@
 
 #include "network_https_resources.h"
 #include "network_credentials_state.h"
+#include "offline_mode_state.h"
 #include "network_diagnostics_catalog.h"
 #include "network_sync_requests.h"
 #include "network_sync_schedule.h"
@@ -90,7 +91,7 @@ static NetworkRuntimeAvailabilitySnapshot capture_network_runtime_availability()
     return {
         credentials.wifi_configured,
         credentials.weather_api_key_configured,
-        g_offline_mode_ui_enabled.load(std::memory_order_acquire),
+        offline_mode_enabled_load(),
         battery_low_mode_load(),
     };
 }

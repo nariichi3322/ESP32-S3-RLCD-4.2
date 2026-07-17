@@ -5,12 +5,14 @@
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "alarm_services.h"
+#include "chime_runtime_state.h"
 #include "chime_settings.h"
 #include "network_chime_storage.h"
 #include "network_config_keys.h"
 #include "network_config_nvs.h"
 #include "network_config_internal.h"
 #include "network_credentials_state.h"
+#include "offline_mode_state.h"
 #include "manual_weather_city_state.h"
 #include "network_factory_reset.h"
 #include "network_page_storage.h"
@@ -172,7 +174,7 @@ bool apply_loaded_page_config(uint8_t page_mask, const uint8_t *page_order, bool
         normalize_work_page_order();
     }
     uint8_t online_mask = work_page_enabled_mask_load();
-    if (g_offline_mode_ui_enabled) {
+    if (offline_mode_enabled_load()) {
         work_page_enabled_mask_store(work_page_mask_for_offline_mode(online_mask));
     }
     active_work_page_store(first_enabled_work_page());
@@ -216,12 +218,15 @@ bool apply_loaded_network_config(const LoadedNetworkConfig &loaded)
                               wifi_configured,
                               weather_key_configured);
     manual_weather_city_store(loaded.manual_weather_city);
-    g_hourly_chime_enabled = nvs_u8_to_bool(loaded.chime);
-    g_hourly_chime_all_day = nvs_u8_to_bool(loaded.all_day);
-    g_offline_mode_ui_enabled = nvs_u8_to_bool(loaded.offline);
+    ChimeRuntimeSnapshot chime = {
+        nvs_u8_to_bool(loaded.chime),
+        nvs_u8_to_bool(loaded.all_day),
+        chime_settings::normalize_stored_volume(loaded.volume),
+        static_cast<uint8_t>(normalize_chime_sound_index(loaded.sound)),
+    };
+    chime_runtime_snapshot_store(chime);
+    offline_mode_enabled_store(nvs_u8_to_bool(loaded.offline));
     xiaozhi_auto_return_enabled_store(nvs_u8_to_bool(loaded.xiaozhi_auto_return));
-    g_chime_volume_percent = chime_settings::normalize_stored_volume(loaded.volume);
-    g_chime_sound_index = normalize_chime_sound_index(loaded.sound);
     return apply_loaded_page_config(loaded.page_mask, loaded.page_order, loaded.have_page_order);
 }
 } // namespace
@@ -276,7 +281,7 @@ bool set_offline_mode_enabled(bool enabled)
         ESP_LOGW(TAG, NVS_SAVE_OFFLINE_MODE_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
-    g_offline_mode_ui_enabled = enabled;
+    offline_mode_enabled_store(enabled);
     if (enabled) {
         work_page_enabled_mask_store(next_page_mask);
         normalize_work_page_order();
@@ -332,12 +337,14 @@ static void reset_saved_config_runtime_state()
     network_credentials_clear();
     manual_weather_city_store("");
     clear_wifi_station_ip();
-    g_offline_mode_ui_enabled = false;
+    offline_mode_enabled_store(false);
     xiaozhi_auto_return_enabled_store(false);
-    g_hourly_chime_enabled = false;
-    g_hourly_chime_all_day = false;
-    g_chime_volume_percent = chime_settings::kDefaultVolumePercent;
-    g_chime_sound_index = 0;
+    chime_runtime_snapshot_store({
+        false,
+        false,
+        static_cast<uint8_t>(chime_settings::kDefaultVolumePercent),
+        0,
+    });
     work_page_enabled_mask_store(kDefaultWorkPageMask);
     reset_work_page_order();
     active_work_page_store(first_enabled_work_page());
@@ -452,7 +459,7 @@ bool save_config(const char *ssid, const char *pass, const char *api_key, const 
         return false;
     }
     apply_saved_config_runtime_state(ssid, pass, api_key, city);
-    g_offline_mode_ui_enabled = false;
+    offline_mode_enabled_store(false);
     xiaozhi_ai_notify_network_configuration_changed();
     return true;
 }
@@ -508,11 +515,12 @@ bool save_hourly_chime_setting()
     if (err != ESP_OK) {
         return false;
     }
+    const ChimeRuntimeSnapshot runtime = chime_runtime_snapshot_load();
     network_chime_storage::StoredChimeSettings settings = {};
-    settings.enabled = bool_to_nvs_u8(g_hourly_chime_enabled);
-    settings.all_day = bool_to_nvs_u8(g_hourly_chime_all_day);
-    settings.volume = static_cast<uint8_t>(g_chime_volume_percent);
-    settings.sound = static_cast<uint8_t>(g_chime_sound_index);
+    settings.enabled = bool_to_nvs_u8(runtime.hourly_enabled);
+    settings.all_day = bool_to_nvs_u8(runtime.all_day);
+    settings.volume = runtime.volume_percent;
+    settings.sound = runtime.sound_index;
     bool changed = false;
     err = network_chime_storage::write_if_changed(nvs.get(), err, settings, &changed);
     err = commit_nvs_if_changed(nvs.get(), err, changed);

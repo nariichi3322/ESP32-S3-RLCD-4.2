@@ -5,6 +5,7 @@
 #include "xiaozhi_mcp_request_parser.h"
 #include "xiaozhi_mcp_schema.h"
 #include "xiaozhi_json_owner.h"
+#include "chime_runtime_state.h"
 
 #ifdef XIAOZHI_MCP_HOST_TEST
 #include "xiaozhi_mcp_host_port.h"
@@ -106,7 +107,7 @@ cJSON *create_device_status_result()
     }
     cJSON_AddNumberToObject(status.get(),
                             "volume_percent",
-                            static_cast<int>(g_chime_volume_percent));
+                            chime_runtime_volume_percent());
     char status_text[kToolResultTextLen] = {};
     if (!cJSON_PrintPreallocated(status.get(),
                                  status_text,
@@ -123,8 +124,8 @@ cJSON *call_set_volume(const cJSON *arguments)
     if (!xiaozhi_mcp_arguments::parse_volume(arguments, &volume)) {
         return nullptr;
     }
-    if (g_chime_volume_percent != volume) {
-        g_chime_volume_percent = volume;
+    if (chime_runtime_volume_percent() != volume) {
+        chime_runtime_volume_percent_store(volume);
         s_volume_save_pending.store(true);
         apply_xiaozhi_speaker_volume(volume);
     }
@@ -132,7 +133,7 @@ cJSON *call_set_volume(const cJSON *arguments)
     snprintf(result,
              sizeof(result),
              "{\"volume_percent\":%d}",
-             static_cast<int>(g_chime_volume_percent));
+             chime_runtime_volume_percent());
     return create_tool_content(result, false);
 }
 

@@ -9,8 +9,6 @@
 #include <sys/time.h>
 #include <time.h>
 
-#include <atomic>
-
 #include "esp_event.h"
 #include "esp_crt_bundle.h"
 #include "esp_http_client.h"
@@ -143,8 +141,3 @@ static_assert(kXiaozhiAutoReturnTimeoutMs > 0, "Xiaozhi auto-return timeout must
 extern DisplayPort g_display;
 extern I2cMasterBus g_i2c;
 extern EventGroupHandle_t g_app_events;
-extern std::atomic<bool> g_hourly_chime_enabled;
-extern std::atomic<bool> g_hourly_chime_all_day;
-extern std::atomic<bool> g_offline_mode_ui_enabled;
-extern std::atomic<int> g_chime_volume_percent;
-extern std::atomic<int> g_chime_sound_index;

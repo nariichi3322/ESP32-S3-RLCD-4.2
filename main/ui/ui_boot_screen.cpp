@@ -4,6 +4,8 @@
 #include "app_constexpr.h"
 #include "boot_anim.h"
 
+#include <atomic>
+
 namespace {
 constexpr uint32_t kBootAnimLvglLockTimeoutMs = 100;
 constexpr uint32_t kBootAnimFinishLvglLockTimeoutMs = 200;

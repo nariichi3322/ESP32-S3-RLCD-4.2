@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "audio_services.h"
+#include "chime_runtime_state.h"
 #include "ui_clock_surface_objects.h"
 #include "ui_clock_time.h"
 #include "ui_draw_cache.h"
@@ -77,7 +78,7 @@ bool update_time_ui(const struct tm &local,
         s_last_ui_date_page = date_page;
     }
 
-    bool chime_enabled = g_hourly_chime_enabled || g_hourly_chime_all_day;
+    bool chime_enabled = chime_runtime_any_enabled();
     if (clock_hourly_chime_due(local,
                                time_snapshot,
                                chime_enabled,

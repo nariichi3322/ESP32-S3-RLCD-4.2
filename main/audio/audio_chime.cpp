@@ -4,12 +4,14 @@
 #include "app_state.h"
 #include "audio_chime_policy.h"
 #include "audio_services_internal.h"
+#include "chime_runtime_state.h"
 #include "ota_runtime_state.h"
 #include "single_pending_task_gate.h"
 #include "startup_state.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_state.h"
 
+#include <atomic>
 #include <cstdint>
 
 #define AUDIO_TASK_FUNCTION_UNAVAILABLE_LOG_FORMAT "failed to create %s task: task function unavailable"
@@ -115,7 +117,7 @@ void create_settings_chime_retry_task()
 
 void run_hourly_chime(int sound_index)
 {
-    const int volume_percent = g_chime_volume_percent.load(std::memory_order_acquire);
+    const int volume_percent = chime_runtime_volume_percent();
     CodecPort *codec = audio_prepare_codec_for_playback();
     if (codec && codec->CodecPort_PlayChimeSound(sound_index, volume_percent)) {
         ESP_LOGI(TAG, HOURLY_CHIME_PLAYED_LOG_FORMAT, sound_index, volume_percent);
@@ -162,7 +164,7 @@ bool play_chime_sound_repeated_blocking(int source_slot,
         return false;
     }
     CodecPort *codec = audio_prepare_codec_for_playback();
-    const int volume_percent = g_chime_volume_percent.load(std::memory_order_acquire);
+    const int volume_percent = chime_runtime_volume_percent();
     bool played = codec != nullptr;
     for (int repeat = 0; played && repeat < repeat_count; ++repeat) {
         if (stop_requested && stop_requested()) {
@@ -187,7 +189,7 @@ namespace {
 void run_settings_confirmation_chime()
 {
     for (int attempt = 0; attempt < kSettingsChimeRetryAttempts; ++attempt) {
-        if (start_chime_playback(g_chime_sound_index)) {
+        if (start_chime_playback(chime_runtime_sound_index())) {
             return;
         }
         vTaskDelay(kSettingsChimeRetryDelay);
@@ -263,7 +265,7 @@ void request_settings_confirmation_chime()
                                          ota_runtime_state_load() == kOtaUpdating)) {
         return;
     }
-    if (start_chime_playback(g_chime_sound_index)) {
+    if (start_chime_playback(chime_runtime_sound_index())) {
         return;
     }
     create_settings_chime_retry_task();
@@ -272,6 +274,7 @@ void request_settings_confirmation_chime()
 void play_hourly_chime(int hour, bool enforce_quiet_hours)
 {
     int ota_state = ota_runtime_state_load();
+    const ChimeRuntimeSnapshot chime = chime_runtime_snapshot_load();
     const AudioChimeDecision decision = audio_hourly_chime_decision({
         battery_low_mode_load(),
         ota_state == kOtaUpdating,
@@ -279,7 +282,7 @@ void play_hourly_chime(int hour, bool enforce_quiet_hours)
         setup_portal_active_load(),
         ota_state == kOtaChecking,
         enforce_quiet_hours,
-        g_hourly_chime_all_day,
+        chime.all_day,
         hour,
     });
     if (decision == kAudioChimeBlockedByNetwork) {
@@ -289,5 +292,5 @@ void play_hourly_chime(int hour, bool enforce_quiet_hours)
     if (decision != kAudioChimePlay) {
         return;
     }
-    (void)start_chime_playback(g_chime_sound_index);
+    (void)start_chime_playback(chime.sound_index);
 }

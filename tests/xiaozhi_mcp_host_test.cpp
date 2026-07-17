@@ -1,6 +1,7 @@
 // 在主机侧验证小智 MCP 工具白名单、响应结构和预留 handler 行为。
 #include "xiaozhi_mcp.h"
 #include "xiaozhi_mcp_host_port.h"
+#include "chime_runtime_state.h"
 
 #include <cJSON.h>
 
@@ -10,7 +11,6 @@
 #include <cstring>
 
 const char *const APP_VERSION = "v-test";
-int g_chime_volume_percent = 80;
 
 void battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out)
 {
@@ -295,7 +295,7 @@ void test_volume_control()
         "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"self.audio_speaker.set_volume\",\"arguments\":{\"volume\":55}},\"id\":4}");
     const cJSON *payload = response_payload(root.value);
     expect(cJSON_IsObject(cJSON_GetObjectItem(payload, "result")), "valid volume call failed");
-    expect(g_chime_volume_percent == 55, "volume global was not updated");
+    expect(chime_runtime_volume_percent() == 55, "volume state was not updated");
     expect(s_applied_volume == 55, "active speaker volume was not applied");
     expect(xiaozhi_mcp_volume_save_pending(), "volume save was not marked pending");
     expect(xiaozhi_mcp_flush_pending_settings(), "pending volume save failed");
@@ -306,7 +306,7 @@ void test_volume_control()
         "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":\"self.audio_speaker.set_volume\",\"arguments\":{\"volume\":101}},\"id\":5}");
     payload = response_payload(root.value);
     expect(cJSON_IsObject(cJSON_GetObjectItem(payload, "error")), "out-of-range volume did not fail");
-    expect(g_chime_volume_percent == 55, "invalid volume changed device state");
+    expect(chime_runtime_volume_percent() == 55, "invalid volume changed device state");
 }
 
 bool alarm_handler(const XiaozhiMcpAlarmRequest &request, char *result, size_t result_len)
