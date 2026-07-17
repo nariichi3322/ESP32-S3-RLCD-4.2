@@ -1,7 +1,7 @@
 {
-  "version": "v1.5.22",
-  "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.22.bin",
-  "sha256": "c04fc2d08692cb923eb1e67f172f1dbbb91ad7a8c5d20796019b9c0d61d9605a",
-  "size": 6229088,
-  "notes": "v1.5.22：共 2 项更新。\n1. 整点提醒、全天提醒、音量和音色改由单个 32 位原子快照统一发布，播放、设置、NVS…\n2. 离线模式运行态从 app_state 公开全局量迁入独立私有原子模块，配置、页面、天气…\n完整说明见源码仓库同版本 Release。"
+  "version": "v1.5.23",
+  "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.23.bin",
+  "sha256": "78fc56a7489f90c930ac1ac462b161bf6a13a823cbb919fa61230f360309ab81",
+  "size": 6228784,
+  "notes": "v1.5.23：共 6 项更新。\n1. 显示与共享I2C对象改由app_hardware私有持有，启动、显示刷新、RTC、SH…\n2. 集中管理应用事件组生命周期并为所有事件访问增加空句柄保护，保持事件位和业务时序不变。\n3. 应用事件位编号与事件组生命周期统一由轻量契约维护，业务模块不再为了事件位依赖聚合状态头…\n4. 六个通用 UI 公共头改为只声明 LVGL、时间和事件组等真实类型依赖，调用方不再因基…\n5. 传感器服务公共头只保留 Tick、小时历史和 I2C 引用等真实签名依赖，电源锁、本地…\n其余 1 项见源码仓库同版本 Release。"
 }
