@@ -3,7 +3,7 @@
 
 #include "app_state.h"
 #include "audio_services.h"
-#include "sensor_services.h"
+#include "power_services.h"
 #include "wifi_radio_state.h"
 #include "xiaozhi_tts_playback.h"
 #include "xiaozhi_voice.h"

@@ -1,9 +1,13 @@
-// 声明传感器、电池、历史数据和电源服务的公共接口。
+// 声明传感器、电池、小时历史和低频采样调度的公共接口。
 #pragma once
-#include "app_state.h"
-#include "local_sensor_state.h"
-#include "power_services.h"
-#include "sensor_time.h"
+
+#include "sensor_history_types.h"
+
+#include "freertos/FreeRTOS.h"
+
+#include <stdint.h>
+
+class I2cMasterBus;
 
 inline constexpr int kSensorSampleDayMinutes = 1;
 inline constexpr int kSensorSampleNightMinutes = 2;

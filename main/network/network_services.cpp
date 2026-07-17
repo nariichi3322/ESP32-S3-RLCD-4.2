@@ -1,6 +1,7 @@
 // 调度 NTP、天气、预警、每日文字和 OTA 等联网同步流程。
 #include "network_services.h"
 
+#include "app_event_group.h"
 #include "daily_saying_state.h"
 #include "ota_runtime_state.h"
 
@@ -11,10 +12,10 @@
 #include "network_sync_requests.h"
 #include "network_sync_schedule.h"
 #include "network_task_guards.h"
-#include "sensor_services.h"
 #include "sensor_time.h"
 #include "startup_state.h"
 #include "ui_views.h"
+#include "weather_state.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_state.h"
 
@@ -98,16 +99,14 @@ static NetworkRuntimeAvailabilitySnapshot capture_network_runtime_availability()
 
 bool wait_for_wifi_connected(uint32_t timeout_ms)
 {
-    if (!g_app_events) {
+    if (!app_event_group_ready()) {
         ESP_LOGW(TAG, "%s", kNetworkWifiWaitSkippedLog);
         return false;
     }
-    EventBits_t bits = xEventGroupWaitBits(
-        g_app_events,
-        kWifiConnectedBit,
-        pdFALSE,
-        pdTRUE,
-        pdMS_TO_TICKS(timeout_ms));
+    EventBits_t bits = app_event_group_wait_bits(kWifiConnectedBit,
+                                                 pdFALSE,
+                                                 pdTRUE,
+                                                 pdMS_TO_TICKS(timeout_ms));
     return (bits & kWifiConnectedBit) != 0;
 }
 
@@ -129,20 +128,18 @@ bool enabled_daily_saying_page_exists()
 
 void wait_for_network_sync_event(uint32_t timeout_ms)
 {
-    xEventGroupWaitBits(g_app_events,
-                        kNetworkSyncWakeBits,
-                        pdFALSE,
-                        pdFALSE,
-                        pdMS_TO_TICKS(timeout_ms));
+    app_event_group_wait_bits(kNetworkSyncWakeBits,
+                              pdFALSE,
+                              pdFALSE,
+                              pdMS_TO_TICKS(timeout_ms));
 }
 
 static void wait_for_network_runtime_request()
 {
-    xEventGroupWaitBits(g_app_events,
-                        kNetworkSyncWakeBits,
-                        pdFALSE,
-                        pdFALSE,
-                        portMAX_DELAY);
+    app_event_group_wait_bits(kNetworkSyncWakeBits,
+                              pdFALSE,
+                              pdFALSE,
+                              portMAX_DELAY);
 }
 
 static void wait_for_ota_network_block_change()
@@ -150,11 +147,10 @@ static void wait_for_ota_network_block_change()
     // Pending level-triggered sync bits remain queued while OTA owns HTTPS and
     // Wi-Fi. Wait only for the edge-like runtime-state bit so those requests do
     // not turn the protection branch into a busy loop.
-    xEventGroupWaitBits(g_app_events,
-                        kNetworkStateChangedBit,
-                        pdTRUE,
-                        pdFALSE,
-                        portMAX_DELAY);
+    app_event_group_wait_bits(kNetworkStateChangedBit,
+                              pdTRUE,
+                              pdFALSE,
+                              portMAX_DELAY);
 }
 
 void schedule_ntp_retry(time_t *next_ntp_retry_at)
@@ -435,27 +431,25 @@ static void execute_network_diagnostics_window()
 
 static void wait_for_boot_sync_completion()
 {
-    EventBits_t bits = xEventGroupWaitBits(g_app_events,
-                                          kBootSyncDoneBit,
-                                          pdFALSE,
-                                          pdTRUE,
-                                          pdMS_TO_TICKS(kNetworkBootSyncGateWarningMs));
+    EventBits_t bits = app_event_group_wait_bits(kBootSyncDoneBit,
+                                                 pdFALSE,
+                                                 pdTRUE,
+                                                 pdMS_TO_TICKS(kNetworkBootSyncGateWarningMs));
     if ((bits & kBootSyncDoneBit) != 0) {
         return;
     }
     ESP_LOGW(TAG, "%s", kNetworkBootSyncGateWaitLog);
-    xEventGroupWaitBits(g_app_events,
-                        kBootSyncDoneBit,
-                        pdFALSE,
-                        pdTRUE,
-                        portMAX_DELAY);
+    app_event_group_wait_bits(kBootSyncDoneBit,
+                              pdFALSE,
+                              pdTRUE,
+                              portMAX_DELAY);
 }
 
 void network_sync_task(void *)
 {
     wait_for_boot_sync_completion();
     vTaskDelay(pdMS_TO_TICKS(kNetworkTaskStartupDelayMs));
-    EventBits_t initial_bits = xEventGroupGetBits(g_app_events);
+    EventBits_t initial_bits = app_event_group_get_bits();
     bool boot_ntp_due = (initial_bits & kTimeSyncedBit) == 0;
     time_t next_ntp_retry_at = 0;
     bool daily_ntp_pending = false;
@@ -484,7 +478,7 @@ void network_sync_task(void *)
     for (;;) {
         // Consume only the edge-like state notification before reading the
         // latest runtime state. Sync request bits stay level-triggered.
-        xEventGroupClearBits(g_app_events, kNetworkStateChangedBit);
+        app_event_group_clear_bits(kNetworkStateChangedBit);
         NetworkSyncRequestSnapshot requests = snapshot_network_sync_requests();
         const NetworkRuntimeAvailabilitySnapshot runtime =
             capture_network_runtime_availability();

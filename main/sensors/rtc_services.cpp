@@ -1,7 +1,10 @@
 // 负责 RTC 时间校验、系统时间恢复和系统时间回写。
 #include "sensor_services.h"
 
+#include "app_state.h"
 #include "app_time_constants.h"
+#include "i2c_equipment.h"
+#include "sensor_time.h"
 
 #include <errno.h>
 

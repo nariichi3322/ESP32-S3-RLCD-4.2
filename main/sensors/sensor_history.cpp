@@ -1,13 +1,18 @@
 // 维护本地温湿度趋势和 24 小时历史样本的内存与 NVS 数据。
 #include "sensor_services.h"
 
+#include "app_state.h"
 #include "app_text_format.h"
 #include "hourly_sensor_history_state.h"
+#include "i2c_bsp.h"
 #include "local_sensor_state.h"
 #include "scoped_heap_buffer.h"
 #include "scoped_nvs_handle.h"
 #include "sensor_history_format.h"
+#include "sensor_time.h"
 #include "sensor_trend.h"
+
+#include "i2c_equipment.h"
 
 #include "ui_views.h"
 

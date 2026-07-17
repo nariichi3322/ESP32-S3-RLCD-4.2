@@ -2,6 +2,7 @@
 #include "xiaozhi_ai.h"
 
 #include "app_tick_time.h"
+#include "app_event_group.h"
 #include "app_state.h"
 #include "alarm_services.h"
 #include "audio_services.h"
@@ -446,13 +447,13 @@ void ensure_wake_word_listening()
 
 bool wait_for_mcp_weather_refresh()
 {
-    if (!g_app_events || !s_events) {
+    if (!app_event_group_ready() || !s_events) {
         ESP_LOGW(TAG, "Xiaozhi weather refresh wait skipped: event group unavailable");
         return false;
     }
     const TickType_t deadline = xTaskGetTickCount() +
                                 pdMS_TO_TICKS(kMcpWeatherRefreshTimeoutMs);
-    while ((xEventGroupGetBits(g_app_events) & kManualWeatherSyncBit) != 0 &&
+    while ((app_event_group_get_bits() & kManualWeatherSyncBit) != 0 &&
            (xEventGroupGetBits(s_events) & kAiPageActiveBit) != 0) {
         if (app_tick_deadline_reached(xTaskGetTickCount(), deadline)) {
             ESP_LOGW(TAG,
@@ -462,7 +463,7 @@ bool wait_for_mcp_weather_refresh()
         }
         vTaskDelay(pdMS_TO_TICKS(kMcpWeatherRefreshPollMs));
     }
-    return (xEventGroupGetBits(g_app_events) & kManualWeatherSyncBit) == 0;
+    return (app_event_group_get_bits() & kManualWeatherSyncBit) == 0;
 }
 
 void xiaozhi_ai_task(void *)

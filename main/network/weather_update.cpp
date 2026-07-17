@@ -3,12 +3,17 @@
 #include "network_https_resources.h"
 #include "network_credentials_state.h"
 
+#include "app_state.h"
 #include "app_constexpr.h"
+#include "battery_runtime_state.h"
 #include "manual_weather_city_state.h"
 #include "network_sync_schedule.h"
+#include "network_text.h"
 #include "qweather_location_text.h"
 #include "startup_state.h"
 #include "weather_state.h"
+
+#include "esp_timer.h"
 
 namespace {
 constexpr size_t kQweatherCityIdSize = 24;

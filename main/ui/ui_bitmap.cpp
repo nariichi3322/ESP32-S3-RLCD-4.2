@@ -1,6 +1,8 @@
 // 读取 packed 1-bit 数据并绘制通用图标和温湿度趋势箭头。
 #include "ui_bitmap.h"
 
+#include "app_state.h"
+
 #define UI_1BIT_ICON_INVALID_SIZE_FORMAT "1bit icon invalid size %dx%d row=%d"
 #define UI_1BIT_ICON_ROW_TOO_SMALL_FORMAT "1bit icon row too small width=%d row=%d min=%d"
 

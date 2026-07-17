@@ -1,5 +1,6 @@
 // 直接验证设置页反馈和手动同步超时收尾的生产实现。
 #include "ui_settings_feedback.h"
+#include "app_event_group.h"
 #include "app_state.h"
 #include "network_diagnostics_state.h"
 #include "ui_settings_activity_state.h"
@@ -12,7 +13,6 @@
 #include <thread>
 
 const char *const TAG = "Test";
-EventGroupHandle_t g_app_events = reinterpret_cast<EventGroupHandle_t>(1);
 
 namespace {
 TickType_t s_now = 0;
@@ -75,7 +75,7 @@ TickType_t xTaskGetTickCount()
     return s_now;
 }
 
-EventBits_t xEventGroupClearBits(EventGroupHandle_t, EventBits_t bits)
+EventBits_t app_event_group_clear_bits(EventBits_t bits)
 {
     EventBits_t previous = s_event_bits;
     s_event_bits &= ~bits;

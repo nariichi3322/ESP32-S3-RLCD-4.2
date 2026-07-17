@@ -1,8 +1,10 @@
 // 声明工作页可见时的天气与每日文字补拉及天气状态刷新接口。
 #pragma once
 
-#include "app_state.h"
+#include "app_event_group.h"
 #include "ui_visible_sync_retry.h"
+
+#include <time.h>
 
 struct ActiveWorkPageState {
     bool history = false;

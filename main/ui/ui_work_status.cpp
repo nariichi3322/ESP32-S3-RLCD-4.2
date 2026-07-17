@@ -4,7 +4,7 @@
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "chime_runtime_state.h"
-#include "sensor_services.h"
+#include "local_sensor_state.h"
 #include "ui_clock_header_objects.h"
 #include "ui_clock_sensor_objects.h"
 #include "ui_draw_cache.h"

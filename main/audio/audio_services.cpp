@@ -1,6 +1,7 @@
 // 管理共享 Codec、音频外设和小智全双工音频会话生命周期。
 #include "audio_services.h"
 
+#include "app_hardware.h"
 #include "app_state.h"
 #include "chime_runtime_state.h"
 #include "audio_power_lock_ownership.h"
@@ -174,7 +175,7 @@ bool audio_codec_active()
 static CodecPort *ensure_audio_codec()
 {
     if (!s_audio_codec) {
-        CodecPort *codec = new (s_audio_codec_storage) CodecPort(g_i2c,
+        CodecPort *codec = new (s_audio_codec_storage) CodecPort(app_i2c(),
                                                                  kAudioCodecBoardName);
         if (!codec->CodecPort_IsReady()) {
             ESP_LOGW(TAG, "audio codec playback handle unavailable");

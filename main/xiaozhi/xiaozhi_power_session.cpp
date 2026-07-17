@@ -1,10 +1,11 @@
 // 实现小智实时会话与待唤醒阶段的网络和电源所有权切换。
 #include "xiaozhi_power_session.h"
 
+#include "app_event_group.h"
 #include "app_state.h"
 #include "audio_services.h"
 #include "network_services.h"
-#include "sensor_services.h"
+#include "power_services.h"
 #include "wifi_radio_state.h"
 
 #include <atomic>
@@ -93,8 +94,8 @@ bool xiaozhi_power_session_set_idle(bool enabled)
 
 bool xiaozhi_power_session_acquire_realtime()
 {
-    bool connected = g_app_events &&
-                     ((xEventGroupGetBits(g_app_events) & kWifiConnectedBit) != 0);
+    bool connected = app_event_group_ready() &&
+                     ((app_event_group_get_bits() & kWifiConnectedBit) != 0);
     if (s_idle_low_power && wifi_radio_on_load() && connected) {
         return true;
     }

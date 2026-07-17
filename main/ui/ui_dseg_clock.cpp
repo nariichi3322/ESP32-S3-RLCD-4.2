@@ -1,9 +1,13 @@
 // 查找和绘制 DSEG 字形，并刷新天气时钟的时分与秒 canvas。
 #include "ui_dseg_clock.h"
 
+#include "dseg_digits.h"
+#include "ui_bitmap.h"
 #include "ui_clock_surface_objects.h"
 #include "ui_text_format.h"
-#include "ui_views.h"
+
+#include <stdio.h>
+#include <string.h>
 
 namespace {
 constexpr int kDecimalBase = 10;

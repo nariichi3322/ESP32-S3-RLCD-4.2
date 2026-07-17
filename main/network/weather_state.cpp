@@ -2,6 +2,7 @@
 #include "weather_state.h"
 
 #include "app_state.h"
+#include "app_event_group.h"
 #include "scoped_semaphore_lock.h"
 #include "weather_snapshot_store.h"
 
@@ -19,11 +20,11 @@ constexpr const char *kWeatherReadyEventUnavailableLog =
 
 void publish_weather_ready_event()
 {
-    if (!g_app_events) {
+    if (!app_event_group_ready()) {
         ESP_LOGW(TAG, "%s", kWeatherReadyEventUnavailableLog);
         return;
     }
-    xEventGroupSetBits(g_app_events, kWeatherReadyBit);
+    app_event_group_set_bits(kWeatherReadyBit);
 }
 } // namespace
 
@@ -84,11 +85,11 @@ bool weather_extended_data_ready()
 
 void clear_weather_ready_event()
 {
-    if (!g_app_events) {
+    if (!app_event_group_ready()) {
         ESP_LOGW(TAG, "%s", kWeatherReadyEventUnavailableLog);
         return;
     }
-    xEventGroupClearBits(g_app_events, kWeatherReadyBit);
+    app_event_group_clear_bits(kWeatherReadyBit);
 }
 
 void commit_weather_update_snapshot(const WeatherData &next,

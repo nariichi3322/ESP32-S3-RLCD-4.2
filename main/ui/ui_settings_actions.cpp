@@ -3,6 +3,7 @@
 
 #include "alarm_services.h"
 #include "app_constexpr.h"
+#include "app_event_group.h"
 #include "audio_services.h"
 #include "chime_runtime_state.h"
 #include "chime_settings.h"
@@ -178,7 +179,7 @@ void queue_manual_settings_sync(SettingsSyncOp op,
 {
     begin_settings_sync(op, feedback);
     ESP_LOGI(TAG, "%s", log_message);
-    xEventGroupSetBits(g_app_events, event_bit);
+    app_event_group_set_bits(event_bit);
 }
 
 void clear_inactive_settings_confirmation(int primary, int selected)
@@ -468,7 +469,7 @@ void handle_system_settings_action(int selected)
         navigation.selection = 0;
         settings_navigation_store(navigation);
         info_page_hold_until_store(0);
-        xEventGroupSetBits(g_app_events, kNetworkDiagBit);
+        app_event_group_set_bits(kNetworkDiagBit);
     } else if (selected == kSystemSettingsFactoryResetItem) {
         if (!settings_confirmation_pending(SettingsConfirmation::kFactoryReset)) {
             settings_confirmation_request(SettingsConfirmation::kFactoryReset);

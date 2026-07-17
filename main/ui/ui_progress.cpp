@@ -1,6 +1,7 @@
 // 构建 60 段工作页进度条，并按填充变化执行局部刷新。
 #include "ui_progress.h"
 
+#include "app_state.h"
 #include "ui_clock_time.h"
 #include "ui_views.h"
 

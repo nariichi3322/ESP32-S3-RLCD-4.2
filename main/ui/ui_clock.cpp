@@ -7,7 +7,7 @@
 #include "ui_views.h"
 
 #include "app_constexpr.h"
-#include "sensor_services.h"
+#include "local_sensor_state.h"
 #include "ui_battery.h"
 #include "ui_setup_status.h"
 

@@ -1,6 +1,7 @@
 // 通过小智 MCP 校验并保存手动天气城市，复用现有 QWeather 和 NVS 配置路径。
 #include "weather_city_mcp.h"
 
+#include "app_event_group.h"
 #include "app_state.h"
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"
@@ -131,8 +132,8 @@ bool weather_city_mcp_flush_pending_save()
         return false;
     }
     (void)weather_city_pending_clear(snapshot.generation);
-    if (!offline_mode_enabled_load() && g_app_events) {
-        xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
+    if (!offline_mode_enabled_load() && app_event_group_ready()) {
+        app_event_group_set_bits(kManualWeatherSyncBit);
     }
     notify_ui_task();
     return true;

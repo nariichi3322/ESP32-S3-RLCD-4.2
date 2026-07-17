@@ -12,8 +12,8 @@
 #else
 #include "app_state.h"
 #include "audio_services.h"
+#include "local_sensor_state.h"
 #include "network_services.h"
-#include "sensor_services.h"
 #endif
 
 #include <atomic>

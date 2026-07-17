@@ -1,19 +1,20 @@
 // 实现设备配网 AP、STA 连接、Wi-Fi 事件和射频启停生命周期。
 #include "network_services.h"
 
+#include "app_event_group.h"
 #include "ota_runtime_state.h"
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"
+#include "power_services.h"
 #include "wifi_idle_stop_policy.h"
 #include "wifi_portal_dns.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_state.h"
 
 #include "audio_services.h"
-#include "sensor_services.h"
 #include "ui_views.h"
 #include "xiaozhi_ai.h"
 
@@ -94,14 +95,14 @@ void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
 
 void set_wifi_connected_event(bool connected)
 {
-    if (!g_app_events) {
+    if (!app_event_group_ready()) {
         ESP_LOGW(TAG, "%s", WIFI_CONNECTION_EVENT_GROUP_UNAVAILABLE_LOG);
         return;
     }
     if (connected) {
-        xEventGroupSetBits(g_app_events, kWifiConnectedBit);
+        app_event_group_set_bits(kWifiConnectedBit);
     } else {
-        xEventGroupClearBits(g_app_events, kWifiConnectedBit);
+        app_event_group_clear_bits(kWifiConnectedBit);
     }
 }
 

@@ -1,6 +1,7 @@
 // 将 LVGL 像素写入 RLCD，并选择局部或全屏刷新及记录诊断统计。
 #include "ui_display_flush.h"
 
+#include "app_hardware.h"
 #include "app_constexpr.h"
 #include "app_state.h"
 #include "ota_runtime_state.h"
@@ -86,6 +87,7 @@ static_assert(bridged_flush_ranges_merge_once(),
 
 void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_map)
 {
+    DisplayPort &display = app_display();
     static FlushRange ranges[kMaxFlushRanges];
     static int range_count = 0;
     static bool force_full_refresh = false;
@@ -136,7 +138,7 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
             uint16_t *row = buffer + (y - area->y1) * area_width + (clipped_x1 - area->x1);
             for (int x = clipped_x1; x <= clipped_x2; ++x) {
                 uint8_t color = (*row < kRlcdBlackThreshold) ? ColorBlack : ColorWhite;
-                g_display.RLCD_SetPixel(x, y, color);
+                display.RLCD_SetPixel(x, y, color);
                 ++row;
             }
         }
@@ -161,12 +163,12 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
             if (full_reason_mask & kDisplayFullReasonCoveredWide) {
                 ++full_covered_wide;
             }
-            g_display.RLCD_Display();
+            display.RLCD_Display();
         } else if (range_count > 0) {
             ++partial_cycles;
             partial_ranges += range_count;
             for (int i = 0; i < range_count; ++i) {
-                g_display.RLCD_DisplayXRange(ranges[i].x1, ranges[i].x2);
+                display.RLCD_DisplayXRange(ranges[i].x1, ranges[i].x2);
             }
         }
         TickType_t now_tick = xTaskGetTickCount();

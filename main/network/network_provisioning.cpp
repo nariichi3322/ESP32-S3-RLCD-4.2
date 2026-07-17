@@ -1,12 +1,15 @@
 // 处理配网页联网凭据和离线日期时间提交，不拥有 NVS key 细节。
 #include "network_services.h"
 
+#include "app_state.h"
+#include "app_event_group.h"
 #include "alarm_services.h"
 #include "network_config_internal.h"
 #include "network_credentials_state.h"
 #include "manual_time_parser.h"
 #include "provisioning_form_fields.h"
 #include "sensor_services.h"
+#include "wifi_portal_state.h"
 
 #include <errno.h>
 

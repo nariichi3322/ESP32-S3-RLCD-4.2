@@ -1,15 +1,21 @@
 // 提供 HTTPS 文本请求、gzip 解码和响应日志预览工具。
 #include "network_services.h"
 
+#include "app_state.h"
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "http_timeout_state.h"
+#include "network_gzip.h"
+#include "network_http_transaction_lock.h"
 #include "network_task_guards.h"
 #include "qweather_ca.h"
 #include "scoped_heap_buffer.h"
 #include "scoped_http_client.h"
 
 #include "freertos/semphr.h"
+
+#include "esp_crt_bundle.h"
+#include "miniz.h"
 
 namespace {
 constexpr size_t kGzipHeaderProbeSize = 3;

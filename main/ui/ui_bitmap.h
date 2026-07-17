@@ -1,7 +1,9 @@
 // 声明 packed 1-bit 位图、图标和趋势箭头的共享绘制接口。
 #pragma once
 
-#include "app_state.h"
+#include "lvgl.h"
+
+#include <stdint.h>
 
 bool packed_1bit_bit_is_set(const uint8_t *bits, uint32_t bit_index);
 void draw_1bit_icon(lv_obj_t *canvas,

@@ -1,6 +1,7 @@
 // 执行启动页 Wi-Fi 连接与时间校准，页面 HTTPS 数据统一留给后台错峰同步。
 #include "network_services.h"
 
+#include "app_event_group.h"
 #include "app_text_format.h"
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"
@@ -162,6 +163,6 @@ void run_boot_connectivity_sync()
 void boot_connectivity_task(void *)
 {
     run_boot_connectivity_sync();
-    xEventGroupSetBits(g_app_events, kBootSyncDoneBit);
+    app_event_group_set_bits(kBootSyncDoneBit);
     vTaskDelete(nullptr);
 }

@@ -3,6 +3,7 @@
 
 #include "app_constexpr.h"
 #include "sensor_services.h"
+#include "sensor_time.h"
 #include "ui_battery.h"
 #include "ui_draw_cache.h"
 #include "ui_history_chart.h"

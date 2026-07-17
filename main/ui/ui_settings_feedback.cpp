@@ -2,6 +2,7 @@
 #include "ui_settings_feedback.h"
 
 #include "app_state.h"
+#include "app_event_group.h"
 #include "app_tick_time.h"
 #include "network_diagnostics_state.h"
 #include "scoped_semaphore_lock.h"
@@ -137,13 +138,13 @@ bool finish_settings_sync_if_timed_out(TickType_t now)
     int op = state.operation;
     ESP_LOGW(TAG, SETTINGS_MANUAL_SYNC_TIMEOUT_LOG_FORMAT, op);
     if (op == kSettingsSyncNtp) {
-        xEventGroupClearBits(g_app_events, kManualNtpSyncBit);
+        app_event_group_clear_bits(kManualNtpSyncBit);
         finish_settings_sync(kSettingsSyncNtp, kSettingsNtpTimeoutFeedback);
     } else if (op == kSettingsSyncWeather) {
-        xEventGroupClearBits(g_app_events, kManualWeatherSyncBit);
+        app_event_group_clear_bits(kManualWeatherSyncBit);
         finish_settings_sync(kSettingsSyncWeather, kSettingsWeatherTimeoutFeedback);
     } else if (op == kSettingsSyncSaying) {
-        xEventGroupClearBits(g_app_events, kManualSayingSyncBit);
+        app_event_group_clear_bits(kManualSayingSyncBit);
         finish_settings_sync(kSettingsSyncSaying, kSettingsSayingTimeoutFeedback);
     } else {
         settings_sync_state_clear_if(op);

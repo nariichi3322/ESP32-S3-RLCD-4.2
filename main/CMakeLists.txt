@@ -3,6 +3,8 @@ idf_component_register(
     SRCS
         "core/main.cpp"
         "core/app_state.cpp"
+        "core/app_event_group.cpp"
+        "core/app_hardware.cpp"
         "core/chime_runtime_state.cpp"
         "core/active_work_page_state.cpp"
         "core/startup_state.cpp"

@@ -2,16 +2,20 @@
 #include "ui_visible_data_sync.h"
 
 #include "app_constexpr.h"
+#include "app_event_group.h"
+#include "app_state.h"
 #include "daily_saying_state.h"
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"
 #include "network_services.h"
 #include "network_sync_schedule.h"
 #include "ota_services.h"
+#include "qweather_icons.h"
 #include "ui_clock.h"
 #include "ui_text_format.h"
 #include "ui_views.h"
 #include "ui_visible_cache.h"
+#include "weather_state.h"
 
 namespace {
 constexpr size_t kWeatherCityTextSize = 48;
@@ -112,7 +116,7 @@ void request_weather_sync_if_needed(VisibleSyncRetryState<TickType_t> &retry,
                              kWeatherClockAutoSyncMaxAttempts,
                              pdMS_TO_TICKS(kWeatherClockAutoBackoffMs))) {
         ESP_LOGI(TAG, UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT, reason);
-        xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
+        app_event_group_set_bits(kManualWeatherSyncBit);
     }
 }
 } // namespace
@@ -157,7 +161,7 @@ void update_visible_weather_sync(const ActiveWorkPageState &state,
         return;
     }
 
-    EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
+    EventBits_t sync_bits = app_event_group_get_bits();
     bool weather_ready = (sync_bits & kWeatherReadyBit) != 0;
     bool sync_in_flight =
         (sync_bits & (kManualWeatherSyncBit | kProvisioningSyncBit)) != 0;
@@ -192,7 +196,7 @@ void update_visible_daily_saying_sync(const ActiveWorkPageState &state,
         return;
     }
 
-    EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
+    EventBits_t sync_bits = app_event_group_get_bits();
     bool sync_in_flight =
         (sync_bits & (kManualSayingSyncBit | kProvisioningSyncBit)) != 0;
     if (!network_visible_auto_sync_allowed(esp_timer_get_time())) {
@@ -206,7 +210,7 @@ void update_visible_daily_saying_sync(const ActiveWorkPageState &state,
                              kWeatherClockAutoSyncMaxAttempts,
                              pdMS_TO_TICKS(kWeatherClockAutoBackoffMs))) {
         ESP_LOGI(TAG, "%s", UI_GALLERY_SAYING_SYNC_REQUEST_LOG);
-        xEventGroupSetBits(g_app_events, kManualSayingSyncBit);
+        app_event_group_set_bits(kManualSayingSyncBit);
     }
 }
 
@@ -237,7 +241,7 @@ bool update_weather_clock_network_status(EventBits_t bits,
         if (!weather_cache_stale(now)) {
             retry.reset();
         } else if (network_weather_api_key_configured() && !offline_mode) {
-            EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
+            EventBits_t sync_bits = app_event_group_get_bits();
             bool sync_in_flight =
                 (sync_bits & (kManualWeatherSyncBit | kProvisioningSyncBit)) != 0;
             request_weather_sync_if_needed(retry,
@@ -249,7 +253,7 @@ bool update_weather_clock_network_status(EventBits_t bits,
     }
 
     if (network_weather_api_key_configured() && !offline_mode) {
-        EventBits_t sync_bits = xEventGroupGetBits(g_app_events);
+        EventBits_t sync_bits = app_event_group_get_bits();
         bool sync_in_flight =
             (sync_bits & (kManualWeatherSyncBit | kProvisioningSyncBit)) != 0;
         request_weather_sync_if_needed(retry,

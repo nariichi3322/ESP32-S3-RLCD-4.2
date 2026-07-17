@@ -25,19 +25,16 @@
 #include "miniz.h"
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/event_groups.h"
 #include "freertos/task.h"
 #include "nvs.h"
 #include "nvs_flash.h"
 #include "cJSON.h"
 #include "mbedtls/sha256.h"
 
-#include "display_bsp.h"
 #include "active_work_page_state.h"
+#include "app_event_group.h"
 #include "work_page_ids.h"
 #include "battery_runtime_state.h"
-#include "i2c_bsp.h"
-#include "i2c_equipment.h"
 #include "lvgl_bsp.h"
 #include "dseg_digits.h"
 #include "network_diagnostics_catalog.h"
@@ -61,21 +58,6 @@ extern const char *const APP_BUILD_DATE;
 
 inline constexpr int kDisplayWidth = 400;
 inline constexpr int kDisplayHeight = 300;
-inline constexpr int kWifiConnectedBit = BIT0;
-inline constexpr int kTimeSyncedBit = BIT1;
-inline constexpr int kWeatherReadyBit = BIT2;
-inline constexpr int kProvisioningSyncBit = BIT3;
-inline constexpr int kManualNtpSyncBit = BIT4;
-inline constexpr int kManualWeatherSyncBit = BIT5;
-inline constexpr int kOtaCheckBit = BIT6;
-inline constexpr int kOtaInstallBit = BIT7;
-inline constexpr int kManualSayingSyncBit = BIT8;
-inline constexpr int kBootSyncDoneBit = BIT9;
-inline constexpr int kBootAnimDoneBit = BIT10;
-inline constexpr int kNetworkDiagBit = BIT11;
-// Wakes the network task when runtime configuration changes. This is not a
-// sync request and must never be cleared with the request-bit group.
-inline constexpr int kNetworkStateChangedBit = BIT12;
 inline constexpr gpio_num_t kBootButtonGpio = GPIO_NUM_0;
 inline constexpr gpio_num_t kKeyButtonGpio = GPIO_NUM_18;
 inline constexpr const char *kSetupApPassword = "12345678";
@@ -138,6 +120,3 @@ inline constexpr int kBatteryChargingAnimationIdleMs = 10 * kAppMsPerMinute;
 inline constexpr int kBatteryChargingSampleMs = kAppMsPerSecond;
 
 static_assert(kXiaozhiAutoReturnTimeoutMs > 0, "Xiaozhi auto-return timeout must be positive");
-extern DisplayPort g_display;
-extern I2cMasterBus g_i2c;
-extern EventGroupHandle_t g_app_events;

@@ -1,5 +1,7 @@
 // 对接 IP 定位、QWeather 城市查询、实时天气和天气预警接口。
 #include "network_services.h"
+
+#include "app_state.h"
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "network_credentials_state.h"
@@ -10,6 +12,7 @@
 #include "qweather_forecast_parser.h"
 #include "qweather_response.h"
 #include "qweather_url.h"
+#include "weather_city_contract.h"
 
 namespace {
 constexpr size_t kQweatherCityResponseBufferSize = 8192;

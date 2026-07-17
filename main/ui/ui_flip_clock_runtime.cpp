@@ -5,7 +5,7 @@
 
 #include "calendar_lunar.h"
 #include "flip_sensor_icons.h"
-#include "sensor_services.h"
+#include "local_sensor_state.h"
 #include "ui_clock_time.h"
 #include "ui_flip_sensor_mood.h"
 #include "ui_inverted_clock_card.h"

@@ -2,6 +2,7 @@
 #include "ota_services.h"
 
 #include "app_state.h"
+#include "app_event_group.h"
 #include "ota_download_http.h"
 #include "ota_download_progress_policy.h"
 #include "ota_flow_policy.h"
@@ -16,8 +17,8 @@
 #include "offline_mode_state.h"
 #include "network_services.h"
 #include "network_task_guards.h"
+#include "power_services.h"
 #include "scoped_heap_buffer.h"
-#include "sensor_services.h"
 #include "ui_info_page_state.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_navigation.h"
@@ -188,12 +189,12 @@ static void enter_ota_reboot_quiet_window()
 
 static bool set_ota_event_bit(EventBits_t bit, const char *name)
 {
-    if (!g_app_events) {
+    if (!app_event_group_ready()) {
         ESP_LOGW(TAG, OTA_REQUEST_EVENT_GROUP_UNAVAILABLE_FORMAT, ota_request_name_or_fallback(name));
         ota_set_failed_status(kOtaStatusUnavailable);
         return false;
     }
-    xEventGroupSetBits(g_app_events, bit);
+    app_event_group_set_bits(bit);
     return true;
 }
 
@@ -650,17 +651,16 @@ static void handle_ota_install_request()
 
 void ota_task(void *)
 {
-    if (!g_app_events) {
+    if (!app_event_group_ready()) {
         ESP_LOGW(TAG, "%s", kOtaTaskEventGroupUnavailableLog);
         vTaskDelete(nullptr);
         return;
     }
     for (;;) {
-        EventBits_t bits = xEventGroupWaitBits(g_app_events,
-                                               kOtaCheckBit | kOtaInstallBit,
-                                               pdTRUE,
-                                               pdFALSE,
-                                               portMAX_DELAY);
+        EventBits_t bits = app_event_group_wait_bits(kOtaCheckBit | kOtaInstallBit,
+                                                     pdTRUE,
+                                                     pdFALSE,
+                                                     portMAX_DELAY);
         bool install = (bits & kOtaInstallBit) != 0;
         bool check = (bits & kOtaCheckBit) != 0;
         if (!install && !check) {

@@ -10,6 +10,7 @@
 #include "network_services.h"
 #include "ota_services.h"
 #include "ui_text_format.h"
+#include "weather_state.h"
 
 namespace {
 constexpr int kNetworkDiagGridFirstLine = kNetworkDiagIpLocationLine;

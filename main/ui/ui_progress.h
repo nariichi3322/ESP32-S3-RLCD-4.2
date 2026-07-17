@@ -1,7 +1,9 @@
 // 声明工作页共享的分段进度条构建和增量刷新接口。
 #pragma once
 
-#include "app_state.h"
+#include "lvgl.h"
+
+#include <time.h>
 
 void draw_progress_segment(lv_obj_t *canvas, int index, bool filled);
 void invalidate_progress_segment(lv_obj_t *canvas, int index);

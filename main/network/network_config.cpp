@@ -3,6 +3,7 @@
 #include "wifi_portal_state.h"
 
 #include "app_constexpr.h"
+#include "app_event_group.h"
 #include "app_text_format.h"
 #include "alarm_services.h"
 #include "chime_runtime_state.h"

@@ -2,6 +2,7 @@
 #include "network_config_internal.h"
 
 #include "app_constexpr.h"
+#include "app_event_group.h"
 #include "app_state.h"
 
 namespace {
@@ -30,18 +31,18 @@ void log_config_event_group_unavailable(const char *action, const char *reason)
 
 void clear_config_event_bits(EventBits_t bits, const char *reason)
 {
-    if (!g_app_events) {
+    if (!app_event_group_ready()) {
         log_config_event_group_unavailable(kConfigEventActionClear, reason);
         return;
     }
-    xEventGroupClearBits(g_app_events, bits);
+    app_event_group_clear_bits(bits);
 }
 
 void set_config_event_bits(EventBits_t bits, const char *reason)
 {
-    if (!g_app_events) {
+    if (!app_event_group_ready()) {
         log_config_event_group_unavailable(kConfigEventActionSet, reason);
         return;
     }
-    xEventGroupSetBits(g_app_events, bits);
+    app_event_group_set_bits(bits);
 }

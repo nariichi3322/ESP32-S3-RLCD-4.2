@@ -2,8 +2,11 @@
 #include "network_services.h"
 
 #include "app_constexpr.h"
+#include "app_event_group.h"
 #include "manual_weather_city_state.h"
 #include "network_diagnostics_state.h"
+#include "network_form.h"
+#include "network_text.h"
 #include "wifi_portal_dns.h"
 #include "wifi_portal_pages.h"
 #include "wifi_portal_state.h"
@@ -89,11 +92,11 @@ static_assert(portal_http_routes_valid(), "portal HTTP routes must have URI and 
 
 void request_provisioning_sync_after_save()
 {
-    if (!g_app_events) {
+    if (!app_event_group_ready()) {
         ESP_LOGW(TAG, "%s", PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG);
         return;
     }
-    xEventGroupSetBits(g_app_events, kProvisioningSyncBit);
+    app_event_group_set_bits(kProvisioningSyncBit);
 }
 
 bool stop_http_server_handle()

@@ -13,6 +13,7 @@
 #include "ui_flip_clock.h"
 #include "ui_setup_status.h"
 #include "ui_xiaozhi.h"
+#include "weather_state.h"
 
 namespace {
 #define PAGE_ROOT_CREATE_FAILED_LOG "page root create failed"

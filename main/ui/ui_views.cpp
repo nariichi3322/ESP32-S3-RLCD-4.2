@@ -5,14 +5,16 @@
 
 #include "alarm_services.h"
 #include "app_constexpr.h"
+#include "app_event_group.h"
 #include "app_tick_time.h"
 #include "audio_services.h"
 #include "chime_runtime_state.h"
+#include "local_sensor_state.h"
 #include "network_diagnostics_state.h"
 #include "network_services.h"
 #include "ota_runtime_state.h"
 #include "ota_services.h"
-#include "sensor_services.h"
+#include "sensor_time.h"
 #include "ui_battery.h"
 #include "ui_battery_blink.h"
 #include "ui_aux_pages.h"
@@ -26,6 +28,7 @@
 #include "ui_settings_activity_state.h"
 #include "ui_visible_data_sync.h"
 #include "ui_xiaozhi.h"
+#include "weather_state.h"
 #include "xiaozhi_ai.h"
 
 #include <stdint.h>
@@ -496,7 +499,7 @@ void ui_task(void *)
                                                            alert_index);
 
             if (status_due || battery_due || battery_blink_due || setup_due || mode_due) {
-                EventBits_t bits = xEventGroupGetBits(g_app_events);
+                EventBits_t bits = app_event_group_get_bits();
                 bool setup_active = setup_portal_active_load();
                 bool content_changed = false;
                 if (setup_active != setup_panel_visible || mode_due) {

@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "app_constexpr.h"
+#include "app_event_group.h"
 #include "boot_anim.h"
 
 #include <atomic>
@@ -97,8 +98,8 @@ void boot_anim_task(void *)
         frame = (frame + 1) % BOOT_ANIM_FRAME_COUNT;
         vTaskDelay(pdMS_TO_TICKS(kBootAnimRunFrameMs));
     }
-    if (g_app_events) {
-        xEventGroupSetBits(g_app_events, kBootAnimDoneBit);
+    if (app_event_group_ready()) {
+        app_event_group_set_bits(kBootAnimDoneBit);
     } else {
         ESP_LOGW(TAG, BOOT_ANIM_DONE_EVENT_SKIPPED_LOG);
     }

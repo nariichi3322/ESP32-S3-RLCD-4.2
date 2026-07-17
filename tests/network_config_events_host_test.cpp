@@ -1,17 +1,15 @@
 // 验证网络配置 EventGroup 适配层的空句柄保护、日志回退和位操作转发。
 #include "network_config_internal.h"
 
-#include "app_state.h"
+#include "app_event_group.h"
 
 #include <assert.h>
 #include <string.h>
 
-EventGroupHandle_t g_app_events = nullptr;
-
 namespace {
+bool g_event_group_ready = false;
 int g_clear_calls = 0;
 int g_set_calls = 0;
-EventGroupHandle_t g_last_handle = nullptr;
 EventBits_t g_last_bits = 0;
 const char *g_last_action = nullptr;
 const char *g_last_reason = nullptr;
@@ -23,18 +21,21 @@ void record_config_event_log(const char *action, const char *reason)
     g_last_reason = reason;
 }
 
-EventBits_t xEventGroupClearBits(EventGroupHandle_t event_group, EventBits_t bits)
+bool app_event_group_ready()
+{
+    return g_event_group_ready;
+}
+
+EventBits_t app_event_group_clear_bits(EventBits_t bits)
 {
     ++g_clear_calls;
-    g_last_handle = event_group;
     g_last_bits = bits;
     return bits;
 }
 
-EventBits_t xEventGroupSetBits(EventGroupHandle_t event_group, EventBits_t bits)
+EventBits_t app_event_group_set_bits(EventBits_t bits)
 {
     ++g_set_calls;
-    g_last_handle = event_group;
     g_last_bits = bits;
     return bits;
 }
@@ -51,15 +52,13 @@ int main()
     assert(strcmp(g_last_action, "set") == 0);
     assert(strcmp(g_last_reason, "provisioning save") == 0);
 
-    g_app_events = reinterpret_cast<EventGroupHandle_t>(0x1);
+    g_event_group_ready = true;
     clear_config_event_bits(0x56, "reset");
     assert(g_clear_calls == 1);
-    assert(g_last_handle == g_app_events);
     assert(g_last_bits == 0x56);
 
     set_config_event_bits(0x78, "sync");
     assert(g_set_calls == 1);
-    assert(g_last_handle == g_app_events);
     assert(g_last_bits == 0x78);
     return 0;
 }

@@ -1,6 +1,7 @@
 // 负责电池电压采样、电量估算和充电状态判断。
 #include "sensor_services.h"
 
+#include "app_state.h"
 #include "app_time_constants.h"
 #include "battery_charging_state.h"
 #include "esp_adc/adc_cali.h"

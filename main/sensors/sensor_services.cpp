@@ -1,8 +1,11 @@
 // 调度本地温湿度、电池采样和传感器相关低频后台任务。
 #include "sensor_services.h"
 
+#include "app_state.h"
 #include "app_tick_time.h"
+#include "local_sensor_state.h"
 #include "ota_services.h"
+#include "sensor_time.h"
 #include "ui_views.h"
 
 namespace {

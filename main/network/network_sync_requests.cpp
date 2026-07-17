@@ -1,7 +1,7 @@
 // 统一网络同步请求快照、用户反馈和事件位清理顺序。
 #include "network_sync_requests.h"
 
-#include "app_state.h"
+#include "app_event_group.h"
 #include "network_diagnostics_catalog.h"
 #include "network_services.h"
 #include "ui_settings_feedback.h"
@@ -41,7 +41,7 @@ void finish_requested_settings_sync(bool requested,
     }
     finish_settings_sync(op, status);
     if (clear_bit) {
-        xEventGroupClearBits(g_app_events, bit);
+        app_event_group_clear_bits(bit);
     }
 }
 
@@ -72,7 +72,7 @@ NetworkSyncRequestSnapshot snapshot_network_sync_requests()
 {
     // A loop must schedule and finish the same event snapshot even if another
     // task raises a new request while HTTPS is in progress.
-    EventBits_t bits = xEventGroupGetBits(g_app_events);
+    EventBits_t bits = app_event_group_get_bits();
     NetworkSyncRequestSnapshot requests;
     requests.provisioning = (bits & kProvisioningSyncBit) != 0;
     requests.manual_ntp = (bits & kManualNtpSyncBit) != 0;
@@ -123,7 +123,7 @@ void finish_unconfigured_network_requests(const NetworkSyncRequestSnapshot &requ
 {
     finish_requested_manual_syncs(requests, kNetworkStatusWifiNotConfigured, true);
     if (requests.provisioning) {
-        xEventGroupClearBits(g_app_events, kProvisioningSyncBit);
+        app_event_group_clear_bits(kProvisioningSyncBit);
     }
     if (requests.diagnostics) {
         network_diag_begin();
@@ -136,7 +136,7 @@ void finish_unconfigured_network_requests(const NetworkSyncRequestSnapshot &requ
 void finish_failed_sync_requests(const NetworkSyncRequestSnapshot &requests)
 {
     if (requests.provisioning) {
-        xEventGroupClearBits(g_app_events, kProvisioningSyncBit);
+        app_event_group_clear_bits(kProvisioningSyncBit);
     }
     if (requests.manual_ntp) {
         finish_settings_sync_and_clear_bit(kSettingsSyncNtp,
@@ -161,7 +161,7 @@ void finish_successful_sync_requests(const NetworkSyncRequestSnapshot &requests,
                                      bool saying_ok)
 {
     if (requests.provisioning) {
-        xEventGroupClearBits(g_app_events, kProvisioningSyncBit);
+        app_event_group_clear_bits(kProvisioningSyncBit);
     }
     if (requests.manual_ntp) {
         finish_settings_sync_and_clear_bit(kSettingsSyncNtp,

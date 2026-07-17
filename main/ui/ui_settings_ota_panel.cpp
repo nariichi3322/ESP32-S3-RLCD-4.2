@@ -2,6 +2,7 @@
 #include "ui_settings_ota_panel.h"
 
 #include "app_constexpr.h"
+#include "app_state.h"
 #include "ota_runtime_state.h"
 #include "ui_text_format.h"
 #include "ui_views.h"

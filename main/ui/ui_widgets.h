@@ -1,7 +1,7 @@
 // 声明通用 LVGL 条形块和文本标签的创建、样式与更新接口。
 #pragma once
 
-#include "app_state.h"
+#include "lvgl.h"
 
 void set_obj_box(lv_obj_t *obj, int x, int y, int w, int h);
 void set_obj_black(lv_obj_t *obj, bool active);

@@ -4,7 +4,6 @@
 #include "app_constexpr.h"
 #include "app_time_constants.h"
 #include "calendar_lunar.h"
-#include "sensor_services.h"
 #include "ui_battery.h"
 #include "ui_calendar_layout.h"
 

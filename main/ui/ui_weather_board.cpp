@@ -2,10 +2,13 @@
 #include "ui_views.h"
 
 #include "app_constexpr.h"
+#include "app_event_group.h"
 #include "network_services.h"
+#include "qweather_icons.h"
 #include "ui_battery.h"
 #include "ui_weather_board_sun.h"
 #include "ui_weather_board_text.h"
+#include "weather_state.h"
 
 namespace {
 
@@ -491,7 +494,7 @@ bool update_weather_board_page(const struct tm &local)
     WeatherForecastData forecast = {};
     WeatherAirData air = {};
     get_weather_full_snapshot(&weather, &alert, &forecast, &air);
-    EventBits_t bits = xEventGroupGetBits(g_app_events);
+    EventBits_t bits = app_event_group_get_bits();
     const WorkPageStatusLabels status = get_work_page_status_labels(kWorkPageWeatherBoard);
     bool changed = update_work_page_status_time(status.time, local);
     changed |= update_work_page_sensor_summary(status.summary);

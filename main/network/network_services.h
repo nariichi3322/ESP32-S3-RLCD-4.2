@@ -1,20 +1,16 @@
 // 声明配网、Wi-Fi、HTTP、天气、NTP、OTA 调度等网络服务接口。
 #pragma once
-#include "app_state.h"
+
+#include "weather_types.h"
+
+#include "esp_err.h"
+#include "esp_event_base.h"
+#include "esp_http_client.h"
 #include "esp_http_server.h"
-#include "network_form.h"
-#include "network_gzip.h"
-#include "network_http_transaction_lock.h"
-#include "network_https_resources.h"
-#include "network_json.h"
-#include "network_text.h"
-#include "network_url.h"
-#include "qweather_alert_text.h"
-#include "qweather_icons.h"
-#include "qweather_url.h"
-#include "weather_state.h"
-#include "wifi_portal_pages.h"
-#include "wifi_portal_state.h"
+
+#include <stddef.h>
+#include <stdint.h>
+#include <time.h>
 
 struct HttpBuffer {
     char *data;

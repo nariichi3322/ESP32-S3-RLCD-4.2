@@ -8,7 +8,7 @@
 #include "audio_services.h"
 #include "pomodoro_services.h"
 #include "reminder_schedule.h"
-#include "sensor_services.h"
+#include "sensor_time.h"
 #include "task_notification_target.h"
 #include "ui_views.h"
 #include "xiaozhi_ai.h"

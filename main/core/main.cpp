@@ -1,5 +1,7 @@
 // 初始化硬件、系统服务和常驻任务，是固件应用入口。
 #include "app_state.h"
+#include "app_event_group.h"
+#include "app_hardware.h"
 #include "app_constexpr.h"
 #include "alarm_services.h"
 #include "battery_runtime_state.h"
@@ -12,10 +14,13 @@
 #include "manual_weather_city_state.h"
 #include "network_credentials_state.h"
 #include "network_diagnostics_state.h"
+#include "network_http_transaction_lock.h"
 #include "network_services.h"
 #include "ntp_runtime_state.h"
 #include "ota_runtime_state.h"
 #include "ota_services.h"
+#include "local_sensor_state.h"
+#include "power_services.h"
 #include "sensor_services.h"
 #include "startup_state.h"
 #include "ui_display_flush.h"
@@ -24,8 +29,11 @@
 #include "ui_task_notify.h"
 #include "ui_views.h"
 #include "ui_work_page_catalog.h"
+#include "weather_state.h"
 #include "wifi_portal_state.h"
 #include "xiaozhi_ai.h"
+
+#include "i2c_equipment.h"
 
 #define MAIN_INVALID_TASK_CREATE_LOG_FORMAT "%s: invalid task create request"
 #define MAIN_TASK_CREATE_FAILED_LOG_FORMAT "%s task create failed"
@@ -92,8 +100,6 @@ constexpr const char *kBootAnimTaskCreateFailed = "boot animation task create fa
 constexpr const char *kBootConnectivityTaskCreateFailed = "boot connectivity task create failed";
 constexpr const char *kBootReadyStatus = "Ready";
 constexpr const char *kBootReadyDetail = "Starting clock";
-StaticEventGroup_t s_app_event_group_storage = {};
-
 struct AppTaskSpec {
     TaskFunction_t task;
     const char *name;
@@ -187,29 +193,19 @@ static bool init_nvs_storage()
     return true;
 }
 
-static void release_app_event_group()
-{
-    if (!g_app_events) {
-        return;
-    }
-    vEventGroupDelete(g_app_events);
-    g_app_events = nullptr;
-}
-
 static bool init_system_event_services()
 {
-    if (g_app_events) {
+    if (app_event_group_ready()) {
         return true;
     }
-    g_app_events = xEventGroupCreateStatic(&s_app_event_group_storage);
-    if (!g_app_events) {
+    if (!app_event_group_init()) {
         ESP_LOGE(TAG, MAIN_EVENT_GROUP_CREATE_FAILED_LOG_FORMAT);
         return false;
     }
     esp_err_t ret = esp_netif_init();
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, MAIN_NETIF_INIT_FAILED_LOG_FORMAT, esp_err_to_name(ret));
-        release_app_event_group();
+        app_event_group_release();
         return false;
     }
     ret = esp_event_loop_create_default();
@@ -218,7 +214,7 @@ static bool init_system_event_services()
         // ESP-IDF 5.5 does not support esp_netif_deinit(). Release the owned
         // event group and leave the TCP/IP stack inert instead of retaining a
         // stale global handle that later code could mistake for a usable bus.
-        release_app_event_group();
+        app_event_group_release();
         return false;
     }
     return true;
@@ -234,7 +230,7 @@ static void create_boot_task_or_signal(TaskFunction_t task,
     const char *task_name = name ? name : kFallbackBootTaskName;
     if (!task || stack_depth == 0) {
         ESP_LOGW(TAG, MAIN_INVALID_BOOT_TASK_LOG_FORMAT, failure_log ? failure_log : task_name);
-        xEventGroupSetBits(g_app_events, done_bit);
+        app_event_group_set_bits(done_bit);
         return;
     }
     if (xTaskCreatePinnedToCore(task,
@@ -245,17 +241,19 @@ static void create_boot_task_or_signal(TaskFunction_t task,
                                 nullptr,
                                 core_id) != pdPASS) {
         ESP_LOGW(TAG, MAIN_BOOT_TASK_CREATE_FAILED_LOG_FORMAT, failure_log);
-        xEventGroupSetBits(g_app_events, done_bit);
+        app_event_group_set_bits(done_bit);
     }
 }
 
 extern "C" void app_main(void)
 {
-    if (!g_display.IsReady()) {
+    DisplayPort &display = app_display();
+    I2cMasterBus &i2c = app_i2c();
+    if (!display.IsReady()) {
         ESP_LOGE(TAG, MAIN_DISPLAY_UNAVAILABLE_LOG_FORMAT);
         return;
     }
-    if (!g_i2c.IsReady()) {
+    if (!i2c.IsReady()) {
         ESP_LOGE(TAG, MAIN_I2C_UNAVAILABLE_LOG_FORMAT);
         return;
     }
@@ -332,11 +330,11 @@ extern "C" void app_main(void)
     custom_assets_init();
 
     (void)load_saved_config();
-    Rtc_Setup(&g_i2c, 0x51);
+    Rtc_Setup(&i2c, 0x51);
     setenv("TZ", "CST-8", 1);
     tzset();
     restore_system_time_from_rtc();
-    init_shtc3_sensor(g_i2c);
+    init_shtc3_sensor(i2c);
     sample_battery();
     if (!battery_low_mode_load()) {
         sample_sensor();
@@ -357,13 +355,13 @@ extern "C" void app_main(void)
         return;
     }
 
-    g_display.RLCD_Init();
-    if (!g_display.IsReady()) {
+    display.RLCD_Init();
+    if (!display.IsReady()) {
         ESP_LOGE(TAG, MAIN_DISPLAY_UNAVAILABLE_LOG_FORMAT);
         return;
     }
-    g_display.RLCD_ColorClear(ColorWhite);
-    g_display.RLCD_Display();
+    display.RLCD_ColorClear(ColorWhite);
+    display.RLCD_Display();
     if (!Lvgl_PortInit(kDisplayWidth, kDisplayHeight, flush_callback)) {
         ESP_LOGE(TAG, MAIN_LVGL_INIT_FAILED_LOG_FORMAT);
         return;
@@ -373,7 +371,7 @@ extern "C" void app_main(void)
         Lvgl_unlock();
     }
     prepare_boot_animation();
-    xEventGroupClearBits(g_app_events, kBootSyncDoneBit | kBootAnimDoneBit);
+    app_event_group_clear_bits(kBootSyncDoneBit | kBootAnimDoneBit);
     create_boot_task_or_signal(boot_anim_task,
                                kBootAnimTaskName,
                                kBootAnimTaskStack,
@@ -386,18 +384,16 @@ extern "C" void app_main(void)
                                kNetworkTaskCore,
                                kBootSyncDoneBit,
                                kBootConnectivityTaskCreateFailed);
-    xEventGroupWaitBits(g_app_events,
-                        kBootSyncDoneBit,
-                        pdFALSE,
-                        pdTRUE,
-                        pdMS_TO_TICKS(kBootStartupBudgetMs + kBootSyncWaitMarginMs));
+    app_event_group_wait_bits(kBootSyncDoneBit,
+                              pdFALSE,
+                              pdTRUE,
+                              pdMS_TO_TICKS(kBootStartupBudgetMs + kBootSyncWaitMarginMs));
     update_boot_screen(100, kBootReadyStatus, kBootReadyDetail);
     request_boot_animation_stop();
-    xEventGroupWaitBits(g_app_events,
-                        kBootAnimDoneBit,
-                        pdFALSE,
-                        pdTRUE,
-                        pdMS_TO_TICKS(kBootAnimStopWaitMs));
+    app_event_group_wait_bits(kBootAnimDoneBit,
+                              pdFALSE,
+                              pdTRUE,
+                              pdMS_TO_TICKS(kBootAnimStopWaitMs));
     finish_boot_anim_to_last_frame();
     finish_boot_screen();
     startup_screen_mark_finished();
