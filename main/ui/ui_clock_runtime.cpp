@@ -2,6 +2,7 @@
 #include "ui_views.h"
 
 #include "audio_services.h"
+#include "ui_clock_surface_objects.h"
 #include "ui_clock_time.h"
 #include "ui_draw_cache.h"
 
@@ -51,7 +52,7 @@ bool update_time_ui(const struct tm &local,
         local.tm_sec != s_last_ui_second) {
         draw_second_canvas(local);
         draw_status_gif_frame(local.tm_sec % STATUS_GIF_FRAME_COUNT);
-        update_progress_canvas(g_second_progress_canvas,
+        update_progress_canvas(clock_surface_object_refs().second_progress_canvas,
                                local.tm_sec + 1,
                                &s_last_second_progress_filled);
         s_last_ui_second = local.tm_sec;

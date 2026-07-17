@@ -1,6 +1,8 @@
 // 声明设置页二级菜单动态文案生成接口。
 #pragma once
 
+#include "ui_settings_contract.h"
+
 #include <stddef.h>
 
 inline constexpr size_t kSettingsSecondaryTextSize = 56;

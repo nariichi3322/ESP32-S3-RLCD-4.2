@@ -21,7 +21,15 @@ bool snapshot_valid(const SettingsSyncStateSnapshot &state)
 
 int main()
 {
-    SettingsSyncStateSnapshot state;
+    SettingsSyncStateSnapshot state = {99, 99};
+    settings_sync_state_load(&state);
+    assert(state.operation == 0);
+    assert(state.deadline_tick == 0);
+    settings_sync_state_begin(kWeatherOperation, kWeatherDeadline);
+    assert(!settings_sync_state_clear_if(kWeatherOperation));
+    assert(settings_sync_state_init());
+    assert(settings_sync_state_init());
+
     settings_sync_state_load(&state);
     assert(state.operation == 0);
     assert(state.deadline_tick == 0);

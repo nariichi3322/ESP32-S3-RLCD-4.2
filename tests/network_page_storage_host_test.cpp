@@ -1,7 +1,7 @@
 // 验证工作页顺序 NVS 条件写入及失败时的变化标记。
 #include "network_page_storage.h"
 
-#include "app_state.h"
+#include "work_page_ids.h"
 
 #include <assert.h>
 #include <string.h>

@@ -12,7 +12,10 @@ inline constexpr const char *kManualWeatherCityKey = "weather_city_v1";
 inline constexpr const char *kIgnoredAssetWeatherCityKey = "asset_city_skip";
 
 bool load_preferred_city(nvs_handle_t nvs, char *out, size_t out_len);
-esp_err_t write_provisioned_city(nvs_handle_t nvs, esp_err_t err, const char *city);
+esp_err_t write_provisioned_city(nvs_handle_t nvs,
+                                 esp_err_t err,
+                                 const char *city,
+                                 bool *changed);
 esp_err_t write_manual_city_if_changed(nvs_handle_t nvs,
                                        const char *city,
                                        bool *changed);

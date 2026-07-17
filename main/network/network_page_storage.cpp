@@ -1,7 +1,6 @@
 // 负责工作页开关、顺序和上一版页面数据的 NVS 读写。
 #include "network_page_storage.h"
 
-#include "app_state.h"
 #include "network_page_storage_policy.h"
 #include "ui_work_page_catalog.h"
 

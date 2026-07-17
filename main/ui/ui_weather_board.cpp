@@ -453,22 +453,20 @@ bool update_weather_detail_panel(const struct tm &local,
 
 void build_weather_board_page()
 {
-    if (g_weather_board_root) {
+    if (work_page_root(kWorkPageWeatherBoard)) {
         return;
     }
     lv_obj_t *screen = create_page_root();
     if (!screen) {
         return;
     }
-    g_weather_board_root = screen;
-    lv_obj_add_flag(g_weather_board_root, LV_OBJ_FLAG_HIDDEN);
+    set_work_page_root(kWorkPageWeatherBoard, screen);
+    lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
 
-    build_battery_icon(screen, g_weather_board_battery_segments);
+    build_work_page_battery_icon(screen, kWorkPageWeatherBoard);
     build_work_page_status_bar(screen,
                                kWorkPageWeatherBoard,
-                               &g_weather_board_date_label,
-                               &g_weather_board_summary_label,
-                               &g_weather_board_status_time_label,
+                               true,
                                true);
 
     build_current_weather_panel(screen);
@@ -484,7 +482,7 @@ void build_weather_board_page()
 bool update_weather_board_page(const struct tm &local)
 {
     build_weather_board_page();
-    if (!g_weather_board_root) {
+    if (!work_page_root(kWorkPageWeatherBoard)) {
         return false;
     }
 
@@ -494,8 +492,9 @@ bool update_weather_board_page(const struct tm &local)
     WeatherAirData air = {};
     get_weather_full_snapshot(&weather, &alert, &forecast, &air);
     EventBits_t bits = xEventGroupGetBits(g_app_events);
-    bool changed = update_work_page_status_time(g_weather_board_status_time_label, local);
-    changed |= update_work_page_sensor_summary(g_weather_board_summary_label);
+    const WorkPageStatusLabels status = get_work_page_status_labels(kWorkPageWeatherBoard);
+    bool changed = update_work_page_status_time(status.time, local);
+    changed |= update_work_page_sensor_summary(status.summary);
     changed |= update_current_weather_panel(weather, forecast, bits);
     changed |= update_forecast_cards(forecast);
     changed |= update_weather_detail_panel(local, weather, alert, forecast, air);

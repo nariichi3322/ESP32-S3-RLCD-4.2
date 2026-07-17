@@ -1,6 +1,7 @@
 // 获取自定义、R2 与 GitHub OTA manifest，并维护安装前的运行态清单缓存。
 #include "ota_manifest_client.h"
 
+#include "app_state.h"
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "custom_assets.h"

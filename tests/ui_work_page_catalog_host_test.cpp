@@ -1,7 +1,7 @@
 // 验证工作页名称、启用掩码、离线筛选和自定义顺序规则。
 #include "ui_work_page_catalog.h"
 
-#include "app_state.h"
+#include "active_work_page_state.h"
 
 #include <assert.h>
 #include <atomic>
@@ -35,6 +35,11 @@ void expect_default_order()
 
 int main()
 {
+    uint8_t unavailable[kWorkPageCount] = {};
+    assert(!work_page_order_copy(unavailable, sizeof(unavailable)));
+    assert(!swap_work_page_order_entries_preserving_home(0, 1));
+    assert(work_page_catalog_init());
+    assert(work_page_catalog_init());
     reset_work_page_order();
     expect_default_order();
     work_page_enabled_mask_store(static_cast<uint8_t>((1U << kWorkPageCount) - 1U));

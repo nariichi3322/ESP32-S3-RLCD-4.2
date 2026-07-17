@@ -14,6 +14,7 @@ struct BatteryRuntimeSnapshot {
     bool low_battery_mode = false;
 };
 
+bool battery_runtime_state_init();
 void battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out);
 void battery_runtime_snapshot_store(const BatteryRuntimeSnapshot &snapshot);
 void battery_runtime_voltage_store(float voltage);

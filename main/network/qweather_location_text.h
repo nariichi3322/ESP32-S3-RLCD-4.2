@@ -1,7 +1,9 @@
 // 声明天气定位文本格式化、城市提取和坐标回填接口。
 #pragma once
 
-#include "app_state.h"
+#include "weather_types.h"
+
+#include <stddef.h>
 
 inline constexpr size_t kWeatherLocationTextSize = 32;
 inline constexpr char kIpLocationInvalidArgLog[] = "ip location invalid arg";

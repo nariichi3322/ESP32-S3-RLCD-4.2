@@ -4,10 +4,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
-inline constexpr uint32_t kUiLoopFlipClockPollMs = 200;
 inline constexpr uint32_t kUiLoopBoundaryWakeSlackMs = 5;
 
-uint32_t ui_next_second_delay_ms(int64_t monotonic_us);
+uint32_t ui_next_second_delay_ms(int64_t sampled_wall_second,
+                                 int64_t wall_clock_us);
 uint32_t ui_next_minute_delay_ms(int local_second);
 uint32_t ui_pomodoro_boundary_delay_ms(uint32_t boundary_ms);
 uint32_t ui_nonzero_delay_ticks(uint32_t ticks);

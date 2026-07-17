@@ -6,6 +6,7 @@
 #include "network_sync_schedule.h"
 #include "network_task_guards.h"
 #include "ui_views.h"
+#include "wifi_portal_state.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -64,7 +65,9 @@ void format_boot_setup_detail(char *out, size_t out_len)
     if (!app_text::output_buffer_available(out, out_len)) {
         return;
     }
-    int written = snprintf(out, out_len, kBootSetupDetailFormat, g_ap_ssid);
+    char setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
+    (void)wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid));
+    int written = snprintf(out, out_len, kBootSetupDetailFormat, setup_ap_ssid);
     copy_boot_detail_fallback_on_format_error(written, out, out_len);
 }
 

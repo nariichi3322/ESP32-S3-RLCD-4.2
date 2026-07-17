@@ -1,7 +1,7 @@
 // 跟踪公共音频生命周期实际取得的 PM 锁所有权，避免失败申请被误释放。
 #pragma once
 
-#include "sensor_services.h"
+#include "power_services.h"
 
 class AudioPowerLockOwnership {
 public:

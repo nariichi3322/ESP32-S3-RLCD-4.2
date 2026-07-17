@@ -1,7 +1,7 @@
 // 声明本地温湿度四小时趋势使用的纯窗口平均与方向计算。
 #pragma once
 
-#include "app_state.h"
+#include "sensor_history_types.h"
 
 #include <stdint.h>
 

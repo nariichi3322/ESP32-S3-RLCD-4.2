@@ -1,14 +1,26 @@
-// 以完整字符串快照保存手动天气城市，避免跨任务读取半写入 UTF-8。
+// 使用静态任务互斥保存手动天气城市，避免跨任务读取半写入 UTF-8。
 #include "manual_weather_city_state.h"
 
-#include "app_state.h"
+#include "scoped_semaphore_lock.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include <string.h>
 
 namespace {
-portMUX_TYPE s_manual_weather_city_mux = portMUX_INITIALIZER_UNLOCKED;
+StaticSemaphore_t s_manual_weather_city_mutex_storage = {};
+SemaphoreHandle_t s_manual_weather_city_mutex = nullptr;
 char s_manual_weather_city[kManualWeatherCityLen] = {};
+}
+
+bool init_manual_weather_city_state()
+{
+    if (s_manual_weather_city_mutex) {
+        return true;
+    }
+    s_manual_weather_city_mutex =
+        xSemaphoreCreateMutexStatic(&s_manual_weather_city_mutex_storage);
+    return s_manual_weather_city_mutex != nullptr;
 }
 
 bool manual_weather_city_snapshot(char *out, size_t out_len)
@@ -19,26 +31,28 @@ bool manual_weather_city_snapshot(char *out, size_t out_len)
         }
         return false;
     }
-    portENTER_CRITICAL(&s_manual_weather_city_mux);
+    ScopedSemaphoreLock lock(s_manual_weather_city_mutex);
+    if (!lock) {
+        out[0] = '\0';
+        return false;
+    }
     memcpy(out, s_manual_weather_city, sizeof(s_manual_weather_city));
-    const bool configured = s_manual_weather_city[0] != '\0';
-    portEXIT_CRITICAL(&s_manual_weather_city_mux);
-    return configured;
+    return s_manual_weather_city[0] != '\0';
 }
 
 void manual_weather_city_store(const char *city)
 {
     char replacement[kManualWeatherCityLen] = {};
     strlcpy(replacement, city ? city : "", sizeof(replacement));
-    portENTER_CRITICAL(&s_manual_weather_city_mux);
+    ScopedSemaphoreLock lock(s_manual_weather_city_mutex);
+    if (!lock) {
+        return;
+    }
     memcpy(s_manual_weather_city, replacement, sizeof(s_manual_weather_city));
-    portEXIT_CRITICAL(&s_manual_weather_city_mux);
 }
 
 bool manual_weather_city_is_configured()
 {
-    portENTER_CRITICAL(&s_manual_weather_city_mux);
-    const bool configured = s_manual_weather_city[0] != '\0';
-    portEXIT_CRITICAL(&s_manual_weather_city_mux);
-    return configured;
+    ScopedSemaphoreLock lock(s_manual_weather_city_mutex);
+    return lock && s_manual_weather_city[0] != '\0';
 }

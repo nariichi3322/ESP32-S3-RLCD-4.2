@@ -23,17 +23,17 @@ int main()
     NetworkDiagnosticsSnapshot snapshot;
     network_diag_snapshot_load(nullptr);
     network_diag_snapshot_load(&snapshot);
-    assert(snapshot.state == 0);
+    assert(snapshot.state == kNetworkDiagIdle);
     for (int index = 0; index < kNetworkDiagLineCount; ++index) {
         assert(snapshot.lines[index][0] == '\0');
     }
 
-    network_diag_state_store(1);
+    network_diag_state_store(kNetworkDiagRunning);
     network_diag_line_store(kNetworkDiagLocalIpLine, "本地IP: 192.168.1.10");
     network_diag_line_store(-1, "ignored");
     network_diag_line_store(kNetworkDiagLineCount, "ignored");
     network_diag_snapshot_load(&snapshot);
-    assert(snapshot.state == 1);
+    assert(snapshot.state == kNetworkDiagRunning);
     assert(strcmp(snapshot.lines[kNetworkDiagLocalIpLine],
                   "本地IP: 192.168.1.10") == 0);
 
@@ -51,13 +51,13 @@ int main()
                   "本地IP: 192.168.1.10") == 0);
 
     network_diag_line_store(kNetworkDiagLocalIpLine, nullptr);
-    network_diag_state_clear(2);
+    network_diag_state_clear(kNetworkDiagDone);
     network_diag_snapshot_load(&snapshot);
-    assert(snapshot.state == 2);
+    assert(snapshot.state == kNetworkDiagDone);
     for (int index = 0; index < kNetworkDiagLineCount; ++index) {
         assert(snapshot.lines[index][0] == '\0');
     }
-    assert(network_diag_state_load() == 2);
+    assert(network_diag_state_load() == kNetworkDiagDone);
 
     std::atomic<bool> start{false};
     std::thread writer([&start]() {

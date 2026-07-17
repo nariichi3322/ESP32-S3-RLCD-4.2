@@ -1,7 +1,7 @@
 // 定义工作页 NVS 版本迁移使用的纯计算规则。
 #pragma once
 
-#include "app_state.h"
+#include "work_page_ids.h"
 
 #include <stddef.h>
 #include <stdint.h>

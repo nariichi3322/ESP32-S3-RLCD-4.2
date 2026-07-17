@@ -1,4 +1,5 @@
-// 验证同类延后任务只允许一个待处理实例并可在收尾后重新申请。
+// 验证通用原子所有权门及延后任务兼容类型都只允许一个并发所有者。
+#include "atomic_ownership_gate.h"
 #include "single_pending_task_gate.h"
 
 #include <assert.h>
@@ -6,9 +7,10 @@
 #include <thread>
 #include <vector>
 
-int main()
+template <typename Gate>
+void test_gate()
 {
-    SinglePendingTaskGate gate;
+    Gate gate;
     assert(!gate.active());
     assert(gate.try_acquire());
     assert(gate.active());
@@ -42,5 +44,11 @@ int main()
     assert(winners.load(std::memory_order_relaxed) == 1);
     assert(gate.active());
     gate.release();
+}
+
+int main()
+{
+    test_gate<AtomicOwnershipGate>();
+    test_gate<SinglePendingTaskGate>();
     return 0;
 }

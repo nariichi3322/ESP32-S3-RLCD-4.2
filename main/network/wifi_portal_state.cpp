@@ -1,7 +1,9 @@
-// 集中维护配网页活跃状态、断线原因和本地 IP 完整快照。
+// 集中维护配网页活跃状态、断线原因、AP 名称和本地 IP 完整快照。
 #include "wifi_portal_state.h"
 
+#include "scoped_semaphore_lock.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include <atomic>
 #include <string.h>
@@ -9,9 +11,50 @@
 namespace {
 std::atomic<bool> s_setup_portal_active{false};
 std::atomic<int> s_last_wifi_disconnect_reason{0};
-portMUX_TYPE s_station_ip_mux = portMUX_INITIALIZER_UNLOCKED;
+StaticSemaphore_t s_portal_text_mutex_storage = {};
+SemaphoreHandle_t s_portal_text_mutex = nullptr;
+char s_setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
 char s_station_ip[kWifiStationIpTextLen] = {};
+
+template <size_t N>
+bool portal_text_snapshot(const char (&source)[N], char *out, size_t out_len)
+{
+    if (!out || out_len < N) {
+        if (out && out_len > 0) {
+            out[0] = '\0';
+        }
+        return false;
+    }
+    ScopedSemaphoreLock lock(s_portal_text_mutex);
+    if (!lock) {
+        out[0] = '\0';
+        return false;
+    }
+    memcpy(out, source, N);
+    return source[0] != '\0';
+}
+
+template <size_t N>
+void portal_text_store(char (&target)[N], const char *value)
+{
+    char replacement[N] = {};
+    strlcpy(replacement, value ? value : "", sizeof(replacement));
+    ScopedSemaphoreLock lock(s_portal_text_mutex);
+    if (!lock) {
+        return;
+    }
+    memcpy(target, replacement, N);
+}
 } // namespace
+
+bool wifi_portal_state_init()
+{
+    if (s_portal_text_mutex) {
+        return true;
+    }
+    s_portal_text_mutex = xSemaphoreCreateMutexStatic(&s_portal_text_mutex_storage);
+    return s_portal_text_mutex != nullptr;
+}
 
 bool setup_portal_active_load()
 {
@@ -38,28 +81,24 @@ void clear_wifi_last_disconnect_reason()
     record_wifi_disconnect_reason(0);
 }
 
+bool wifi_setup_ap_ssid_snapshot(char *out, size_t out_len)
+{
+    return portal_text_snapshot(s_setup_ap_ssid, out, out_len);
+}
+
+void wifi_setup_ap_ssid_store(const char *ssid)
+{
+    portal_text_store(s_setup_ap_ssid, ssid);
+}
+
 bool wifi_station_ip_snapshot(char *out, size_t out_len)
 {
-    if (!out || out_len < sizeof(s_station_ip)) {
-        if (out && out_len > 0) {
-            out[0] = '\0';
-        }
-        return false;
-    }
-    portENTER_CRITICAL(&s_station_ip_mux);
-    memcpy(out, s_station_ip, sizeof(s_station_ip));
-    const bool available = s_station_ip[0] != '\0';
-    portEXIT_CRITICAL(&s_station_ip_mux);
-    return available;
+    return portal_text_snapshot(s_station_ip, out, out_len);
 }
 
 void wifi_station_ip_store(const char *ip_text)
 {
-    char replacement[kWifiStationIpTextLen] = {};
-    strlcpy(replacement, ip_text ? ip_text : "", sizeof(replacement));
-    portENTER_CRITICAL(&s_station_ip_mux);
-    memcpy(s_station_ip, replacement, sizeof(s_station_ip));
-    portEXIT_CRITICAL(&s_station_ip_mux);
+    portal_text_store(s_station_ip, ip_text);
 }
 
 void clear_wifi_station_ip()

@@ -1,6 +1,8 @@
 // 管理网络检测后台写入与 UI 读取之间的一致状态快照。
 #include "network_diagnostics_state.h"
 
+#include "scoped_semaphore_lock.h"
+
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -10,20 +12,9 @@
 namespace {
 StaticSemaphore_t s_network_diag_mutex_storage = {};
 SemaphoreHandle_t s_network_diag_mutex = nullptr;
-int s_network_diag_state = 0;
+NetworkDiagState s_network_diag_state = kNetworkDiagIdle;
 char s_network_diag_lines[kNetworkDiagLineCount][kNetworkDiagLineLen] = {};
 std::atomic<bool> s_network_diag_page_requested{false};
-
-bool lock_network_diag_state()
-{
-    return s_network_diag_mutex &&
-           xSemaphoreTake(s_network_diag_mutex, portMAX_DELAY) == pdTRUE;
-}
-
-void unlock_network_diag_state()
-{
-    xSemaphoreGive(s_network_diag_mutex);
-}
 
 void copy_line(char *out, const char *text)
 {
@@ -46,33 +37,32 @@ bool network_diagnostics_state_init()
     return s_network_diag_mutex != nullptr;
 }
 
-void network_diag_state_clear(int state)
+void network_diag_state_clear(NetworkDiagState state)
 {
-    if (!lock_network_diag_state()) {
+    ScopedSemaphoreLock lock(s_network_diag_mutex);
+    if (!lock) {
         return;
     }
     s_network_diag_state = state;
     memset(s_network_diag_lines, 0, sizeof(s_network_diag_lines));
-    unlock_network_diag_state();
 }
 
-void network_diag_state_store(int state)
+void network_diag_state_store(NetworkDiagState state)
 {
-    if (!lock_network_diag_state()) {
+    ScopedSemaphoreLock lock(s_network_diag_mutex);
+    if (!lock) {
         return;
     }
     s_network_diag_state = state;
-    unlock_network_diag_state();
 }
 
-int network_diag_state_load()
+NetworkDiagState network_diag_state_load()
 {
-    if (!lock_network_diag_state()) {
-        return 0;
+    ScopedSemaphoreLock lock(s_network_diag_mutex);
+    if (!lock) {
+        return kNetworkDiagIdle;
     }
-    int state = s_network_diag_state;
-    unlock_network_diag_state();
-    return state;
+    return s_network_diag_state;
 }
 
 void network_diag_line_store(int index, const char *text)
@@ -80,11 +70,11 @@ void network_diag_line_store(int index, const char *text)
     if (!network_diag_line_index_valid(index)) {
         return;
     }
-    if (!lock_network_diag_state()) {
+    ScopedSemaphoreLock lock(s_network_diag_mutex);
+    if (!lock) {
         return;
     }
     copy_line(s_network_diag_lines[index], text);
-    unlock_network_diag_state();
 }
 
 void network_diag_snapshot_load(NetworkDiagnosticsSnapshot *snapshot)
@@ -93,12 +83,12 @@ void network_diag_snapshot_load(NetworkDiagnosticsSnapshot *snapshot)
         return;
     }
     memset(snapshot, 0, sizeof(*snapshot));
-    if (!lock_network_diag_state()) {
+    ScopedSemaphoreLock lock(s_network_diag_mutex);
+    if (!lock) {
         return;
     }
     snapshot->state = s_network_diag_state;
     memcpy(snapshot->lines, s_network_diag_lines, sizeof(snapshot->lines));
-    unlock_network_diag_state();
 }
 
 bool network_diag_page_requested()

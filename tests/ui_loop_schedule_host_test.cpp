@@ -6,12 +6,14 @@
 
 int main()
 {
-    assert(ui_next_second_delay_ms(0) == 1005);
-    assert(ui_next_second_delay_ms(500000) == 505);
-    assert(ui_next_second_delay_ms(999000) == 10);
-    assert(ui_next_second_delay_ms(999999) == 10);
-    assert(ui_next_second_delay_ms(1000000) == 1005);
-    assert(ui_next_second_delay_ms(-1) == 1005);
+    assert(ui_next_second_delay_ms(0, 0) == 1005);
+    assert(ui_next_second_delay_ms(0, 500000) == 505);
+    assert(ui_next_second_delay_ms(0, 999000) == 10);
+    assert(ui_next_second_delay_ms(0, 999999) == 10);
+    assert(ui_next_second_delay_ms(1, 1000000) == 1005);
+    assert(ui_next_second_delay_ms(1700000000LL, 1700000000500000LL) == 505);
+    assert(ui_next_second_delay_ms(0, 1000000) == 10);
+    assert(ui_next_second_delay_ms(0, -1) == 1005);
 
     assert(ui_next_minute_delay_ms(0) == 60005);
     assert(ui_next_minute_delay_ms(1) == 59005);

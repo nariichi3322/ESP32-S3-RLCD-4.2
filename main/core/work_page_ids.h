@@ -1,0 +1,21 @@
+// 统一定义跨 UI、输入、网络和存储使用的稳定工作页编号。
+#pragma once
+
+inline constexpr int kWorkPageWeatherClock = 0;
+inline constexpr int kWorkPageGallery = 1;
+inline constexpr int kWorkPageWeatherBoard = 2;
+inline constexpr int kWorkPageFlipClock = 3;
+inline constexpr int kWorkPageCalendar = 4;
+inline constexpr int kWorkPageHistory = 5;
+inline constexpr int kWorkPageXiaozhiAI = 6;
+inline constexpr int kWorkPageCount = 7;
+
+// 显示设置中的页面开关与工作页编号保持一一对应。
+inline constexpr int kDisplaySettingsPageItemCount = kWorkPageCount;
+
+static_assert(kWorkPageWeatherClock == 0,
+              "work page ids must start at weather clock zero");
+static_assert(kWorkPageCount == kWorkPageXiaozhiAI + 1,
+              "work page count must match the last work page id");
+static_assert(kDisplaySettingsPageItemCount == kWorkPageCount,
+              "display page setting count must match work page count");

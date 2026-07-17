@@ -19,6 +19,12 @@ except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from ota_release_notes import compact_ota_notes
 
+try:
+    from github_firmware_artifacts import FIRMWARE_ARTIFACTS, firmware_artifact_name
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from github_firmware_artifacts import FIRMWARE_ARTIFACTS, firmware_artifact_name
+
 
 VERSION_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 LATEST_MAX_BYTES = 1800
@@ -139,23 +145,24 @@ def main() -> int:
     require_version(args.version)
     public_base = normalize_public_base(args.public_base)
     notes = load_release_notes(args.notes_file, args.version)
-    app_sha, app_size = file_metadata(args.app)
-    merged_sha, merged_size = file_metadata(args.merged)
-
-    app_name = f"weather_clock_{args.version}.bin"
-    merged_name = f"weather_clock_{args.version}_merged.bin"
+    artifact_paths = {"app": args.app, "merged": args.merged}
+    artifact_metadata = {
+        artifact.manifest_key: file_metadata(artifact_paths[artifact.manifest_key])
+        for artifact in FIRMWARE_ARTIFACTS
+    }
     current = {
         "version": args.version,
         "notes": notes,
-        "app": {
-            "url": f"{public_base}/firmware/{app_name}",
-            "sha256": app_sha,
-            "size": app_size,
-        },
-        "merged": {
-            "url": f"{public_base}/firmware/{merged_name}",
-            "sha256": merged_sha,
-            "size": merged_size,
+        **{
+            artifact.manifest_key: {
+                "url": (
+                    f"{public_base}/firmware/"
+                    f"{firmware_artifact_name(args.version, artifact)}"
+                ),
+                "sha256": artifact_metadata[artifact.manifest_key][0],
+                "size": artifact_metadata[artifact.manifest_key][1],
+            }
+            for artifact in FIRMWARE_ARTIFACTS
         },
     }
 
@@ -168,11 +175,12 @@ def main() -> int:
     sortable.sort(key=lambda item: require_version(str(item.get("version", ""))), reverse=True)
     versions = {"latest": args.version, "items": sortable[:VERSIONS_KEEP]}
 
+    latest_app = current["app"]
     latest = {
         "version": args.version,
-        "url": current["app"]["url"],
-        "sha256": app_sha,
-        "size": app_size,
+        "url": latest_app["url"],
+        "sha256": latest_app["sha256"],
+        "size": latest_app["size"],
     }
     atomic_write(args.latest, fit_latest_notes(latest, notes))
     atomic_write(args.versions, encode_json(versions))

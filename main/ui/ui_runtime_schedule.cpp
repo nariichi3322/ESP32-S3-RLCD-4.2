@@ -14,10 +14,14 @@
 #include "ui_visible_data_sync.h"
 #include "ui_views.h"
 #include "ui_xiaozhi_auto_return.h"
+#include "ui_xiaozhi.h"
 #include "xiaozhi_ai.h"
+#include "xiaozhi_auto_return_state.h"
 
 #include <esp_log.h>
 #include <esp_timer.h>
+
+#include <sys/time.h>
 
 namespace {
 
@@ -26,10 +30,22 @@ namespace {
 constexpr const char *kUiRuntimeLogTexts[] = {
     UI_XIAOZHI_AUTO_RETURN_LOG,
 };
+constexpr int64_t kUiRuntimeUsPerSecond = 1000000LL;
 
-TickType_t next_second_delay_ticks()
+TickType_t next_second_delay_ticks(time_t sampled_wall_second)
 {
-    return pdMS_TO_TICKS(ui_next_second_delay_ms(esp_timer_get_time()));
+    struct timeval now = {};
+    int64_t wall_clock_us = esp_timer_get_time();
+    if (gettimeofday(&now, nullptr) == 0) {
+        wall_clock_us = static_cast<int64_t>(now.tv_sec) * kUiRuntimeUsPerSecond +
+                        static_cast<int64_t>(now.tv_usec);
+    } else {
+        sampled_wall_second = static_cast<time_t>(
+            wall_clock_us / kUiRuntimeUsPerSecond);
+    }
+    return pdMS_TO_TICKS(ui_next_second_delay_ms(
+        static_cast<int64_t>(sampled_wall_second),
+        wall_clock_us));
 }
 
 TickType_t next_minute_delay_ticks(const struct tm &local)
@@ -48,19 +64,10 @@ bool low_refresh_work_page_idle(const struct tm &local,
            is_tm_plausible(local);
 }
 
-bool flip_clock_fast_poll_active(const struct tm &local)
-{
-    return active_work_page_load() == kWorkPageFlipClock &&
-           !battery_low_mode_load() &&
-           !setup_portal_active_load() &&
-           !ui_runtime_auxiliary_page_requested() &&
-           is_tm_plausible(local);
-}
-
-static_assert(kUiLoopFlipClockPollMs > 0,
-              "flip clock UI polling interval must be positive");
 static_assert(sizeof(TickType_t) == sizeof(uint32_t),
               "UI delay candidates require 32-bit FreeRTOS ticks");
+static_assert(kUiRuntimeUsPerSecond > 0,
+              "UI wall-clock conversion factor must be positive");
 static_assert(array_count(kUiRuntimeLogTexts) > 0,
               "UI runtime log text registry must not be empty");
 static_assert(cstr_array_nonempty(kUiRuntimeLogTexts),
@@ -86,6 +93,7 @@ bool ui_runtime_auxiliary_page_requested()
 }
 
 TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
+                                            time_t sampled_wall_second,
                                             bool battery_blink_visible)
 {
     BatteryRuntimeSnapshot battery;
@@ -95,13 +103,10 @@ TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
                     !ui_runtime_auxiliary_page_requested() &&
                     is_tm_plausible(local);
     bool low_refresh_page_idle = low_refresh_work_page_idle(local, battery);
-    uint32_t delay_candidates[5] = {};
+    uint32_t delay_candidates[4] = {};
     delay_candidates[0] = (low_idle || low_refresh_page_idle)
                               ? next_minute_delay_ticks(local)
-                              : next_second_delay_ticks();
-    if (flip_clock_fast_poll_active(local)) {
-        delay_candidates[1] = pdMS_TO_TICKS(kUiLoopFlipClockPollMs);
-    }
+                              : next_second_delay_ticks(sampled_wall_second);
     if (normal_work_page_active(kWorkPageXiaozhiAI)) {
         PomodoroSnapshot pomodoro = {};
         pomodoro_get_snapshot(&pomodoro);
@@ -109,18 +114,18 @@ TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
             uint32_t boundary_ms = pomodoro_next_display_boundary_ms(
                 pomodoro.remaining_ms);
             if (boundary_ms > 0) {
-                delay_candidates[2] = ui_nonzero_delay_ticks(
+                delay_candidates[1] = ui_nonzero_delay_ticks(
                     pdMS_TO_TICKS(ui_pomodoro_boundary_delay_ms(boundary_ms)));
             }
         }
         uint32_t subtitle_delay_ms = xiaozhi_subtitle_animation_delay_ms();
         if (subtitle_delay_ms > 0) {
-            delay_candidates[3] = ui_nonzero_delay_ticks(
+            delay_candidates[2] = ui_nonzero_delay_ticks(
                 pdMS_TO_TICKS(subtitle_delay_ms));
         }
     }
     if (battery_blink_visible) {
-        delay_candidates[4] = next_second_delay_ticks();
+        delay_candidates[3] = next_second_delay_ticks(sampled_wall_second);
     }
     return static_cast<TickType_t>(ui_shortest_delay_ticks(
         delay_candidates,
@@ -144,7 +149,7 @@ void ui_runtime_update_xiaozhi_auto_return(TickType_t tick_now,
             tick_now,
             last_activity_tick,
             pdMS_TO_TICKS(kXiaozhiAutoReturnTimeoutMs),
-            g_xiaozhi_auto_return_enabled,
+            xiaozhi_auto_return_enabled_load(),
             pomodoro_is_running(),
             conversation_active,
             snapshot.activity_sequence != last_activity_sequence);

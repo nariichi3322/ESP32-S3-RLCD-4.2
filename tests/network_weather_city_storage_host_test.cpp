@@ -158,8 +158,10 @@ int main()
     reset_store();
     g_asset_city = "杭州";
     g_values[network_weather_city_storage::kIgnoredAssetWeatherCityKey] = "杭州";
+    bool changed = false;
     assert(network_weather_city_storage::write_provisioned_city(
-               kNvs, ESP_OK, "上海") == ESP_OK);
+               kNvs, ESP_OK, "上海", &changed) == ESP_OK);
+    assert(changed);
     expect_value(network_weather_city_storage::kManualWeatherCityKey, "上海");
     assert(g_values.count(
                network_weather_city_storage::kIgnoredAssetWeatherCityKey) == 0);
@@ -167,20 +169,41 @@ int main()
     reset_store();
     g_asset_city = "杭州市";
     g_values[network_weather_city_storage::kManualWeatherCityKey] = "上海";
+    changed = false;
     assert(network_weather_city_storage::write_provisioned_city(
-               kNvs, ESP_OK, "") == ESP_OK);
+               kNvs, ESP_OK, "", &changed) == ESP_OK);
+    assert(changed);
     assert(g_values.count(network_weather_city_storage::kManualWeatherCityKey) == 0);
     expect_value(network_weather_city_storage::kIgnoredAssetWeatherCityKey, "杭州");
 
     reset_store();
+    changed = true;
     assert(network_weather_city_storage::write_provisioned_city(
-               kNvs, ESP_FAIL, "上海") == ESP_FAIL);
+               kNvs, ESP_FAIL, "上海", &changed) == ESP_FAIL);
+    assert(!changed);
     assert(g_get_calls == 0 && g_set_calls == 0 && g_erase_calls == 0);
+
+    reset_store();
+    g_values[network_weather_city_storage::kManualWeatherCityKey] = "上海";
+    changed = true;
+    assert(network_weather_city_storage::write_provisioned_city(
+               kNvs, ESP_OK, "上海", &changed) == ESP_OK);
+    assert(!changed);
+    assert(g_set_calls == 0 && g_erase_calls == 1);
+
+    reset_store();
+    g_asset_city = "杭州市";
+    g_values[network_weather_city_storage::kIgnoredAssetWeatherCityKey] = "杭州";
+    changed = true;
+    assert(network_weather_city_storage::write_provisioned_city(
+               kNvs, ESP_OK, "", &changed) == ESP_OK);
+    assert(!changed);
+    assert(g_set_calls == 0 && g_erase_calls == 1);
 
     reset_store();
     g_values[network_weather_city_storage::kManualWeatherCityKey] = "杭州";
     g_values[network_weather_city_storage::kIgnoredAssetWeatherCityKey] = "杭州";
-    bool changed = false;
+    changed = false;
     assert(network_weather_city_storage::write_manual_city_if_changed(
                kNvs, "杭州", &changed) == ESP_OK);
     assert(changed);

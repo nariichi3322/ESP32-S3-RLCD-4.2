@@ -38,8 +38,8 @@ enum class StationConnectAttempt {
 
 static_assert(kSetupApChannel > 0, "setup AP channel must be positive");
 static_assert(kSetupApMaxConnections > 0, "setup AP max connections must be positive");
-static_assert(cstr_length(kSetupApSsidFallback) < sizeof(g_ap_ssid),
-              "setup AP SSID fallback must fit global buffer");
+static_assert(cstr_length(kSetupApSsidFallback) < kWifiSetupApSsidTextLen,
+              "setup AP SSID fallback must fit portal state buffer");
 #define WIFI_START_SKIPPED_OFFLINE_LOG "wifi start skipped in offline mode"
 #define WIFI_STA_ONLY_MODE_FAILED_FORMAT "wifi sta-only mode failed: %s"
 #define WIFI_POWER_SAVE_SETUP_FAILED_FORMAT "wifi power save setup failed: %s"
@@ -112,11 +112,24 @@ void clear_sta_connection_state()
 
 void format_setup_ap_ssid(uint8_t mac4, uint8_t mac5)
 {
-    int written = snprintf(g_ap_ssid, sizeof(g_ap_ssid), kSetupApSsidFormat, mac4, mac5);
-    if (app_text::format_failed(written, sizeof(g_ap_ssid))) {
-        strlcpy(g_ap_ssid, kSetupApSsidFallback, sizeof(g_ap_ssid));
+    char setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
+    int written = snprintf(setup_ap_ssid,
+                           sizeof(setup_ap_ssid),
+                           kSetupApSsidFormat,
+                           mac4,
+                           mac5);
+    if (app_text::format_failed(written, sizeof(setup_ap_ssid))) {
+        strlcpy(setup_ap_ssid, kSetupApSsidFallback, sizeof(setup_ap_ssid));
         ESP_LOGW(TAG, WIFI_SETUP_AP_SSID_FORMAT_FAILED_LOG);
     }
+    wifi_setup_ap_ssid_store(setup_ap_ssid);
+}
+
+void log_setup_ap_active()
+{
+    char setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
+    (void)wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid));
+    ESP_LOGI(TAG, WIFI_SETUP_AP_ACTIVE_FORMAT, setup_ap_ssid);
 }
 
 void rollback_failed_wifi_initialization(bool wifi_initialized)
@@ -153,10 +166,12 @@ void rollback_failed_wifi_initialization(bool wifi_initialized)
 
 esp_err_t configure_softap()
 {
+    char setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
+    (void)wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid));
     wifi_config_t ap_config = {};
-    strlcpy((char *)ap_config.ap.ssid, g_ap_ssid, sizeof(ap_config.ap.ssid));
+    strlcpy((char *)ap_config.ap.ssid, setup_ap_ssid, sizeof(ap_config.ap.ssid));
     strlcpy((char *)ap_config.ap.password, kSetupApPassword, sizeof(ap_config.ap.password));
-    ap_config.ap.ssid_len = strlen(g_ap_ssid);
+    ap_config.ap.ssid_len = strlen(setup_ap_ssid);
     ap_config.ap.channel = kSetupApChannel;
     ap_config.ap.max_connection = kSetupApMaxConnections;
     ap_config.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
@@ -336,7 +351,7 @@ static bool configure_running_wifi_radio(bool enable_setup_portal,
                                                   entering_setup_portal);
                 return false;
             }
-            ESP_LOGI(TAG, WIFI_SETUP_AP_ACTIVE_FORMAT, g_ap_ssid);
+            log_setup_ap_active();
         }
         configure_wifi_power_save(true);
     }
@@ -382,7 +397,7 @@ static bool start_stopped_wifi_radio(bool enable_setup_portal,
         if (entering_setup_portal) {
             request_setup_prompt_once();
         }
-        ESP_LOGI(TAG, WIFI_SETUP_AP_ACTIVE_FORMAT, g_ap_ssid);
+        log_setup_ap_active();
     }
     wifi_radio_on_store(true);
     notify_ui_task();

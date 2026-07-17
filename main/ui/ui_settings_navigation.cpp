@@ -7,6 +7,10 @@
 #include "ui_settings_confirmation_state.h"
 #include "ui_settings_feedback.h"
 #include "ui_views.h"
+#include "work_page_ids.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 namespace {
 TickType_t s_settings_primary_exit_block_until = 0;
@@ -30,6 +34,9 @@ static_assert(clamp_selection_to_count(kWorkPageCalendar, kWorkPageCount) == kWo
                   clamp_selection_to_count(kWorkPageHistory, kWorkPageCount) == kWorkPageHistory &&
                   clamp_selection_to_count(kWorkPageXiaozhiAI, kWorkPageCount) == kWorkPageXiaozhiAI,
               "high work page indices must remain selectable in page toggle mode");
+static_assert(kSettingsPrimaryCount <= 256 && kSettingsSecondaryMaxCount <= 256 &&
+                  kWorkPageCount <= 256,
+              "settings navigation selections must fit in the atomic snapshot fields");
 } // namespace
 
 int settings_secondary_count(int primary)
@@ -55,31 +62,29 @@ void reset_settings_confirmation()
 
 void reset_settings_navigation_state()
 {
-    g_settings_focus_secondary = false;
-    g_settings_page_toggle_mode = false;
-    g_settings_page_order_mode = false;
+    SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
+    navigation.focus_secondary = false;
+    navigation.page_toggle_mode = false;
+    navigation.page_order_mode = false;
+    settings_navigation_store(navigation);
     reset_settings_confirmation();
 }
 
 void enter_settings_primary_navigation()
 {
-    g_settings_page_toggle_mode.store(false, std::memory_order_relaxed);
-    g_settings_page_order_mode.store(false, std::memory_order_relaxed);
-    g_settings_primary_selection.store(kSettingsPrimaryNetwork, std::memory_order_relaxed);
-    g_settings_selection.store(0, std::memory_order_relaxed);
-    g_settings_page_order_selection.store(0, std::memory_order_relaxed);
-    g_settings_focus_secondary.store(false, std::memory_order_release);
+    SettingsNavigationSnapshot navigation;
+    navigation.primary_selection = kSettingsPrimaryNetwork;
+    settings_navigation_store(navigation);
 }
 
 void enter_settings_system_item_navigation(int selection)
 {
     const int selected = clamp_settings_secondary(kSettingsPrimarySystem, selection);
-    g_settings_page_toggle_mode.store(false, std::memory_order_relaxed);
-    g_settings_page_order_mode.store(false, std::memory_order_relaxed);
-    g_settings_primary_selection.store(kSettingsPrimarySystem, std::memory_order_relaxed);
-    g_settings_selection.store(selected, std::memory_order_relaxed);
-    g_settings_page_order_selection.store(0, std::memory_order_relaxed);
-    g_settings_focus_secondary.store(true, std::memory_order_release);
+    SettingsNavigationSnapshot navigation;
+    navigation.focus_secondary = true;
+    navigation.primary_selection = kSettingsPrimarySystem;
+    navigation.selection = selected;
+    settings_navigation_store(navigation);
 }
 
 int clamp_settings_primary(int primary)
@@ -107,20 +112,25 @@ int clamp_settings_selection_for_mode(int primary, int selected, bool page_toggl
 void handle_settings_key_short()
 {
     settings_activity_record(xTaskGetTickCount());
-    int primary = clamp_settings_primary(g_settings_primary_selection);
-    if (g_settings_page_order_mode) {
-        g_settings_page_order_selection = next_enabled_work_page_order_index(g_settings_page_order_selection);
-    } else if (g_settings_page_toggle_mode) {
-        g_settings_selection = (g_settings_selection + 1) % kWorkPageCount;
-    } else if (g_settings_focus_secondary) {
+    SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
+    int primary = clamp_settings_primary(navigation.primary_selection);
+    navigation.primary_selection = primary;
+    if (navigation.page_order_mode) {
+        navigation.page_order_selection =
+            next_enabled_work_page_order_index(navigation.page_order_selection);
+    } else if (navigation.page_toggle_mode) {
+        navigation.selection = (navigation.selection + 1) % kWorkPageCount;
+    } else if (navigation.focus_secondary) {
         int count = settings_secondary_count(primary);
         if (count > 0) {
-            g_settings_selection = (clamp_settings_secondary(primary, g_settings_selection) + 1) % count;
+            navigation.selection =
+                (clamp_settings_secondary(primary, navigation.selection) + 1) % count;
         }
     } else {
-        g_settings_primary_selection = (primary + 1) % kSettingsPrimaryCount;
-        g_settings_selection = 0;
+        navigation.primary_selection = (primary + 1) % kSettingsPrimaryCount;
+        navigation.selection = 0;
     }
+    settings_navigation_store(navigation);
     reset_settings_confirmation();
     clear_settings_feedback();
     notify_ui_task();
@@ -129,11 +139,13 @@ void handle_settings_key_short()
 void handle_settings_key_long()
 {
     settings_activity_record(xTaskGetTickCount());
-    if (g_settings_page_order_mode) {
-        g_settings_page_order_mode = false;
-        g_settings_focus_secondary = true;
-        g_settings_primary_selection = kSettingsPrimaryDisplay;
-        g_settings_selection = kDisplaySettingsOrderItem;
+    SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
+    if (navigation.page_order_mode) {
+        navigation.page_order_mode = false;
+        navigation.focus_secondary = true;
+        navigation.primary_selection = kSettingsPrimaryDisplay;
+        navigation.selection = kDisplaySettingsOrderItem;
+        settings_navigation_store(navigation);
         if (save_work_page_order()) {
             active_work_page_store(first_enabled_work_page());
             set_settings_feedback(kSettingsOrderExitSavedFeedback, kSettingsOrderExitFeedbackMs);
@@ -143,18 +155,20 @@ void handle_settings_key_long()
         reset_settings_confirmation();
         notify_ui_task();
         return;
-    } else if (g_settings_page_toggle_mode) {
-        g_settings_page_toggle_mode = false;
-        g_settings_focus_secondary = true;
-        g_settings_primary_selection = kSettingsPrimaryDisplay;
-        g_settings_selection = kDisplaySettingsPageSwitchItem;
+    } else if (navigation.page_toggle_mode) {
+        navigation.page_toggle_mode = false;
+        navigation.focus_secondary = true;
+        navigation.primary_selection = kSettingsPrimaryDisplay;
+        navigation.selection = kDisplaySettingsPageSwitchItem;
+        settings_navigation_store(navigation);
         reset_settings_confirmation();
         clear_settings_feedback();
         notify_ui_task();
         return;
-    } else if (g_settings_focus_secondary) {
-        g_settings_focus_secondary = false;
-        g_settings_selection = 0;
+    } else if (navigation.focus_secondary) {
+        navigation.focus_secondary = false;
+        navigation.selection = 0;
+        settings_navigation_store(navigation);
         s_settings_primary_exit_block_until = xTaskGetTickCount() + pdMS_TO_TICKS(kSettingsPrimaryExitBlockMs);
     } else {
         TickType_t now = xTaskGetTickCount();

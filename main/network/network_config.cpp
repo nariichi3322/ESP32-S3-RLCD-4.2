@@ -19,17 +19,16 @@
 #include "network_weather_city_storage.h"
 #include "weather_city_text.h"
 #include "xiaozhi_ai.h"
+#include "xiaozhi_auto_return_state.h"
 
 #include "ui_views.h"
 
 using network_config_nvs::commit_nvs_if_changed;
-using network_config_nvs::commit_nvs_if_ok;
 using network_config_nvs::erase_nvs_key_if_present;
 using network_config_nvs::read_nvs_string;
 using network_config_nvs::read_nvs_u8_or_default;
 using network_config_nvs::ScopedNvsHandle;
-using network_config_nvs::set_nvs_str_if_ok;
-using network_config_nvs::set_nvs_u8_if_ok;
+using network_config_nvs::write_changed_nvs_string;
 using network_config_nvs::write_changed_nvs_u8;
 using network_page_storage::kPageMaskV5Key;
 using network_page_storage::read_saved_page_mask;
@@ -82,6 +81,7 @@ constexpr const char *kNvsActionClearingConfig = "clearing config";
 constexpr const char *kEmptyWifiSsidSaveLog = "skip saving empty wifi ssid";
 constexpr const char *kInvalidWeatherCitySaveLog = "skip saving invalid weather city";
 constexpr const char *kOfflinePageMaskPersistFailedLog = "failed to persist offline-compatible page settings";
+constexpr size_t kSavedConfigScratchLen = kNetworkWeatherApiKeyLen;
 #define NVS_SAVE_OFFLINE_MODE_FAILED_FORMAT "nvs save offline mode failed: %s"
 #define NVS_ERASE_LEGACY_API_HOST_FAILED_FORMAT "nvs erase legacy api host failed while saving config: %s"
 #define NVS_SAVE_CONFIG_FAILED_FORMAT "nvs save config failed: %s"
@@ -123,6 +123,9 @@ static_assert((kPageMaskV5KnownBits & kWeatherBoardPageMask) == kWeatherBoardPag
               "weather board page must be covered by the current page mask");
 static_assert((kPageMaskV5KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
               "flip clock page must be covered by the current page mask");
+static_assert(kSavedConfigScratchLen >= kNetworkWifiSsidLen &&
+                  kSavedConfigScratchLen >= kNetworkWifiPasswordLen,
+              "saved config comparison scratch must fit every credential field");
 
 uint8_t normalize_chime_sound_index(uint8_t sound)
 {
@@ -216,7 +219,7 @@ bool apply_loaded_network_config(const LoadedNetworkConfig &loaded)
     g_hourly_chime_enabled = nvs_u8_to_bool(loaded.chime);
     g_hourly_chime_all_day = nvs_u8_to_bool(loaded.all_day);
     g_offline_mode_ui_enabled = nvs_u8_to_bool(loaded.offline);
-    g_xiaozhi_auto_return_enabled = nvs_u8_to_bool(loaded.xiaozhi_auto_return);
+    xiaozhi_auto_return_enabled_store(nvs_u8_to_bool(loaded.xiaozhi_auto_return));
     g_chime_volume_percent = chime_settings::normalize_stored_volume(loaded.volume);
     g_chime_sound_index = normalize_chime_sound_index(loaded.sound);
     return apply_loaded_page_config(loaded.page_mask, loaded.page_order, loaded.have_page_order);
@@ -330,7 +333,7 @@ static void reset_saved_config_runtime_state()
     manual_weather_city_store("");
     clear_wifi_station_ip();
     g_offline_mode_ui_enabled = false;
-    g_xiaozhi_auto_return_enabled = false;
+    xiaozhi_auto_return_enabled_store(false);
     g_hourly_chime_enabled = false;
     g_hourly_chime_all_day = false;
     g_chime_volume_percent = chime_settings::kDefaultVolumePercent;
@@ -363,19 +366,56 @@ static esp_err_t write_saved_config_nvs(nvs_handle_t nvs,
                                         const char *ssid,
                                         const char *pass,
                                         const char *api_key,
-                                        const char *city)
+                                        const char *city,
+                                        bool *changed)
 {
-    esp_err_t err = set_nvs_str_if_ok(nvs, ESP_OK, kWifiSsidKey, ssid);
-    err = set_nvs_str_if_ok(nvs, err, kWifiPassKey, pass);
-    err = set_nvs_str_if_ok(nvs, err, kWeatherApiKeyKey, api_key);
-    err = network_weather_city_storage::write_provisioned_city(nvs, err, city);
+    if (changed) {
+        *changed = false;
+    }
+    bool any_changed = false;
+    bool item_changed = false;
+    char scratch[kSavedConfigScratchLen] = {};
+    esp_err_t err = write_changed_nvs_string(nvs,
+                                             ESP_OK,
+                                             kWifiSsidKey,
+                                             ssid,
+                                             scratch,
+                                             sizeof(scratch),
+                                             &item_changed);
+    any_changed = any_changed || item_changed;
+    err = write_changed_nvs_string(nvs,
+                                   err,
+                                   kWifiPassKey,
+                                   pass,
+                                   scratch,
+                                   sizeof(scratch),
+                                   &item_changed);
+    any_changed = any_changed || item_changed;
+    err = write_changed_nvs_string(nvs,
+                                   err,
+                                   kWeatherApiKeyKey,
+                                   api_key,
+                                   scratch,
+                                   sizeof(scratch),
+                                   &item_changed);
+    any_changed = any_changed || item_changed;
+    err = network_weather_city_storage::write_provisioned_city(
+        nvs, err, city, &item_changed);
+    any_changed = any_changed || item_changed;
     // Provisioning credentials are only useful after leaving offline mode. Keep both
     // changes in this transaction so a later NVS write cannot leave them out of sync.
-    err = set_nvs_u8_if_ok(nvs, err, kOfflineModeKey, 0);
-    esp_err_t legacy_erase_err = erase_nvs_key_if_present(nvs, kLegacyApiHostKey, nullptr);
+    err = write_changed_nvs_u8(nvs, err, kOfflineModeKey, 0, &item_changed);
+    any_changed = any_changed || item_changed;
+    bool legacy_erased = false;
+    esp_err_t legacy_erase_err = erase_nvs_key_if_present(
+        nvs, kLegacyApiHostKey, &legacy_erased);
     if (legacy_erase_err != ESP_OK) {
         ESP_LOGW(TAG, NVS_ERASE_LEGACY_API_HOST_FAILED_FORMAT,
                  esp_err_to_name(legacy_erase_err));
+    }
+    any_changed = any_changed || legacy_erased;
+    if (err == ESP_OK && changed) {
+        *changed = any_changed;
     }
     return err;
 }
@@ -403,8 +443,9 @@ bool save_config(const char *ssid, const char *pass, const char *api_key, const 
     if (err != ESP_OK) {
         return false;
     }
-    err = write_saved_config_nvs(nvs.get(), ssid, pass, api_key, city);
-    err = commit_nvs_if_ok(nvs.get(), err);
+    bool changed = false;
+    err = write_saved_config_nvs(nvs.get(), ssid, pass, api_key, city, &changed);
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
     nvs.close();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, NVS_SAVE_CONFIG_FAILED_FORMAT, esp_err_to_name(err));
@@ -538,7 +579,7 @@ bool save_xiaozhi_auto_return_setting()
     err = write_changed_nvs_u8(nvs.get(),
                                err,
                                kXiaozhiAutoReturnKey,
-                               bool_to_nvs_u8(g_xiaozhi_auto_return_enabled),
+                               bool_to_nvs_u8(xiaozhi_auto_return_enabled_load()),
                                &changed);
     err = commit_nvs_if_changed(nvs.get(), err, changed);
     if (!nvs.close_save_ok(err)) {

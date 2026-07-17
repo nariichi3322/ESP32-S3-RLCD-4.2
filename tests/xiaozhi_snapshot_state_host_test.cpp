@@ -13,6 +13,16 @@ int s_notify_count = 0;
 int s_mutex_token = 0;
 int s_mutex_create_count = 0;
 int s_mutex_delete_count = 0;
+int s_mutex_take_count = 0;
+int s_mutex_give_count = 0;
+bool s_mutex_held = false;
+bool s_fail_mutex_take = false;
+
+void expect_mutex_released()
+{
+    assert(!s_mutex_held);
+    assert(s_mutex_take_count == s_mutex_give_count);
+}
 } // namespace
 
 SemaphoreHandle_t xSemaphoreCreateMutexStatic(StaticSemaphore_t *storage)
@@ -24,21 +34,33 @@ SemaphoreHandle_t xSemaphoreCreateMutexStatic(StaticSemaphore_t *storage)
 
 BaseType_t xSemaphoreTake(SemaphoreHandle_t, TickType_t)
 {
+    if (s_fail_mutex_take) {
+        return pdFALSE;
+    }
+    assert(!s_mutex_held);
+    s_mutex_held = true;
+    ++s_mutex_take_count;
     return pdTRUE;
 }
 
 BaseType_t xSemaphoreGive(SemaphoreHandle_t)
 {
+    assert(s_mutex_held);
+    s_mutex_held = false;
+    ++s_mutex_give_count;
     return pdTRUE;
 }
 
 void vSemaphoreDelete(SemaphoreHandle_t)
 {
+    assert(!s_mutex_held);
     ++s_mutex_delete_count;
 }
 
 void notify_ui_task()
 {
+    // UI 通知不得发生在快照 mutex 内，避免通知路径反向读取快照时死锁。
+    assert(!s_mutex_held);
     ++s_notify_count;
 }
 
@@ -48,6 +70,11 @@ void register_ui_task_handle(TaskHandle_t)
 
 int main()
 {
+    XiaozhiAiSnapshot unavailable = {};
+    xiaozhi_snapshot_get(&unavailable);
+    assert(unavailable.state == kXiaozhiAiInactive);
+    assert(strcmp(unavailable.status, kXiaozhiDefaultStatus) == 0);
+
     assert(xiaozhi_snapshot_state_init());
     assert(s_mutex_create_count == 1);
     assert(xiaozhi_snapshot_state_init());
@@ -55,6 +82,7 @@ int main()
 
     xiaozhi_snapshot_set(kXiaozhiAiReady, "等待唤醒词", "请说你好，小智", "123456");
     assert(s_notify_count == 1);
+    expect_mutex_released();
     xiaozhi_snapshot_set(kXiaozhiAiReady, "等待唤醒词", "请说你好，小智", "123456");
     assert(s_notify_count == 1);
     xiaozhi_snapshot_set_status_preserving_detail(kXiaozhiAiReady, "等待唤醒词");
@@ -81,6 +109,27 @@ int main()
     assert(strcmp(snapshot.emotion, "neutral") == 0);
     assert(snapshot.waveform_level == 0);
     assert(snapshot.activity_sequence == 2);
+    expect_mutex_released();
+
+    const int notify_before_take_failure = s_notify_count;
+    s_fail_mutex_take = true;
+    xiaozhi_snapshot_set(kXiaozhiAiError, "error", "ignored");
+    xiaozhi_snapshot_set_status_preserving_detail(kXiaozhiAiError, "error");
+    xiaozhi_snapshot_set_emotion("sad");
+    xiaozhi_snapshot_mark_user_activity();
+    XiaozhiAiSnapshot failed_read = {};
+    xiaozhi_snapshot_get(&failed_read);
+    s_fail_mutex_take = false;
+    assert(s_notify_count == notify_before_take_failure);
+    assert(failed_read.state == kXiaozhiAiInactive);
+    assert(strcmp(failed_read.status, kXiaozhiDefaultStatus) == 0);
+    expect_mutex_released();
+
+    xiaozhi_snapshot_get(&snapshot);
+    assert(snapshot.state == kXiaozhiAiReady);
+    assert(strcmp(snapshot.emotion, "neutral") == 0);
+    assert(snapshot.activity_sequence == 2);
+    expect_mutex_released();
 
     xiaozhi_snapshot_state_deinit();
     assert(s_mutex_delete_count == 1);

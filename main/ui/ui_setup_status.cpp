@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "app_state.h"
 #include "network_credentials_state.h"
+#include "ui_page_state.h"
 #include "ui_text_format.h"
 #include "ui_views.h"
 #include "wifi_portal_state.h"
@@ -16,6 +17,7 @@ constexpr int kSetupStatusLabelX = 26;
 constexpr int kSetupStatusLabelWidth = 348;
 constexpr int kSetupStatusLabelHeight = 18;
 constexpr int kSetupStatusLabelY[] = {194, 212, 230, 248, 266, 284};
+lv_obj_t *s_setup_status_labels[array_count(kSetupStatusLabelY)];
 constexpr const char *kSetupStatusInitialText[] = {
     "Setup Mode",
     "AP SSID: --",
@@ -59,20 +61,20 @@ constexpr const char *kSetupStatusLogTexts[] = {
 template <typename... Args>
 bool set_setup_status_line(size_t index, const char *fallback, const char *format, Args... args)
 {
-    if (index >= array_count(g_setup_status_labels)) {
+    if (index >= array_count(s_setup_status_labels)) {
         ESP_LOGW(TAG, SETUP_STATUS_LINE_INDEX_OUT_OF_RANGE_FORMAT, (unsigned)index);
         return false;
     }
     char line[kSetupStatusLineSize] = {};
     ui_text::format_or_fallback(line, sizeof(line), fallback, format, args...);
-    return set_label_text_if_changed(g_setup_status_labels[index], line);
+    return set_label_text_if_changed(s_setup_status_labels[index], line);
 }
 
 static_assert(array_count(kSetupStatusLabelY) == array_count(kSetupStatusInitialText),
               "setup status coordinates and text must stay in sync");
-static_assert(array_count(kSetupStatusLabelY) == array_count(g_setup_status_labels),
+static_assert(array_count(kSetupStatusLabelY) == array_count(s_setup_status_labels),
               "setup status label storage must match the rendered row count");
-static_assert(kSetupStatusStaIpIndex < array_count(g_setup_status_labels),
+static_assert(kSetupStatusStaIpIndex < array_count(s_setup_status_labels),
               "setup status semantic indices must fit label storage");
 static_assert(cstr_array_nonempty(kSetupStatusInitialText), "setup status initial texts must be non-empty");
 static_assert(cstr_array_nonempty(kSetupStatusFixedTexts), "setup status fixed texts must be non-empty");
@@ -82,15 +84,15 @@ static_assert(cstr_array_nonempty(kSetupStatusLogTexts), "setup status log texts
 void build_setup_status_panel(lv_obj_t *parent)
 {
     for (size_t i = 0; i < array_count(kSetupStatusLabelY); ++i) {
-        g_setup_status_labels[i] = make_label_with_font(parent,
+        s_setup_status_labels[i] = make_label_with_font(parent,
                                                         kSetupStatusLabelX,
                                                         kSetupStatusLabelY[i],
                                                         kSetupStatusLabelWidth,
                                                         kSetupStatusLabelHeight,
                                                         kSetupStatusInitialText[i],
                                                         &lv_font_montserrat_14);
-        if (g_setup_status_labels[i]) {
-            lv_obj_add_flag(g_setup_status_labels[i], LV_OBJ_FLAG_HIDDEN);
+        if (s_setup_status_labels[i]) {
+            lv_obj_add_flag(s_setup_status_labels[i], LV_OBJ_FLAG_HIDDEN);
         } else {
             ESP_LOGW(TAG, SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT, static_cast<int>(i));
         }
@@ -100,16 +102,18 @@ void build_setup_status_panel(lv_obj_t *parent)
 bool update_setup_status_panel()
 {
     char wifi_ssid[kNetworkWifiSsidLen] = {};
+    char setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
     (void)network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid));
+    (void)wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid));
     bool changed = false;
-    if (!g_setup_status_labels[kSetupStatusTitleIndex]) {
+    if (!s_setup_status_labels[kSetupStatusTitleIndex]) {
         return false;
     }
-    changed |= set_label_text_if_changed(g_setup_status_labels[kSetupStatusTitleIndex], kSetupStatusTitle);
+    changed |= set_label_text_if_changed(s_setup_status_labels[kSetupStatusTitleIndex], kSetupStatusTitle);
     changed |= set_setup_status_line(kSetupStatusApSsidIndex,
                                      kSetupStatusPlaceholder,
                                      kSetupApSsidFormat,
-                                     g_ap_ssid[0] ? g_ap_ssid : kSetupStatusPlaceholder);
+                                     setup_ap_ssid[0] ? setup_ap_ssid : kSetupStatusPlaceholder);
     changed |= set_setup_status_line(kSetupStatusApPasswordIndex,
                                      kSetupStatusPlaceholder,
                                      kSetupApPasswordFormat,
@@ -136,7 +140,21 @@ bool update_setup_status_panel()
     } else {
         char line[kSetupStatusLineSize] = {};
         ui_text::copy(line, sizeof(line), kSetupStaIpPlaceholder);
-        changed |= set_label_text_if_changed(g_setup_status_labels[kSetupStatusStaIpIndex], line);
+        changed |= set_label_text_if_changed(s_setup_status_labels[kSetupStatusStaIpIndex], line);
     }
     return changed;
+}
+
+void set_setup_status_panel_visible(bool visible)
+{
+    for (lv_obj_t *label : s_setup_status_labels) {
+        set_obj_visible(label, visible);
+    }
+}
+
+void clear_setup_status_object_refs()
+{
+    for (lv_obj_t *&label : s_setup_status_labels) {
+        label = nullptr;
+    }
 }

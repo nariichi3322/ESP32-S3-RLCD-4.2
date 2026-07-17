@@ -1,7 +1,9 @@
 // 声明配网页联网字段和手动时间字段读取接口。
 #pragma once
 
-#include "app_state.h"
+#include "weather_city_contract.h"
+
+#include <stddef.h>
 
 inline constexpr size_t kProvisioningManualTimeFieldSize = 32;
 inline constexpr size_t kProvisioningSsidFieldSize = 33;

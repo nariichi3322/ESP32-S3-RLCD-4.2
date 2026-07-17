@@ -5,3 +5,5 @@
 
 void build_setup_status_panel(lv_obj_t *parent);
 bool update_setup_status_panel();
+void set_setup_status_panel_visible(bool visible);
+void clear_setup_status_object_refs();

@@ -1,7 +1,7 @@
 // 管理温湿度小时历史的任务级一致快照，避免整块数据复制占用中断临界区。
 #pragma once
 
-#include "app_state.h"
+#include "sensor_history_types.h"
 
 bool init_hourly_sensor_history_state();
 bool reset_hourly_sensor_history_state();

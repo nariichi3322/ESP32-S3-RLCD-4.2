@@ -1,0 +1,82 @@
+// 使用静态任务互斥发布番茄钟状态与 64 位单调时间，避免跨核关中断。
+#include "pomodoro_runtime_state.h"
+
+#include "scoped_semaphore_lock.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+
+namespace {
+StaticSemaphore_t s_runtime_mutex_storage = {};
+SemaphoreHandle_t s_runtime_mutex = nullptr;
+PomodoroSnapshot s_visible = {kPomodoroIdle, 0, 0, false, 1};
+int64_t s_deadline_us = 0;
+int64_t s_completed_at_us = 0;
+
+uint32_t remaining_ms(int64_t now_us)
+{
+    if (s_visible.state != kPomodoroRunning || s_deadline_us <= now_us) {
+        return 0;
+    }
+    const int64_t remaining_us = s_deadline_us - now_us;
+    return static_cast<uint32_t>((remaining_us + 999) / 1000);
+}
+}
+
+bool pomodoro_runtime_state_init()
+{
+    if (s_runtime_mutex) {
+        return true;
+    }
+    s_runtime_mutex = xSemaphoreCreateMutexStatic(&s_runtime_mutex_storage);
+    return s_runtime_mutex != nullptr;
+}
+
+bool pomodoro_runtime_publish(PomodoroState state,
+                              uint32_t total_ms,
+                              uint32_t remaining,
+                              bool alerting,
+                              int64_t deadline_us,
+                              int64_t completed_at_us)
+{
+    ScopedSemaphoreLock lock(s_runtime_mutex);
+    if (!lock) {
+        return false;
+    }
+    s_visible.state = state;
+    s_visible.total_ms = total_ms;
+    s_visible.remaining_ms = remaining;
+    s_visible.alerting = alerting;
+    ++s_visible.version;
+    s_deadline_us = deadline_us;
+    s_completed_at_us = completed_at_us;
+    return true;
+}
+
+bool pomodoro_runtime_snapshot(int64_t now_us, PomodoroRuntimeSnapshot *out)
+{
+    if (!out) {
+        return false;
+    }
+    *out = {};
+    ScopedSemaphoreLock lock(s_runtime_mutex);
+    if (!lock) {
+        return false;
+    }
+    out->visible = s_visible;
+    out->visible.remaining_ms = remaining_ms(now_us);
+    out->completed_at_us = s_completed_at_us;
+    return true;
+}
+
+bool pomodoro_runtime_set_alerting(bool alerting)
+{
+    ScopedSemaphoreLock lock(s_runtime_mutex);
+    if (!lock) {
+        return false;
+    }
+    if (s_visible.alerting != alerting) {
+        s_visible.alerting = alerting;
+        ++s_visible.version;
+    }
+    return true;
+}

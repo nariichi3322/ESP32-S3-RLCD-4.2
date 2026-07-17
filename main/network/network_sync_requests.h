@@ -1,7 +1,10 @@
 // 声明网络同步请求快照、设置反馈和事件位收尾接口。
 #pragma once
 
-#include "app_state.h"
+#include "ui_settings_contract.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/event_groups.h"
 
 struct NetworkSyncRequestSnapshot {
     bool provisioning = false;

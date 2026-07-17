@@ -1,4 +1,4 @@
-// 验证配网页活跃状态、Wi-Fi 断线原因和本地 IP 的跨任务快照。
+// 验证配网页活跃状态、Wi-Fi 断线原因、AP 名称和本地 IP 的跨任务快照。
 #include "wifi_portal_state.h"
 
 #include <atomic>
@@ -24,9 +24,22 @@ int main()
     assert(wifi_last_disconnect_reason() == 0);
 
     char station_ip[kWifiStationIpTextLen] = {};
+    char setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
+    assert(!wifi_station_ip_snapshot(station_ip, sizeof(station_ip)));
+    assert(!wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid)));
+    wifi_setup_ap_ssid_store("ignored-before-init");
+    assert(wifi_portal_state_init());
+    assert(wifi_portal_state_init());
     assert(!wifi_station_ip_snapshot(station_ip, sizeof(station_ip)));
     assert(station_ip[0] == '\0');
     assert(!wifi_station_ip_snapshot(station_ip, sizeof(station_ip) - 1));
+    assert(!wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid)));
+    assert(setup_ap_ssid[0] == '\0');
+    assert(!wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid) - 1));
+
+    wifi_setup_ap_ssid_store("WeatherClock-A1B2");
+    assert(wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid)));
+    assert(std::strcmp(setup_ap_ssid, "WeatherClock-A1B2") == 0);
 
     wifi_station_ip_store("192.168.4.20");
     assert(wifi_station_ip_snapshot(station_ip, sizeof(station_ip)));
@@ -46,6 +59,22 @@ int main()
                std::strcmp(station_ip, "192.168.4.20") == 0);
     }
     writer.join();
+
+    writer_done.store(false, std::memory_order_release);
+    std::thread ap_writer([&]() {
+        for (int i = 0; i < 10000; ++i) {
+            wifi_setup_ap_ssid_store((i & 1) ? "WeatherClock-1234" :
+                                                 "WeatherClock-ABCD");
+        }
+        writer_done.store(true, std::memory_order_release);
+    });
+    while (!writer_done.load(std::memory_order_acquire)) {
+        assert(wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid)));
+        assert(std::strcmp(setup_ap_ssid, "WeatherClock-1234") == 0 ||
+               std::strcmp(setup_ap_ssid, "WeatherClock-ABCD") == 0 ||
+               std::strcmp(setup_ap_ssid, "WeatherClock-A1B2") == 0);
+    }
+    ap_writer.join();
 
     clear_wifi_station_ip();
     assert(!wifi_station_ip_snapshot(station_ip, sizeof(station_ip)));

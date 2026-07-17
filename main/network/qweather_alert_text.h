@@ -1,7 +1,7 @@
 // 声明 QWeather 预警颜色、标题压缩和排序写入接口。
 #pragma once
 
-#include "app_state.h"
+#include "weather_types.h"
 
 #include <stddef.h>
 

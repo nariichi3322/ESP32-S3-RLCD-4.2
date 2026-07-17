@@ -1,6 +1,7 @@
 // 编排整点提醒、设置试听和配网提示音任务。
 #include "audio_services.h"
 
+#include "app_state.h"
 #include "audio_chime_policy.h"
 #include "audio_services_internal.h"
 #include "ota_runtime_state.h"

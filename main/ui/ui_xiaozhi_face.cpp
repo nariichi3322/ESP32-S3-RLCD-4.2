@@ -167,3 +167,11 @@ bool update_xiaozhi_face(lv_obj_t *canvas, const XiaozhiAiSnapshot &snapshot)
     strlcpy(s_last_face_emotion, snapshot.emotion, sizeof(s_last_face_emotion));
     return true;
 }
+
+void invalidate_xiaozhi_face_cache()
+{
+    s_last_face_canvas = nullptr;
+    s_last_face_state = kXiaozhiAiInactive;
+    s_last_face_frame = -1;
+    s_last_face_emotion[0] = '\0';
+}

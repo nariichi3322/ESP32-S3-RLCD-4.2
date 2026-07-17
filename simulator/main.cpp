@@ -18,6 +18,7 @@
 #include "sdl_preview_gallery.h"
 #include "sdl_preview_history.h"
 #include "sdl_preview_mode.h"
+#include "sdl_preview_progress.h"
 #include "sdl_preview_settings.h"
 #include "sdl_preview_weather.h"
 #include "sdl_preview_widgets.h"
@@ -38,7 +39,7 @@ using sdl_preview_widgets::set_obj_black;
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.5.20";
+static const char *APP_VERSION = "v1.5.21";
 static const char *const kPreviewWeekDaysFull[] = {
     "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六",
 };
@@ -78,12 +79,8 @@ static lv_obj_t *g_time_canvas;
 static lv_obj_t *g_second_canvas;
 static lv_obj_t *g_status_gif_canvas;
 static lv_obj_t *g_boot_anim_canvas;
-static lv_obj_t *g_day_progress_canvas;
-static lv_obj_t *g_second_progress_canvas;
 static lv_obj_t *g_lower_panel_objects[13];
 static lv_obj_t *g_setup_status_labels[6];
-static int g_last_day_progress_filled = -1;
-static int g_last_second_progress_filled = -1;
 static int g_last_status_gif_frame = -1;
 static std::vector<lv_color_t> g_time_canvas_pixels(kTimeCanvasW * kTimeCanvasH);
 static std::vector<lv_color_t> g_second_canvas_pixels(kSecondCanvasW * kSecondCanvasH);
@@ -98,15 +95,9 @@ static std::vector<lv_color_t> g_temp_trend_canvas_pixels(TREND_ICON_WIDTH * TRE
 static std::vector<lv_color_t> g_humi_trend_canvas_pixels(TREND_ICON_WIDTH * TREND_ICON_HEIGHT);
 static std::vector<lv_color_t> g_temp_icon_canvas_pixels(TEMP_ICON_WIDTH * TEMP_ICON_HEIGHT);
 static std::vector<lv_color_t> g_humi_icon_canvas_pixels(HUMI_ICON_WIDTH * HUMI_ICON_HEIGHT);
-static constexpr int kProgressSegmentCount = 60;
-static constexpr int kProgressSegmentW = 5;
-static constexpr int kProgressSegmentH = 3;
-static constexpr int kProgressSegmentGap = 1;
-static constexpr int kProgressCanvasW = kProgressSegmentCount * kProgressSegmentW + (kProgressSegmentCount - 1) * kProgressSegmentGap;
-static constexpr int kProgressCanvasH = kProgressSegmentH;
-static std::vector<lv_color_t> g_day_progress_canvas_pixels(kProgressCanvasW * kProgressCanvasH);
-static std::vector<lv_color_t> g_second_progress_canvas_pixels(kProgressCanvasW * kProgressCanvasH);
-static std::vector<lv_color_t> g_flip_day_progress_pixels(kProgressCanvasW * kProgressCanvasH);
+static sdl_preview_progress::Canvas g_clock_day_progress;
+static sdl_preview_progress::Canvas g_clock_second_progress;
+static sdl_preview_progress::Canvas g_work_page_day_progress;
 
 static void update_time_ui(const struct tm &local);
 static time_t preview_time();
@@ -133,77 +124,6 @@ static void format_preview_date(char *out, size_t out_len, const struct tm &loca
              local.tm_mon + kPreviewTmMonthOffset,
              local.tm_mday,
              preview_weekday_full(local.tm_wday));
-}
-
-static void draw_progress_segment(lv_obj_t *canvas, int index, bool filled)
-{
-    if (!canvas || index < 0 || index >= kProgressSegmentCount) return;
-    int x0 = index * (kProgressSegmentW + kProgressSegmentGap);
-    for (int y = 0; y < kProgressSegmentH; ++y) {
-        for (int x = 0; x < kProgressSegmentW; ++x) {
-            bool border = x == 0 || x == kProgressSegmentW - 1 || y == 0 || y == kProgressSegmentH - 1;
-            lv_canvas_set_px_color(canvas, x0 + x, y, (filled || border) ? lv_color_black() : lv_color_white());
-        }
-    }
-}
-
-static void invalidate_progress_segment(lv_obj_t *canvas, int index)
-{
-    if (!canvas || index < 0 || index >= kProgressSegmentCount) return;
-    int x0 = index * (kProgressSegmentW + kProgressSegmentGap);
-    lv_area_t area = {};
-    area.x1 = static_cast<lv_coord_t>(x0);
-    area.y1 = 0;
-    area.x2 = static_cast<lv_coord_t>(x0 + kProgressSegmentW - 1);
-    area.y2 = static_cast<lv_coord_t>(kProgressSegmentH - 1);
-    lv_obj_invalidate_area(canvas, &area);
-}
-
-static void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, std::vector<lv_color_t> &pixels, int y)
-{
-    *canvas = lv_canvas_create(parent);
-    lv_obj_clear_flag(*canvas, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(*canvas, 20, y);
-    lv_obj_set_size(*canvas, kProgressCanvasW, kProgressCanvasH);
-    lv_obj_set_style_border_width(*canvas, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(*canvas, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(*canvas, pixels.data(), kProgressCanvasW, kProgressCanvasH, LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(*canvas, lv_color_white(), LV_OPA_COVER);
-    for (int i = 0; i < kProgressSegmentCount; ++i) {
-        draw_progress_segment(*canvas, i, false);
-    }
-    lv_obj_invalidate(*canvas);
-}
-
-static void update_progress_canvas(lv_obj_t *canvas, int filled, int *last_filled)
-{
-    if (!canvas) return;
-    if (filled < 0) filled = 0;
-    else if (filled > kProgressSegmentCount) filled = kProgressSegmentCount;
-    if (*last_filled < 0 || filled < *last_filled) {
-        for (int i = 0; i < kProgressSegmentCount; ++i) {
-            draw_progress_segment(canvas, i, i < filled);
-        }
-        lv_obj_invalidate(canvas);
-        *last_filled = filled;
-        return;
-    }
-    if (filled == *last_filled) return;
-    for (int i = *last_filled; i < filled; ++i) {
-        draw_progress_segment(canvas, i, true);
-        invalidate_progress_segment(canvas, i);
-    }
-    *last_filled = filled;
-}
-
-static void build_preview_day_progress(lv_obj_t *screen, const struct tm &local)
-{
-    lv_obj_t *progress = nullptr;
-    build_progress_canvas(screen, &progress, g_flip_day_progress_pixels, 59);
-    int seconds_of_day = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
-    int filled = (seconds_of_day * kProgressSegmentCount) / (24 * 3600);
-    int last_filled = -1;
-    update_progress_canvas(progress, filled, &last_filled);
 }
 
 static void update_trend_icon(lv_obj_t *canvas, int trend)
@@ -557,7 +477,7 @@ static void build_history_preview_ui()
     build_preview_work_status_bar(screen, local);
     lv_obj_t *history_top_line = make_bar(screen, 18, 54, 364, 4);
     set_obj_black(history_top_line, true);
-    build_preview_day_progress(screen, local);
+    g_work_page_day_progress.build_day(screen, local, 59);
 
     build_history_preview_body(screen, &local);
     update_time_ui(local);
@@ -580,7 +500,7 @@ static void build_gallery_preview_ui()
 
     lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
     set_obj_black(top_line, true);
-    build_preview_day_progress(screen, local);
+    g_work_page_day_progress.build_day(screen, local, 59);
 
     build_gallery_preview_body(screen, &local);
 
@@ -600,7 +520,7 @@ static void build_calendar_preview_ui()
     build_preview_work_status_bar(screen, local);
     lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
     set_obj_black(top_line, true);
-    build_preview_day_progress(screen, local);
+    g_work_page_day_progress.build_day(screen, local, 59);
 
     build_calendar_preview_body(screen, &local);
     update_time_ui(local);
@@ -619,7 +539,7 @@ static void build_weather_board_preview_ui()
     build_preview_work_status_bar(screen, local);
     lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
     set_obj_black(top_line, true);
-    build_preview_day_progress(screen, local);
+    g_work_page_day_progress.build_day(screen, local, 59);
 
     build_weather_board_preview_body(screen);
     update_time_ui(local);
@@ -642,11 +562,7 @@ static void build_flip_clock_preview_ui()
 
     lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
     set_obj_black(top_line, true);
-    lv_obj_t *day_progress = nullptr;
-    build_progress_canvas(screen, &day_progress, g_flip_day_progress_pixels, 59);
-    int last_day = -1;
-    int seconds_of_day = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
-    update_progress_canvas(day_progress, (seconds_of_day * 60) / (24 * 3600), &last_day);
+    g_work_page_day_progress.build_day(screen, local, 59);
     build_flip_clock_preview_body(screen, &local);
 }
 
@@ -665,11 +581,7 @@ static void build_xiaozhi_preview_ui(const char *preview_mode)
 
     lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
     set_obj_black(top_line, true);
-    lv_obj_t *day_progress = nullptr;
-    build_progress_canvas(screen, &day_progress, g_flip_day_progress_pixels, 59);
-    int last_day = -1;
-    int seconds_of_day = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
-    update_progress_canvas(day_progress, (seconds_of_day * 60) / (24 * 3600), &last_day);
+    g_work_page_day_progress.build_day(screen, local, 59);
     build_xiaozhi_preview_body(screen, &local, mode);
 }
 
@@ -718,8 +630,6 @@ static void build_info_preview_ui()
 static void prepare_clock_preview_screen(lv_obj_t *screen)
 {
     g_last_status_gif_frame = -1;
-    g_last_day_progress_filled = -1;
-    g_last_second_progress_filled = -1;
     lv_obj_set_style_bg_color(screen, lv_color_white(), LV_PART_MAIN);
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 }
@@ -956,8 +866,8 @@ static void build_clock_time_and_progress(lv_obj_t *screen)
 
     lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
     lv_obj_t *bottom_line = make_bar(screen, 18, 184, 364, 4);
-    build_progress_canvas(screen, &g_day_progress_canvas, g_day_progress_canvas_pixels, 59);
-    build_progress_canvas(screen, &g_second_progress_canvas, g_second_progress_canvas_pixels, 180);
+    g_clock_day_progress.build(screen, 59);
+    g_clock_second_progress.build(screen, 180);
     g_panel_sep_a = make_bar(screen, 139, 188, 2, 102);
     g_panel_sep_b = make_bar(screen, 260, 188, 2, 102);
     remember_lower_panel_object(g_panel_sep_a);
@@ -1019,8 +929,8 @@ static void build_clock_ui()
 static void apply_low_battery_preview(bool low)
 {
     set_obj_visible(g_second_canvas, !low);
-    set_obj_visible(g_day_progress_canvas, !low);
-    set_obj_visible(g_second_progress_canvas, !low);
+    set_obj_visible(g_clock_day_progress.object(), !low);
+    set_obj_visible(g_clock_second_progress.object(), !low);
     set_lower_panel_visible(!low);
     set_setup_panel_visible(false);
     set_obj_visible(g_panel_sep_a, true);
@@ -1053,13 +963,13 @@ static void update_time_ui(const struct tm &local)
         draw_time_canvas(local);
         int day_seconds = local.tm_hour * 3600 + local.tm_min * 60 + local.tm_sec;
         int day_filled = (day_seconds * 60) / (24 * 3600);
-        update_progress_canvas(g_day_progress_canvas, day_filled, &g_last_day_progress_filled);
+        g_clock_day_progress.update(day_filled);
     }
     if (local.tm_sec != last_second) {
         last_second = local.tm_sec;
         draw_second_canvas(local);
         draw_status_gif_frame(local.tm_sec % STATUS_GIF_FRAME_COUNT);
-        update_progress_canvas(g_second_progress_canvas, local.tm_sec + 1, &g_last_second_progress_filled);
+        g_clock_second_progress.update(local.tm_sec + 1);
     }
 
     char date[48];

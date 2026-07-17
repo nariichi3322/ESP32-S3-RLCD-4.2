@@ -4,24 +4,23 @@
 #include "app_state.h"
 #include "audio_services.h"
 #include "single_pending_task_gate.h"
+#include "xiaozhi_binding_voice_state.h"
 
 #include <esp_codec_dev_types.h>
 #include <esp_log.h>
 
 #include <cstdint>
-#include <string.h>
 
 namespace {
 constexpr int kBindingPcmSampleRate = 16000;
 constexpr size_t kBindingPauseSamples = 1280;
 constexpr uint32_t kBindingVoiceTaskStackBytes = 6144;
 constexpr UBaseType_t kBindingVoiceTaskPriority = 3;
-constexpr size_t kBindingCodeStorageSize = 24;
 #define XIAOZHI_BINDING_TASK_CREATE_FAILED_LOG "xiaozhi binding voice task creation failed"
 
 static_assert(kBindingVoiceTaskStackBytes > 0,
               "Xiaozhi binding task stack must be positive");
-static_assert(kBindingCodeStorageSize > 1,
+static_assert(kXiaozhiBindingCodeStorageSize > 1,
               "Xiaozhi binding code storage must fit text and NUL");
 
 extern const uint8_t prompt_pcm_start[] asm("_binary_prompt_pcm_start");
@@ -68,50 +67,7 @@ constexpr EmbeddedPcm kBindingDigitPcm[] = {
 static_assert(sizeof(kBindingDigitPcm) / sizeof(kBindingDigitPcm[0]) == 10,
               "Xiaozhi binding digit audio must cover 0 through 9");
 
-char s_last_announced_binding_code[kBindingCodeStorageSize] = {};
-char s_pending_binding_code[kBindingCodeStorageSize] = {};
-portMUX_TYPE s_binding_code_mux = portMUX_INITIALIZER_UNLOCKED;
 SinglePendingTaskGate s_binding_voice_task_gate;
-
-bool binding_code_needs_announcement(const char *binding_code)
-{
-    char last_announced[kBindingCodeStorageSize] = {};
-    portENTER_CRITICAL(&s_binding_code_mux);
-    memcpy(last_announced,
-           s_last_announced_binding_code,
-           sizeof(last_announced));
-    portEXIT_CRITICAL(&s_binding_code_mux);
-    return xiaozhi_binding_voice::should_announce(binding_code, last_announced);
-}
-
-void record_announced_binding_code(const char *binding_code)
-{
-    portENTER_CRITICAL(&s_binding_code_mux);
-    strlcpy(s_last_announced_binding_code,
-            binding_code ? binding_code : "",
-            sizeof(s_last_announced_binding_code));
-    portEXIT_CRITICAL(&s_binding_code_mux);
-}
-
-void store_pending_binding_code(const char *binding_code)
-{
-    portENTER_CRITICAL(&s_binding_code_mux);
-    strlcpy(s_pending_binding_code,
-            binding_code ? binding_code : "",
-            sizeof(s_pending_binding_code));
-    portEXIT_CRITICAL(&s_binding_code_mux);
-}
-
-void take_pending_binding_code(char *out, size_t out_len)
-{
-    if (!out || out_len == 0) {
-        return;
-    }
-    portENTER_CRITICAL(&s_binding_code_mux);
-    strlcpy(out, s_pending_binding_code, out_len);
-    s_pending_binding_code[0] = '\0';
-    portEXIT_CRITICAL(&s_binding_code_mux);
-}
 
 bool play_embedded_pcm(const EmbeddedPcm &pcm)
 {
@@ -159,11 +115,13 @@ bool play_binding_id_voice(const char *binding_code)
 void binding_id_voice_task(void *arg)
 {
     (void)arg;
-    char binding_code[kBindingCodeStorageSize] = {};
-    take_pending_binding_code(binding_code, sizeof(binding_code));
-    bool played = play_binding_id_voice(binding_code);
+    char binding_code[kXiaozhiBindingCodeStorageSize] = {};
+    const bool has_pending = xiaozhi_binding_voice_take_pending(
+        binding_code,
+        sizeof(binding_code));
+    const bool played = has_pending && play_binding_id_voice(binding_code);
     if (played) {
-        record_announced_binding_code(binding_code);
+        (void)xiaozhi_binding_voice_record_announced(binding_code);
     }
     s_binding_voice_task_gate.release();
     vTaskDelete(nullptr);
@@ -172,11 +130,14 @@ void binding_id_voice_task(void *arg)
 
 void xiaozhi_announce_binding_id_once(const char *binding_code)
 {
-    if (!binding_code_needs_announcement(binding_code) ||
+    if (!xiaozhi_binding_voice_needs_announcement(binding_code) ||
         !s_binding_voice_task_gate.try_acquire()) {
         return;
     }
-    store_pending_binding_code(binding_code);
+    if (!xiaozhi_binding_voice_store_pending(binding_code)) {
+        s_binding_voice_task_gate.release();
+        return;
+    }
     if (xTaskCreate(binding_id_voice_task,
                     "xiaozhi_bind",
                     kBindingVoiceTaskStackBytes,
@@ -184,7 +145,7 @@ void xiaozhi_announce_binding_id_once(const char *binding_code)
                     kBindingVoiceTaskPriority,
                     nullptr) != pdPASS) {
         ESP_LOGW(TAG, XIAOZHI_BINDING_TASK_CREATE_FAILED_LOG);
-        store_pending_binding_code(nullptr);
+        (void)xiaozhi_binding_voice_store_pending(nullptr);
         s_binding_voice_task_gate.release();
         return;
     }

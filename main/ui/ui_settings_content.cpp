@@ -7,6 +7,7 @@
 #include "manual_weather_city_state.h"
 #include "ui_settings_confirmation_state.h"
 #include "ui_text_format.h"
+#include "weather_city_contract.h"
 
 #include <stdarg.h>
 

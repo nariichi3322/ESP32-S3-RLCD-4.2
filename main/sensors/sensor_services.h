@@ -2,26 +2,12 @@
 #pragma once
 #include "app_state.h"
 #include "local_sensor_state.h"
+#include "power_services.h"
 #include "sensor_time.h"
 
 inline constexpr int kSensorSampleDayMinutes = 1;
 inline constexpr int kSensorSampleNightMinutes = 2;
 
-struct PowerLockDepthSnapshot {
-    int network = 0;
-    int audio = 0;
-    int audio_wake = 0;
-    int audio_cpu = 0;
-};
-
-void init_power_management();
-[[nodiscard]] bool acquire_network_awake_lock();
-void release_network_awake_lock();
-bool network_awake_lock_active();
-bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out);
-[[nodiscard]] bool acquire_audio_awake_lock();
-void release_audio_awake_lock();
-void set_audio_performance_mode(bool enabled);
 void restore_system_time_from_rtc();
 void sync_rtc_from_system_time();
 void release_battery_gauge();
@@ -35,6 +21,7 @@ void load_hourly_sensor_history();
 void record_hourly_sensor_sample(float temp, float humi);
 bool get_hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history, uint32_t *version);
 void update_sensor_history(float temp, float humi);
+void init_shtc3_sensor(I2cMasterBus &i2c);
 void sample_sensor();
 TickType_t next_sensor_sample_tick(TickType_t now);
 TickType_t next_battery_sample_tick(TickType_t now);

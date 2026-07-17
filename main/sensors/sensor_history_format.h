@@ -1,7 +1,7 @@
 // 声明温湿度小时历史的新旧 NVS 格式和纯槽位换算规则。
 #pragma once
 
-#include "app_state.h"
+#include "sensor_history_types.h"
 
 #include <stddef.h>
 #include <stdint.h>

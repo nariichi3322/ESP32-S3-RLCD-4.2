@@ -14,6 +14,14 @@ constexpr int kExitPercent = 13;
 int main()
 {
     BatteryRuntimeSnapshot snapshot;
+    assert(battery_percent_load() == -1);
+    assert(!battery_charging_load());
+    assert(!battery_low_mode_load());
+    battery_runtime_snapshot_load(&snapshot);
+    assert(snapshot.percent == -1);
+
+    assert(battery_runtime_state_init());
+    assert(battery_runtime_state_init());
     battery_runtime_snapshot_load(&snapshot);
     assert(snapshot.percent == -1);
     assert(snapshot.voltage == -1.0f);
@@ -87,5 +95,10 @@ int main()
     writer.join();
     reader.join();
     assert(!inconsistent.load(std::memory_order_relaxed));
+
+    battery_runtime_snapshot_load(&snapshot);
+    assert(battery_percent_load() == snapshot.percent);
+    assert(battery_charging_load() == snapshot.charging);
+    assert(battery_low_mode_load() == snapshot.low_battery_mode);
     return 0;
 }

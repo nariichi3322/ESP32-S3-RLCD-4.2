@@ -15,6 +15,8 @@ int g_erase_calls = 0;
 esp_err_t g_get_string_result = ESP_OK;
 const char *g_stored_string = "stored";
 int g_get_string_calls = 0;
+esp_err_t g_set_string_result = ESP_OK;
+int g_set_string_calls = 0;
 
 esp_err_t g_get_u8_result = ESP_ERR_NVS_NOT_FOUND;
 uint8_t g_stored_u8 = 0;
@@ -33,6 +35,8 @@ void reset_state()
     g_get_string_result = ESP_OK;
     g_stored_string = "stored";
     g_get_string_calls = 0;
+    g_set_string_result = ESP_OK;
+    g_set_string_calls = 0;
     g_get_u8_result = ESP_ERR_NVS_NOT_FOUND;
     g_stored_u8 = 0;
     g_get_u8_calls = 0;
@@ -70,7 +74,8 @@ esp_err_t nvs_commit(nvs_handle_t)
 
 esp_err_t nvs_set_str(nvs_handle_t, const char *, const char *)
 {
-    return ESP_OK;
+    ++g_set_string_calls;
+    return g_set_string_result;
 }
 
 esp_err_t nvs_get_str(nvs_handle_t, const char *, char *out, size_t *len)
@@ -162,6 +167,38 @@ int main()
     assert(strcmp(text, "stored") == 0);
 
     bool changed = true;
+    assert(network_config_nvs::write_changed_nvs_string(
+               1, ESP_FAIL, "name", "next", text, sizeof(text), &changed) == ESP_FAIL);
+    assert(!changed && g_get_string_calls == 2 && g_set_string_calls == 0);
+
+    changed = true;
+    assert(network_config_nvs::write_changed_nvs_string(
+               1, ESP_OK, "name", "stored", text, sizeof(text), &changed) == ESP_OK);
+    assert(!changed && g_set_string_calls == 0);
+
+    g_set_string_result = ESP_FAIL;
+    changed = true;
+    assert(network_config_nvs::write_changed_nvs_string(
+               1, ESP_OK, "name", "next", text, sizeof(text), &changed) == ESP_FAIL);
+    assert(!changed && g_set_string_calls == 1);
+
+    g_set_string_result = ESP_OK;
+    assert(network_config_nvs::write_changed_nvs_string(
+               1, ESP_OK, "name", "next", text, sizeof(text), &changed) == ESP_OK);
+    assert(changed && g_set_string_calls == 2);
+
+    g_erase_result = ESP_ERR_NVS_NOT_FOUND;
+    changed = true;
+    assert(network_config_nvs::write_changed_optional_nvs_string(
+               1, ESP_OK, "name", "", text, sizeof(text), &changed) == ESP_OK);
+    assert(!changed);
+
+    g_erase_result = ESP_OK;
+    assert(network_config_nvs::write_changed_optional_nvs_string(
+               1, ESP_OK, "name", nullptr, text, sizeof(text), &changed) == ESP_OK);
+    assert(changed);
+
+    changed = true;
     assert(network_config_nvs::write_changed_nvs_u8(1, ESP_FAIL, "value", 7, &changed) ==
            ESP_FAIL);
     assert(!changed);

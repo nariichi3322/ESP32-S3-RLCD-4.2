@@ -1,6 +1,8 @@
 // 集中维护 Wi-Fi 凭据、天气 API Key 及其可用状态的完整快照。
 #include "network_credentials_state.h"
 
+#include "scoped_semaphore_lock.h"
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
@@ -18,17 +20,6 @@ std::atomic<uint8_t> s_credentials_availability_mask{0};
 
 static_assert((kWifiConfiguredMask & kWeatherApiKeyConfiguredMask) == 0,
               "credential availability flags must not overlap");
-
-bool lock_credentials()
-{
-    return s_credentials_mutex &&
-           xSemaphoreTake(s_credentials_mutex, portMAX_DELAY) == pdTRUE;
-}
-
-void unlock_credentials()
-{
-    xSemaphoreGive(s_credentials_mutex);
-}
 
 uint8_t credentials_availability_mask(const NetworkCredentialsSnapshot &credentials)
 {
@@ -60,13 +51,13 @@ bool copy_field_snapshot(char *out, size_t out_len, const char (&field)[N], cons
         }
         return false;
     }
-    if (!lock_credentials()) {
+    ScopedSemaphoreLock state_lock(s_credentials_mutex);
+    if (!state_lock) {
         out[0] = '\0';
         return false;
     }
     memcpy(out, field, N);
     const bool available = configured && out[0] != '\0';
-    unlock_credentials();
     return available;
 }
 } // namespace
@@ -87,11 +78,11 @@ void network_credentials_snapshot(NetworkCredentialsSnapshot *out)
         return;
     }
     memset(out, 0, sizeof(*out));
-    if (!lock_credentials()) {
+    ScopedSemaphoreLock state_lock(s_credentials_mutex);
+    if (!state_lock) {
         return;
     }
     memcpy(out, &s_credentials, sizeof(*out));
-    unlock_credentials();
 }
 
 NetworkCredentialsAvailability network_credentials_availability()
@@ -119,14 +110,14 @@ void network_credentials_store(const char *ssid,
     replacement.weather_api_key_configured =
         weather_api_key_configured && replacement.weather_api_key[0] != '\0';
 
-    if (!lock_credentials()) {
+    ScopedSemaphoreLock state_lock(s_credentials_mutex);
+    if (!state_lock) {
         return;
     }
     memcpy(&s_credentials, &replacement, sizeof(s_credentials));
     s_credentials_availability_mask.store(
         credentials_availability_mask(replacement),
         std::memory_order_release);
-    unlock_credentials();
 }
 
 void network_credentials_clear()

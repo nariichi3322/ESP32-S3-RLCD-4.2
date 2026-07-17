@@ -11,7 +11,7 @@ struct AlarmSnapshot {
     uint32_t version;
 };
 
-void alarm_services_init();
+bool alarm_services_init();
 void alarm_task(void *);
 void alarm_get_snapshot(AlarmSnapshot *out);
 bool alarm_is_enabled();

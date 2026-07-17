@@ -66,20 +66,6 @@ esp_err_t commit_nvs_if_changed(nvs_handle_t nvs, esp_err_t err, bool changed)
     return changed ? commit_nvs_if_ok(nvs, err) : err;
 }
 
-esp_err_t set_nvs_str_if_ok(nvs_handle_t nvs,
-                            esp_err_t err,
-                            const char *key,
-                            const char *value)
-{
-    if (err != ESP_OK) {
-        return err;
-    }
-    if (!key || !value) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    return nvs_set_str(nvs, key, value);
-}
-
 esp_err_t set_nvs_u8_if_ok(nvs_handle_t nvs,
                            esp_err_t err,
                            const char *key,
@@ -99,6 +85,54 @@ esp_err_t write_optional_nvs_string_key(nvs_handle_t nvs, const char *key, const
     return value && value[0] != '\0'
                ? nvs_set_str(nvs, key, value)
                : erase_nvs_key_if_present(nvs, key, nullptr);
+}
+
+esp_err_t write_changed_nvs_string(nvs_handle_t nvs,
+                                   esp_err_t err,
+                                   const char *key,
+                                   const char *value,
+                                   char *scratch,
+                                   size_t scratch_len,
+                                   bool *changed)
+{
+    if (changed) {
+        *changed = false;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+    if (!key || !value || !scratch || scratch_len == 0) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (read_nvs_string(nvs, key, scratch, scratch_len) == ESP_OK &&
+        strcmp(scratch, value) == 0) {
+        return ESP_OK;
+    }
+    esp_err_t write_err = nvs_set_str(nvs, key, value);
+    if (write_err == ESP_OK && changed) {
+        *changed = true;
+    }
+    return write_err;
+}
+
+esp_err_t write_changed_optional_nvs_string(nvs_handle_t nvs,
+                                            esp_err_t err,
+                                            const char *key,
+                                            const char *value,
+                                            char *scratch,
+                                            size_t scratch_len,
+                                            bool *changed)
+{
+    if (changed) {
+        *changed = false;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+    return value && value[0] != '\0'
+               ? write_changed_nvs_string(
+                     nvs, err, key, value, scratch, scratch_len, changed)
+               : erase_nvs_key_if_present(nvs, key, changed);
 }
 
 esp_err_t read_nvs_string(nvs_handle_t nvs, const char *key, char *out, size_t out_len)

@@ -1,7 +1,7 @@
 // 声明天气看板日期、温度范围和预警行的纯文本格式化接口。
 #pragma once
 
-#include "app_state.h"
+#include "weather_types.h"
 
 #include <stddef.h>
 

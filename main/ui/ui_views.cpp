@@ -14,13 +14,17 @@
 #include "sensor_services.h"
 #include "ui_battery.h"
 #include "ui_battery_blink.h"
+#include "ui_aux_pages.h"
+#include "ui_boot_settings.h"
 #include "ui_draw_cache.h"
+#include "ui_flip_clock.h"
 #include "ui_info_page_state.h"
 #include "ui_runtime_schedule.h"
 #include "ui_setup_status.h"
 #include "ui_status_refresh_policy.h"
 #include "ui_settings_activity_state.h"
 #include "ui_visible_data_sync.h"
+#include "ui_xiaozhi.h"
 #include "xiaozhi_ai.h"
 
 #include <stdint.h>
@@ -133,7 +137,7 @@ void show_boot_info_aux_page(bool &info_page_visible,
                              bool &settings_page_visible)
 {
     build_boot_info_page();
-    show_page(g_info_root);
+    show_page(auxiliary_page_root(AuxiliaryPage::kSystemInfo));
     info_page_visible = true;
     settings_page_visible = false;
 }
@@ -143,7 +147,7 @@ void show_network_diag_aux_page(bool &network_diag_page_visible,
                                 bool &settings_page_visible)
 {
     build_network_diag_page();
-    show_page(g_network_diag_root);
+    show_page(auxiliary_page_root(AuxiliaryPage::kNetworkDiagnostics));
     network_diag_page_visible = true;
     info_page_visible = false;
     settings_page_visible = false;
@@ -341,7 +345,7 @@ void ui_task(void *)
                 restore_active_work_page_after_aux(true);
             }
 
-            int network_diag_state = network_diag_state_load();
+            NetworkDiagState network_diag_state = network_diag_state_load();
             if (network_diag_requested &&
                 network_diag_state == kNetworkDiagDone &&
                 ui_runtime_settings_timeout_elapsed(
@@ -374,7 +378,7 @@ void ui_task(void *)
                 bool settings_action_handled = false;
                 if (!settings_page_visible) {
                     build_settings_page();
-                    show_page(g_settings_root);
+                    show_page(auxiliary_page_root(AuxiliaryPage::kSettings));
                     settings_page_visible = true;
                     info_page_visible = false;
                     network_diag_page_visible = false;
@@ -420,7 +424,7 @@ void ui_task(void *)
                         !is_settings_sync_busy() && !ota_flow_active() &&
                         ui_runtime_settings_timeout_elapsed(last_activity)) {
                         ESP_LOGI(TAG, "%s", UI_SETTINGS_TIMEOUT_RETURN_LOG);
-                        if (g_settings_page_order_mode) {
+                        if (settings_navigation_snapshot().page_order_mode) {
                             if (save_work_page_order()) {
                                 active_work_page_store(first_enabled_work_page());
                             }
@@ -548,6 +552,7 @@ void ui_task(void *)
         }
         TickType_t delay_ticks = ui_runtime_next_loop_delay_ticks(
             local,
+            now,
             battery_blink_visible);
         ulTaskNotifyTake(pdTRUE, delay_ticks);
     }

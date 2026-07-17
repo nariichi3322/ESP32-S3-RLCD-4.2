@@ -1,5 +1,7 @@
 // 处理固件更新检查、下载、校验、写入和重启提示流程。
 #include "ota_services.h"
+
+#include "app_state.h"
 #include "ota_download_http.h"
 #include "ota_download_progress_policy.h"
 #include "ota_flow_policy.h"

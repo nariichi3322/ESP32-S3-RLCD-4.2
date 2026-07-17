@@ -1,11 +1,14 @@
 // 管理工作页名称、启用状态、设置映射和用户自定义顺序。
 #include "ui_work_page_catalog.h"
 
+#include "active_work_page_state.h"
 #include "app_constexpr.h"
-#include "app_state.h"
+#include "scoped_semaphore_lock.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include <atomic>
+#include <string.h>
 
 namespace {
 constexpr int kFirstWorkPage = kWorkPageWeatherClock;
@@ -21,7 +24,8 @@ constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
     kWorkPageHistory,
     kWorkPageXiaozhiAI,
 };
-portMUX_TYPE s_work_page_order_mux = portMUX_INITIALIZER_UNLOCKED;
+StaticSemaphore_t s_work_page_order_mutex_storage = {};
+SemaphoreHandle_t s_work_page_order_mutex = nullptr;
 uint8_t s_work_page_order[kWorkPageCount] = {
     kWorkPageWeatherClock,
     kWorkPageGallery,
@@ -209,6 +213,22 @@ void normalize_work_page_order_values(uint8_t *order, uint8_t page_mask)
     }
 }
 
+bool copy_normalized_work_page_order(uint8_t *order,
+                                     size_t order_size,
+                                     uint8_t page_mask)
+{
+    if (!order || order_size != sizeof(s_work_page_order)) {
+        return false;
+    }
+    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    if (!lock) {
+        return false;
+    }
+    normalize_work_page_order_values(s_work_page_order, page_mask);
+    memcpy(order, s_work_page_order, sizeof(s_work_page_order));
+    return true;
+}
+
 static_assert(kFirstWorkPage == 0, "work page ids must start at zero");
 static_assert(kFallbackWorkPage == kWorkPageWeatherClock, "work page order fallback must remain weather clock");
 static_assert(kWorkPageCount > 0, "there must be at least one work page");
@@ -233,6 +253,16 @@ static_assert(page_list_covers_each_work_page_once(kDefaultWorkPageOrder),
               "default work page order must include every work page exactly once");
 static_assert(page_list_covers_each_work_page_once(kDisplaySettingPages),
               "display settings must map every work page exactly once");
+}
+
+bool work_page_catalog_init()
+{
+    if (s_work_page_order_mutex) {
+        return true;
+    }
+    s_work_page_order_mutex =
+        xSemaphoreCreateMutexStatic(&s_work_page_order_mutex_storage);
+    return s_work_page_order_mutex != nullptr;
 }
 
 bool is_work_page_enabled(int page)
@@ -312,13 +342,13 @@ int display_settings_item_work_page(int item)
 
 int first_enabled_work_page()
 {
-    normalize_work_page_order();
+    const uint8_t page_mask = work_page_enabled_mask_load();
     uint8_t order[kWorkPageCount] = {};
-    if (!work_page_order_copy(order, sizeof(order))) {
+    if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
         return kFallbackWorkPage;
     }
     int index = first_enabled_work_page_order_index_or_invalid(
-        order, work_page_enabled_mask_load());
+        order, page_mask);
     return work_page_order_index_found(index) ? order[index] : kFallbackWorkPage;
 }
 
@@ -326,17 +356,21 @@ void reset_work_page_order()
 {
     static_assert(sizeof(kDefaultWorkPageOrder) == sizeof(s_work_page_order),
                   "default work page order storage must match runtime order storage");
-    portENTER_CRITICAL(&s_work_page_order_mux);
+    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    if (!lock) {
+        return;
+    }
     memcpy(s_work_page_order, kDefaultWorkPageOrder, sizeof(s_work_page_order));
-    portEXIT_CRITICAL(&s_work_page_order_mux);
 }
 
 void normalize_work_page_order()
 {
     const uint8_t page_mask = work_page_enabled_mask_load();
-    portENTER_CRITICAL(&s_work_page_order_mux);
+    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    if (!lock) {
+        return;
+    }
     normalize_work_page_order_values(s_work_page_order, page_mask);
-    portEXIT_CRITICAL(&s_work_page_order_mux);
 }
 
 bool work_page_mask_has_valid_home(uint8_t page_mask)
@@ -361,9 +395,11 @@ bool work_page_order_copy(uint8_t *order, size_t order_size)
     if (!order || order_size != sizeof(s_work_page_order)) {
         return false;
     }
-    portENTER_CRITICAL(&s_work_page_order_mux);
+    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    if (!lock) {
+        return false;
+    }
     memcpy(order, s_work_page_order, sizeof(s_work_page_order));
-    portEXIT_CRITICAL(&s_work_page_order_mux);
     return true;
 }
 
@@ -376,9 +412,11 @@ void work_page_order_replace(const uint8_t *order, size_t order_size)
         memcpy(replacement, kDefaultWorkPageOrder, sizeof(replacement));
     }
     normalize_work_page_order_values(replacement, work_page_enabled_mask_load());
-    portENTER_CRITICAL(&s_work_page_order_mux);
+    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    if (!lock) {
+        return;
+    }
     memcpy(s_work_page_order, replacement, sizeof(s_work_page_order));
-    portEXIT_CRITICAL(&s_work_page_order_mux);
 }
 
 bool swap_work_page_order_entries_preserving_home(int first_index, int second_index)
@@ -389,7 +427,10 @@ bool swap_work_page_order_entries_preserving_home(int first_index, int second_in
     }
     const uint8_t page_mask = work_page_enabled_mask_load();
     bool accepted = false;
-    portENTER_CRITICAL(&s_work_page_order_mux);
+    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    if (!lock) {
+        return false;
+    }
     uint8_t candidate[kWorkPageCount] = {};
     memcpy(candidate, s_work_page_order, sizeof(candidate));
     uint8_t page = candidate[first_index];
@@ -401,18 +442,16 @@ bool swap_work_page_order_entries_preserving_home(int first_index, int second_in
         memcpy(s_work_page_order, candidate, sizeof(s_work_page_order));
         accepted = true;
     }
-    portEXIT_CRITICAL(&s_work_page_order_mux);
     return accepted;
 }
 
 int next_enabled_work_page(int current_page)
 {
-    normalize_work_page_order();
+    const uint8_t page_mask = work_page_enabled_mask_load();
     uint8_t order[kWorkPageCount] = {};
-    if (!work_page_order_copy(order, sizeof(order))) {
+    if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
         return kFallbackWorkPage;
     }
-    const uint8_t page_mask = work_page_enabled_mask_load();
     if (!is_work_page_index(current_page)) {
         int first_index = first_enabled_work_page_order_index_or_invalid(order, page_mask);
         current_page = work_page_order_index_found(first_index)
@@ -427,22 +466,21 @@ int next_enabled_work_page(int current_page)
 
 int first_enabled_work_page_order_index()
 {
-    normalize_work_page_order();
+    const uint8_t page_mask = work_page_enabled_mask_load();
     uint8_t order[kWorkPageCount] = {};
-    if (!work_page_order_copy(order, sizeof(order))) {
+    if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
         return 0;
     }
-    return first_enabled_work_page_order_index_or_zero(order, work_page_enabled_mask_load());
+    return first_enabled_work_page_order_index_or_zero(order, page_mask);
 }
 
 int next_enabled_work_page_order_index(int current_order_index)
 {
-    normalize_work_page_order();
+    const uint8_t page_mask = work_page_enabled_mask_load();
     uint8_t order[kWorkPageCount] = {};
-    if (!work_page_order_copy(order, sizeof(order))) {
+    if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
         return 0;
     }
-    const uint8_t page_mask = work_page_enabled_mask_load();
     current_order_index = valid_enabled_work_page_order_index(
         order, page_mask, current_order_index);
     int next_index = next_enabled_work_page_order_index_or_invalid(
@@ -454,13 +492,13 @@ int next_enabled_work_page_order_index(int current_order_index)
 
 int valid_enabled_work_page_order_index(int current_order_index)
 {
-    normalize_work_page_order();
+    const uint8_t page_mask = work_page_enabled_mask_load();
     uint8_t order[kWorkPageCount] = {};
-    if (!work_page_order_copy(order, sizeof(order))) {
+    if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
         return 0;
     }
     return valid_enabled_work_page_order_index(
-        order, work_page_enabled_mask_load(), current_order_index);
+        order, page_mask, current_order_index);
 }
 
 void ensure_active_work_page_enabled()

@@ -4,6 +4,7 @@
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "app_time_constants.h"
+#include "ntp_runtime_state.h"
 #include "sensor_services.h"
 #include "ui_task_notify.h"
 
@@ -15,8 +16,6 @@
 
 namespace {
 bool s_ntp_started = false;
-portMUX_TYPE s_ntp_state_mux = portMUX_INITIALIZER_UNLOCKED;
-time_t s_last_ntp_sync_time = 0;
 constexpr const char *const kNtpServers[] = {
     "pool.ntp.org",
     "ntp.aliyun.com",
@@ -110,10 +109,7 @@ bool wait_for_ntp_synced_time(int max_retries, struct tm *synced_time)
 
 time_t get_last_ntp_sync_time()
 {
-    portENTER_CRITICAL(&s_ntp_state_mux);
-    const time_t last_sync_time = s_last_ntp_sync_time;
-    portEXIT_CRITICAL(&s_ntp_state_mux);
-    return last_sync_time;
+    return ntp_last_sync_time_load();
 }
 
 bool perform_ntp_sync(int max_retries)
@@ -129,9 +125,7 @@ bool perform_ntp_sync(int max_retries)
     if (wait_for_ntp_synced_time(max_retries, &local)) {
         sync_rtc_from_system_time();
         const time_t sync_time = time(nullptr);
-        portENTER_CRITICAL(&s_ntp_state_mux);
-        s_last_ntp_sync_time = sync_time;
-        portEXIT_CRITICAL(&s_ntp_state_mux);
+        ntp_last_sync_time_store(sync_time);
         alarm_notify_time_changed();
         set_time_synced_event_bit();
         notify_ui_task();

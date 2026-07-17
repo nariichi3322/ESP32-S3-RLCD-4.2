@@ -6,6 +6,7 @@
 #include "ui_history_chart.h"
 #include "ui_inverted_clock_card.h"
 #include "ui_object_refs.h"
+#include "ui_page_state.h"
 #include "ui_progress.h"
 #include "ui_settings_feedback.h"
 #include "ui_settings_navigation.h"
@@ -36,17 +37,15 @@ void configure_canvas_base(lv_obj_t *canvas,
                            int y,
                            int width,
                            int height);
-void build_work_page_status_bar(lv_obj_t *screen,
-                                int page,
-                                lv_obj_t **date_label,
-                                lv_obj_t **summary_label,
-                                lv_obj_t **time_label,
-                                bool show_time);
 struct WorkPageStatusLabels {
     lv_obj_t *date;
     lv_obj_t *summary;
     lv_obj_t *time;
 };
+void build_work_page_status_bar(lv_obj_t *screen,
+                                int page,
+                                bool show_summary,
+                                bool show_time);
 WorkPageStatusLabels get_work_page_status_labels(int page);
 bool update_work_page_status_time(lv_obj_t *label, const struct tm &local);
 bool update_work_page_sensor_summary(lv_obj_t *label);
@@ -54,19 +53,6 @@ bool update_non_clock_work_page_sensor_status(int page);
 bool update_weather_clock_sensor_status();
 void style_work_page_sensor_summary(lv_obj_t *label);
 bool update_work_page_status_icons(int page);
-lv_obj_t *create_page_root();
-void set_page_visible(lv_obj_t *page, bool visible);
-void show_page(lv_obj_t *page);
-lv_obj_t *active_work_page_root();
-void show_active_work_page();
-void remember_lower_panel_object(lv_obj_t *obj);
-void set_lower_panel_visible(bool visible);
-void set_setup_panel_visible(bool visible);
-bool set_obj_visible(lv_obj_t *obj, bool visible);
-bool update_low_battery_state();
-void apply_clock_mode_visibility(bool setup_active);
-void update_alert_pill(bool show, int alert_index = 0);
-bool update_top_status_icons(bool alert_visible);
 void prepare_boot_animation();
 void request_boot_animation_stop();
 void boot_anim_task(void *);
@@ -74,13 +60,6 @@ void finish_boot_anim_to_last_frame();
 void show_boot_screen();
 void update_boot_screen(int percent, const char *status, const char *detail);
 void finish_boot_screen();
-void build_boot_info_page();
-void update_boot_info_page();
-void build_network_diag_page();
-bool update_network_diag_page();
-void style_settings_item(lv_obj_t *label, bool selected);
-void build_settings_page();
-bool update_settings_page();
 int clamp_int(int value, int min_value, int max_value);
 void invalidate_canvas_rect(lv_obj_t *canvas, int x1, int y1, int x2, int y2);
 void canvas_set_px_safe(lv_obj_t *canvas, int x, int y, int w, int h, lv_color_t color);
@@ -98,13 +77,6 @@ bool update_calendar_page(const struct tm &local);
 void build_calendar_page();
 bool update_weather_board_page(const struct tm &local);
 void build_weather_board_page();
-bool update_flip_clock_sensor_status();
-bool update_flip_clock_page(const struct tm &local);
-void build_flip_clock_page();
-bool update_xiaozhi_page(const struct tm &local);
-uint32_t xiaozhi_subtitle_animation_delay_ms();
-void build_xiaozhi_page();
-void build_clock_ui();
 bool update_time_ui(const struct tm &local, bool clock_page_active, int active_work_page);
 void handle_settings_action();
 void ui_task(void *);

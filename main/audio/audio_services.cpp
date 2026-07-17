@@ -1,10 +1,11 @@
 // 管理共享 Codec、音频外设和小智全双工音频会话生命周期。
 #include "audio_services.h"
 
+#include "app_state.h"
 #include "audio_power_lock_ownership.h"
 #include "audio_services_internal.h"
+#include "atomic_ownership_gate.h"
 #include "checked_size.h"
-#include "sensor_services.h"
 
 #include <atomic>
 #include <cstddef>
@@ -21,8 +22,7 @@ namespace {
 alignas(CodecPort) unsigned char s_audio_codec_storage[sizeof(CodecPort)] = {};
 CodecPort *s_audio_codec = nullptr;
 std::atomic<bool> s_audio_codec_present{false};
-portMUX_TYPE s_audio_state_mux = portMUX_INITIALIZER_UNLOCKED;
-bool s_audio_playing = false;
+AtomicOwnershipGate s_audio_playing_gate;
 constexpr float kXiaozhiMicGainDb = 37.5f;
 constexpr int kXiaozhiAudioSampleRate = 16000;
 constexpr size_t kXiaozhiSpeakerFadeSamples = 160;
@@ -152,30 +152,17 @@ void park_unused_audio_peripherals()
 
 bool audio_try_mark_playing()
 {
-    bool acquired = false;
-    portENTER_CRITICAL(&s_audio_state_mux);
-    if (!s_audio_playing) {
-        s_audio_playing = true;
-        acquired = true;
-    }
-    portEXIT_CRITICAL(&s_audio_state_mux);
-    return acquired;
+    return s_audio_playing_gate.try_acquire();
 }
 
 void audio_clear_playing()
 {
-    portENTER_CRITICAL(&s_audio_state_mux);
-    s_audio_playing = false;
-    portEXIT_CRITICAL(&s_audio_state_mux);
+    s_audio_playing_gate.release();
 }
 
 bool is_audio_playing()
 {
-    bool playing = false;
-    portENTER_CRITICAL(&s_audio_state_mux);
-    playing = s_audio_playing;
-    portEXIT_CRITICAL(&s_audio_state_mux);
-    return playing;
+    return s_audio_playing_gate.active();
 }
 
 bool audio_codec_active()
@@ -223,7 +210,14 @@ CodecPort *audio_prepare_codec_for_playback()
         ESP_LOGW(TAG, "audio PM lock unavailable");
         return nullptr;
     }
-    return ensure_audio_codec();
+    CodecPort *codec = ensure_audio_codec();
+    if (!codec) {
+        // 不把失败构造后的 GPIO 和三类 PM 锁留给调用方兜底；播放门仍由
+        // 发起方通过统一 audio_finish_playback() 按原所有权顺序归还。
+        park_unused_audio_peripherals();
+        s_audio_power_lock.release();
+    }
+    return codec;
 }
 
 bool start_xiaozhi_audio_session()

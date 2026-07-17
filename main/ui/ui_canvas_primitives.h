@@ -1,8 +1,9 @@
-// 声明页面 canvas 复用的基础线段与实心圆绘制图元。
+// 声明页面 canvas 复用的坐标钳制、线段、虚线与实心圆绘制图元。
 #pragma once
 
 #include "lvgl.h"
 
+int clamp_int(int value, int min_value, int max_value);
 void canvas_draw_line(lv_obj_t *canvas,
                       int width,
                       int height,
@@ -11,6 +12,13 @@ void canvas_draw_line(lv_obj_t *canvas,
                       int x1,
                       int y1,
                       lv_color_t color);
+void canvas_draw_dashed_hline(lv_obj_t *canvas,
+                              int width,
+                              int height,
+                              int x1,
+                              int x2,
+                              int y,
+                              lv_color_t color);
 void canvas_draw_filled_circle(lv_obj_t *canvas,
                                int width,
                                int height,

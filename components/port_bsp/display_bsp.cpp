@@ -5,6 +5,7 @@
 #include <esp_log.h>
 #include <esp_heap_caps.h>
 #include "display_bsp.h"
+#include "display_dma_mode_state.h"
 
 #define PIXEL_OUT_OF_BOUNDS_LOG_FORMAT "Beyond the limit : (%d,%d)"
 #define RLCD_TX_FAILED_LOG_FORMAT "RLCD tx failed err=%s len=%d offset=%d dma_free=%u dma_largest=%u"
@@ -26,7 +27,6 @@ static constexpr int kRlcdLcdCommandBits = 8;
 static constexpr int kRlcdLcdParamBits = 8;
 static constexpr int kRlcdSpiMode = 0;
 static constexpr int kRlcdSpiTransQueueDepth = 10;
-static constexpr int kRlcdDmaConservativeMaxDepth = 8;
 static constexpr const char *kRlcdKeepPinsActiveLog = "keep RLCD pins active in light sleep";
 static constexpr uint32_t kRlcdSleepOutDelayMs = 200;
 static constexpr uint32_t kRlcdResetHighDelayMs = 50;
@@ -52,14 +52,13 @@ static_assert(kRlcdOtaTxRetryBaseDelayMs >= kRlcdTxRetryBaseDelayMs &&
               "RLCD conservative retry delays must not be shorter than normal delays");
 static_assert(kRlcdSpiMode >= 0, "RLCD SPI mode must not be negative");
 static_assert(kRlcdSpiTransQueueDepth > 0, "RLCD SPI transaction queue depth must be positive");
-static_assert(kRlcdDmaConservativeMaxDepth > 0, "RLCD DMA conservative depth limit must be positive");
+static_assert(kDisplayDmaConservativeMaxDepth > 0,
+              "RLCD DMA conservative depth limit must be positive");
 static_assert(kRlcdKeepPinsActiveLog[0] != '\0', "RLCD light-sleep pin log must not be empty");
 static_assert(kRlcdSleepOutDelay > 0, "RLCD sleep-out tick delay must be positive");
 static_assert(kRlcdResetHighDelay > 0, "RLCD reset high tick delay must be positive");
 static_assert(kRlcdResetLowDelay > 0, "RLCD reset low tick delay must be positive");
-static bool s_ota_quiet_mode = false;
-static int s_dma_conservative_depth = 0;
-static portMUX_TYPE s_dma_mode_mux = portMUX_INITIALIZER_UNLOCKED;
+static DisplayDmaModeState s_dma_mode_state;
 
 static int RlcdTxRetryDelayMs(bool conservative, int attempt)
 {
@@ -99,35 +98,22 @@ static void LogDisplayReleaseFailure(const char *stage, esp_err_t err)
 
 static bool Display_IsDmaConservativeMode()
 {
-    portENTER_CRITICAL(&s_dma_mode_mux);
-    bool enabled = s_ota_quiet_mode || s_dma_conservative_depth > 0;
-    portEXIT_CRITICAL(&s_dma_mode_mux);
-    return enabled;
+    return s_dma_mode_state.conservative_mode();
 }
 
 void Display_SetOtaQuietMode(bool enabled)
 {
-    portENTER_CRITICAL(&s_dma_mode_mux);
-    s_ota_quiet_mode = enabled;
-    portEXIT_CRITICAL(&s_dma_mode_mux);
+    s_dma_mode_state.set_ota_quiet(enabled);
 }
 
 void Display_AcquireDmaConservativeMode()
 {
-    portENTER_CRITICAL(&s_dma_mode_mux);
-    if (s_dma_conservative_depth < kRlcdDmaConservativeMaxDepth) {
-        ++s_dma_conservative_depth;
-    }
-    portEXIT_CRITICAL(&s_dma_mode_mux);
+    s_dma_mode_state.acquire_conservative_mode();
 }
 
 void Display_ReleaseDmaConservativeMode()
 {
-    portENTER_CRITICAL(&s_dma_mode_mux);
-    if (s_dma_conservative_depth > 0) {
-        --s_dma_conservative_depth;
-    }
-    portEXIT_CRITICAL(&s_dma_mode_mux);
+    s_dma_mode_state.release_conservative_mode();
 }
 
 DisplayPort::DisplayPort(int mosi, int scl, int dc, int cs, int rst, int width, int height, spi_host_device_t spihost) : 

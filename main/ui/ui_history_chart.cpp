@@ -2,9 +2,11 @@
 #include "ui_history_chart.h"
 
 #include "app_constexpr.h"
+#include "ui_canvas_primitives.h"
 #include "ui_history_format.h"
 #include "ui_history_window.h"
-#include "ui_views.h"
+#include "ui_page_state.h"
+#include "ui_widgets.h"
 
 namespace {
 constexpr int kHistoryAxisMaxIndex = 0;
@@ -115,15 +117,18 @@ void set_history_badge(lv_obj_t *label,
     lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
 }
 
-void update_history_axis_labels(time_t start, time_t end)
+void update_history_axis_labels(time_t start,
+                                lv_obj_t *const *time_labels)
 {
-    (void)end;
+    if (!time_labels) {
+        return;
+    }
     for (int i = 0; i < kHistoryAxisTickCount; ++i) {
         char text[kHistoryAxisHourTextSize] = {};
         format_history_axis_hour(start + kHistoryAxisTickHours[i] * kHistorySecondsPerHour,
                                  text,
                                  sizeof(text));
-        set_label_text_if_changed(g_history_time_labels[i], text);
+        set_label_text_if_changed(time_labels[i], text);
     }
 }
 

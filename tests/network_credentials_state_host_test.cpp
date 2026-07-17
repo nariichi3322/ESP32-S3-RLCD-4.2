@@ -6,6 +6,11 @@
 #include <string.h>
 #include <thread>
 
+std::atomic<bool> g_fail_mutex_take{false};
+std::atomic<int> g_mutex_take_count{0};
+std::atomic<int> g_mutex_give_count{0};
+std::atomic<int> g_mutex_active_holds{0};
+
 namespace {
 constexpr const char *kSsidA = "clock-net-a";
 constexpr const char *kPasswordA = "password-a";
@@ -13,7 +18,6 @@ constexpr const char *kApiKeyA = "weather-key-a";
 constexpr const char *kSsidB = "clock-net-b";
 constexpr const char *kPasswordB = "password-b";
 constexpr const char *kApiKeyB = "weather-key-b";
-
 bool snapshot_matches(const NetworkCredentialsSnapshot &snapshot,
                       const char *ssid,
                       const char *password,
@@ -25,10 +29,25 @@ bool snapshot_matches(const NetworkCredentialsSnapshot &snapshot,
            strcmp(snapshot.wifi_password, password) == 0 &&
            strcmp(snapshot.weather_api_key, api_key) == 0;
 }
+
+void expect_mutex_released()
+{
+    assert(g_mutex_active_holds.load(std::memory_order_acquire) == 0);
+    assert(g_mutex_take_count.load(std::memory_order_acquire) ==
+           g_mutex_give_count.load(std::memory_order_acquire));
+}
 } // namespace
 
 int main()
 {
+    NetworkCredentialsSnapshot unavailable = {};
+    memset(&unavailable, 0x7f, sizeof(unavailable));
+    network_credentials_snapshot(&unavailable);
+    assert(unavailable.wifi_ssid[0] == '\0');
+    assert(!unavailable.wifi_configured);
+    network_credentials_store(kSsidA, kPasswordA, kApiKeyA, true, true);
+    assert(!network_all_online_credentials_configured());
+
     assert(network_credentials_state_init());
     assert(network_credentials_state_init());
     network_credentials_clear();
@@ -56,6 +75,26 @@ int main()
     assert(network_weather_api_key_snapshot(api_key, sizeof(api_key)));
     assert(strcmp(api_key, kApiKeyA) == 0);
     assert(network_all_online_credentials_configured());
+    expect_mutex_released();
+
+    const NetworkCredentialsAvailability availability_before_failure =
+        network_credentials_availability();
+    g_fail_mutex_take.store(true, std::memory_order_release);
+    network_credentials_store(kSsidB, kPasswordB, kApiKeyB, true, true);
+    memset(&snapshot, 0x7f, sizeof(snapshot));
+    network_credentials_snapshot(&snapshot);
+    assert(snapshot.wifi_ssid[0] == '\0');
+    memset(ssid, 'x', sizeof(ssid));
+    assert(!network_wifi_ssid_snapshot(ssid, sizeof(ssid)));
+    assert(ssid[0] == '\0');
+    assert(network_credentials_availability().wifi_configured ==
+           availability_before_failure.wifi_configured);
+    assert(network_credentials_availability().weather_api_key_configured ==
+           availability_before_failure.weather_api_key_configured);
+    g_fail_mutex_take.store(false, std::memory_order_release);
+    network_credentials_snapshot(&snapshot);
+    assert(snapshot_matches(snapshot, kSsidA, kPasswordA, kApiKeyA));
+    expect_mutex_released();
 
     std::atomic<bool> writer_done{false};
     std::thread writer([&]() {
@@ -102,5 +141,6 @@ int main()
     assert(!network_weather_api_key_configured());
 
     network_credentials_clear();
+    expect_mutex_released();
     return 0;
 }

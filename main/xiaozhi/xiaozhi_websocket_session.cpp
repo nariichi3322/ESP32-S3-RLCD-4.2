@@ -2,7 +2,7 @@
 #include "xiaozhi_websocket_session.h"
 
 #include "app_state.h"
-#include "network_services.h"
+#include "network_http_transaction_lock.h"
 #include "xiaozhi_activation_client.h"
 #include "xiaozhi_activation_storage.h"
 #include "xiaozhi_protocol_utils.h"

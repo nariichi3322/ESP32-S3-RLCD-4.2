@@ -1,6 +1,7 @@
 // 查找和绘制 DSEG 字形，并刷新天气时钟的时分与秒 canvas。
 #include "ui_dseg_clock.h"
 
+#include "ui_clock_surface_objects.h"
 #include "ui_text_format.h"
 #include "ui_views.h"
 
@@ -70,25 +71,27 @@ int draw_dseg_text(lv_obj_t *canvas, const DsegFont &font, const char *text, int
 
 void draw_time_canvas(const struct tm &local)
 {
-    if (!g_time_canvas) {
+    lv_obj_t *canvas = clock_surface_object_refs().time_canvas;
+    if (!canvas) {
         return;
     }
-    lv_canvas_fill_bg(g_time_canvas, lv_color_white(), LV_OPA_COVER);
+    lv_canvas_fill_bg(canvas, lv_color_white(), LV_OPA_COVER);
 
     char hm[kHourMinuteTextSize] = {};
     format_hour_minute_text(hm, local);
-    draw_dseg_text(g_time_canvas, kDSEG84Font, hm, 0, 88);
-    lv_obj_invalidate(g_time_canvas);
+    draw_dseg_text(canvas, kDSEG84Font, hm, 0, 88);
+    lv_obj_invalidate(canvas);
 }
 
 void draw_second_canvas(const struct tm &local)
 {
-    if (!g_second_canvas) {
+    lv_obj_t *canvas = clock_surface_object_refs().second_canvas;
+    if (!canvas) {
         return;
     }
-    lv_canvas_fill_bg(g_second_canvas, lv_color_white(), LV_OPA_COVER);
+    lv_canvas_fill_bg(canvas, lv_color_white(), LV_OPA_COVER);
     char ss[kSecondTextSize] = {};
     format_two_digit_second_text(ss, local.tm_sec);
-    draw_dseg_text(g_second_canvas, kDSEG36Font, ss, 0, 40);
-    lv_obj_invalidate(g_second_canvas);
+    draw_dseg_text(canvas, kDSEG36Font, ss, 0, 40);
+    lv_obj_invalidate(canvas);
 }

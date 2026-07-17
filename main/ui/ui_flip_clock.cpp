@@ -1,4 +1,6 @@
 // 构建温湿时钟的静态控件、数字牌、传感器面板和日期面板。
+#include "ui_flip_clock.h"
+#include "ui_flip_clock_objects.h"
 #include "ui_views.h"
 
 #include "app_constexpr.h"
@@ -64,9 +66,12 @@ lv_color_t *s_flip_clock_temp_mood_canvas_buffer;
 lv_color_t *s_flip_clock_humi_mood_canvas_buffer;
 lv_color_t *s_flip_clock_temp_trend_canvas_buffer;
 lv_color_t *s_flip_clock_humi_trend_canvas_buffer;
+FlipClockObjectRefs s_flip_clock_objects;
 
 static_assert(array_count(kCardX) == kCardCount,
               "flip clock card X table must match card count");
+static_assert(kFlipClockObjectCardCount == kCardCount,
+              "flip clock object registry must match inverted card count");
 static_assert(kFlipTopLineW > 0 && kFlipTopLineH > 0,
               "flip clock top separator size must be positive");
 static_assert(kFlipSensorPanelX == kCardX[kHourCardIndex] &&
@@ -251,7 +256,7 @@ void build_flip_trend_canvas(lv_obj_t *screen,
     lv_canvas_fill_bg(*canvas, lv_color_black(), LV_OPA_COVER);
 }
 
-void build_flip_sensor_panel(lv_obj_t *screen)
+void build_flip_sensor_panel(lv_obj_t *screen, FlipClockObjectRefs &objects)
 {
     lv_obj_t *sensor_panel = make_bar(screen,
                                       kFlipSensorPanelX,
@@ -265,43 +270,43 @@ void build_flip_sensor_panel(lv_obj_t *screen)
     }
 
     build_flip_sensor_value_labels(screen,
-                                   &g_flip_clock_sensor_label,
-                                   &g_flip_clock_sensor_bold_label,
-                                   &g_flip_clock_sensor_bold_y_label,
+                                   &objects.sensor_label,
+                                   &objects.sensor_bold_label,
+                                   &objects.sensor_bold_y_label,
                                    kFlipSensorTempTextY,
                                    kFlipTempPlaceholder,
                                    FLIP_CLOCK_TEMP_LABEL_CREATE_FAILED_LOG);
     build_flip_sensor_value_labels(screen,
-                                   &g_flip_clock_humidity_label,
-                                   &g_flip_clock_humidity_bold_label,
-                                   &g_flip_clock_humidity_bold_y_label,
+                                   &objects.humidity_label,
+                                   &objects.humidity_bold_label,
+                                   &objects.humidity_bold_y_label,
                                    kFlipSensorHumiTextY,
                                    kFlipHumiPlaceholder,
                                    FLIP_CLOCK_HUMIDITY_LABEL_CREATE_FAILED_LOG);
     build_flip_mood_canvas(screen,
-                           &g_flip_clock_temp_mood_canvas,
+                           &objects.temp_mood_canvas,
                            &s_flip_clock_temp_mood_canvas_buffer,
                            kFlipTempMoodCanvasY,
                            "temperature");
     build_flip_mood_canvas(screen,
-                           &g_flip_clock_humi_mood_canvas,
+                           &objects.humi_mood_canvas,
                            &s_flip_clock_humi_mood_canvas_buffer,
                            kFlipHumiMoodCanvasY,
                            "humidity");
 
     build_flip_trend_canvas(screen,
-                            &g_flip_clock_temp_trend_canvas,
+                            &objects.temp_trend_canvas,
                             &s_flip_clock_temp_trend_canvas_buffer,
                             kFlipTempTrendCanvasY,
                             "temperature");
     build_flip_trend_canvas(screen,
-                            &g_flip_clock_humi_trend_canvas,
+                            &objects.humi_trend_canvas,
                             &s_flip_clock_humi_trend_canvas_buffer,
                             kFlipHumiTrendCanvasY,
                             "humidity");
 }
 
-void build_flip_date_panel(lv_obj_t *screen)
+void build_flip_date_panel(lv_obj_t *screen, FlipClockObjectRefs &objects)
 {
     lv_obj_t *date_panel = make_bar(screen,
                                     kFlipDatePanelX,
@@ -314,19 +319,19 @@ void build_flip_date_panel(lv_obj_t *screen)
         lv_obj_set_style_clip_corner(date_panel, true, LV_PART_MAIN);
     }
     build_flip_date_label_group(screen,
-                                &g_flip_clock_day_label,
-                                &g_flip_clock_day_bold_label,
-                                &g_flip_clock_day_bold_y_label,
+                                &objects.day_label,
+                                &objects.day_bold_label,
+                                &objects.day_bold_y_label,
                                 nullptr,
                                 kFlipDayTextY,
                                 kFlipDayTextH,
                                 kFlipDayPlaceholder,
                                 &lv_font_montserrat_48);
     build_flip_date_label_group(screen,
-                                &g_flip_clock_lunar_label,
-                                &g_flip_clock_lunar_bold_x_label,
-                                &g_flip_clock_lunar_bold_y_label,
-                                &g_flip_clock_lunar_bold_xy_label,
+                                &objects.lunar_label,
+                                &objects.lunar_bold_x_label,
+                                &objects.lunar_bold_y_label,
+                                &objects.lunar_bold_xy_label,
                                 kFlipLunarTextY,
                                 kFlipLunarTextH,
                                 kFlipDayPlaceholder,
@@ -335,24 +340,38 @@ void build_flip_date_panel(lv_obj_t *screen)
 
 } // namespace
 
+FlipClockObjectRefs &mutable_flip_clock_object_refs()
+{
+    return s_flip_clock_objects;
+}
+
+const FlipClockObjectRefs &flip_clock_object_refs()
+{
+    return s_flip_clock_objects;
+}
+
+void clear_flip_clock_object_refs()
+{
+    s_flip_clock_objects = {};
+}
+
 void build_flip_clock_page()
 {
-    if (g_flip_clock_root) {
+    if (work_page_root(kWorkPageFlipClock)) {
         return;
     }
     lv_obj_t *screen = create_page_root();
     if (!screen) {
         return;
     }
-    g_flip_clock_root = screen;
-    lv_obj_add_flag(g_flip_clock_root, LV_OBJ_FLAG_HIDDEN);
+    set_work_page_root(kWorkPageFlipClock, screen);
+    lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
+    FlipClockObjectRefs &objects = mutable_flip_clock_object_refs();
 
-    build_battery_icon(screen, g_flip_clock_battery_segments);
+    build_work_page_battery_icon(screen, kWorkPageFlipClock);
     build_work_page_status_bar(screen,
                                kWorkPageFlipClock,
-                               &g_flip_clock_date_label,
-                               nullptr,
-                               nullptr,
+                               false,
                                false);
 
     lv_obj_t *top_line = make_bar(screen,
@@ -364,11 +383,11 @@ void build_flip_clock_page()
     build_work_page_day_progress(screen, kWorkPageFlipClock);
 
     build_inverted_clock_cards(screen,
-                               g_flip_clock_card_canvas,
+                               objects.card_canvas,
                                s_flip_clock_card_canvas_buffer);
-    build_flip_sensor_panel(screen);
-    build_flip_date_panel(screen);
+    build_flip_sensor_panel(screen, objects);
+    build_flip_date_panel(screen, objects);
 
-    update_battery_segments(g_flip_clock_battery_segments, battery_percent_load());
+    update_work_page_battery_icon(kWorkPageFlipClock, battery_percent_load());
     invalidate_flip_clock_draw_cache();
 }

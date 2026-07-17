@@ -2,14 +2,13 @@
 #include "ui_settings_content.h"
 
 #include "alarm_services.h"
-#include "app_state.h"
 #include "manual_weather_city_state.h"
 #include "ui_settings_confirmation_state.h"
+#include "weather_city_contract.h"
 
 #include <assert.h>
 #include <string.h>
 
-const char *const TAG = "test";
 bool g_offline_mode_ui_enabled = false;
 int g_chime_volume_percent = 60;
 int g_chime_sound_index = 2;

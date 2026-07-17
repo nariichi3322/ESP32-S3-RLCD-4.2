@@ -14,6 +14,7 @@
 #include "ui_settings_activity_state.h"
 #include "ui_settings_confirmation_state.h"
 #include "ui_text_format.h"
+#include "xiaozhi_auto_return_state.h"
 
 #include <cstdarg>
 
@@ -203,13 +204,15 @@ namespace {
 void handle_page_order_settings_action()
 {
     normalize_work_page_order();
-    int current = valid_enabled_work_page_order_index(g_settings_page_order_selection);
+    SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
+    int current = valid_enabled_work_page_order_index(navigation.page_order_selection);
     int next = next_enabled_work_page_order_index(current);
     if (!swap_work_page_order_entries_preserving_home(current, next)) {
         set_settings_feedback(kXiaozhiHomeBlockedFeedback, kSettingsFeedbackDefaultMs);
         return;
     }
-    g_settings_page_order_selection = next;
+    navigation.page_order_selection = next;
+    settings_navigation_store(navigation);
     if (save_work_page_order()) {
         active_work_page_store(first_enabled_work_page());
         set_settings_feedback(kSettingsOrderSavedFeedback, kSettingsFeedbackSavedMs);
@@ -322,8 +325,9 @@ void handle_sound_settings_action(int selected)
 
 void handle_display_settings_action(int selected)
 {
-    if (g_settings_page_toggle_mode) {
-        int page = g_settings_selection;
+    SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
+    if (navigation.page_toggle_mode) {
+        int page = navigation.selection;
         if (!work_page_index_valid(page)) {
             page = kWorkPageWeatherClock;
         }
@@ -363,17 +367,19 @@ void handle_display_settings_action(int selected)
         return;
     }
     if (selected == kDisplaySettingsPageSwitchItem) {
-        g_settings_page_order_mode = false;
-        g_settings_page_toggle_mode = true;
-        g_settings_selection = 0;
+        navigation.page_order_mode = false;
+        navigation.page_toggle_mode = true;
+        navigation.selection = 0;
+        settings_navigation_store(navigation);
         set_settings_feedback(kPageSwitchInstructionFeedback, kSettingsFeedbackInstructionMs);
         return;
     }
     if (selected == kDisplaySettingsOrderItem) {
-        g_settings_page_toggle_mode = false;
-        g_settings_page_order_mode = true;
+        navigation.page_toggle_mode = false;
+        navigation.page_order_mode = true;
         normalize_work_page_order();
-        g_settings_page_order_selection = first_enabled_work_page_order_index();
+        navigation.page_order_selection = first_enabled_work_page_order_index();
+        settings_navigation_store(navigation);
         set_settings_feedback(kPageOrderInstructionFeedback, kSettingsFeedbackInstructionMs);
         return;
     }
@@ -390,14 +396,14 @@ void handle_display_settings_action(int selected)
         return;
     }
     if (selected == kDisplaySettingsXiaozhiAutoReturnItem) {
-        bool previous = g_xiaozhi_auto_return_enabled;
-        g_xiaozhi_auto_return_enabled = !g_xiaozhi_auto_return_enabled;
+        const bool previous = xiaozhi_auto_return_enabled_load();
+        xiaozhi_auto_return_enabled_store(!previous);
         if (!save_xiaozhi_auto_return_setting()) {
-            g_xiaozhi_auto_return_enabled = previous;
+            xiaozhi_auto_return_enabled_store(previous);
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        set_settings_feedback(g_xiaozhi_auto_return_enabled
+        set_settings_feedback(xiaozhi_auto_return_enabled_load()
                                   ? kXiaozhiAutoReturnEnabledFeedback
                                   : kXiaozhiAutoReturnDisabledFeedback,
                               kSettingsFeedbackDefaultMs);
@@ -448,9 +454,11 @@ void handle_system_settings_action(int selected)
         network_diag_reset();
         settings_page_clear();
         network_diag_page_request();
-        g_settings_focus_secondary = true;
-        g_settings_primary_selection = kSettingsPrimarySystem;
-        g_settings_selection = 0;
+        SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
+        navigation.focus_secondary = true;
+        navigation.primary_selection = kSettingsPrimarySystem;
+        navigation.selection = 0;
+        settings_navigation_store(navigation);
         info_page_hold_until_store(0);
         xEventGroupSetBits(g_app_events, kNetworkDiagBit);
     } else if (selected == kSystemSettingsFactoryResetItem) {
@@ -470,14 +478,18 @@ void handle_system_settings_action(int selected)
             return;
         }
         settings_page_clear();
-        g_settings_page_toggle_mode = false;
-        g_settings_page_order_mode = false;
+        SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
+        navigation.page_toggle_mode = false;
+        navigation.page_order_mode = false;
+        settings_navigation_store(navigation);
         settings_confirmation_clear(SettingsConfirmation::kFactoryReset);
         settings_confirmation_clear(SettingsConfirmation::kOfflineDisable);
     } else if (selected == kSystemSettingsInfoItem) {
         settings_page_clear();
-        g_settings_page_toggle_mode = false;
-        g_settings_page_order_mode = false;
+        SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
+        navigation.page_toggle_mode = false;
+        navigation.page_order_mode = false;
+        settings_navigation_store(navigation);
         settings_confirmation_clear(SettingsConfirmation::kFactoryReset);
         info_page_request(xTaskGetTickCount() + pdMS_TO_TICKS(kSettingsTimeoutMs));
         ESP_LOGI(TAG, "%s", SYSTEM_INFO_REQUESTED_LOG);
@@ -493,23 +505,28 @@ void handle_system_settings_action(int selected)
 
 void handle_settings_action()
 {
-    int primary = g_settings_primary_selection;
+    SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
+    int primary = navigation.primary_selection;
     if (primary < 0 || primary >= kSettingsPrimaryCount) {
         primary = kSettingsPrimaryNetwork;
     }
     int selected = clamp_settings_selection_for_mode(primary,
-                                                     g_settings_selection,
-                                                     g_settings_page_toggle_mode);
-    g_settings_primary_selection = primary;
-    g_settings_selection = selected;
+                                                     navigation.selection,
+                                                     navigation.page_toggle_mode);
+    if (navigation.primary_selection != primary || navigation.selection != selected) {
+        navigation.primary_selection = primary;
+        navigation.selection = selected;
+        settings_navigation_store(navigation);
+    }
     settings_activity_record(xTaskGetTickCount());
-    if (g_settings_page_order_mode) {
+    if (navigation.page_order_mode) {
         handle_page_order_settings_action();
         return;
     }
-    if (!g_settings_focus_secondary) {
-        g_settings_focus_secondary = true;
-        g_settings_selection = 0;
+    if (!navigation.focus_secondary) {
+        navigation.focus_secondary = true;
+        navigation.selection = 0;
+        settings_navigation_store(navigation);
         reset_settings_confirmation();
         clear_settings_feedback();
         return;

@@ -13,6 +13,7 @@
 #include "xiaozhi_activation_retry_policy.h"
 #include "xiaozhi_activation_storage.h"
 #include "xiaozhi_audio_frames.h"
+#include "xiaozhi_binding_voice_state.h"
 #include "xiaozhi_conversation_events.h"
 #include "xiaozhi_conversation_io.h"
 #include "xiaozhi_idle_wait_policy.h"
@@ -615,6 +616,10 @@ void xiaozhi_ai_task(void *)
 void xiaozhi_ai_init()
 {
     if (s_events) {
+        return;
+    }
+    if (!xiaozhi_binding_voice_state_init()) {
+        ESP_LOGW(TAG, "%s", XIAOZHI_STATE_INIT_FAILED_LOG);
         return;
     }
     s_events = xEventGroupCreateStatic(&s_event_group_storage);

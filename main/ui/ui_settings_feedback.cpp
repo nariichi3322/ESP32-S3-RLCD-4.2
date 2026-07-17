@@ -1,19 +1,23 @@
 // 维护设置页反馈文本和手动网络同步状态，不承担设置页绘制。
 #include "ui_settings_feedback.h"
 
+#include "app_state.h"
 #include "app_tick_time.h"
 #include "network_diagnostics_state.h"
+#include "scoped_semaphore_lock.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_sync_state.h"
 #include "ui_task_notify.h"
 #include "ui_text_format.h"
 
 #include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include <string.h>
 
 namespace {
-portMUX_TYPE s_settings_feedback_mux = portMUX_INITIALIZER_UNLOCKED;
+StaticSemaphore_t s_settings_feedback_mutex_storage = {};
+SemaphoreHandle_t s_settings_feedback_mutex = nullptr;
 char s_settings_feedback[kSettingsFeedbackTextLen] = {};
 TickType_t s_settings_feedback_until_tick = 0;
 #define SETTINGS_MANUAL_SYNC_TIMEOUT_LOG_FORMAT "settings manual sync timeout: op=%d"
@@ -23,16 +27,33 @@ constexpr const char *kSettingsSayingTimeoutFeedback = "一言更新超时";
 static_assert(kSettingsSyncNone == 0, "settings sync state default must mean idle");
 } // namespace
 
+bool settings_feedback_state_init()
+{
+    if (!settings_sync_state_init()) {
+        return false;
+    }
+    if (s_settings_feedback_mutex) {
+        return true;
+    }
+    s_settings_feedback_mutex =
+        xSemaphoreCreateMutexStatic(&s_settings_feedback_mutex_storage);
+    return s_settings_feedback_mutex != nullptr;
+}
+
 void set_settings_feedback(const char *text, uint32_t duration_ms)
 {
     char next_feedback[kSettingsFeedbackTextLen] = {};
     ui_text::copy(next_feedback, sizeof(next_feedback), text);
     TickType_t now = xTaskGetTickCount();
     TickType_t until_tick = now + pdMS_TO_TICKS(duration_ms);
-    portENTER_CRITICAL(&s_settings_feedback_mux);
-    memcpy(s_settings_feedback, next_feedback, sizeof(s_settings_feedback));
-    s_settings_feedback_until_tick = until_tick;
-    portEXIT_CRITICAL(&s_settings_feedback_mux);
+    {
+        ScopedSemaphoreLock lock(s_settings_feedback_mutex);
+        if (!lock) {
+            return;
+        }
+        memcpy(s_settings_feedback, next_feedback, sizeof(s_settings_feedback));
+        s_settings_feedback_until_tick = until_tick;
+    }
     if (settings_page_requested()) {
         settings_activity_record(now);
     }
@@ -41,9 +62,12 @@ void set_settings_feedback(const char *text, uint32_t duration_ms)
 
 void clear_settings_feedback()
 {
-    portENTER_CRITICAL(&s_settings_feedback_mux);
+    ScopedSemaphoreLock lock(s_settings_feedback_mutex);
+    if (!lock) {
+        return;
+    }
     s_settings_feedback[0] = '\0';
-    portEXIT_CRITICAL(&s_settings_feedback_mux);
+    s_settings_feedback_until_tick = 0;
 }
 
 bool settings_feedback_copy_active(TickType_t now, char *out, size_t out_len)
@@ -51,17 +75,24 @@ bool settings_feedback_copy_active(TickType_t now, char *out, size_t out_len)
     if (!ui_text::output_buffer_available(out, out_len)) {
         return false;
     }
+    out[0] = '\0';
     char snapshot[kSettingsFeedbackTextLen] = {};
-    portENTER_CRITICAL(&s_settings_feedback_mux);
-    const bool active = s_settings_feedback[0] != '\0' &&
-                        s_settings_feedback_until_tick != 0 &&
-                        app_tick_deadline_pending(now, s_settings_feedback_until_tick);
-    if (active) {
-        memcpy(snapshot, s_settings_feedback, sizeof(snapshot));
-    } else {
-        s_settings_feedback[0] = '\0';
+    bool active = false;
+    {
+        ScopedSemaphoreLock lock(s_settings_feedback_mutex);
+        if (!lock) {
+            return false;
+        }
+        active = s_settings_feedback[0] != '\0' &&
+                 s_settings_feedback_until_tick != 0 &&
+                 app_tick_deadline_pending(now, s_settings_feedback_until_tick);
+        if (active) {
+            memcpy(snapshot, s_settings_feedback, sizeof(snapshot));
+        } else {
+            s_settings_feedback[0] = '\0';
+            s_settings_feedback_until_tick = 0;
+        }
     }
-    portEXIT_CRITICAL(&s_settings_feedback_mux);
     ui_text::copy(out, out_len, snapshot);
     return active;
 }

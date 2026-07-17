@@ -2,25 +2,30 @@
 #include "app_state.h"
 #include "app_constexpr.h"
 #include "alarm_services.h"
+#include "battery_runtime_state.h"
 #include "pomodoro_services.h"
 #include "weather_city_mcp.h"
 #include "audio_services.h"
 #include "custom_assets.h"
 #include "daily_saying_state.h"
 #include "input_tasks.h"
+#include "manual_weather_city_state.h"
 #include "network_credentials_state.h"
 #include "network_diagnostics_state.h"
 #include "network_services.h"
+#include "ntp_runtime_state.h"
 #include "ota_runtime_state.h"
 #include "ota_services.h"
 #include "sensor_services.h"
 #include "startup_state.h"
 #include "ui_display_flush.h"
+#include "ui_info_page_state.h"
+#include "ui_settings_feedback.h"
 #include "ui_task_notify.h"
 #include "ui_views.h"
+#include "ui_work_page_catalog.h"
+#include "wifi_portal_state.h"
 #include "xiaozhi_ai.h"
-
-#include <new>
 
 #define MAIN_INVALID_TASK_CREATE_LOG_FORMAT "%s: invalid task create request"
 #define MAIN_TASK_CREATE_FAILED_LOG_FORMAT "%s task create failed"
@@ -34,10 +39,20 @@
 #define MAIN_WEATHER_STATE_INIT_FAILED_LOG_FORMAT "weather state initialization failed"
 #define MAIN_NETWORK_CREDENTIALS_STATE_INIT_FAILED_LOG_FORMAT "network credentials state initialization failed"
 #define MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT "network diagnostics state initialization failed"
+#define MAIN_NTP_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT "NTP runtime state initialization failed"
 #define MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT "hourly sensor history state initialization failed"
 #define MAIN_LOCAL_SENSOR_STATE_INIT_FAILED_LOG_FORMAT "local sensor state initialization failed"
 #define MAIN_OTA_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT "OTA runtime state initialization failed"
 #define MAIN_DAILY_SAYING_STATE_INIT_FAILED_LOG_FORMAT "daily saying state initialization failed"
+#define MAIN_MANUAL_WEATHER_CITY_STATE_INIT_FAILED_LOG_FORMAT "manual weather city state initialization failed"
+#define MAIN_WEATHER_CITY_MCP_STATE_INIT_FAILED_LOG_FORMAT "weather city MCP state initialization failed"
+#define MAIN_WIFI_PORTAL_STATE_INIT_FAILED_LOG_FORMAT "Wi-Fi portal state initialization failed"
+#define MAIN_BATTERY_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT "battery runtime state initialization failed"
+#define MAIN_INFO_PAGE_STATE_INIT_FAILED_LOG_FORMAT "info page state initialization failed"
+#define MAIN_SETTINGS_FEEDBACK_STATE_INIT_FAILED_LOG_FORMAT "settings feedback state initialization failed"
+#define MAIN_WORK_PAGE_CATALOG_INIT_FAILED_LOG_FORMAT "work page catalog initialization failed"
+#define MAIN_POMODORO_STATE_INIT_FAILED_LOG_FORMAT "pomodoro runtime state initialization failed"
+#define MAIN_ALARM_STATE_INIT_FAILED_LOG_FORMAT "alarm runtime state initialization failed"
 #define MAIN_INVALID_BOOT_TASK_LOG_FORMAT "%s: invalid boot task request"
 #define MAIN_BOOT_TASK_CREATE_FAILED_LOG_FORMAT "%s"
 #define MAIN_DISPLAY_UNAVAILABLE_LOG_FORMAT "RLCD display resources unavailable; startup stopped"
@@ -78,7 +93,6 @@ constexpr const char *kBootConnectivityTaskCreateFailed = "boot connectivity tas
 constexpr const char *kBootReadyStatus = "Ready";
 constexpr const char *kBootReadyDetail = "Starting clock";
 StaticEventGroup_t s_app_event_group_storage = {};
-alignas(Shtc3Port) unsigned char s_shtc3_storage[sizeof(Shtc3Port)] = {};
 
 struct AppTaskSpec {
     TaskFunction_t task;
@@ -116,12 +130,6 @@ static_assert(array_count(kRegularAppTasks) > 0,
               "regular task table must not be empty");
 static_assert(app_task_specs_valid(), "regular app task specs must be valid");
 
-void init_shtc3_sensor()
-{
-    if (!g_shtc3) {
-        g_shtc3 = new (s_shtc3_storage) Shtc3Port(g_i2c);
-    }
-}
 } // namespace
 
 static TaskHandle_t create_app_task(TaskFunction_t task,
@@ -278,6 +286,10 @@ extern "C" void app_main(void)
         ESP_LOGE(TAG, MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT);
         return;
     }
+    if (!ntp_runtime_state_init()) {
+        ESP_LOGE(TAG, MAIN_NTP_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
     if (!init_hourly_sensor_history_state()) {
         ESP_LOGE(TAG, MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT);
         return;
@@ -290,6 +302,30 @@ extern "C" void app_main(void)
         ESP_LOGE(TAG, MAIN_DAILY_SAYING_STATE_INIT_FAILED_LOG_FORMAT);
         return;
     }
+    if (!init_manual_weather_city_state()) {
+        ESP_LOGE(TAG, MAIN_MANUAL_WEATHER_CITY_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
+    if (!wifi_portal_state_init()) {
+        ESP_LOGE(TAG, MAIN_WIFI_PORTAL_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
+    if (!battery_runtime_state_init()) {
+        ESP_LOGE(TAG, MAIN_BATTERY_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
+    if (!info_page_state_init()) {
+        ESP_LOGE(TAG, MAIN_INFO_PAGE_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
+    if (!settings_feedback_state_init()) {
+        ESP_LOGE(TAG, MAIN_SETTINGS_FEEDBACK_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
+    if (!work_page_catalog_init()) {
+        ESP_LOGE(TAG, MAIN_WORK_PAGE_CATALOG_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
     init_power_management();
     load_hourly_sensor_history();
     load_daily_saying_cache();
@@ -300,7 +336,7 @@ extern "C" void app_main(void)
     setenv("TZ", "CST-8", 1);
     tzset();
     restore_system_time_from_rtc();
-    init_shtc3_sensor();
+    init_shtc3_sensor(g_i2c);
     sample_battery();
     if (!battery_low_mode_load()) {
         sample_sensor();
@@ -308,9 +344,18 @@ extern "C" void app_main(void)
     init_wifi();
     park_unused_audio_peripherals();
     xiaozhi_ai_init();
-    alarm_services_init();
-    pomodoro_services_init();
-    weather_city_mcp_init();
+    if (!alarm_services_init()) {
+        ESP_LOGE(TAG, MAIN_ALARM_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
+    if (!pomodoro_services_init()) {
+        ESP_LOGE(TAG, MAIN_POMODORO_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
+    if (!weather_city_mcp_init()) {
+        ESP_LOGE(TAG, MAIN_WEATHER_CITY_MCP_STATE_INIT_FAILED_LOG_FORMAT);
+        return;
+    }
 
     g_display.RLCD_Init();
     if (!g_display.IsReady()) {

@@ -266,8 +266,10 @@ esp_err_t root_get_handler(httpd_req_t *req)
     char safe_ssid[kPortalEscapedSsidSize] = {};
     char safe_weather_city[kPortalEscapedCitySize] = {};
     char weather_city[kManualWeatherCityLen] = {};
+    char setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
     (void)manual_weather_city_snapshot(weather_city, sizeof(weather_city));
     (void)network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid));
+    (void)wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid));
     html_escape(wifi_ssid, safe_ssid, sizeof(safe_ssid));
     html_escape(weather_city, safe_weather_city, sizeof(safe_weather_city));
     ScopedHeapBuffer<char> html(kPortalRootHtmlSize, HeapBufferInit::kZeroed);
@@ -297,7 +299,7 @@ esp_err_t root_get_handler(httpd_req_t *req)
                 "<label>天气城市（选填）</label><input name='weather_city' placeholder='例如：杭州；留空则根据公网 IP 自动定位' value='%s' autocomplete='off'>"
                 "<label>离线日期和时间</label><input name='manual_time' type='datetime-local' placeholder='不使用 Wi-Fi 时设置设备时间'>"
                 "<button class='submit' type='submit'>保存并连接</button></form></div>",
-                kPortalHtmlHeadPrefix, g_ap_ssid, safe_ssid, safe_weather_city);
+                kPortalHtmlHeadPrefix, setup_ap_ssid, safe_ssid, safe_weather_city);
     append_wifi_scan_list(html.data(), html.size());
     html_append(html.data(), html.size(), "</main></body></html>");
     return send_portal_html(req, html.data());

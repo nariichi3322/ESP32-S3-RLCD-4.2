@@ -2,6 +2,7 @@
 #include "input_tasks.h"
 
 #include "alarm_services.h"
+#include "app_state.h"
 #include "audio_services.h"
 #include "input_button_wait_policy.h"
 #include "network_diagnostics_state.h"
@@ -22,7 +23,7 @@
 #define BUTTON_ISR_SERVICE_FAILED_LOG_FORMAT "button gpio isr service failed: %s; using polling fallback"
 #define BUTTON_ISR_HANDLER_FAILED_LOG_FORMAT "button gpio %d isr handler failed: %s; using polling fallback"
 #define BUTTON_WAKEUP_FAILED_LOG_FORMAT "button light sleep wakeup failed: %s; using polling fallback"
-#define BUTTON_EDGE_WAKEUP_READY_LOG_FORMAT "button edge wakeup ready for low-refresh idle"
+#define BUTTON_EDGE_WAKEUP_READY_LOG_FORMAT "button edge wakeup ready for idle work pages"
 #define BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT "switch work page: %d"
 #define BUTTON_SHOW_SETTINGS_LOG_FORMAT "key button clicked, showing settings page"
 
@@ -62,24 +63,6 @@ bool button_press_is_short(TickType_t held)
 bool button_press_is_long(TickType_t held)
 {
     return held >= kButtonLongPressTicks;
-}
-
-bool low_refresh_button_idle_context()
-{
-    if (battery_charging_load() ||
-        setup_portal_active_load() ||
-        settings_page_requested() ||
-        info_page_requested() ||
-        network_diag_page_requested() ||
-        ota_flow_active() ||
-        is_audio_playing() ||
-        wifi_radio_on_load()) {
-        return false;
-    }
-    if (battery_low_mode_load()) {
-        return true;
-    }
-    return work_page_uses_low_refresh_idle(active_work_page_load());
 }
 
 void return_to_system_settings_item(int selection, TickType_t now)
@@ -318,10 +301,26 @@ void button_task(void *)
             key_long_handled = false;
             key_press_stopped_alert = false;
         }
-        const bool low_refresh_idle = low_refresh_button_idle_context();
+        const int active_page = active_work_page_load();
+        const bool low_battery_mode = battery_low_mode_load();
+        const bool edge_idle = button_idle_work_page_context({
+            battery_charging_load(),
+            setup_portal_active_load(),
+            settings_page_requested(),
+            info_page_requested(),
+            network_diag_page_requested(),
+            ota_flow_active(),
+            is_audio_playing(),
+            wifi_radio_on_load(),
+            low_battery_mode,
+            is_work_page_enabled(active_page),
+        });
+        const bool low_refresh_idle = edge_idle &&
+                                      (low_battery_mode ||
+                                       work_page_uses_low_refresh_idle(active_page));
         const bool press_tracking_active = boot_pressed_since != 0 || key_pressed_since != 0;
         if (button_task_can_wait_for_edge(edge_wakeup_ready,
-                                          low_refresh_idle,
+                                          edge_idle,
                                           boot_pressed,
                                           key_pressed,
                                           press_tracking_active)) {

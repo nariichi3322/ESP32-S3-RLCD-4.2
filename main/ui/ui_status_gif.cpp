@@ -5,6 +5,7 @@
 
 #include "custom_assets.h"
 #include "ui_bitmap.h"
+#include "ui_clock_surface_objects.h"
 #include "ui_draw_cache.h"
 #include "ui_views.h"
 
@@ -66,7 +67,8 @@ void invalidate_status_gif_draw_cache()
 
 void draw_status_gif_frame(int frame)
 {
-    if (!g_status_gif_canvas) {
+    lv_obj_t *canvas = clock_surface_object_refs().status_gif_canvas;
+    if (!canvas) {
         return;
     }
     frame = clamp_status_gif_frame(frame);
@@ -101,16 +103,16 @@ void draw_status_gif_frame(int frame)
                     continue;
                 }
             }
-            lv_canvas_set_px_color(g_status_gif_canvas, x, y, black ? lv_color_black() : lv_color_white());
+            lv_canvas_set_px_color(canvas, x, y, black ? lv_color_black() : lv_color_white());
             changed = true;
             expand_area_to_include_pixel(x, y, &min_x, &min_y, &max_x, &max_y);
         }
     }
     if (changed || s_last_status_gif_frame != frame) {
         if (change_area_valid(changed, min_x, min_y, max_x, max_y)) {
-            invalidate_canvas_rect(g_status_gif_canvas, min_x, min_y, max_x, max_y);
+            invalidate_canvas_rect(canvas, min_x, min_y, max_x, max_y);
         } else {
-            lv_obj_invalidate(g_status_gif_canvas);
+            lv_obj_invalidate(canvas);
         }
     }
     s_last_status_gif_frame = frame;

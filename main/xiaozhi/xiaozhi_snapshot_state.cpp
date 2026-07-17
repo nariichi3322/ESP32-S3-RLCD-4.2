@@ -1,6 +1,7 @@
 // 实现小智状态快照的单一互斥访问边界。
 #include "xiaozhi_snapshot_state.h"
 
+#include "scoped_semaphore_lock.h"
 #include "ui_task_notify.h"
 #include "xiaozhi_snapshot_change.h"
 #include "xiaozhi_text_utils.h"
@@ -60,21 +61,23 @@ void xiaozhi_snapshot_set(XiaozhiAiState state,
                           const char *detail,
                           const char *binding_code)
 {
-    if (!s_snapshot_mutex ||
-        xSemaphoreTake(s_snapshot_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        return;
+    bool changed = false;
+    {
+        ScopedSemaphoreLock state_lock(s_snapshot_mutex, pdMS_TO_TICKS(100));
+        if (!state_lock) {
+            return;
+        }
+        const XiaozhiAiSnapshot before = s_snapshot;
+        begin_state_update_locked(state, status);
+        xiaozhi_protocol::utf8_safe_copy(s_snapshot.detail,
+                                         sizeof(s_snapshot.detail),
+                                         detail);
+        xiaozhi_protocol::utf8_safe_copy(s_snapshot.binding_code,
+                                         sizeof(s_snapshot.binding_code),
+                                         binding_code);
+        finish_state_update_locked(state);
+        changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
     }
-    const XiaozhiAiSnapshot before = s_snapshot;
-    begin_state_update_locked(state, status);
-    xiaozhi_protocol::utf8_safe_copy(s_snapshot.detail,
-                                     sizeof(s_snapshot.detail),
-                                     detail);
-    xiaozhi_protocol::utf8_safe_copy(s_snapshot.binding_code,
-                                     sizeof(s_snapshot.binding_code),
-                                     binding_code);
-    finish_state_update_locked(state);
-    const bool changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
-    xSemaphoreGive(s_snapshot_mutex);
     if (changed) {
         notify_ui_task();
     }
@@ -83,15 +86,17 @@ void xiaozhi_snapshot_set(XiaozhiAiState state,
 void xiaozhi_snapshot_set_status_preserving_detail(XiaozhiAiState state,
                                                     const char *status)
 {
-    if (!s_snapshot_mutex ||
-        xSemaphoreTake(s_snapshot_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        return;
+    bool changed = false;
+    {
+        ScopedSemaphoreLock state_lock(s_snapshot_mutex, pdMS_TO_TICKS(100));
+        if (!state_lock) {
+            return;
+        }
+        const XiaozhiAiSnapshot before = s_snapshot;
+        begin_state_update_locked(state, status);
+        finish_state_update_locked(state);
+        changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
     }
-    const XiaozhiAiSnapshot before = s_snapshot;
-    begin_state_update_locked(state, status);
-    finish_state_update_locked(state);
-    const bool changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
-    xSemaphoreGive(s_snapshot_mutex);
     if (changed) {
         notify_ui_task();
     }
@@ -99,16 +104,21 @@ void xiaozhi_snapshot_set_status_preserving_detail(XiaozhiAiState state,
 
 void xiaozhi_snapshot_set_emotion(const char *emotion)
 {
-    if (!emotion || !s_snapshot_mutex ||
-        xSemaphoreTake(s_snapshot_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
+    if (!emotion) {
         return;
     }
-    const XiaozhiAiSnapshot before = s_snapshot;
-    xiaozhi_protocol::utf8_safe_copy(s_snapshot.emotion,
-                                     sizeof(s_snapshot.emotion),
-                                     emotion);
-    const bool changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
-    xSemaphoreGive(s_snapshot_mutex);
+    bool changed = false;
+    {
+        ScopedSemaphoreLock state_lock(s_snapshot_mutex, pdMS_TO_TICKS(100));
+        if (!state_lock) {
+            return;
+        }
+        const XiaozhiAiSnapshot before = s_snapshot;
+        xiaozhi_protocol::utf8_safe_copy(s_snapshot.emotion,
+                                         sizeof(s_snapshot.emotion),
+                                         emotion);
+        changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
+    }
     if (changed) {
         notify_ui_task();
     }
@@ -116,12 +126,13 @@ void xiaozhi_snapshot_set_emotion(const char *emotion)
 
 void xiaozhi_snapshot_mark_user_activity()
 {
-    if (!s_snapshot_mutex ||
-        xSemaphoreTake(s_snapshot_mutex, pdMS_TO_TICKS(100)) != pdTRUE) {
-        return;
+    {
+        ScopedSemaphoreLock state_lock(s_snapshot_mutex, pdMS_TO_TICKS(100));
+        if (!state_lock) {
+            return;
+        }
+        ++s_snapshot.activity_sequence;
     }
-    ++s_snapshot.activity_sequence;
-    xSemaphoreGive(s_snapshot_mutex);
     notify_ui_task();
 }
 
@@ -131,12 +142,11 @@ void xiaozhi_snapshot_get(XiaozhiAiSnapshot *out)
         return;
     }
     memset(out, 0, sizeof(*out));
-    if (!s_snapshot_mutex ||
-        xSemaphoreTake(s_snapshot_mutex, pdMS_TO_TICKS(50)) != pdTRUE) {
+    ScopedSemaphoreLock state_lock(s_snapshot_mutex, pdMS_TO_TICKS(50));
+    if (!state_lock) {
         out->state = kXiaozhiAiInactive;
         strlcpy(out->status, kXiaozhiDefaultStatus, sizeof(out->status));
         return;
     }
     *out = s_snapshot;
-    xSemaphoreGive(s_snapshot_mutex);
 }

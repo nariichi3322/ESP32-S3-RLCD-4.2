@@ -7,6 +7,7 @@
 #include "network_services.h"
 #include "network_sync_schedule.h"
 #include "ota_services.h"
+#include "ui_clock.h"
 #include "ui_text_format.h"
 #include "ui_views.h"
 #include "ui_visible_cache.h"
@@ -69,13 +70,11 @@ bool update_clock_weather_panel_text(const char *city,
                                      const char *humidity,
                                      const char *icon_code)
 {
-    bool changed = set_label_text_if_changed(g_weather_city_label, city);
-    changed |= set_label_text_if_changed(g_weather_info_label, info);
-    changed |= set_label_text_if_changed(g_weather_temp_label, temperature);
-    changed |= set_label_text_if_changed(g_weather_humi_label, humidity);
-    changed |= set_label_text_if_changed(g_weather_icon_label,
-                                         weather_icon_text(icon_code));
-    return changed;
+    return set_clock_weather_panel_text(city,
+                                        info,
+                                        temperature,
+                                        humidity,
+                                        weather_icon_text(icon_code));
 }
 
 bool weather_cache_stale(time_t now_value)

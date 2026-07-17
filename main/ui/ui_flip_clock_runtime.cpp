@@ -1,4 +1,6 @@
 // 刷新温湿时钟的数字牌、日期农历、传感器文本、趋势和舒适度图标。
+#include "ui_flip_clock.h"
+#include "ui_flip_clock_objects.h"
 #include "ui_views.h"
 
 #include "calendar_lunar.h"
@@ -129,10 +131,11 @@ bool set_text_on_labels(const char *text, Labels... labels)
 
 bool update_sensor_text()
 {
-    if (!g_flip_clock_sensor_label &&
-        !g_flip_clock_sensor_bold_label &&
-        !g_flip_clock_humidity_label &&
-        !g_flip_clock_humidity_bold_label) {
+    const FlipClockObjectRefs &objects = flip_clock_object_refs();
+    if (!objects.sensor_label &&
+        !objects.sensor_bold_label &&
+        !objects.humidity_label &&
+        !objects.humidity_bold_label) {
         return false;
     }
     char temp_text[kSensorTextSize] = {};
@@ -156,25 +159,25 @@ bool update_sensor_text()
     const int humi_mood = sensor_ok ? humidity_mood(humidity) : kSensorMoodUnavailable;
     bool changed = false;
     changed |= set_text_on_labels(temp_text,
-                                  g_flip_clock_sensor_label,
-                                  g_flip_clock_sensor_bold_label,
-                                  g_flip_clock_sensor_bold_y_label);
+                                  objects.sensor_label,
+                                  objects.sensor_bold_label,
+                                  objects.sensor_bold_y_label);
     changed |= set_text_on_labels(humi_text,
-                                  g_flip_clock_humidity_label,
-                                  g_flip_clock_humidity_bold_label,
-                                  g_flip_clock_humidity_bold_y_label);
-    changed |= update_mood_icon(g_flip_clock_temp_mood_canvas,
+                                  objects.humidity_label,
+                                  objects.humidity_bold_label,
+                                  objects.humidity_bold_y_label);
+    changed |= update_mood_icon(objects.temp_mood_canvas,
                                 temp_mood,
                                 &s_last_temp_mood,
                                 temp_mood_icon_bits(temp_mood));
-    changed |= update_mood_icon(g_flip_clock_humi_mood_canvas,
+    changed |= update_mood_icon(objects.humi_mood_canvas,
                                 humi_mood,
                                 &s_last_humi_mood,
                                 humi_mood_icon_bits(humi_mood));
-    changed |= update_inverted_trend_icon(g_flip_clock_temp_trend_canvas,
+    changed |= update_inverted_trend_icon(objects.temp_trend_canvas,
                                           sensor_ok ? temperature_trend : 0,
                                           &s_last_temp_trend);
-    changed |= update_inverted_trend_icon(g_flip_clock_humi_trend_canvas,
+    changed |= update_inverted_trend_icon(objects.humi_trend_canvas,
                                           sensor_ok ? humidity_trend : 0,
                                           &s_last_humi_trend);
     return changed;
@@ -182,13 +185,14 @@ bool update_sensor_text()
 
 bool update_date_text(const struct tm &local)
 {
-    if (!g_flip_clock_day_label &&
-        !g_flip_clock_day_bold_label &&
-        !g_flip_clock_day_bold_y_label &&
-        !g_flip_clock_lunar_label &&
-        !g_flip_clock_lunar_bold_x_label &&
-        !g_flip_clock_lunar_bold_y_label &&
-        !g_flip_clock_lunar_bold_xy_label) {
+    const FlipClockObjectRefs &objects = flip_clock_object_refs();
+    if (!objects.day_label &&
+        !objects.day_bold_label &&
+        !objects.day_bold_y_label &&
+        !objects.lunar_label &&
+        !objects.lunar_bold_x_label &&
+        !objects.lunar_bold_y_label &&
+        !objects.lunar_bold_xy_label) {
         return false;
     }
     CalendarDayInfo info = {};
@@ -198,14 +202,14 @@ bool update_date_text(const struct tm &local)
     const char *lunar_text = lunar_ok && info.subtext[0] ? info.subtext : kDayPlaceholder;
     bool changed = false;
     changed |= set_text_on_labels(day_text,
-                                  g_flip_clock_day_label,
-                                  g_flip_clock_day_bold_label,
-                                  g_flip_clock_day_bold_y_label);
+                                  objects.day_label,
+                                  objects.day_bold_label,
+                                  objects.day_bold_y_label);
     changed |= set_text_on_labels(lunar_text,
-                                  g_flip_clock_lunar_label,
-                                  g_flip_clock_lunar_bold_x_label,
-                                  g_flip_clock_lunar_bold_y_label,
-                                  g_flip_clock_lunar_bold_xy_label);
+                                  objects.lunar_label,
+                                  objects.lunar_bold_x_label,
+                                  objects.lunar_bold_y_label,
+                                  objects.lunar_bold_xy_label);
     return changed;
 }
 
@@ -245,7 +249,7 @@ bool update_flip_clock_sensor_status()
 bool update_flip_clock_page(const struct tm &local)
 {
     build_flip_clock_page();
-    if (!g_flip_clock_root) {
+    if (!work_page_root(kWorkPageFlipClock)) {
         return false;
     }
     int last_values[kCardCount] = {
@@ -253,8 +257,9 @@ bool update_flip_clock_page(const struct tm &local)
         s_last_minute,
         s_last_second,
     };
+    const FlipClockObjectRefs &objects = flip_clock_object_refs();
     bool changed = update_inverted_clock_cards(local,
-                                                g_flip_clock_card_canvas,
+                                                objects.card_canvas,
                                                 last_values);
     s_last_hour = last_values[kHourCardIndex];
     s_last_minute = last_values[kMinuteCardIndex];

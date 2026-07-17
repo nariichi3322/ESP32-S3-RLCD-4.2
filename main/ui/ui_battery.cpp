@@ -37,19 +37,13 @@ constexpr const char *kBatteryLogTexts[] = {
     BATTERY_TIP_CREATE_FAILED_LOG,
     BATTERY_SEGMENT_CREATE_FAILED_FORMAT,
 };
-lv_obj_t **const kBatterySegmentsByWorkPage[kWorkPageCount] = {
-    g_battery_segments,
-    g_gallery_battery_segments,
-    g_weather_board_battery_segments,
-    g_flip_clock_battery_segments,
-    g_calendar_battery_segments,
-    g_history_battery_segments,
-    g_xiaozhi_battery_segments,
-};
+lv_obj_t *s_battery_segments[kWorkPageCount][kBatterySegmentCount];
 
 static_assert(cstr_array_nonempty(kBatteryLogTexts), "battery log texts must be non-empty");
-static_assert(array_count(kBatterySegmentsByWorkPage) == kWorkPageCount,
-              "battery segment page map must cover every work page");
+static_assert(array_count(s_battery_segments) == kWorkPageCount,
+              "battery segment storage must cover every work page");
+static_assert(array_count(s_battery_segments[0]) == kBatterySegmentCount,
+              "battery segment storage must cover every segment");
 static_assert(kBatteryFrameW > 0 && kBatteryFrameH > 0,
               "battery frame size must be positive");
 static_assert(kBatteryInnerW > 0 && kBatteryInnerH > 0,
@@ -61,7 +55,6 @@ static_assert(kBatterySegmentW > 0 && kBatterySegmentH > 0,
               "battery segment size must be positive");
 static_assert(kBatterySegmentCount * kBatteryPercentPerSegment == 100,
               "battery segments must cover exactly 100 percent");
-} // namespace
 
 void style_battery_part(lv_obj_t *obj, bool filled)
 {
@@ -173,18 +166,34 @@ void update_battery_segments(lv_obj_t **segments, int percent, bool charging, bo
     }
 }
 
-void update_battery_icon(int percent, bool charging, bool blink_on)
+lv_obj_t **battery_segments_for_page(int page)
 {
-    update_battery_segments(g_battery_segments, percent, charging, blink_on);
-    update_battery_segments(g_history_battery_segments, percent, charging, blink_on);
-    update_battery_segments(g_gallery_battery_segments, percent, charging, blink_on);
-    update_battery_segments(g_calendar_battery_segments, percent, charging, blink_on);
+    if (page < 0 || page >= kWorkPageCount) {
+        return nullptr;
+    }
+    return s_battery_segments[page];
+}
+} // namespace
+
+void build_work_page_battery_icon(lv_obj_t *parent, int page)
+{
+    build_battery_icon(parent, battery_segments_for_page(page));
 }
 
 void update_work_page_battery_icon(int page, int percent, bool charging, bool blink_on)
 {
-    if (page < 0 || page >= kWorkPageCount) {
+    lv_obj_t **segments = battery_segments_for_page(page);
+    if (!segments) {
         return;
     }
-    update_battery_segments(kBatterySegmentsByWorkPage[page], percent, charging, blink_on);
+    update_battery_segments(segments, percent, charging, blink_on);
+}
+
+void clear_work_page_battery_refs()
+{
+    for (auto &page_segments : s_battery_segments) {
+        for (lv_obj_t *&segment : page_segments) {
+            segment = nullptr;
+        }
+    }
 }

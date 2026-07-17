@@ -1,7 +1,8 @@
 // 声明设置页菜单数量、确认状态和 KEY 导航接口。
 #pragma once
 
-#include "app_state.h"
+#include "ui_settings_contract.h"
+#include "ui_settings_navigation_state.h"
 
 int settings_secondary_count(int primary);
 int clamp_settings_primary(int primary);

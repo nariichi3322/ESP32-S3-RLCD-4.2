@@ -1,7 +1,7 @@
 // 声明 OTA manifest 数据结构、纯 JSON 解析结果和解析入口。
 #pragma once
 
-#include "app_state.h"
+#include "ota_manifest_limits.h"
 
 #include <stddef.h>
 

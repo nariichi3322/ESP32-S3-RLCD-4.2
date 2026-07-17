@@ -1,8 +1,6 @@
 // 验证手动天气城市在并发读写时始终提供完整字符串快照。
 #include "manual_weather_city_state.h"
 
-#include "app_state.h"
-
 #include <assert.h>
 #include <atomic>
 #include <string.h>
@@ -11,6 +9,11 @@
 int main()
 {
     char city[kManualWeatherCityLen] = {};
+    assert(!manual_weather_city_snapshot(city, sizeof(city)));
+    assert(!manual_weather_city_is_configured());
+
+    assert(init_manual_weather_city_state());
+    assert(init_manual_weather_city_state());
     assert(!manual_weather_city_snapshot(city, sizeof(city)));
     assert(city[0] == '\0');
     assert(!manual_weather_city_is_configured());

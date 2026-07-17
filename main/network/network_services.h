@@ -4,6 +4,7 @@
 #include "esp_http_server.h"
 #include "network_form.h"
 #include "network_gzip.h"
+#include "network_http_transaction_lock.h"
 #include "network_https_resources.h"
 #include "network_json.h"
 #include "network_text.h"
@@ -57,10 +58,6 @@ void init_wifi();
 bool perform_ntp_sync(int max_retries = 30);
 time_t get_last_ntp_sync_time();
 int boot_sync_remaining_ms();
-// ESP32-S3 的 TLS 硬件密码锁不能被并发握手安全共享；所有 HTTPS/WSS 建连经此锁串行化。
-bool init_network_http_transaction_lock();
-bool acquire_network_http_transaction_lock(TickType_t timeout);
-void release_network_http_transaction_lock();
 esp_err_t http_event_handler(esp_http_client_event_t *evt);
 esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len);
 esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *api_key = nullptr);

@@ -1,41 +1,58 @@
 // 管理页面根对象、可见性、工作页顺序和低电量显示状态。
+#include "ui_page_state.h"
+
 #include "ui_views.h"
 
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "network_services.h"
+#include "ui_clock.h"
+#include "ui_clock_header_objects.h"
+#include "ui_clock_surface_objects.h"
+#include "ui_flip_clock.h"
+#include "ui_setup_status.h"
+#include "ui_xiaozhi.h"
 
 namespace {
 #define PAGE_ROOT_CREATE_FAILED_LOG "page root create failed"
 #define LOWER_PANEL_OBJECT_LIST_FULL_LOG "lower panel object list full"
 constexpr int kFallbackWorkPage = kWorkPageWeatherClock;
-constexpr size_t kAuxPageRootCount = 3; // System info, network diagnostics and settings.
+constexpr size_t kAuxPageRootCount = static_cast<size_t>(AuxiliaryPage::kCount);
 constexpr int kPageRootX = 0;
 constexpr int kPageRootY = 0;
 constexpr int kPageRootW = kDisplayWidth;
 constexpr int kPageRootH = kDisplayHeight;
+constexpr size_t kLowerPanelObjectCapacity = 13;
 struct PageRootList {
     lv_obj_t *items[kWorkPageCount + kAuxPageRootCount];
 };
+lv_obj_t *s_work_page_roots[kWorkPageCount];
+lv_obj_t *s_auxiliary_page_roots[kAuxPageRootCount];
+lv_obj_t *s_lower_panel_objects[kLowerPanelObjectCapacity];
+
+size_t auxiliary_page_index(AuxiliaryPage page)
+{
+    return static_cast<size_t>(page);
+}
 
 lv_obj_t *work_page_root_or_fallback(lv_obj_t *root)
 {
-    return root ? root : g_clock_root;
+    return root ? root : work_page_root(kFallbackWorkPage);
 }
 
 PageRootList current_page_roots()
 {
     return {{
-        g_clock_root,
-        g_history_root,
-        g_gallery_root,
-        g_calendar_root,
-        g_weather_board_root,
-        g_flip_clock_root,
-        g_xiaozhi_root,
-        g_info_root,
-        g_network_diag_root,
-        g_settings_root,
+        work_page_root(kWorkPageWeatherClock),
+        work_page_root(kWorkPageHistory),
+        work_page_root(kWorkPageGallery),
+        work_page_root(kWorkPageCalendar),
+        work_page_root(kWorkPageWeatherBoard),
+        work_page_root(kWorkPageFlipClock),
+        work_page_root(kWorkPageXiaozhiAI),
+        auxiliary_page_root(AuxiliaryPage::kSystemInfo),
+        auxiliary_page_root(AuxiliaryPage::kNetworkDiagnostics),
+        auxiliary_page_root(AuxiliaryPage::kSettings),
     }};
 }
 
@@ -44,34 +61,80 @@ lv_obj_t *build_work_page_root(int page)
     switch (page) {
     case kWorkPageWeatherClock:
         build_clock_ui();
-        return g_clock_root;
+        break;
     case kWorkPageHistory:
         build_history_page();
-        return work_page_root_or_fallback(g_history_root);
+        break;
     case kWorkPageGallery:
         build_gallery_page();
-        return work_page_root_or_fallback(g_gallery_root);
+        break;
     case kWorkPageCalendar:
         build_calendar_page();
-        return work_page_root_or_fallback(g_calendar_root);
+        break;
     case kWorkPageWeatherBoard:
         build_weather_board_page();
-        return work_page_root_or_fallback(g_weather_board_root);
+        break;
     case kWorkPageFlipClock:
         build_flip_clock_page();
-        return work_page_root_or_fallback(g_flip_clock_root);
+        break;
     case kWorkPageXiaozhiAI:
         build_xiaozhi_page();
-        return work_page_root_or_fallback(g_xiaozhi_root);
+        break;
     default:
-        return g_clock_root;
+        return work_page_root(kFallbackWorkPage);
     }
+    return work_page_root_or_fallback(work_page_root(page));
 }
 
 static_assert(kFallbackWorkPage == kWorkPageWeatherClock, "special-mode fallback page must remain weather clock");
 static_assert(kAuxPageRootCount == 3, "auxiliary roots are info, network diagnostics and settings");
 static_assert(kPageRootW > 0 && kPageRootH > 0, "page root size must be positive");
+static_assert(kLowerPanelObjectCapacity > 0, "lower panel object storage must not be empty");
 } // namespace
+
+lv_obj_t *work_page_root(int page)
+{
+    if (page < 0 || page >= kWorkPageCount) {
+        return nullptr;
+    }
+    return s_work_page_roots[page];
+}
+
+void set_work_page_root(int page, lv_obj_t *root)
+{
+    if (page < 0 || page >= kWorkPageCount) {
+        return;
+    }
+    s_work_page_roots[page] = root;
+}
+
+void clear_work_page_root_refs()
+{
+    for (lv_obj_t *&root : s_work_page_roots) {
+        root = nullptr;
+    }
+}
+
+lv_obj_t *auxiliary_page_root(AuxiliaryPage page)
+{
+    size_t index = auxiliary_page_index(page);
+    return index < kAuxPageRootCount ? s_auxiliary_page_roots[index] : nullptr;
+}
+
+void set_auxiliary_page_root(AuxiliaryPage page, lv_obj_t *root)
+{
+    size_t index = auxiliary_page_index(page);
+    if (index < kAuxPageRootCount) {
+        s_auxiliary_page_roots[index] = root;
+    }
+}
+
+void clear_auxiliary_page_root_refs()
+{
+    for (lv_obj_t *&root : s_auxiliary_page_roots) {
+        root = nullptr;
+    }
+}
 
 static void configure_page_root(lv_obj_t *root)
 {
@@ -142,7 +205,7 @@ void remember_lower_panel_object(lv_obj_t *obj)
     if (!obj) {
         return;
     }
-    for (lv_obj_t *&slot : g_lower_panel_objects) {
+    for (lv_obj_t *&slot : s_lower_panel_objects) {
         if (!slot) {
             slot = obj;
             return;
@@ -170,15 +233,15 @@ bool set_obj_visible(lv_obj_t *obj, bool visible)
 
 void set_lower_panel_visible(bool visible)
 {
-    for (lv_obj_t *obj : g_lower_panel_objects) {
+    for (lv_obj_t *obj : s_lower_panel_objects) {
         set_obj_visible(obj, visible);
     }
 }
 
-void set_setup_panel_visible(bool visible)
+void clear_lower_panel_object_refs()
 {
-    for (lv_obj_t *label : g_setup_status_labels) {
-        set_obj_visible(label, visible);
+    for (lv_obj_t *&obj : s_lower_panel_objects) {
+        obj = nullptr;
     }
 }
 
@@ -190,51 +253,55 @@ bool update_low_battery_state()
 
 void apply_clock_mode_visibility(bool setup_active)
 {
+    const ClockHeaderObjectRefs &header = clock_header_object_refs();
+    const ClockSurfaceObjectRefs &surface = clock_surface_object_refs();
     bool low = battery_low_mode_load();
-    set_obj_visible(g_second_canvas, !low);
+    set_obj_visible(surface.second_canvas, !low);
     set_work_page_day_progress_visible(kWorkPageWeatherClock, !low);
-    set_obj_visible(g_second_progress_canvas, !low);
-    set_obj_visible(g_low_battery_icon_canvas, low);
+    set_obj_visible(surface.second_progress_canvas, !low);
+    set_obj_visible(surface.low_battery_icon_canvas, low);
     set_lower_panel_visible(!setup_active && !low);
-    set_setup_panel_visible(setup_active && !low);
-    set_obj_visible(g_panel_sep_a, !setup_active || low);
-    set_obj_visible(g_panel_sep_b, !setup_active || low);
+    set_setup_status_panel_visible(setup_active && !low);
+    set_obj_visible(surface.panel_separator_a, !setup_active || low);
+    set_obj_visible(surface.panel_separator_b, !setup_active || low);
     if (low || setup_active) {
-        set_obj_visible(g_alert_pill, false);
-        set_obj_visible(g_chime_status_icon_canvas, false);
-        set_obj_visible(g_wifi_status_icon_canvas, false);
-        set_obj_visible(g_alarm_status_icon_canvas, false);
+        set_obj_visible(header.alert_pill, false);
+        set_obj_visible(header.chime_status_icon_canvas, false);
+        set_obj_visible(header.wifi_status_icon_canvas, false);
+        set_obj_visible(header.alarm_status_icon_canvas, false);
     }
 }
 
 void update_alert_pill(bool show, int alert_index)
 {
+    const ClockHeaderObjectRefs &header = clock_header_object_refs();
     WeatherAlertData alert = {};
     get_weather_snapshot(nullptr, &alert);
     bool visible = show &&
                    !battery_low_mode_load() &&
                    alert.active &&
                    alert.count > 0;
-    set_obj_visible(g_alert_pill, visible);
+    set_obj_visible(header.alert_pill, visible);
     update_top_status_icons(visible);
     if (visible) {
         if (alert_index < 0) {
             alert_index = 0;
         }
         alert_index %= alert.count;
-        set_label_text_if_changed(g_alert_label, alert.titles[alert_index]);
+        set_label_text_if_changed(header.alert_label, alert.titles[alert_index]);
     }
 }
 
 bool update_top_status_icons(bool alert_visible)
 {
+    const ClockHeaderObjectRefs &header = clock_header_object_refs();
     bool allow = !alert_visible && !battery_low_mode_load() && !setup_portal_active_load();
     bool changed = false;
-    changed |= set_obj_visible(g_chime_status_icon_canvas,
+    changed |= set_obj_visible(header.chime_status_icon_canvas,
                                allow && (g_hourly_chime_enabled || g_hourly_chime_all_day));
-    changed |= set_obj_visible(g_wifi_status_icon_canvas,
+    changed |= set_obj_visible(header.wifi_status_icon_canvas,
                                allow && wifi_radio_on_for_status_icon());
-    changed |= set_obj_visible(g_alarm_status_icon_canvas,
+    changed |= set_obj_visible(header.alarm_status_icon_canvas,
                                allow && alarm_is_enabled());
     return changed;
 }

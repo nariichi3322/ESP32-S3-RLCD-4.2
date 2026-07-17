@@ -1,7 +1,10 @@
 // 声明温湿历史页曲线、坐标轴和极值徽标的绘制接口。
 #pragma once
 
-#include "app_state.h"
+#include "sensor_history_types.h"
+
+#include "lvgl.h"
+#include <time.h>
 
 inline constexpr int kHistoryAxisValueCount = 3;
 inline constexpr int kHistoryAxisTickCount = 5;
@@ -22,7 +25,8 @@ void set_history_badge(lv_obj_t *label,
                        int plot_y,
                        int plot_w,
                        int plot_h);
-void update_history_axis_labels(time_t start, time_t end);
+void update_history_axis_labels(time_t start,
+                                lv_obj_t *const *time_labels);
 void draw_history_chart_panel(lv_obj_t *canvas,
                               int canvas_w,
                               int canvas_h,

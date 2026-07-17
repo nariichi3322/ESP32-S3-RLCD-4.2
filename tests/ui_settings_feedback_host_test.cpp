@@ -1,11 +1,15 @@
 // 直接验证设置页反馈和手动同步超时收尾的生产实现。
 #include "ui_settings_feedback.h"
+#include "app_state.h"
+#include "network_diagnostics_state.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_sync_state.h"
 
 #include <assert.h>
+#include <atomic>
 #include <stdint.h>
 #include <string.h>
+#include <thread>
 
 const char *const TAG = "Test";
 EventGroupHandle_t g_app_events = reinterpret_cast<EventGroupHandle_t>(1);
@@ -14,7 +18,7 @@ namespace {
 TickType_t s_now = 0;
 EventBits_t s_event_bits = 0;
 int s_notify_count = 0;
-int s_network_diag_state = kNetworkDiagIdle;
+NetworkDiagState s_network_diag_state = kNetworkDiagIdle;
 
 SettingsSyncStateSnapshot sync_state()
 {
@@ -61,7 +65,7 @@ void expect_timeout(SettingsSyncOp op, EventBits_t bit, const char *feedback)
 }
 } // namespace
 
-int network_diag_state_load()
+NetworkDiagState network_diag_state_load()
 {
     return s_network_diag_state;
 }
@@ -96,6 +100,14 @@ extern "C" size_t strlcpy(char *dst, const char *src, size_t size)
 
 int main()
 {
+    char uninitialized_feedback[kSettingsFeedbackTextLen] = "stale";
+    assert(!settings_feedback_copy_active(100,
+                                          uninitialized_feedback,
+                                          sizeof(uninitialized_feedback)));
+    assert(uninitialized_feedback[0] == '\0');
+    assert(settings_feedback_state_init());
+    assert(settings_feedback_state_init());
+
     reset_state();
     set_settings_feedback("测试", 2500);
     expect_active_feedback(2599, "测试");
@@ -132,5 +144,33 @@ int main()
     assert(!settings_feedback_copy_active(100, feedback, sizeof(feedback)));
     assert(feedback[0] == '\0');
     assert(s_notify_count == 0);
+
+    reset_state();
+    s_now = 100;
+    std::atomic<bool> inconsistent{false};
+    std::thread writer([] {
+        for (int i = 0; i < 10000; ++i) {
+            set_settings_feedback((i & 1) == 0 ? "反馈甲" : "反馈乙",
+                                  (i & 1) == 0 ? 1000 : 3000);
+        }
+    });
+    std::thread reader([&] {
+        for (int i = 0; i < 10000; ++i) {
+            char current[kSettingsFeedbackTextLen] = {};
+            bool active = settings_feedback_copy_active(2000,
+                                                         current,
+                                                         sizeof(current));
+            if (active && strcmp(current, "反馈乙") != 0) {
+                inconsistent.store(true, std::memory_order_relaxed);
+                break;
+            }
+        }
+    });
+    writer.join();
+    reader.join();
+    assert(!inconsistent.load(std::memory_order_relaxed));
+
+    set_settings_feedback("最终反馈", 3000);
+    expect_active_feedback(2000, "最终反馈");
     return 0;
 }

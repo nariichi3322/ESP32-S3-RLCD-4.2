@@ -11,8 +11,29 @@ set(LV_LVGL_H_INCLUDE_SIMPLE ON CACHE BOOL "" FORCE)
 
 add_subdirectory("../managed_components/lvgl__lvgl" "${CMAKE_BINARY_DIR}/lvgl" EXCLUDE_FROM_ALL)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(SDL2 REQUIRED sdl2)
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(SDL2 QUIET sdl2)
+endif()
+if(NOT SDL2_FOUND)
+    find_program(SDL2_CONFIG_EXECUTABLE NAMES sdl2-config REQUIRED)
+    execute_process(
+        COMMAND "${SDL2_CONFIG_EXECUTABLE}" --cflags
+        OUTPUT_VARIABLE SDL2_CFLAGS_TEXT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE SDL2_CFLAGS_RESULT)
+    execute_process(
+        COMMAND "${SDL2_CONFIG_EXECUTABLE}" --libs
+        OUTPUT_VARIABLE SDL2_LDFLAGS_TEXT
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE SDL2_LDFLAGS_RESULT)
+    if(NOT SDL2_CFLAGS_RESULT EQUAL 0 OR NOT SDL2_LDFLAGS_RESULT EQUAL 0)
+        message(FATAL_ERROR "sdl2-config failed to provide compiler or linker flags")
+    endif()
+    separate_arguments(SDL2_CFLAGS_OTHER NATIVE_COMMAND "${SDL2_CFLAGS_TEXT}")
+    separate_arguments(SDL2_LDFLAGS NATIVE_COMMAND "${SDL2_LDFLAGS_TEXT}")
+    set(SDL2_INCLUDE_DIRS "")
+endif()
 
 add_executable(weather_clock_sdl
     "main.cpp"
@@ -22,6 +43,7 @@ add_executable(weather_clock_sdl
     "sdl_preview_flip_clock.cpp"
     "sdl_preview_gallery.cpp"
     "sdl_preview_history.cpp"
+    "sdl_preview_progress.cpp"
     "sdl_preview_settings.cpp"
     "sdl_preview_weather.cpp"
     "sdl_preview_widgets.cpp"

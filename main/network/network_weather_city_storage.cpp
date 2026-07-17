@@ -5,6 +5,7 @@
 #include "app_text_format.h"
 #include "custom_assets.h"
 #include "network_config_nvs.h"
+#include "weather_city_contract.h"
 #include "weather_city_text.h"
 
 #include <string.h>
@@ -29,6 +30,17 @@ esp_err_t write_ignored_asset_city(nvs_handle_t nvs, const char *city)
 {
     return network_config_nvs::write_optional_nvs_string_key(
         nvs, kIgnoredAssetWeatherCityKey, city);
+}
+
+esp_err_t write_city_key_if_changed(nvs_handle_t nvs,
+                                    esp_err_t err,
+                                    const char *key,
+                                    const char *city,
+                                    bool *changed)
+{
+    char saved[kManualWeatherCityLen] = {};
+    return network_config_nvs::write_changed_optional_nvs_string(
+        nvs, err, key, city, saved, sizeof(saved), changed);
 }
 
 bool read_valid_asset_city(char *out, size_t out_len)
@@ -65,14 +77,6 @@ bool asset_city_ignored(nvs_handle_t nvs, const char *city)
 bool read_unignored_asset_city(nvs_handle_t nvs, char *out, size_t out_len)
 {
     return read_valid_asset_city(out, out_len) && !asset_city_ignored(nvs, out);
-}
-
-esp_err_t write_current_asset_city_ignore(nvs_handle_t nvs)
-{
-    char asset_city[kManualWeatherCityLen] = {};
-    return read_valid_asset_city(asset_city, sizeof(asset_city))
-               ? write_ignored_asset_city(nvs, asset_city)
-               : write_ignored_asset_city(nvs, nullptr);
 }
 
 esp_err_t write_matching_asset_city_ignore(nvs_handle_t nvs,
@@ -121,18 +125,39 @@ bool load_preferred_city(nvs_handle_t nvs, char *out, size_t out_len)
     return out[0] != '\0';
 }
 
-esp_err_t write_provisioned_city(nvs_handle_t nvs, esp_err_t err, const char *city)
+esp_err_t write_provisioned_city(nvs_handle_t nvs,
+                                 esp_err_t err,
+                                 const char *city,
+                                 bool *changed)
 {
+    if (changed) {
+        *changed = false;
+    }
     if (err != ESP_OK) {
         return err;
     }
-    err = write_manual_city_key(nvs, city);
+    bool manual_changed = false;
+    err = write_city_key_if_changed(
+        nvs, err, kManualWeatherCityKey, city, &manual_changed);
     if (err != ESP_OK) {
         return err;
     }
-    return city && city[0] != '\0'
-               ? write_ignored_asset_city(nvs, nullptr)
-               : write_current_asset_city_ignore(nvs);
+    char asset_city[kManualWeatherCityLen] = {};
+    const char *ignored_city = nullptr;
+    if ((!city || city[0] == '\0') &&
+        read_valid_asset_city(asset_city, sizeof(asset_city))) {
+        ignored_city = asset_city;
+    }
+    bool ignored_changed = false;
+    err = write_city_key_if_changed(nvs,
+                                    err,
+                                    kIgnoredAssetWeatherCityKey,
+                                    ignored_city,
+                                    &ignored_changed);
+    if (err == ESP_OK && changed) {
+        *changed = manual_changed || ignored_changed;
+    }
+    return err;
 }
 
 esp_err_t write_manual_city_if_changed(nvs_handle_t nvs,

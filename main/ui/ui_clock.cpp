@@ -1,4 +1,9 @@
 // 构建和刷新天气时钟主页的时间、天气、温湿度和状态区域。
+#include "ui_clock.h"
+#include "ui_clock_header_objects.h"
+#include "ui_clock_sensor_objects.h"
+#include "ui_clock_surface_objects.h"
+
 #include "ui_views.h"
 
 #include "app_constexpr.h"
@@ -45,6 +50,17 @@ lv_color_t *s_time_canvas_buffer;
 lv_color_t *s_second_canvas_buffer;
 lv_color_t *s_status_gif_canvas_buffer;
 lv_color_t *s_second_progress_canvas_buffer;
+struct ClockWeatherPanelObjects {
+    lv_obj_t *city_label = nullptr;
+    lv_obj_t *info_label = nullptr;
+    lv_obj_t *icon_label = nullptr;
+    lv_obj_t *temperature_label = nullptr;
+    lv_obj_t *humidity_label = nullptr;
+};
+ClockWeatherPanelObjects s_weather_panel_objects;
+ClockLocalSensorObjectRefs s_local_sensor_objects;
+ClockHeaderObjectRefs s_header_objects;
+ClockSurfaceObjectRefs s_surface_objects;
 constexpr const char *kClockLogTexts[] = {
     CLOCK_DATE_LABEL_CREATE_FAILED_LOG,
     CLOCK_ALERT_PILL_CREATE_FAILED_LOG,
@@ -298,35 +314,36 @@ void build_clock_fill_canvas(lv_obj_t *screen,
 
 void build_clock_header(lv_obj_t *screen)
 {
-    g_date_label = make_label(screen,
-                              kClockDateLabelX,
-                              kClockDateLabelY,
-                              kClockDateLabelWidth,
-                              kClockDateLabelHeight,
-                              "----/--/-- / 星期-");
-    if (g_date_label) {
-        lv_obj_set_style_text_align(g_date_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    ClockHeaderObjectRefs &objects = mutable_clock_header_object_refs();
+    objects.date_label = make_label(screen,
+                                    kClockDateLabelX,
+                                    kClockDateLabelY,
+                                    kClockDateLabelWidth,
+                                    kClockDateLabelHeight,
+                                    "----/--/-- / 星期-");
+    if (objects.date_label) {
+        lv_obj_set_style_text_align(objects.date_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     } else {
         ESP_LOGW(TAG, "%s", CLOCK_DATE_LABEL_CREATE_FAILED_LOG);
     }
-    build_battery_icon(screen, g_battery_segments);
+    build_work_page_battery_icon(screen, kWorkPageWeatherClock);
 
-    g_alert_pill = lv_obj_create(screen);
-    if (g_alert_pill) {
-        configure_clock_alert_pill(g_alert_pill);
+    objects.alert_pill = lv_obj_create(screen);
+    if (objects.alert_pill) {
+        configure_clock_alert_pill(objects.alert_pill);
 
         if (ensure_canvas_buffer(&s_alert_icon_canvas_buffer,
                                  WARNING_ICON_WIDTH,
                                  WARNING_ICON_HEIGHT)) {
-            g_alert_icon_canvas = lv_canvas_create(g_alert_pill);
-            if (g_alert_icon_canvas) {
-                configure_canvas_base(g_alert_icon_canvas,
+            objects.alert_icon_canvas = lv_canvas_create(objects.alert_pill);
+            if (objects.alert_icon_canvas) {
+                configure_canvas_base(objects.alert_icon_canvas,
                                       s_alert_icon_canvas_buffer,
                                       kClockAlertIconX,
                                       kClockAlertIconY,
                                       WARNING_ICON_WIDTH,
                                       WARNING_ICON_HEIGHT);
-                draw_1bit_icon(g_alert_icon_canvas,
+                draw_1bit_icon(objects.alert_icon_canvas,
                                WARNING_ICON_WIDTH,
                                WARNING_ICON_HEIGHT,
                                WARNING_ICON_BYTES_PER_ROW,
@@ -337,17 +354,19 @@ void build_clock_header(lv_obj_t *screen)
                 ESP_LOGW(TAG, "%s", CLOCK_ALERT_ICON_CANVAS_CREATE_FAILED_LOG);
             }
         }
-        g_alert_label = make_label_with_font(g_alert_pill,
-                                             kClockAlertLabelX,
-                                             kClockAlertLabelY,
-                                             kClockAlertLabelWidth,
-                                             kClockAlertLabelHeight,
-                                             "",
-                                             &zh_font_16);
-        if (g_alert_label) {
-            lv_obj_set_style_text_color(g_alert_label, lv_color_white(), LV_PART_MAIN);
-            lv_obj_set_style_text_align(g_alert_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-            lv_label_set_long_mode(g_alert_label, LV_LABEL_LONG_CLIP);
+        objects.alert_label = make_label_with_font(objects.alert_pill,
+                                                   kClockAlertLabelX,
+                                                   kClockAlertLabelY,
+                                                   kClockAlertLabelWidth,
+                                                   kClockAlertLabelHeight,
+                                                   "",
+                                                   &zh_font_16);
+        if (objects.alert_label) {
+            lv_obj_set_style_text_color(objects.alert_label, lv_color_white(), LV_PART_MAIN);
+            lv_obj_set_style_text_align(objects.alert_label,
+                                        LV_TEXT_ALIGN_CENTER,
+                                        LV_PART_MAIN);
+            lv_label_set_long_mode(objects.alert_label, LV_LABEL_LONG_CLIP);
         } else {
             ESP_LOGW(TAG, "%s", CLOCK_ALERT_LABEL_CREATE_FAILED_LOG);
         }
@@ -356,7 +375,7 @@ void build_clock_header(lv_obj_t *screen)
     }
 
     build_clock_status_icon(screen,
-                            &g_chime_status_icon_canvas,
+                            &objects.chime_status_icon_canvas,
                             &s_chime_status_icon_canvas_buffer,
                             kClockChimeStatusIconX,
                             kClockChimeStatusIconY,
@@ -365,7 +384,7 @@ void build_clock_header(lv_obj_t *screen)
                             CHIME_STATUS_ICON_BYTES_PER_ROW,
                             chime_status_icon_bits);
     build_clock_status_icon(screen,
-                            &g_wifi_status_icon_canvas,
+                            &objects.wifi_status_icon_canvas,
                             &s_wifi_status_icon_canvas_buffer,
                             kClockWifiStatusIconX,
                             kClockWifiStatusIconY,
@@ -374,7 +393,7 @@ void build_clock_header(lv_obj_t *screen)
                             WIFI_STATUS_ICON_BYTES_PER_ROW,
                             wifi_status_icon_bits);
     build_clock_status_icon(screen,
-                            &g_alarm_status_icon_canvas,
+                            &objects.alarm_status_icon_canvas,
                             &s_alarm_status_icon_canvas_buffer,
                             kClockAlarmStatusIconX,
                             kClockAlarmStatusIconY,
@@ -386,61 +405,71 @@ void build_clock_header(lv_obj_t *screen)
 
 void build_clock_weather_panel(lv_obj_t *screen)
 {
-    g_weather_city_label = make_clock_lower_center_label(screen,
-                                                         kClockWeatherCityLabelX,
-                                                         kClockWeatherCityLabelY,
-                                                         kClockWeatherCityLabelWidth,
-                                                         kClockWeatherCityLabelHeight,
-                                                         kClockWeatherCityPlaceholder,
-                                                         kClockComponentWeatherCity);
-    g_weather_icon_label = make_label(screen,
-                                      kClockWeatherIconLabelX,
-                                      kClockWeatherIconLabelY,
-                                      kClockWeatherIconLabelWidth,
-                                      kClockWeatherIconLabelHeight,
-                                      "");
-    remember_lower_panel_object(g_weather_icon_label);
-    if (g_weather_icon_label) {
-        lv_obj_set_style_text_font(g_weather_icon_label, &qweather_icons_36, LV_PART_MAIN);
-        lv_obj_set_style_border_width(g_weather_icon_label, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(g_weather_icon_label, 0, LV_PART_MAIN);
-        lv_obj_set_style_text_align(g_weather_icon_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    s_weather_panel_objects.city_label =
+        make_clock_lower_center_label(screen,
+                                      kClockWeatherCityLabelX,
+                                      kClockWeatherCityLabelY,
+                                      kClockWeatherCityLabelWidth,
+                                      kClockWeatherCityLabelHeight,
+                                      kClockWeatherCityPlaceholder,
+                                      kClockComponentWeatherCity);
+    s_weather_panel_objects.icon_label = make_label(screen,
+                                                     kClockWeatherIconLabelX,
+                                                     kClockWeatherIconLabelY,
+                                                     kClockWeatherIconLabelWidth,
+                                                     kClockWeatherIconLabelHeight,
+                                                     "");
+    remember_lower_panel_object(s_weather_panel_objects.icon_label);
+    if (s_weather_panel_objects.icon_label) {
+        lv_obj_set_style_text_font(s_weather_panel_objects.icon_label,
+                                   &qweather_icons_36,
+                                   LV_PART_MAIN);
+        lv_obj_set_style_border_width(s_weather_panel_objects.icon_label, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(s_weather_panel_objects.icon_label, 0, LV_PART_MAIN);
+        lv_obj_set_style_text_align(s_weather_panel_objects.icon_label,
+                                    LV_TEXT_ALIGN_CENTER,
+                                    LV_PART_MAIN);
     } else {
         ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, kClockComponentWeatherIcon);
     }
-    g_weather_info_label = make_label(screen,
-                                      kClockWeatherInfoLabelX,
-                                      kClockWeatherInfoLabelY,
-                                      kClockWeatherInfoLabelWidth,
-                                      kClockWeatherInfoLabelHeight,
-                                      kClockWeatherInfoWaitingText);
-    remember_lower_panel_object(g_weather_info_label);
-    if (g_weather_info_label) {
-        lv_label_set_long_mode(g_weather_info_label, LV_LABEL_LONG_CLIP);
-        lv_obj_set_style_text_align(g_weather_info_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    s_weather_panel_objects.info_label = make_label(screen,
+                                                     kClockWeatherInfoLabelX,
+                                                     kClockWeatherInfoLabelY,
+                                                     kClockWeatherInfoLabelWidth,
+                                                     kClockWeatherInfoLabelHeight,
+                                                     kClockWeatherInfoWaitingText);
+    remember_lower_panel_object(s_weather_panel_objects.info_label);
+    if (s_weather_panel_objects.info_label) {
+        lv_label_set_long_mode(s_weather_panel_objects.info_label, LV_LABEL_LONG_CLIP);
+        lv_obj_set_style_text_align(s_weather_panel_objects.info_label,
+                                    LV_TEXT_ALIGN_CENTER,
+                                    LV_PART_MAIN);
     } else {
         ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, kClockComponentWeatherInfo);
     }
-    g_weather_temp_label = make_clock_lower_center_label(screen,
-                                                         kClockWeatherMetricLabelX,
-                                                         kClockWeatherTempLabelY,
-                                                         kClockWeatherMetricLabelWidth,
-                                                         kClockWeatherMetricLabelHeight,
-                                                         kClockWeatherTempPlaceholder,
-                                                         kClockComponentWeatherTemp);
-    g_weather_humi_label = make_clock_lower_center_label(screen,
-                                                         kClockWeatherMetricLabelX,
-                                                         kClockWeatherHumiLabelY,
-                                                         kClockWeatherMetricLabelWidth,
-                                                         kClockWeatherMetricLabelHeight,
-                                                         kClockWeatherHumidityPlaceholder,
-                                                         kClockComponentWeatherHumidity);
+    s_weather_panel_objects.temperature_label =
+        make_clock_lower_center_label(screen,
+                                      kClockWeatherMetricLabelX,
+                                      kClockWeatherTempLabelY,
+                                      kClockWeatherMetricLabelWidth,
+                                      kClockWeatherMetricLabelHeight,
+                                      kClockWeatherTempPlaceholder,
+                                      kClockComponentWeatherTemp);
+    s_weather_panel_objects.humidity_label =
+        make_clock_lower_center_label(screen,
+                                      kClockWeatherMetricLabelX,
+                                      kClockWeatherHumiLabelY,
+                                      kClockWeatherMetricLabelWidth,
+                                      kClockWeatherMetricLabelHeight,
+                                      kClockWeatherHumidityPlaceholder,
+                                      kClockComponentWeatherHumidity);
 }
 
 void build_clock_local_sensor_panel(lv_obj_t *screen)
 {
+    ClockLocalSensorObjectRefs &objects = mutable_clock_local_sensor_object_refs();
     build_clock_lower_icon(screen,
-                           &g_temp_icon_canvas,
+                           &objects.temperature_icon_canvas,
                            &s_temp_icon_canvas_buffer,
                            kClockTempIconX,
                            kClockTempIconY,
@@ -450,7 +479,7 @@ void build_clock_local_sensor_panel(lv_obj_t *screen)
                            temp_icon_bits,
                            kClockComponentTempIcon);
     build_clock_lower_icon(screen,
-                           &g_humi_icon_canvas,
+                           &objects.humidity_icon_canvas,
                            &s_humi_icon_canvas_buffer,
                            kClockHumiIconX,
                            kClockHumiIconY,
@@ -459,22 +488,22 @@ void build_clock_local_sensor_panel(lv_obj_t *screen)
                            HUMI_ICON_BYTES_PER_ROW,
                            humi_icon_bits,
                            kClockComponentHumidityIcon);
-    g_temp_label = make_clock_lower_center_label(screen,
-                                                 kClockLocalMetricLabelX,
-                                                 kClockLocalTempLabelY,
-                                                 kClockLocalMetricLabelWidth,
-                                                 kClockLocalMetricLabelHeight,
-                                                 "--.-℃",
-                                                 kClockComponentTempValue);
-    g_humi_label = make_clock_lower_center_label(screen,
-                                                 kClockLocalMetricLabelX,
-                                                 kClockLocalHumiLabelY,
-                                                 kClockLocalMetricLabelWidth,
-                                                 kClockLocalMetricLabelHeight,
-                                                 "--.-%",
-                                                 kClockComponentHumidityValue);
-    remember_lower_panel_object(g_temp_icon_canvas);
-    remember_lower_panel_object(g_humi_icon_canvas);
+    objects.temperature_label = make_clock_lower_center_label(screen,
+                                                              kClockLocalMetricLabelX,
+                                                              kClockLocalTempLabelY,
+                                                              kClockLocalMetricLabelWidth,
+                                                              kClockLocalMetricLabelHeight,
+                                                              "--.-℃",
+                                                              kClockComponentTempValue);
+    objects.humidity_label = make_clock_lower_center_label(screen,
+                                                           kClockLocalMetricLabelX,
+                                                           kClockLocalHumiLabelY,
+                                                           kClockLocalMetricLabelWidth,
+                                                           kClockLocalMetricLabelHeight,
+                                                           "--.-%",
+                                                           kClockComponentHumidityValue);
+    remember_lower_panel_object(objects.temperature_icon_canvas);
+    remember_lower_panel_object(objects.humidity_icon_canvas);
 
     int initial_temperature_trend = 0;
     int initial_humidity_trend = 0;
@@ -483,27 +512,28 @@ void build_clock_local_sensor_panel(lv_obj_t *screen)
                                                        &initial_temperature_trend,
                                                        &initial_humidity_trend);
     build_clock_trend_canvas(screen,
-                             &g_temp_trend_canvas,
+                             &objects.temperature_trend_canvas,
                              &s_temp_trend_canvas_buffer,
                              kClockTrendCanvasX,
                              kClockTempTrendCanvasY,
                              initial_sensor_ok ? initial_temperature_trend : 0,
                              kClockComponentTempTrend);
     build_clock_trend_canvas(screen,
-                             &g_humi_trend_canvas,
+                             &objects.humidity_trend_canvas,
                              &s_humi_trend_canvas_buffer,
                              kClockTrendCanvasX,
                              kClockHumiTrendCanvasY,
                              initial_sensor_ok ? initial_humidity_trend : 0,
                              kClockComponentHumidityTrend);
-    remember_lower_panel_object(g_temp_trend_canvas);
-    remember_lower_panel_object(g_humi_trend_canvas);
+    remember_lower_panel_object(objects.temperature_trend_canvas);
+    remember_lower_panel_object(objects.humidity_trend_canvas);
 }
 
 void build_clock_time_canvases(lv_obj_t *screen)
 {
+    ClockSurfaceObjectRefs &objects = mutable_clock_surface_object_refs();
     build_clock_fill_canvas(screen,
-                            &g_time_canvas,
+                            &objects.time_canvas,
                             &s_time_canvas_buffer,
                             kClockTimeCanvasX,
                             kClockTimeCanvasY,
@@ -511,7 +541,7 @@ void build_clock_time_canvases(lv_obj_t *screen)
                             kClockTimeCanvasHeight,
                             kClockComponentTime);
     build_clock_fill_canvas(screen,
-                            &g_second_canvas,
+                            &objects.second_canvas,
                             &s_second_canvas_buffer,
                             kClockSecondCanvasX,
                             kClockSecondCanvasY,
@@ -519,14 +549,14 @@ void build_clock_time_canvases(lv_obj_t *screen)
                             kClockSecondCanvasHeight,
                             kClockComponentSecond);
     build_clock_fill_canvas(screen,
-                            &g_status_gif_canvas,
+                            &objects.status_gif_canvas,
                             &s_status_gif_canvas_buffer,
                             kClockStatusGifCanvasX,
                             kClockStatusGifCanvasY,
                             STATUS_GIF_WIDTH,
                             STATUS_GIF_HEIGHT,
                             kClockComponentStatusGif);
-    remember_lower_panel_object(g_status_gif_canvas);
+    remember_lower_panel_object(objects.status_gif_canvas);
     if (s_status_gif_canvas_buffer) {
         draw_status_gif_frame(0);
     }
@@ -534,6 +564,7 @@ void build_clock_time_canvases(lv_obj_t *screen)
 
 void build_clock_dividers_and_progress(lv_obj_t *screen)
 {
+    ClockSurfaceObjectRefs &objects = mutable_clock_surface_object_refs();
     lv_obj_t *top_line = make_bar(screen,
                                   kClockDividerX,
                                   kClockTopDividerY,
@@ -546,44 +577,111 @@ void build_clock_dividers_and_progress(lv_obj_t *screen)
                                      kClockDividerHeight);
     build_work_page_day_progress(screen, kWorkPageWeatherClock);
     build_progress_canvas(screen,
-                          &g_second_progress_canvas,
+                          &objects.second_progress_canvas,
                           &s_second_progress_canvas_buffer,
                           kClockSecondProgressCanvasY);
-    g_panel_sep_a = make_bar(screen,
-                             kClockLowerPanelSeparatorAX,
-                             kClockLowerPanelSeparatorY,
-                             kClockLowerPanelSeparatorWidth,
-                             kClockLowerPanelSeparatorHeight);
-    g_panel_sep_b = make_bar(screen,
-                             kClockLowerPanelSeparatorBX,
-                             kClockLowerPanelSeparatorY,
-                             kClockLowerPanelSeparatorWidth,
-                             kClockLowerPanelSeparatorHeight);
+    objects.panel_separator_a = make_bar(screen,
+                                         kClockLowerPanelSeparatorAX,
+                                         kClockLowerPanelSeparatorY,
+                                         kClockLowerPanelSeparatorWidth,
+                                         kClockLowerPanelSeparatorHeight);
+    objects.panel_separator_b = make_bar(screen,
+                                         kClockLowerPanelSeparatorBX,
+                                         kClockLowerPanelSeparatorY,
+                                         kClockLowerPanelSeparatorWidth,
+                                         kClockLowerPanelSeparatorHeight);
     set_obj_black(top_line, true);
     set_obj_black(bottom_line, true);
-    set_obj_black(g_panel_sep_a, true);
-    set_obj_black(g_panel_sep_b, true);
+    set_obj_black(objects.panel_separator_a, true);
+    set_obj_black(objects.panel_separator_b, true);
 }
 } // namespace
 
+bool set_clock_weather_panel_text(const char *city,
+                                  const char *info,
+                                  const char *temperature,
+                                  const char *humidity,
+                                  const char *icon_text)
+{
+    bool changed = set_label_text_if_changed(s_weather_panel_objects.city_label, city);
+    changed |= set_label_text_if_changed(s_weather_panel_objects.info_label, info);
+    changed |= set_label_text_if_changed(s_weather_panel_objects.temperature_label,
+                                         temperature);
+    changed |= set_label_text_if_changed(s_weather_panel_objects.humidity_label,
+                                         humidity);
+    changed |= set_label_text_if_changed(s_weather_panel_objects.icon_label, icon_text);
+    return changed;
+}
+
+void clear_clock_weather_panel_object_refs()
+{
+    s_weather_panel_objects = {};
+}
+
+ClockLocalSensorObjectRefs &mutable_clock_local_sensor_object_refs()
+{
+    return s_local_sensor_objects;
+}
+
+const ClockLocalSensorObjectRefs &clock_local_sensor_object_refs()
+{
+    return s_local_sensor_objects;
+}
+
+void clear_clock_local_sensor_object_refs()
+{
+    s_local_sensor_objects = {};
+}
+
+ClockHeaderObjectRefs &mutable_clock_header_object_refs()
+{
+    return s_header_objects;
+}
+
+const ClockHeaderObjectRefs &clock_header_object_refs()
+{
+    return s_header_objects;
+}
+
+void clear_clock_header_object_refs()
+{
+    s_header_objects = {};
+}
+
+ClockSurfaceObjectRefs &mutable_clock_surface_object_refs()
+{
+    return s_surface_objects;
+}
+
+const ClockSurfaceObjectRefs &clock_surface_object_refs()
+{
+    return s_surface_objects;
+}
+
+void clear_clock_surface_object_refs()
+{
+    s_surface_objects = {};
+}
+
 void build_clock_ui()
 {
-    if (g_clock_root) {
+    if (work_page_root(kWorkPageWeatherClock)) {
         return;
     }
     lv_obj_t *screen = create_page_root();
     if (!screen) {
         return;
     }
-    g_clock_root = screen;
+    set_work_page_root(kWorkPageWeatherClock, screen);
     build_clock_header(screen);
     build_clock_weather_panel(screen);
     build_clock_local_sensor_panel(screen);
     build_clock_time_canvases(screen);
     build_clock_dividers_and_progress(screen);
 
+    ClockSurfaceObjectRefs &surface = mutable_clock_surface_object_refs();
     build_clock_lower_icon(screen,
-                           &g_low_battery_icon_canvas,
+                           &surface.low_battery_icon_canvas,
                            &s_low_battery_icon_canvas_buffer,
                            kClockLowBatteryIconX,
                            kClockLowBatteryIconY,
@@ -592,8 +690,8 @@ void build_clock_ui()
                            LOW_BATTERY_ICON_BYTES_PER_ROW,
                            low_battery_icon_bits,
                            kClockComponentLowBatteryIcon);
-    if (g_low_battery_icon_canvas) {
-        lv_obj_add_flag(g_low_battery_icon_canvas, LV_OBJ_FLAG_HIDDEN);
+    if (surface.low_battery_icon_canvas) {
+        lv_obj_add_flag(surface.low_battery_icon_canvas, LV_OBJ_FLAG_HIDDEN);
     }
 
     build_setup_status_panel(screen);

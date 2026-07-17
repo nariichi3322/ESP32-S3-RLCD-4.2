@@ -53,6 +53,8 @@ constexpr int kSecondsPerMinute = 60;
 constexpr int kMinutesPerHour = 60;
 constexpr int kSensorTrendWindowHours = 4;
 constexpr int64_t kSensorTrendWindowMs = (int64_t)kSensorTrendWindowHours * kMinutesPerHour * kSecondsPerMinute * kMsPerSecond;
+alignas(Shtc3Port) unsigned char s_shtc3_storage[sizeof(Shtc3Port)] = {};
+Shtc3Port *s_shtc3 = nullptr;
 SensorSample s_sensor_trend_samples[kSensorHistoryMinutes] = {};
 int s_sensor_trend_next = 0;
 int s_sensor_trend_count = 0;
@@ -431,11 +433,18 @@ void update_sensor_history(float temp, float humi)
     }
 }
 
+void init_shtc3_sensor(I2cMasterBus &i2c)
+{
+    if (!s_shtc3) {
+        s_shtc3 = new (s_shtc3_storage) Shtc3Port(i2c);
+    }
+}
+
 void sample_sensor()
 {
     float temp = 0.0f;
     float humi = 0.0f;
-    bool sensor_ok = g_shtc3 && g_shtc3->Shtc3_ReadTempHumi(&temp, &humi) == 0;
+    bool sensor_ok = s_shtc3 && s_shtc3->Shtc3_ReadTempHumi(&temp, &humi) == 0;
     if (sensor_ok) {
         int temperature_trend = 0;
         int humidity_trend = 0;

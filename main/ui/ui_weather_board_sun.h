@@ -1,7 +1,10 @@
 // 提供天气看板日出、日落目标选择和分钟倒计时纯计算。
 #pragma once
 
-#include "app_state.h"
+#include "weather_types.h"
+
+#include <stddef.h>
+#include <time.h>
 
 inline constexpr const char *kWeatherBoardSunCountdownPlaceholder = "距日落 --:--";
 

@@ -8,6 +8,7 @@ struct SettingsSyncStateSnapshot {
     uint32_t deadline_tick = 0;
 };
 
+bool settings_sync_state_init();
 void settings_sync_state_load(SettingsSyncStateSnapshot *out);
 void settings_sync_state_begin(int operation, uint32_t deadline_tick);
 bool settings_sync_state_clear_if(int operation);

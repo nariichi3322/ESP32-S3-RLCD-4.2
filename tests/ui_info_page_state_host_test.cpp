@@ -13,7 +13,15 @@ constexpr int kIterations = 100000;
 
 int main()
 {
-    InfoPageStateSnapshot state;
+    InfoPageStateSnapshot state = {true, 99};
+    info_page_state_load(&state);
+    assert(!state.requested);
+    assert(state.hold_until_tick == 0);
+    info_page_request(kFirstDeadline);
+    assert(!info_page_requested());
+    assert(info_page_state_init());
+    assert(info_page_state_init());
+
     info_page_state_load(&state);
     assert(!state.requested);
     assert(state.hold_until_tick == 0);

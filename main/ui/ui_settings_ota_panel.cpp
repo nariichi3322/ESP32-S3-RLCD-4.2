@@ -7,6 +7,11 @@
 #include "ui_views.h"
 
 namespace {
+lv_obj_t *s_settings_ota_status_label;
+lv_obj_t *s_settings_ota_hint_label;
+lv_obj_t *s_settings_ota_bar_frame;
+lv_obj_t *s_settings_ota_bar_fill;
+
 constexpr int kSettingsOtaBarFrameX = 164;
 constexpr int kSettingsOtaBarFrameY = 203;
 constexpr int kSettingsOtaBarFrameW = 200;
@@ -57,10 +62,10 @@ int settings_ota_progress_fill_width(int progress)
 
 bool set_settings_ota_fill_width(int width)
 {
-    if (!g_settings_ota_bar_fill || lv_obj_get_width(g_settings_ota_bar_fill) == width) {
+    if (!s_settings_ota_bar_fill || lv_obj_get_width(s_settings_ota_bar_fill) == width) {
         return false;
     }
-    lv_obj_set_width(g_settings_ota_bar_fill, width);
+    lv_obj_set_width(s_settings_ota_bar_fill, width);
     return true;
 }
 
@@ -77,40 +82,40 @@ static_assert(kSettingsOtaProgressMax > 0, "settings OTA progress maximum must b
 
 void build_settings_ota_panel(lv_obj_t *screen, int panel_x, int panel_width)
 {
-    g_settings_ota_status_label = make_centered_label(screen,
+    s_settings_ota_status_label = make_centered_label(screen,
                                                       panel_x,
                                                       176,
                                                       panel_width,
                                                       22,
                                                       "",
                                                       "settings ota status label create failed");
-    g_settings_ota_bar_frame = lv_obj_create(screen);
-    if (g_settings_ota_bar_frame) {
-        lv_obj_clear_flag(g_settings_ota_bar_frame, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_set_pos(g_settings_ota_bar_frame, kSettingsOtaBarFrameX, kSettingsOtaBarFrameY);
-        lv_obj_set_size(g_settings_ota_bar_frame, kSettingsOtaBarFrameW, kSettingsOtaBarFrameH);
-        lv_obj_set_style_bg_color(g_settings_ota_bar_frame, lv_color_white(), LV_PART_MAIN);
-        lv_obj_set_style_bg_opa(g_settings_ota_bar_frame, LV_OPA_COVER, LV_PART_MAIN);
-        lv_obj_set_style_border_color(g_settings_ota_bar_frame, lv_color_black(), LV_PART_MAIN);
-        lv_obj_set_style_border_width(g_settings_ota_bar_frame, 1, LV_PART_MAIN);
-        lv_obj_set_style_radius(g_settings_ota_bar_frame, 3, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(g_settings_ota_bar_frame, 0, LV_PART_MAIN);
-        lv_obj_add_flag(g_settings_ota_bar_frame, LV_OBJ_FLAG_HIDDEN);
+    s_settings_ota_bar_frame = lv_obj_create(screen);
+    if (s_settings_ota_bar_frame) {
+        lv_obj_clear_flag(s_settings_ota_bar_frame, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_pos(s_settings_ota_bar_frame, kSettingsOtaBarFrameX, kSettingsOtaBarFrameY);
+        lv_obj_set_size(s_settings_ota_bar_frame, kSettingsOtaBarFrameW, kSettingsOtaBarFrameH);
+        lv_obj_set_style_bg_color(s_settings_ota_bar_frame, lv_color_white(), LV_PART_MAIN);
+        lv_obj_set_style_bg_opa(s_settings_ota_bar_frame, LV_OPA_COVER, LV_PART_MAIN);
+        lv_obj_set_style_border_color(s_settings_ota_bar_frame, lv_color_black(), LV_PART_MAIN);
+        lv_obj_set_style_border_width(s_settings_ota_bar_frame, 1, LV_PART_MAIN);
+        lv_obj_set_style_radius(s_settings_ota_bar_frame, 3, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(s_settings_ota_bar_frame, 0, LV_PART_MAIN);
+        lv_obj_add_flag(s_settings_ota_bar_frame, LV_OBJ_FLAG_HIDDEN);
     } else {
         ESP_LOGW(TAG, "settings ota bar frame create failed");
     }
-    g_settings_ota_bar_fill = make_black_bar(screen,
+    s_settings_ota_bar_fill = make_black_bar(screen,
                                              kSettingsOtaBarFrameX + kSettingsOtaBarInset,
                                              kSettingsOtaBarFrameY + kSettingsOtaBarInset,
                                              1,
                                              kSettingsOtaBarFillH);
-    if (g_settings_ota_bar_fill) {
-        lv_obj_set_style_radius(g_settings_ota_bar_fill, 2, LV_PART_MAIN);
-        lv_obj_add_flag(g_settings_ota_bar_fill, LV_OBJ_FLAG_HIDDEN);
+    if (s_settings_ota_bar_fill) {
+        lv_obj_set_style_radius(s_settings_ota_bar_fill, 2, LV_PART_MAIN);
+        lv_obj_add_flag(s_settings_ota_bar_fill, LV_OBJ_FLAG_HIDDEN);
     } else {
         ESP_LOGW(TAG, "settings ota bar fill create failed");
     }
-    g_settings_ota_hint_label = make_centered_label(screen,
+    s_settings_ota_hint_label = make_centered_label(screen,
                                                     panel_x,
                                                     218,
                                                     panel_width,
@@ -121,7 +126,7 @@ void build_settings_ota_panel(lv_obj_t *screen, int panel_x, int panel_width)
 
 bool update_settings_ota_panel(bool visible)
 {
-    if (!g_settings_ota_status_label) {
+    if (!s_settings_ota_status_label) {
         return false;
     }
 
@@ -173,15 +178,23 @@ bool update_settings_ota_panel(bool visible)
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintCheck);
         }
     }
-    changed |= set_label_text_if_changed(g_settings_ota_status_label, ota_line);
-    if (g_settings_ota_hint_label) {
-        changed |= set_label_text_if_changed(g_settings_ota_hint_label, ota_hint);
+    changed |= set_label_text_if_changed(s_settings_ota_status_label, ota_line);
+    if (s_settings_ota_hint_label) {
+        changed |= set_label_text_if_changed(s_settings_ota_hint_label, ota_hint);
     }
     bool show_progress = visible && progress_visible;
-    changed |= set_obj_visible(g_settings_ota_bar_frame, show_progress);
-    if (g_settings_ota_bar_fill) {
+    changed |= set_obj_visible(s_settings_ota_bar_frame, show_progress);
+    if (s_settings_ota_bar_fill) {
         changed |= set_settings_ota_fill_width(settings_ota_progress_fill_width(progress));
-        changed |= set_obj_visible(g_settings_ota_bar_fill, show_progress);
+        changed |= set_obj_visible(s_settings_ota_bar_fill, show_progress);
     }
     return changed;
+}
+
+void clear_settings_ota_panel_object_refs()
+{
+    s_settings_ota_status_label = nullptr;
+    s_settings_ota_hint_label = nullptr;
+    s_settings_ota_bar_frame = nullptr;
+    s_settings_ota_bar_fill = nullptr;
 }

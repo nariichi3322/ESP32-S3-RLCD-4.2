@@ -10,8 +10,6 @@ constexpr uint32_t kNextSecondDelayMaxMs = kMsPerSecond + kUiLoopBoundaryWakeSla
 
 static_assert(kUsPerSecond == 1000LL * kMsPerSecond,
               "UI microsecond and millisecond constants must stay consistent");
-static_assert(kUiLoopFlipClockPollMs > 0 && kUiLoopFlipClockPollMs <= kMsPerSecond,
-              "flip clock poll interval must stay within one second");
 static_assert(kUiLoopBoundaryWakeSlackMs <= kMsPerSecond,
               "UI boundary wake slack must stay within one second");
 static_assert(kNextSecondDelayMinMs > 0,
@@ -20,9 +18,13 @@ static_assert(kNextSecondDelayMaxMs >= kMsPerSecond,
               "next-second delay maximum must cover one second");
 } // namespace
 
-uint32_t ui_next_second_delay_ms(int64_t monotonic_us)
+uint32_t ui_next_second_delay_ms(int64_t sampled_wall_second,
+                                 int64_t wall_clock_us)
 {
-    int64_t second_offset_us = monotonic_us % kUsPerSecond;
+    if (sampled_wall_second != wall_clock_us / kUsPerSecond) {
+        return kNextSecondDelayMinMs;
+    }
+    int64_t second_offset_us = wall_clock_us % kUsPerSecond;
     int64_t until_next_us = kUsPerSecond - second_offset_us;
     uint32_t delay_ms = static_cast<uint32_t>(until_next_us / kMsPerSecond) +
                         kUiLoopBoundaryWakeSlackMs;

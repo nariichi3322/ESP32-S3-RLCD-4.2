@@ -1,6 +1,7 @@
 // 统一网络同步请求快照、用户反馈和事件位清理顺序。
 #include "network_sync_requests.h"
 
+#include "app_state.h"
 #include "network_diagnostics_catalog.h"
 #include "network_services.h"
 #include "ui_settings_feedback.h"

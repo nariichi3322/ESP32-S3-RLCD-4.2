@@ -2,6 +2,7 @@
 #include "alarm_services.h"
 
 #include "alarm_replacement_policy.h"
+#include "alarm_runtime_state.h"
 #include "alarm_storage.h"
 #include "alarm_task_wait_policy.h"
 #include "audio_services.h"
@@ -36,12 +37,9 @@ constexpr const char *kAlarmReplaceConfirmationFormat =
 constexpr const char *kAlarmReplaceConfirmationInvalidResult =
     "alarm replacement confirmation invalid or expired; ask the user again";
 
-portMUX_TYPE s_alarm_mux = portMUX_INITIALIZER_UNLOCKED;
-AlarmSnapshot s_alarm = {false, false, 0, 0, 1};
 TaskNotificationTarget s_alarm_task_target;
 std::atomic<bool> s_stop_requested{false};
 std::atomic<bool> s_save_pending{false};
-AlarmReplacementConfirmation s_replacement_confirmation = {};
 
 bool conflicts_with_running_pomodoro(int hour, int minute)
 {
@@ -59,44 +57,27 @@ bool conflicts_with_running_pomodoro(int hour, int minute)
 
 void clear_pending_alarm_replacement()
 {
-    portENTER_CRITICAL(&s_alarm_mux);
-    clear_alarm_replacement_confirmation(&s_replacement_confirmation);
-    portEXIT_CRITICAL(&s_alarm_mux);
+    (void)alarm_runtime_clear_replacement();
 }
 
 AlarmReplacementDecision replacement_decision(const XiaozhiMcpAlarmRequest &request,
                                                 AlarmSnapshot *existing)
 {
-    portENTER_CRITICAL(&s_alarm_mux);
-    if (existing) {
-        *existing = s_alarm;
-    }
-    AlarmReplacementDecision decision = evaluate_alarm_replacement(
-        s_alarm.enabled,
-        s_alarm.hour,
-        s_alarm.minute,
-        s_alarm.version,
+    return alarm_runtime_replacement_decision(
         request.hour,
         request.minute,
         request.confirm_replace,
         pdTICKS_TO_MS(xTaskGetTickCount()),
         kAlarmReplaceConfirmationTimeoutMs,
-        &s_replacement_confirmation);
-    portEXIT_CRITICAL(&s_alarm_mux);
-    return decision;
+        existing);
 }
 
 void publish_alarm_state(bool enabled, bool ringing, int hour, int minute)
 {
-    portENTER_CRITICAL(&s_alarm_mux);
-    s_alarm.enabled = enabled;
-    s_alarm.ringing = ringing;
-    s_alarm.hour = static_cast<uint8_t>(hour);
-    s_alarm.minute = static_cast<uint8_t>(minute);
-    ++s_alarm.version;
-    portEXIT_CRITICAL(&s_alarm_mux);
-    (void)s_alarm_task_target.notify();
-    notify_ui_task();
+    if (alarm_runtime_publish(enabled, ringing, hour, minute)) {
+        (void)s_alarm_task_target.notify();
+        notify_ui_task();
+    }
 }
 
 bool persist_alarm(bool enabled, int hour, int minute)
@@ -289,11 +270,15 @@ bool mcp_disable_alarm(char *result, size_t result_len)
 }
 } // namespace
 
-void alarm_services_init()
+bool alarm_services_init()
 {
+    if (!alarm_runtime_state_init()) {
+        return false;
+    }
     (void)load_alarm();
     xiaozhi_mcp_register_alarm_handler(mcp_set_alarm);
     xiaozhi_mcp_register_alarm_disable_handler(mcp_disable_alarm);
+    return true;
 }
 
 void alarm_task(void *)
@@ -329,16 +314,14 @@ void alarm_get_snapshot(AlarmSnapshot *out)
     if (!out) {
         return;
     }
-    portENTER_CRITICAL(&s_alarm_mux);
-    *out = s_alarm;
-    portEXIT_CRITICAL(&s_alarm_mux);
+    if (!alarm_runtime_snapshot(out)) {
+        *out = {};
+    }
 }
 
 bool alarm_is_enabled()
 {
-    AlarmSnapshot snapshot = {};
-    alarm_get_snapshot(&snapshot);
-    return snapshot.enabled;
+    return alarm_runtime_is_enabled();
 }
 
 uint32_t alarm_state_version()

@@ -1,6 +1,8 @@
 // 声明音频播放、提示音选择和音频电源管理接口。
 #pragma once
-#include "app_state.h"
+
+#include <cstddef>
+#include <cstdint>
 
 void hourly_chime_task(void *arg);
 void setup_prompt_task(void *);

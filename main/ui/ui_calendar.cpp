@@ -42,6 +42,7 @@ static constexpr int kCalendarSubTextY = 20;
 static constexpr int kCalendarSubTextH = 12;
 static constexpr int kCalendarDayTextSize = 4; // "31" plus terminator, with one byte spare.
 static constexpr const char *kCalendarWeekdays[kCalendarWeekdayCount] = {"日", "一", "二", "三", "四", "五", "六"};
+static lv_obj_t *s_calendar_canvas;
 static lv_color_t *s_calendar_canvas_buffer;
 static int s_last_calendar_drawn_month = -1;
 static int s_last_calendar_drawn_day = -1;
@@ -141,7 +142,7 @@ static void draw_calendar_text(lv_obj_t *canvas,
 
 static void draw_calendar_weekday_header()
 {
-    canvas_fill_rect_safe(g_calendar_canvas,
+    canvas_fill_rect_safe(s_calendar_canvas,
                           kCalendarCanvasW,
                           kCalendarCanvasH,
                           kCalendarGridX,
@@ -149,7 +150,7 @@ static void draw_calendar_weekday_header()
                           kCalendarCellW,
                           kCalendarHeaderH,
                           lv_color_black());
-    canvas_fill_rect_safe(g_calendar_canvas,
+    canvas_fill_rect_safe(s_calendar_canvas,
                           kCalendarCanvasW,
                           kCalendarCanvasH,
                           kCalendarGridX + kCalendarCellW * kCalendarSaturdayColumn,
@@ -157,7 +158,7 @@ static void draw_calendar_weekday_header()
                           kCalendarCellW,
                           kCalendarHeaderH,
                           lv_color_black());
-    canvas_dot_rect(g_calendar_canvas,
+    canvas_dot_rect(s_calendar_canvas,
                     kCalendarCanvasW,
                     kCalendarCanvasH,
                     kCalendarGridX + kCalendarCellW,
@@ -168,7 +169,7 @@ static void draw_calendar_weekday_header()
     for (int col = 0; col < kCalendarWeekdayCount; ++col) {
         int x = kCalendarGridX + col * kCalendarCellW;
         if (col == kCalendarSundayColumn || col == kCalendarSaturdayColumn) {
-            draw_calendar_text(g_calendar_canvas,
+            draw_calendar_text(s_calendar_canvas,
                                kCalendarWeekdays[col],
                                x,
                                kCalendarHeaderY,
@@ -178,7 +179,7 @@ static void draw_calendar_weekday_header()
                                lv_color_white(),
                                LV_TEXT_ALIGN_CENTER);
         } else {
-            draw_calendar_text(g_calendar_canvas,
+            draw_calendar_text(s_calendar_canvas,
                                kCalendarWeekdays[col],
                                x,
                                kCalendarHeaderY,
@@ -205,7 +206,7 @@ static void draw_calendar_day_cell(const struct tm &local,
     bool is_today = day == local.tm_mday;
 
     if (is_today) {
-        canvas_fill_round_rect_safe(g_calendar_canvas,
+        canvas_fill_round_rect_safe(s_calendar_canvas,
                                     kCalendarCanvasW,
                                     kCalendarCanvasH,
                                     x + kCalendarTodayInsetX,
@@ -218,7 +219,7 @@ static void draw_calendar_day_cell(const struct tm &local,
 
     char day_text[kCalendarDayTextSize] = {};
     format_calendar_day_text(day_text, sizeof(day_text), day);
-    draw_calendar_text(g_calendar_canvas,
+    draw_calendar_text(s_calendar_canvas,
                        day_text,
                        x + kCalendarDayTextXInset,
                        y + kCalendarDayTextY,
@@ -236,7 +237,7 @@ static void draw_calendar_day_cell(const struct tm &local,
     mktime(&day_tm);
     CalendarDayInfo info;
     calendar_day_info(day_tm, &info);
-    draw_calendar_text(g_calendar_canvas,
+    draw_calendar_text(s_calendar_canvas,
                        info.subtext,
                        x + kCalendarDayTextXInset,
                        y + kCalendarSubTextY,
@@ -249,10 +250,10 @@ static void draw_calendar_day_cell(const struct tm &local,
 
 static void draw_calendar_grid(const struct tm &local)
 {
-    if (!g_calendar_canvas) {
+    if (!s_calendar_canvas) {
         return;
     }
-    lv_canvas_fill_bg(g_calendar_canvas, lv_color_white(), LV_OPA_COVER);
+    lv_canvas_fill_bg(s_calendar_canvas, lv_color_white(), LV_OPA_COVER);
     draw_calendar_weekday_header();
 
     int year = local.tm_year + kTmYearOffset;
@@ -263,13 +264,13 @@ static void draw_calendar_grid(const struct tm &local)
     CalendarMonthLayout layout = {};
     if (!calculate_calendar_month_layout(first_weekday, days, today, &layout)) {
         ESP_LOGW(TAG, "%s", CALENDAR_LAYOUT_INVALID_LOG);
-        lv_obj_invalidate(g_calendar_canvas);
+        lv_obj_invalidate(s_calendar_canvas);
         return;
     }
     for (int day = 1; day <= days; ++day) {
         draw_calendar_day_cell(local, layout, day);
     }
-    lv_obj_invalidate(g_calendar_canvas);
+    lv_obj_invalidate(s_calendar_canvas);
 }
 
 bool update_calendar_page(const struct tm &local)
@@ -283,28 +284,27 @@ bool update_calendar_page(const struct tm &local)
         draw_calendar_grid(local);
         changed = true;
     }
-    changed |= update_work_page_status_time(g_calendar_status_time_label, local);
-    changed |= update_work_page_sensor_summary(g_calendar_summary_label);
+    const WorkPageStatusLabels status = get_work_page_status_labels(kWorkPageCalendar);
+    changed |= update_work_page_status_time(status.time, local);
+    changed |= update_work_page_sensor_summary(status.summary);
     return changed;
 }
 
 void build_calendar_page()
 {
-    if (g_calendar_root) {
+    if (work_page_root(kWorkPageCalendar)) {
         return;
     }
     lv_obj_t *screen = create_page_root();
     if (!screen) {
         return;
     }
-    g_calendar_root = screen;
+    set_work_page_root(kWorkPageCalendar, screen);
 
-    build_battery_icon(screen, g_calendar_battery_segments);
+    build_work_page_battery_icon(screen, kWorkPageCalendar);
     build_work_page_status_bar(screen,
                                kWorkPageCalendar,
-                               &g_calendar_date_label,
-                               &g_calendar_summary_label,
-                               &g_calendar_status_time_label,
+                               true,
                                true);
 
     lv_obj_t *top_line = make_bar(screen,
@@ -320,22 +320,29 @@ void build_calendar_page()
     }
     if (!s_calendar_canvas_buffer) {
         lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
-        update_battery_segments(g_calendar_battery_segments, battery_percent_load());
+        update_work_page_battery_icon(kWorkPageCalendar, battery_percent_load());
         return;
     }
-    g_calendar_canvas = lv_canvas_create(screen);
-    if (!g_calendar_canvas) {
+    s_calendar_canvas = lv_canvas_create(screen);
+    if (!s_calendar_canvas) {
         ESP_LOGW(TAG, "%s", CALENDAR_CANVAS_CREATE_FAILED_LOG);
     } else {
-        configure_canvas_base(g_calendar_canvas,
+        configure_canvas_base(s_calendar_canvas,
                               s_calendar_canvas_buffer,
                               kCalendarCanvasX,
                               kCalendarCanvasY,
                               kCalendarCanvasW,
                               kCalendarCanvasH);
-        lv_canvas_fill_bg(g_calendar_canvas, lv_color_white(), LV_OPA_COVER);
+        lv_canvas_fill_bg(s_calendar_canvas, lv_color_white(), LV_OPA_COVER);
     }
 
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
-    update_battery_segments(g_calendar_battery_segments, battery_percent_load());
+    update_work_page_battery_icon(kWorkPageCalendar, battery_percent_load());
+}
+
+void clear_calendar_object_refs()
+{
+    s_calendar_canvas = nullptr;
+    s_last_calendar_drawn_month = -1;
+    s_last_calendar_drawn_day = -1;
 }

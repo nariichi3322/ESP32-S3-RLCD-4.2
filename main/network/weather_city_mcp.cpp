@@ -5,6 +5,7 @@
 #include "network_credentials_state.h"
 #include "network_services.h"
 #include "ui_views.h"
+#include "weather_city_pending_state.h"
 #include "xiaozhi_mcp.h"
 
 #include <cstdio>
@@ -14,29 +15,6 @@
 namespace {
 constexpr size_t kCityIdLen = 32;
 constexpr size_t kCityCoordinateLen = 24;
-
-portMUX_TYPE s_pending_city_mux = portMUX_INITIALIZER_UNLOCKED;
-char s_pending_city[kManualWeatherCityLen] = {};
-bool s_save_pending = false;
-
-void set_pending_city(const char *city)
-{
-    portENTER_CRITICAL(&s_pending_city_mux);
-    strlcpy(s_pending_city, city ? city : "", sizeof(s_pending_city));
-    s_save_pending = true;
-    portEXIT_CRITICAL(&s_pending_city_mux);
-}
-
-void get_pending_city(char *out, size_t out_len, bool *pending)
-{
-    if (!out || out_len == 0 || !pending) {
-        return;
-    }
-    portENTER_CRITICAL(&s_pending_city_mux);
-    strlcpy(out, s_pending_city, out_len);
-    *pending = s_save_pending;
-    portEXIT_CRITICAL(&s_pending_city_mux);
-}
 
 bool handle_weather_city(const XiaozhiMcpWeatherCityRequest &request,
                          char *result,
@@ -59,7 +37,12 @@ bool handle_weather_city(const XiaozhiMcpWeatherCityRequest &request,
                      strcasecmp(normalized, "auto") == 0 ||
                      strcasecmp(normalized, "automatic") == 0;
     if (automatic) {
-        set_pending_city("");
+        if (!weather_city_pending_store("")) {
+            if (result && result_len > 0) {
+                std::snprintf(result, result_len, "weather city state unavailable");
+            }
+            return false;
+        }
         if (result && result_len > 0) {
             std::snprintf(result,
                           result_len,
@@ -104,7 +87,12 @@ bool handle_weather_city(const XiaozhiMcpWeatherCityRequest &request,
         canonical_city[0] == '\0') {
         return false;
     }
-    set_pending_city(canonical_city);
+    if (!weather_city_pending_store(canonical_city)) {
+        if (result && result_len > 0) {
+            std::snprintf(result, result_len, "weather city state unavailable");
+        }
+        return false;
+    }
     if (result && result_len > 0) {
         std::snprintf(result,
                       result_len,
@@ -115,36 +103,33 @@ bool handle_weather_city(const XiaozhiMcpWeatherCityRequest &request,
 }
 } // namespace
 
-void weather_city_mcp_init()
+bool weather_city_mcp_init()
 {
+    if (!weather_city_pending_state_init()) {
+        return false;
+    }
     xiaozhi_mcp_register_weather_city_handler(handle_weather_city);
+    return true;
 }
 
 bool weather_city_mcp_save_pending()
 {
-    portENTER_CRITICAL(&s_pending_city_mux);
-    bool pending = s_save_pending;
-    portEXIT_CRITICAL(&s_pending_city_mux);
-    return pending;
+    return weather_city_pending_exists();
 }
 
 bool weather_city_mcp_flush_pending_save()
 {
-    char city[kManualWeatherCityLen] = {};
-    bool pending = false;
-    get_pending_city(city, sizeof(city), &pending);
-    if (!pending) {
-        return true;
-    }
-    if (!save_manual_weather_city(city)) {
+    WeatherCityPendingSnapshot snapshot = {};
+    if (!weather_city_pending_snapshot(&snapshot)) {
         return false;
     }
-    portENTER_CRITICAL(&s_pending_city_mux);
-    if (strcmp(s_pending_city, city) == 0) {
-        s_pending_city[0] = '\0';
-        s_save_pending = false;
+    if (!snapshot.pending) {
+        return true;
     }
-    portEXIT_CRITICAL(&s_pending_city_mux);
+    if (!save_manual_weather_city(snapshot.city)) {
+        return false;
+    }
+    (void)weather_city_pending_clear(snapshot.generation);
     if (!g_offline_mode_ui_enabled && g_app_events) {
         xEventGroupSetBits(g_app_events, kManualWeatherSyncBit);
     }

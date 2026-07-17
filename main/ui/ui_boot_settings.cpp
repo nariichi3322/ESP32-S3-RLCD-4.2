@@ -1,4 +1,5 @@
 // 构建并刷新设置页及其菜单交互。
+#include "ui_boot_settings.h"
 #include "ui_views.h"
 
 #include "alarm_services.h"
@@ -9,8 +10,13 @@
 #include "ota_services.h"
 #include "ui_settings_content.h"
 #include "ui_settings_ota_panel.h"
+#include "xiaozhi_auto_return_state.h"
 
 namespace {
+lv_obj_t *s_settings_labels[kSettingsLabelCount];
+lv_obj_t *s_settings_switch_dots[kSettingsSecondaryMaxCount];
+lv_obj_t *s_settings_feedback_label;
+
 int collect_visible_work_page_order(int *indices, uint8_t *pages, size_t capacity)
 {
     if (!indices || !pages || capacity == 0) {
@@ -102,9 +108,9 @@ static_assert(kSettingsGridRowCount * kSettingsGridColumns >= kSystemSettingsGri
               "settings grid capacity must cover system grid items");
 static_assert(array_count(kSettingsPrimaryItems) == kSettingsPrimaryCount,
               "settings primary item table must match primary count");
-static_assert(array_count(g_settings_labels) == kSettingsLabelCount,
+static_assert(array_count(s_settings_labels) == kSettingsLabelCount,
               "settings label storage must match configured label count");
-static_assert(array_count(g_settings_switch_dots) == kSettingsSecondaryMaxCount,
+static_assert(array_count(s_settings_switch_dots) == kSettingsSecondaryMaxCount,
               "settings switch dot storage must match secondary slot count");
 static_assert(array_count(kSettingsFixedTexts) > 0, "settings fixed text registry must not be empty");
 static_assert(array_count(kBootSettingsLogTexts) > 0, "boot/settings log registry must not be empty");
@@ -125,8 +131,8 @@ void hide_settings_switch_slot(int index)
         ESP_LOGW(TAG, SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT, index);
         return;
     }
-    if (g_settings_switch_dots[index]) {
-        set_obj_visible(g_settings_switch_dots[index], false);
+    if (s_settings_switch_dots[index]) {
+        set_obj_visible(s_settings_switch_dots[index], false);
     }
 }
 
@@ -158,7 +164,7 @@ lv_obj_t *build_settings_menu_label(lv_obj_t *screen,
 
 }
 
-void style_settings_item(lv_obj_t *label, bool selected)
+static void style_settings_item(lv_obj_t *label, bool selected)
 {
     lv_obj_set_style_bg_color(label, selected ? lv_color_black() : lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(label, LV_OPA_COVER, LV_PART_MAIN);
@@ -189,15 +195,15 @@ static void style_settings_switch_dot(lv_obj_t *dot, bool on, bool selected)
 
 void build_settings_page()
 {
-    if (g_settings_root) {
+    if (auxiliary_page_root(AuxiliaryPage::kSettings)) {
         return;
     }
     lv_obj_t *screen = create_page_root();
     if (!screen) {
         return;
     }
-    g_settings_root = screen;
-    lv_obj_add_flag(g_settings_root, LV_OBJ_FLAG_HIDDEN);
+    set_auxiliary_page_root(AuxiliaryPage::kSettings, screen);
+    lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
 
     make_centered_label(screen,
                         24,
@@ -211,7 +217,7 @@ void build_settings_page()
     make_black_bar(screen, 136, 62, 2, 174);
 
     for (int i = 0; i < kSettingsPrimaryCount; ++i) {
-        g_settings_labels[i] = build_settings_menu_label(screen,
+        s_settings_labels[i] = build_settings_menu_label(screen,
                                                          kSettingsPrimaryX,
                                                          kSettingsListRowY[i],
                                                          kSettingsPrimaryW,
@@ -220,29 +226,29 @@ void build_settings_page()
     }
     for (int i = 0; i < kSettingsSecondaryMaxCount; ++i) {
         int slot = kSettingsPrimaryCount + i;
-        g_settings_labels[slot] = build_settings_menu_label(screen,
+        s_settings_labels[slot] = build_settings_menu_label(screen,
                                                             kSettingsSecondaryX,
                                                             kSettingsListRowY[i],
                                                             kSettingsSecondaryW,
                                                             i,
                                                             kSettingsMenuSecondaryColumn);
-        g_settings_switch_dots[i] = lv_obj_create(screen);
-        if (g_settings_switch_dots[i]) {
-            lv_obj_clear_flag(g_settings_switch_dots[i], LV_OBJ_FLAG_SCROLLABLE);
-            set_obj_box(g_settings_switch_dots[i],
+        s_settings_switch_dots[i] = lv_obj_create(screen);
+        if (s_settings_switch_dots[i]) {
+            lv_obj_clear_flag(s_settings_switch_dots[i], LV_OBJ_FLAG_SCROLLABLE);
+            set_obj_box(s_settings_switch_dots[i],
                         kSettingsSwitchDotX,
                         kSettingsListRowY[i] + kSettingsSwitchDotYOffset,
                         kSettingsSwitchDotSize,
                         kSettingsSwitchDotSize);
-            style_settings_switch_dot(g_settings_switch_dots[i], false, false);
-            lv_obj_add_flag(g_settings_switch_dots[i], LV_OBJ_FLAG_HIDDEN);
+            style_settings_switch_dot(s_settings_switch_dots[i], false, false);
+            lv_obj_add_flag(s_settings_switch_dots[i], LV_OBJ_FLAG_HIDDEN);
         } else {
             ESP_LOGW(TAG, SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT, i);
         }
     }
     build_settings_ota_panel(screen, kSettingsSecondaryX, kSettingsSecondaryW);
 
-    g_settings_feedback_label = make_centered_label(screen,
+    s_settings_feedback_label = make_centered_label(screen,
                                                     24,
                                                     246,
                                                     352,
@@ -260,7 +266,9 @@ void build_settings_page()
 }
 
 namespace {
-bool settings_render_selection_changed(int primary, int selected)
+bool settings_render_selection_changed(int primary,
+                                       int selected,
+                                       const SettingsNavigationSnapshot &navigation)
 {
     static lv_obj_t *last_settings_root = nullptr;
     static int last_primary = -1;
@@ -274,24 +282,25 @@ bool settings_render_selection_changed(int primary, int selected)
     static int last_page_order_selection = -1;
     OtaRuntimeSnapshot ota;
     ota_runtime_snapshot_load(&ota);
-    bool selection_changed = g_settings_root != last_settings_root ||
+    lv_obj_t *settings_root = auxiliary_page_root(AuxiliaryPage::kSettings);
+    bool selection_changed = settings_root != last_settings_root ||
                              selected != last_selected ||
                              primary != last_primary ||
-                             g_settings_focus_secondary != last_focus_secondary ||
-                             g_settings_page_toggle_mode != last_page_toggle_mode ||
-                             g_settings_page_order_mode != last_page_order_mode ||
-                             g_settings_page_order_selection != last_page_order_selection ||
+                             navigation.focus_secondary != last_focus_secondary ||
+                             navigation.page_toggle_mode != last_page_toggle_mode ||
+                             navigation.page_order_mode != last_page_order_mode ||
+                             navigation.page_order_selection != last_page_order_selection ||
                              ota.state != last_ota_state ||
                              ota.progress != last_ota_progress ||
                              ota.speed_kbps != last_ota_speed;
     if (selection_changed) {
-        last_settings_root = g_settings_root;
+        last_settings_root = settings_root;
         last_selected = selected;
         last_primary = primary;
-        last_focus_secondary = g_settings_focus_secondary;
-        last_page_toggle_mode = g_settings_page_toggle_mode;
-        last_page_order_mode = g_settings_page_order_mode;
-        last_page_order_selection = g_settings_page_order_selection;
+        last_focus_secondary = navigation.focus_secondary;
+        last_page_toggle_mode = navigation.page_toggle_mode;
+        last_page_order_mode = navigation.page_order_mode;
+        last_page_order_selection = navigation.page_order_selection;
         last_ota_state = ota.state;
         last_ota_progress = ota.progress;
         last_ota_speed = ota.speed_kbps;
@@ -303,10 +312,10 @@ bool update_settings_primary_items(int primary, bool selection_changed)
 {
     bool changed = false;
     for (int i = 0; i < kSettingsPrimaryCount; ++i) {
-        if (g_settings_labels[i]) {
-            changed |= set_label_text_if_changed(g_settings_labels[i], kSettingsPrimaryItems[i]);
+        if (s_settings_labels[i]) {
+            changed |= set_label_text_if_changed(s_settings_labels[i], kSettingsPrimaryItems[i]);
             if (selection_changed) {
-                style_settings_item(g_settings_labels[i], i == primary);
+                style_settings_item(s_settings_labels[i], i == primary);
             }
         }
     }
@@ -318,20 +327,21 @@ bool layout_settings_secondary_slot(
     int primary,
     int visible_order_count,
     const uint8_t *visible_order_pages,
+    const SettingsNavigationSnapshot &navigation,
     char secondary_items[][kSettingsSecondaryTextSize])
 {
     int slot = kSettingsPrimaryCount + index;
-    if (g_settings_page_order_mode || g_settings_page_toggle_mode) {
-        int manager_item_count = g_settings_page_order_mode ? visible_order_count : kWorkPageCount;
+    if (navigation.page_order_mode || navigation.page_toggle_mode) {
+        int manager_item_count = navigation.page_order_mode ? visible_order_count : kWorkPageCount;
         if (index >= manager_item_count) {
-            set_obj_visible(g_settings_labels[slot], false);
+            set_obj_visible(s_settings_labels[slot], false);
             hide_settings_switch_slot(index);
             return false;
         }
         SettingsGridCell cell = settings_grid_cell(index);
-        lv_obj_set_pos(g_settings_labels[slot], cell.x, cell.y);
-        lv_obj_set_size(g_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
-        if (g_settings_page_order_mode) {
+        lv_obj_set_pos(s_settings_labels[slot], cell.x, cell.y);
+        lv_obj_set_size(s_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
+        if (navigation.page_order_mode) {
             format_secondary_text(secondary_items,
                                   index,
                                   kSettingsPageOrderEntryFormat,
@@ -340,8 +350,8 @@ bool layout_settings_secondary_slot(
             hide_settings_switch_slot(index);
         } else {
             set_secondary_text(secondary_items, index, work_page_name(index));
-            if (g_settings_switch_dots[index]) {
-                lv_obj_set_pos(g_settings_switch_dots[index],
+            if (s_settings_switch_dots[index]) {
+                lv_obj_set_pos(s_settings_switch_dots[index],
                                cell.x + kSettingsGridSwitchDotXOffset,
                                cell.y + kSettingsGridSwitchDotYOffset);
             }
@@ -350,25 +360,25 @@ bool layout_settings_secondary_slot(
         bool grid_item = index < kSystemSettingsGridItemCount;
         if (grid_item) {
             SettingsGridCell cell = settings_grid_cell(index);
-            lv_obj_set_pos(g_settings_labels[slot], cell.x, cell.y);
-            lv_obj_set_size(g_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
-            if (g_settings_switch_dots[index]) {
-                lv_obj_set_pos(g_settings_switch_dots[index],
+            lv_obj_set_pos(s_settings_labels[slot], cell.x, cell.y);
+            lv_obj_set_size(s_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
+            if (s_settings_switch_dots[index]) {
+                lv_obj_set_pos(s_settings_switch_dots[index],
                                cell.x + kSettingsGridSwitchDotXOffset,
                                cell.y + kSettingsGridSwitchDotYOffset);
             }
         } else {
-            lv_obj_set_pos(g_settings_labels[slot],
+            lv_obj_set_pos(s_settings_labels[slot],
                            kSettingsSecondaryX,
                            settings_long_item_y(primary));
-            lv_obj_set_size(g_settings_labels[slot], kSettingsSecondaryW, kSettingsSecondaryH);
+            lv_obj_set_size(s_settings_labels[slot], kSettingsSecondaryW, kSettingsSecondaryH);
             hide_settings_switch_slot(index);
         }
     } else {
-        lv_obj_set_pos(g_settings_labels[slot], kSettingsSecondaryX, kSettingsListRowY[index]);
-        lv_obj_set_size(g_settings_labels[slot], kSettingsSecondaryW, kSettingsSecondaryH);
-        if (g_settings_switch_dots[index]) {
-            lv_obj_set_pos(g_settings_switch_dots[index],
+        lv_obj_set_pos(s_settings_labels[slot], kSettingsSecondaryX, kSettingsListRowY[index]);
+        lv_obj_set_size(s_settings_labels[slot], kSettingsSecondaryW, kSettingsSecondaryH);
+        if (s_settings_switch_dots[index]) {
+            lv_obj_set_pos(s_settings_switch_dots[index],
                            kSettingsSwitchDotX,
                            kSettingsListRowY[index] + kSettingsSwitchDotYOffset);
         }
@@ -376,7 +386,11 @@ bool layout_settings_secondary_slot(
     return true;
 }
 
-void update_settings_switch_slot(int index, int primary, int selected, bool visible)
+void update_settings_switch_slot(int index,
+                                 int primary,
+                                 int selected,
+                                 bool visible,
+                                 const SettingsNavigationSnapshot &navigation)
 {
     bool dot_visible = false;
     bool dot_on = false;
@@ -387,26 +401,26 @@ void update_settings_switch_slot(int index, int primary, int selected, bool visi
         }
     } else if (visible &&
                primary == kSettingsPrimaryDisplay &&
-               g_settings_page_toggle_mode) {
+               navigation.page_toggle_mode) {
         dot_visible = true;
         dot_on = is_work_page_enabled(index);
     } else if (visible &&
                primary == kSettingsPrimaryDisplay &&
-               !g_settings_page_toggle_mode &&
-               !g_settings_page_order_mode &&
+               !navigation.page_toggle_mode &&
+               !navigation.page_order_mode &&
                (index == kDisplaySettingsAlarmItem ||
                 index == kDisplaySettingsXiaozhiAutoReturnItem)) {
         dot_visible = true;
         dot_on = index == kDisplaySettingsAlarmItem
                      ? alarm_is_enabled()
-                     : g_xiaozhi_auto_return_enabled.load(std::memory_order_acquire);
+                     : xiaozhi_auto_return_enabled_load();
     }
-    if (g_settings_switch_dots[index]) {
-        set_obj_visible(g_settings_switch_dots[index], dot_visible);
+    if (s_settings_switch_dots[index]) {
+        set_obj_visible(s_settings_switch_dots[index], dot_visible);
         if (dot_visible) {
-            style_settings_switch_dot(g_settings_switch_dots[index],
+            style_settings_switch_dot(s_settings_switch_dots[index],
                                       dot_on,
-                                      g_settings_focus_secondary && index == selected);
+                                      navigation.focus_secondary && index == selected);
         }
     }
 }
@@ -415,66 +429,70 @@ bool update_settings_secondary_items(
     int primary,
     int selected,
     bool selection_changed,
+    const SettingsNavigationSnapshot &navigation,
     char secondary_items[][kSettingsSecondaryTextSize])
 {
     bool changed = false;
     int secondary_count = settings_secondary_count(primary);
     int visible_order_indices[kWorkPageCount] = {};
     uint8_t visible_order_pages[kWorkPageCount] = {};
-    int visible_order_count = g_settings_page_order_mode
+    int visible_order_count = navigation.page_order_mode
                                   ? collect_visible_work_page_order(visible_order_indices,
                                                                     visible_order_pages,
                                                                     array_count(visible_order_indices))
                                   : 0;
     for (int i = 0; i < kSettingsSecondaryMaxCount; ++i) {
         int slot = kSettingsPrimaryCount + i;
-        if (!g_settings_labels[slot]) {
+        if (!s_settings_labels[slot]) {
             continue;
         }
         if (!layout_settings_secondary_slot(i,
                                             primary,
                                             visible_order_count,
                                             visible_order_pages,
+                                            navigation,
                                             secondary_items)) {
             continue;
         }
         bool visible = i < secondary_count;
-        if (g_settings_page_order_mode) {
+        if (navigation.page_order_mode) {
             visible = i < visible_order_count;
-        } else if (g_settings_page_toggle_mode) {
+        } else if (navigation.page_toggle_mode) {
             visible = i < kWorkPageCount;
         }
-        set_obj_visible(g_settings_labels[slot], visible);
+        set_obj_visible(s_settings_labels[slot], visible);
         if (visible) {
-            changed |= set_label_text_if_changed(g_settings_labels[slot], secondary_items[i]);
+            changed |= set_label_text_if_changed(s_settings_labels[slot], secondary_items[i]);
             if (selection_changed) {
-                int order_index = g_settings_page_order_mode ? visible_order_indices[i] : -1;
-                bool selected_item = g_settings_page_order_mode ? order_index == g_settings_page_order_selection :
-                                     g_settings_page_toggle_mode ? i == selected :
-                                     (g_settings_focus_secondary && i == selected);
-                style_settings_item(g_settings_labels[slot], selected_item);
+                int order_index = navigation.page_order_mode ? visible_order_indices[i] : -1;
+                bool selected_item = navigation.page_order_mode
+                                         ? order_index == navigation.page_order_selection
+                                     : navigation.page_toggle_mode
+                                         ? i == selected
+                                         : (navigation.focus_secondary && i == selected);
+                style_settings_item(s_settings_labels[slot], selected_item);
                 if (primary == kSettingsPrimarySystem && i < kSystemSettingsGridItemCount) {
-                    lv_obj_set_style_pad_left(g_settings_labels[slot], 4, LV_PART_MAIN);
-                    lv_obj_set_style_pad_right(g_settings_labels[slot], 4, LV_PART_MAIN);
+                    lv_obj_set_style_pad_left(s_settings_labels[slot], 4, LV_PART_MAIN);
+                    lv_obj_set_style_pad_right(s_settings_labels[slot], 4, LV_PART_MAIN);
                 }
             }
         }
-        update_settings_switch_slot(i, primary, selected, visible);
+        update_settings_switch_slot(i, primary, selected, visible, navigation);
     }
     return changed;
 }
 
 bool update_settings_feedback_label()
 {
-    if (!g_settings_feedback_label) {
+    if (!s_settings_feedback_label) {
         return false;
     }
     TickType_t now = xTaskGetTickCount();
     char feedback[kSettingsFeedbackTextLen] = {};
     if (settings_feedback_copy_active(now, feedback, sizeof(feedback))) {
-        return set_label_text_if_changed(g_settings_feedback_label, feedback);
+        return set_label_text_if_changed(s_settings_feedback_label, feedback);
     }
-    return set_label_text_if_changed(g_settings_feedback_label, "");
+    return set_label_text_if_changed(s_settings_feedback_label, "");
 }
 } // namespace
 
@@ -482,28 +500,39 @@ bool update_settings_page()
 {
     ota_reset_status_if_idle();
     char secondary_items[kSettingsSecondaryMaxCount][kSettingsSecondaryTextSize] = {};
-    int primary = clamp_settings_primary(g_settings_primary_selection);
+    SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
+    int primary = clamp_settings_primary(navigation.primary_selection);
     int selected = clamp_settings_selection_for_mode(primary,
-                                                     g_settings_selection,
-                                                     g_settings_page_toggle_mode);
-    g_settings_primary_selection = primary;
-    g_settings_selection = selected;
-    if (g_settings_page_order_mode) {
+                                                     navigation.selection,
+                                                     navigation.page_toggle_mode);
+    if (navigation.page_order_mode) {
         normalize_work_page_order();
-        g_settings_page_order_selection =
-            valid_enabled_work_page_order_index(g_settings_page_order_selection);
+        navigation.page_order_selection =
+            valid_enabled_work_page_order_index(navigation.page_order_selection);
     }
 
     populate_settings_secondary_items(primary, secondary_items);
-    bool selection_changed = settings_render_selection_changed(primary, selected);
+    bool selection_changed = settings_render_selection_changed(primary, selected, navigation);
     bool changed = selection_changed;
     changed |= update_settings_primary_items(primary, selection_changed);
     changed |= update_settings_secondary_items(primary,
                                                selected,
                                                selection_changed,
+                                               navigation,
                                                secondary_items);
     bool ota_panel_visible = primary == kSettingsPrimarySystem && selected == kSystemSettingsOtaItem;
     changed |= update_settings_ota_panel(ota_panel_visible);
     changed |= update_settings_feedback_label();
     return changed;
+}
+
+void clear_settings_page_object_refs()
+{
+    for (lv_obj_t *&label : s_settings_labels) {
+        label = nullptr;
+    }
+    for (lv_obj_t *&dot : s_settings_switch_dots) {
+        dot = nullptr;
+    }
+    s_settings_feedback_label = nullptr;
 }

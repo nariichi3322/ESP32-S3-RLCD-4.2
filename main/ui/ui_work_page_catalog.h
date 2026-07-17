@@ -1,9 +1,12 @@
 // 声明工作页名称、启用状态和自定义顺序的共享接口。
 #pragma once
 
+#include "work_page_ids.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
+bool work_page_catalog_init();
 bool is_work_page_enabled(int page);
 uint8_t work_page_enabled_mask_load();
 void work_page_enabled_mask_store(uint8_t page_mask);

@@ -1,12 +1,9 @@
 // 为联网任务提供可重复释放的唤醒锁、HTTP 事务锁和临时超时作用域守卫。
 #pragma once
 
-#include "app_state.h"
+#include "network_http_transaction_lock.h"
 #include "http_timeout_state.h"
-#include "sensor_services.h"
-
-bool acquire_network_http_transaction_lock(TickType_t timeout);
-void release_network_http_transaction_lock();
+#include "power_services.h"
 
 class NetworkAwakeLockGuard {
 public:

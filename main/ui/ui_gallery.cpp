@@ -16,6 +16,9 @@
 static int s_last_gallery_image_index = -1;
 static int s_last_gallery_time_key = -1;
 static uint8_t s_custom_gallery_image[CLOCK_GALLERY_IMAGE_BYTES_PER_ROW * CLOCK_GALLERY_IMAGE_HEIGHT];
+static lv_obj_t *s_gallery_image_canvas;
+static lv_obj_t *s_gallery_time_canvas;
+static lv_obj_t *s_gallery_saying_label;
 static lv_color_t *s_gallery_image_canvas_buffer;
 static lv_color_t *s_gallery_time_canvas_buffer;
 
@@ -118,24 +121,24 @@ static void draw_block_number(lv_obj_t *canvas, int value, int y)
 
 static bool update_gallery_time_labels(const struct tm &local)
 {
-    if (!g_gallery_time_canvas || !s_gallery_time_canvas_buffer) {
+    if (!s_gallery_time_canvas || !s_gallery_time_canvas_buffer) {
         return false;
     }
-    lv_canvas_fill_bg(g_gallery_time_canvas, lv_color_white(), LV_OPA_COVER);
-    draw_block_number(g_gallery_time_canvas, local.tm_hour, kGalleryTimeHourY);
-    draw_block_number(g_gallery_time_canvas, local.tm_min, kGalleryTimeMinuteY);
-    lv_obj_invalidate(g_gallery_time_canvas);
+    lv_canvas_fill_bg(s_gallery_time_canvas, lv_color_white(), LV_OPA_COVER);
+    draw_block_number(s_gallery_time_canvas, local.tm_hour, kGalleryTimeHourY);
+    draw_block_number(s_gallery_time_canvas, local.tm_min, kGalleryTimeMinuteY);
+    lv_obj_invalidate(s_gallery_time_canvas);
     return true;
 }
 
 static bool update_gallery_saying_label()
 {
-    if (!g_gallery_saying_label) {
+    if (!s_gallery_saying_label) {
         return false;
     }
     char saying[kDailySayingLen] = {};
     get_daily_saying_snapshot(saying, sizeof(saying));
-    return set_label_text_if_changed(g_gallery_saying_label, saying);
+    return set_label_text_if_changed(s_gallery_saying_label, saying);
 }
 
 static void style_gallery_saying_label(lv_obj_t *label)
@@ -174,7 +177,7 @@ static void build_gallery_canvas(lv_obj_t *screen,
 
 static bool update_gallery_image_for_date(const struct tm &local)
 {
-    if (!g_gallery_image_canvas || !s_gallery_image_canvas_buffer) {
+    if (!s_gallery_image_canvas || !s_gallery_image_canvas_buffer) {
         return false;
     }
     int custom_count = custom_assets_gallery_count();
@@ -198,7 +201,7 @@ static bool update_gallery_image_for_date(const struct tm &local)
         custom_assets_read_gallery_image(image_index, s_custom_gallery_image, sizeof(s_custom_gallery_image))) {
         image_bits = s_custom_gallery_image;
     }
-    draw_1bit_icon(g_gallery_image_canvas,
+    draw_1bit_icon(s_gallery_image_canvas,
                    CLOCK_GALLERY_IMAGE_WIDTH,
                    CLOCK_GALLERY_IMAGE_HEIGHT,
                    CLOCK_GALLERY_IMAGE_BYTES_PER_ROW,
@@ -218,28 +221,27 @@ bool update_gallery_page(const struct tm &local)
         changed |= update_gallery_time_labels(local);
     }
     changed |= update_gallery_image_for_date(local);
-    changed |= update_work_page_sensor_summary(g_gallery_summary_label);
+    changed |= update_work_page_sensor_summary(
+        get_work_page_status_labels(kWorkPageGallery).summary);
     changed |= update_gallery_saying_label();
     return changed;
 }
 
 void build_gallery_page()
 {
-    if (g_gallery_root) {
+    if (work_page_root(kWorkPageGallery)) {
         return;
     }
     lv_obj_t *screen = create_page_root();
     if (!screen) {
         return;
     }
-    g_gallery_root = screen;
+    set_work_page_root(kWorkPageGallery, screen);
 
-    build_battery_icon(screen, g_gallery_battery_segments);
+    build_work_page_battery_icon(screen, kWorkPageGallery);
     build_work_page_status_bar(screen,
                                kWorkPageGallery,
-                               &g_gallery_date_label,
-                               &g_gallery_summary_label,
-                               nullptr,
+                               true,
                                false);
 
     lv_obj_t *top_line = make_bar(screen,
@@ -251,7 +253,7 @@ void build_gallery_page()
     build_work_page_day_progress(screen, kWorkPageGallery);
 
     build_gallery_canvas(screen,
-                         &g_gallery_image_canvas,
+                         &s_gallery_image_canvas,
                          &s_gallery_image_canvas_buffer,
                          kGalleryImageCanvasX,
                          kGalleryImageCanvasY,
@@ -266,7 +268,7 @@ void build_gallery_page()
                                  kGalleryDividerH);
     set_obj_black(divider, true);
     build_gallery_canvas(screen,
-                         &g_gallery_time_canvas,
+                         &s_gallery_time_canvas,
                          &s_gallery_time_canvas_buffer,
                          kGalleryTimeCanvasX,
                          kGalleryTimeCanvasY,
@@ -274,20 +276,27 @@ void build_gallery_page()
                          kGalleryTimeCanvasH,
                          GALLERY_TIME_CANVAS_CREATE_FAILED_LOG);
 
-    g_gallery_saying_label = make_label(screen,
+    s_gallery_saying_label = make_label(screen,
                                         kGallerySayingLabelX,
                                         kGallerySayingLabelY,
                                         kGallerySayingLabelW,
                                         kGallerySayingLabelH,
                                         "");
-    if (!g_gallery_saying_label) {
+    if (!s_gallery_saying_label) {
         ESP_LOGW(TAG, "%s", GALLERY_SAYING_LABEL_CREATE_FAILED_LOG);
     } else {
-        style_gallery_saying_label(g_gallery_saying_label);
+        style_gallery_saying_label(s_gallery_saying_label);
     }
 
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
-    update_battery_segments(g_gallery_battery_segments, battery_percent_load());
+    update_work_page_battery_icon(kWorkPageGallery, battery_percent_load());
     s_last_gallery_image_index = -1;
     s_last_gallery_time_key = -1;
+}
+
+void clear_gallery_object_refs()
+{
+    s_gallery_image_canvas = nullptr;
+    s_gallery_time_canvas = nullptr;
+    s_gallery_saying_label = nullptr;
 }

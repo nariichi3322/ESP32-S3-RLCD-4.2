@@ -4,6 +4,7 @@
 #include "alarm_services.h"
 #include "audio_services.h"
 #include "ota_runtime_state.h"
+#include "pomodoro_runtime_state.h"
 #include "reminder_schedule.h"
 #include "sensor_time.h"
 #include "task_notification_target.h"
@@ -28,21 +29,8 @@ constexpr uint32_t kAudioReleasePollMs = 20U;
 constexpr const char *kPomodoroAlarmConflictResult =
     "pomodoro rejected: alarm is set for the same minute";
 
-portMUX_TYPE s_pomodoro_mux = portMUX_INITIALIZER_UNLOCKED;
-PomodoroSnapshot s_snapshot = {kPomodoroIdle, 0, 0, false, 1};
-int64_t s_deadline_us = 0;
-int64_t s_completed_at_us = 0;
 TaskNotificationTarget s_task_target;
 std::atomic<bool> s_stop_alert_requested{false};
-
-uint32_t remaining_ms_locked(int64_t now_us)
-{
-    if (s_snapshot.state != kPomodoroRunning || s_deadline_us <= now_us) {
-        return 0;
-    }
-    int64_t remaining_us = s_deadline_us - now_us;
-    return static_cast<uint32_t>((remaining_us + 999) / 1000);
-}
 
 void notify_state_changed()
 {
@@ -57,16 +45,14 @@ void publish_state(PomodoroState state,
                    int64_t deadline_us,
                    int64_t completed_at_us)
 {
-    portENTER_CRITICAL(&s_pomodoro_mux);
-    s_snapshot.state = state;
-    s_snapshot.total_ms = total_ms;
-    s_snapshot.remaining_ms = remaining_ms;
-    s_snapshot.alerting = alerting;
-    ++s_snapshot.version;
-    s_deadline_us = deadline_us;
-    s_completed_at_us = completed_at_us;
-    portEXIT_CRITICAL(&s_pomodoro_mux);
-    notify_state_changed();
+    if (pomodoro_runtime_publish(state,
+                                 total_ms,
+                                 remaining_ms,
+                                 alerting,
+                                 deadline_us,
+                                 completed_at_us)) {
+        notify_state_changed();
+    }
 }
 
 bool completion_stop_requested()
@@ -103,13 +89,9 @@ bool conflicts_with_enabled_alarm(uint32_t duration_ms)
 
 void set_alerting(bool alerting)
 {
-    portENTER_CRITICAL(&s_pomodoro_mux);
-    if (s_snapshot.alerting != alerting) {
-        s_snapshot.alerting = alerting;
-        ++s_snapshot.version;
+    if (pomodoro_runtime_set_alerting(alerting)) {
+        notify_ui_task();
     }
-    portEXIT_CRITICAL(&s_pomodoro_mux);
-    notify_ui_task();
 }
 
 void play_completion_audio()
@@ -178,18 +160,26 @@ bool mcp_control_pomodoro(const XiaozhiMcpPomodoroRequest &request,
 }
 } // namespace
 
-void pomodoro_services_init()
+bool pomodoro_services_init()
 {
+    if (!pomodoro_runtime_state_init()) {
+        return false;
+    }
     xiaozhi_mcp_register_pomodoro_handler(mcp_control_pomodoro);
+    return true;
 }
 
 void pomodoro_task(void *)
 {
     s_task_target.publish(xTaskGetCurrentTaskHandle());
     for (;;) {
-        PomodoroSnapshot snapshot = {};
-        pomodoro_get_snapshot(&snapshot);
-        int64_t now_us = esp_timer_get_time();
+        const int64_t now_us = esp_timer_get_time();
+        PomodoroRuntimeSnapshot runtime = {};
+        if (!pomodoro_runtime_snapshot(now_us, &runtime)) {
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            continue;
+        }
+        const PomodoroSnapshot &snapshot = runtime.visible;
         if (snapshot.state == kPomodoroRunning && snapshot.remaining_ms == 0) {
             publish_state(kPomodoroCompleted,
                           snapshot.total_ms,
@@ -202,11 +192,7 @@ void pomodoro_task(void *)
             continue;
         }
         if (snapshot.state == kPomodoroCompleted) {
-            int64_t completed_at_us = 0;
-            portENTER_CRITICAL(&s_pomodoro_mux);
-            completed_at_us = s_completed_at_us;
-            portEXIT_CRITICAL(&s_pomodoro_mux);
-            int64_t hold_remaining_us = completed_at_us +
+            int64_t hold_remaining_us = runtime.completed_at_us +
                                         static_cast<int64_t>(kCompletedHoldMs) * 1000 - now_us;
             if (hold_remaining_us <= 0) {
                 publish_state(kPomodoroIdle, 0, 0, false, 0, 0);
@@ -233,11 +219,12 @@ void pomodoro_get_snapshot(PomodoroSnapshot *out)
     if (!out) {
         return;
     }
-    int64_t now_us = esp_timer_get_time();
-    portENTER_CRITICAL(&s_pomodoro_mux);
-    *out = s_snapshot;
-    out->remaining_ms = remaining_ms_locked(now_us);
-    portEXIT_CRITICAL(&s_pomodoro_mux);
+    PomodoroRuntimeSnapshot runtime = {};
+    if (!pomodoro_runtime_snapshot(esp_timer_get_time(), &runtime)) {
+        *out = {};
+        return;
+    }
+    *out = runtime.visible;
 }
 
 bool pomodoro_is_running()

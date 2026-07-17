@@ -304,7 +304,7 @@ void build_inverted_clock_cards(lv_obj_t *parent,
 }
 
 bool update_inverted_clock_cards(const struct tm &local,
-                                 lv_obj_t *card_canvas[3],
+                                 lv_obj_t *const card_canvas[3],
                                  int last_values[3])
 {
     if (!card_canvas || !last_values) {
