@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.20",
+  "latest": "v1.5.21",
   "items": [
+    {
+      "version": "v1.5.21",
+      "notes": "v1.5.21：共 53 项更新。\n1. 按键任务与 OTA 服务入口移除完整应用状态依赖，调用方不再因少量函数声明引入无关硬件…\n2. 音频公共接口移除完整应用状态依赖，Codec 初始化失败会在返回前停放引脚并归还高性能…\n3. HTTPS/WSS 全局事务锁改由轻量窄接口统一声明，联网守卫和小智 transpor…\n4. Wi-Fi 凭据与天气 API Key 快照改用公共作用域互斥，并补充取锁失败不覆盖旧…\n5. 小智页面快照改用统一作用域互斥保护并固定 UI 通知在解锁后执行，减少早退路径遗漏解锁…\n其余 48 项见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.21.bin",
+        "sha256": "1b6ac0c7111f69bfb4e798db5331ebf083a6f06091e045cbf25c9d7a680c7e66",
+        "size": 6229648
+      },
+      "merged": {
+        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.21_merged.bin",
+        "sha256": "2c8d3ac97088644c5b10220eb7bf4f5b36a94a1d63097b3fb5cf5d31e197c24d",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.20",
       "notes": "v1.5.20：共 3 项更新。\n1. GitHub 源码仓库固件构建完成后新增飞书机器人通知，自动推送版本、构建结果和 Ac…\n2. 本地温湿度当前值、可用状态、趋势和刷新版本改用启动期静态任务互斥发布一致快照，页面、小…\n3. 新增本地温湿度 10000 批并发交错测试与构建通知安全契约，保持采样频率、四小时趋势…\n完整说明见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.12_merged.bin",
         "sha256": "a4c5edab18af57f5f25c6153762f184115dd503a7b7c2e7fb8a1ee0010e521e6",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.11",
-      "notes": "v1.5.11：共 7 项更新。\n重点：本版用于验证新的外网自动发布链路，只顺延固件、SDL 和工程版本号，不修改设备业务逻辑、UI、分区表、NVS、资源格式、OTA 协议或上位机接…\n完整说明见同版本 Release。",
-      "app": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.11.bin",
-        "sha256": "b487ea38a4ddff2cd7c9bb491a08eb2ac2f78298e2bc65a019f05e0b3fe69863",
-        "size": 6209056
-      },
-      "merged": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.11_merged.bin",
-        "sha256": "2be5cc0c6bda26d125516477d58ae6f8acd79089241abb412c9c6fe1e8d70ea5",
         "size": 16509951
       }
     }
