@@ -38,11 +38,15 @@ bool apply_station_config(bool reconnect);
 void stop_http_server();
 esp_err_t save_post_handler(httpd_req_t *req);
 esp_err_t save_get_handler(httpd_req_t *req);
+esp_err_t portal_status_get_handler(httpd_req_t *req);
 esp_err_t empty_asset_handler(httpd_req_t *req);
 esp_err_t captive_portal_handler(httpd_req_t *req);
 bool start_captive_dns_server();
 void stop_captive_dns_server();
 bool start_http_server();
+bool request_setup_portal_start();
+bool setup_portal_start_requested();
+bool prepare_setup_portal_result_delivery();
 bool start_wifi_radio(bool enable_setup_portal);
 void stop_wifi_radio(bool force_setup_portal = false);
 // 小智退出与后台同步可能交错：先登记关闭请求，再由最后释放联网锁的

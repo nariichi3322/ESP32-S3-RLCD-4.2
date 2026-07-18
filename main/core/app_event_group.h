@@ -21,6 +21,9 @@ inline constexpr EventBits_t kNetworkDiagBit = 1U << 11;
 // This bit wakes the network task after runtime configuration changes. It is
 // not a sync request and must never be cleared with the request-bit group.
 inline constexpr EventBits_t kNetworkStateChangedBit = 1U << 12;
+// UI tasks only request the transition. The network task starts the setup AP
+// after any in-flight HTTPS window has released Wi-Fi and lwIP resources.
+inline constexpr EventBits_t kSetupPortalStartBit = 1U << 13;
 
 bool app_event_group_init();
 void app_event_group_release();

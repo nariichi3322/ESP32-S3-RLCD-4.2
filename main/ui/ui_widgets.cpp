@@ -1,7 +1,11 @@
 // 创建并更新项目共用的 LVGL 条形块和文本标签。
 #include "ui_widgets.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
+#include "ui_fonts.h"
+
+#include <esp_log.h>
+#include <string.h>
 
 #define UI_BAR_PARENT_UNAVAILABLE_LOG "bar parent unavailable"
 #define UI_BAR_INVALID_SIZE_FORMAT "bar invalid size %dx%d"

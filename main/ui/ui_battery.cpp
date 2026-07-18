@@ -2,7 +2,11 @@
 #include "ui_battery.h"
 
 #include "app_constexpr.h"
-#include "app_state.h"
+#include "app_metadata.h"
+#include "battery_policy.h"
+#include "work_page_ids.h"
+
+#include "esp_log.h"
 
 namespace {
 #define BATTERY_ICON_INVALID_ARG_LOG "battery icon invalid arg"

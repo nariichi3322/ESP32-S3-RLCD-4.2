@@ -1,12 +1,16 @@
 // 负责 RTC 时间校验、系统时间恢复和系统时间回写。
 #include "sensor_services.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "app_time_constants.h"
 #include "i2c_equipment.h"
 #include "sensor_time.h"
 
+#include <esp_log.h>
+
 #include <errno.h>
+#include <sys/time.h>
+#include <time.h>
 
 #define RTC_INVALID_TIME_LOG_FORMAT "ignore invalid RTC time: %04u-%02u-%02u %02u:%02u:%02u"
 #define RTC_MKTIME_FAILED_LOG_FORMAT "ignore RTC time: mktime failed"

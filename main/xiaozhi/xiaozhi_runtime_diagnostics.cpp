@@ -1,12 +1,14 @@
 // 汇总小智语音、音频、网络和电源资源状态并输出退出诊断。
 #include "xiaozhi_runtime_diagnostics.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "audio_services.h"
 #include "power_services.h"
 #include "wifi_radio_state.h"
 #include "xiaozhi_tts_playback.h"
 #include "xiaozhi_voice.h"
+
+#include <esp_log.h>
 
 namespace {
 XiaozhiRuntimeResourceActivity capture_resource_activity(

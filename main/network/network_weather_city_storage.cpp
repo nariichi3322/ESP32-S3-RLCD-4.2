@@ -1,13 +1,14 @@
 // 实现手动天气城市、上位机资源城市和忽略标记之间的持久化规则。
 #include "network_weather_city_storage.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "app_text_format.h"
 #include "custom_assets.h"
 #include "network_config_nvs.h"
 #include "weather_city_contract.h"
 #include "weather_city_text.h"
 
+#include <esp_log.h>
 #include <string.h>
 
 namespace network_weather_city_storage {

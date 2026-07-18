@@ -1,7 +1,7 @@
 // 验证每日文字与同步时间在并发读写中始终来自同一发布批次。
 #include "daily_saying_state.h"
 
-#include "app_state.h"
+#include "daily_saying_contract.h"
 
 #include <assert.h>
 #include <atomic>

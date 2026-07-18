@@ -1,12 +1,15 @@
 // 调度本地温湿度、电池采样和传感器相关低频后台任务。
 #include "sensor_services.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "app_tick_time.h"
+#include "battery_policy.h"
+#include "battery_runtime_state.h"
 #include "local_sensor_state.h"
 #include "ota_services.h"
 #include "sensor_time.h"
-#include "ui_views.h"
+
+#include "esp_log.h"
 
 namespace {
 #define SENSOR_INTERVAL_INVALID_LOG_FORMAT "sensor interval invalid: %d"

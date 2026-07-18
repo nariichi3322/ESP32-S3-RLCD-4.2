@@ -1,8 +1,8 @@
 // 使用静态任务互斥发布每日文字和同步时间，避免字符串复制关闭中断。
 #include "daily_saying_state.h"
 
-#include "app_state.h"
 #include "app_text_format.h"
+#include "daily_saying_contract.h"
 #include "scoped_semaphore_lock.h"
 
 #include "freertos/FreeRTOS.h"

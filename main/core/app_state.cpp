@@ -1,8 +1,8 @@
-// 定义天气时钟全局运行状态、版本信息和跨模块共享对象。
-#include "app_state.h"
+// 定义应用日志标签、版本号和构建日期等只读元数据。
+#include "app_metadata.h"
 
 const char *const TAG = "WeatherClock";
-const char *const APP_VERSION = "v1.5.23";
+const char *const APP_VERSION = "v1.5.24";
 #ifndef WEATHER_CLOCK_BUILD_DATE
 #define WEATHER_CLOCK_BUILD_DATE "unknown"
 #endif

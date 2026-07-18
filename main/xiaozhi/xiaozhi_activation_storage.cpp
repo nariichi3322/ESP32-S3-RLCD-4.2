@@ -1,12 +1,13 @@
 // 持久化小智绑定结果和设备 Client ID，不参与网络与语音状态机。
 #include "xiaozhi_activation_storage.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "app_text_format.h"
 #include "scoped_nvs_handle.h"
 
 #include <cJSON.h>
-#include <esp_system.h>
+#include <esp_log.h>
+#include <esp_random.h>
 #include <nvs.h>
 
 #include <cstdio>

@@ -5,6 +5,7 @@
 
 #include "alarm_services.h"
 #include "app_constexpr.h"
+#include "battery_policy.h"
 #include "chime_runtime_state.h"
 #include "network_services.h"
 #include "ui_clock.h"
@@ -258,9 +259,9 @@ void apply_clock_mode_visibility(bool setup_active)
     const ClockHeaderObjectRefs &header = clock_header_object_refs();
     const ClockSurfaceObjectRefs &surface = clock_surface_object_refs();
     bool low = battery_low_mode_load();
-    set_obj_visible(surface.second_canvas, !low);
+    set_obj_visible(surface.second_canvas, !low && !setup_active);
     set_work_page_day_progress_visible(kWorkPageWeatherClock, !low);
-    set_obj_visible(surface.second_progress_canvas, !low);
+    set_obj_visible(surface.second_progress_canvas, !low && !setup_active);
     set_obj_visible(surface.low_battery_icon_canvas, low);
     set_lower_panel_visible(!setup_active && !low);
     set_setup_status_panel_visible(setup_active && !low);

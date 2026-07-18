@@ -8,10 +8,12 @@
 #include "app_event_group.h"
 #include "app_tick_time.h"
 #include "audio_services.h"
+#include "battery_policy.h"
 #include "chime_runtime_state.h"
 #include "local_sensor_state.h"
 #include "network_diagnostics_state.h"
 #include "network_services.h"
+#include "ota_download_policy.h"
 #include "ota_runtime_state.h"
 #include "ota_services.h"
 #include "sensor_time.h"
@@ -270,6 +272,7 @@ void ui_task(void *)
         bool setup_due = setup_portal_active_load() != setup_panel_visible;
         bool mode_due = battery.low_battery_mode != low_mode_visible;
 
+        bool start_setup_prompt_after_ui = false;
         if (Lvgl_lock(kUiLvglLockTimeoutMs)) {
             bool refresh_now = false;
             InfoPageStateSnapshot info_state;
@@ -481,22 +484,29 @@ void ui_task(void *)
                 refresh_now = true;
             }
             const ActiveWorkPageState active_pages = active_work_page_state(active_page);
-            update_visible_weather_sync(active_pages,
-                                        now,
-                                        tick_now,
-                                        weather_sync_retry);
-            update_visible_daily_saying_sync(active_pages,
-                                             local,
-                                             now,
-                                             tick_now,
-                                             saying_sync_retry);
+            const bool setup_active_for_frame = setup_portal_active_load();
+            if (!setup_active_for_frame) {
+                update_visible_weather_sync(active_pages,
+                                            now,
+                                            tick_now,
+                                            weather_sync_retry);
+                update_visible_daily_saying_sync(active_pages,
+                                                 local,
+                                                 now,
+                                                 tick_now,
+                                                 saying_sync_retry);
 
-            refresh_now |= update_active_work_page_content(local,
-                                                           active_pages,
-                                                           active_page,
-                                                           status_due,
-                                                           alert_visible,
-                                                           alert_index);
+                refresh_now |= update_active_work_page_content(local,
+                                                               active_pages,
+                                                               active_page,
+                                                               status_due,
+                                                               alert_visible,
+                                                               alert_index);
+            } else if (is_system_time_plausible(&local)) {
+                refresh_now |= update_setup_clock_header_time_ui(local);
+            } else {
+                refresh_now |= update_invalid_time_labels_for_active_page(active_page);
+            }
 
             if (status_due || battery_due || battery_blink_due || setup_due || mode_due) {
                 EventBits_t bits = app_event_group_get_bits();
@@ -552,7 +562,12 @@ void ui_task(void *)
             if (refresh_now) {
                 lv_refr_now(nullptr);
             }
+            start_setup_prompt_after_ui = setup_panel_visible &&
+                                          setup_prompt_playback_pending();
             Lvgl_unlock();
+        }
+        if (start_setup_prompt_after_ui) {
+            (void)start_setup_prompt_playback();
         }
         TickType_t delay_ticks = ui_runtime_next_loop_delay_ticks(
             local,

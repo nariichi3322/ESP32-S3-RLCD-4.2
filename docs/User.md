@@ -96,6 +96,7 @@ Shows three high-contrast hour/minute/second cards plus local temperature, humid
 
 Shows the current month, weekday bar, lunar text, and holidays.
 
+- Manual date/time entry, RTC validity, and the lunar calendar currently share the supported range `2024–2035`; dates outside this range are not accepted as valid device time.
 - The calendar body redraws only on page entry, date/month change, or a time correction that crosses a day boundary.
 - The first frame after a page rebuild always redraws the calendar instead of reusing the previous page's date cache.
 - For rare six-row months, once today reaches the sixth row the already-passed first row is hidden so today remains visible.
@@ -152,11 +153,19 @@ With no saved online configuration and offline mode disabled, setup starts autom
    - **Wi-Fi password:** password for the selected network.
    - **QWeather API Key:** required for current weather, alerts, forecast, and air quality.
    - **Weather city (optional):** for example Hangzhou. Chinese names ending in `市` are normalized and validated through QWeather. Leave empty for public-IP location.
-   - **Offline date and time:** use only when Wi-Fi is intentionally left empty.
+   - **Offline date and time (optional):** use only when Wi-Fi is intentionally left empty. Leave it blank for normal Wi-Fi setup.
+
+After Save is pressed, the page immediately shows a validating state; validation does not intentionally restart the device. A background network task connects to the selected router in AP+STA mode, validates the QWeather API key against the current-weather service, and then validates an optional manual city. The page polls the lightweight validation status. The setup hotspot closes only after all checks pass. A Wi-Fi password, API key, or city failure keeps the hotspot active and shows a specific error. If the phone loses the current HTTP connection while the STA changes channel, reopening `http://192.168.4.1/` shows the latest validation state above the form. The Save button remains on its own row below the date/time field.
+
+When setup starts, the device first presents the setup overlay and then plays the provisioning prompt. Normal prompts initialize speaker output only and do not allocate microphone input DMA. If the first display frame temporarily consumes the remaining DMA memory, prompt playback waits briefly and retries a bounded number of times. The setup view keeps RTC-restored hours/minutes and date visible while second animation, GIF, weather, and lower work-page refreshes stay paused.
 
 In the rare case that the platform cannot configure the captive DNS receive timeout, the page may not open automatically. Open the address above manually; the failed DNS service exits cleanly instead of remaining active after setup.
 
+When the last phone leaves the setup hotspot, the device resets the captive DHCP lease state. A phone that reconnects can therefore obtain a fresh `192.168.4.x` address. If the captive page does not reopen automatically, visit `http://192.168.4.1/` directly.
+
 The on-device setup status rows follow setup-mode visibility as one panel. If the UI is rebuilt after a mode switch or resource recovery, those rows are recreated and continue refreshing without retaining stale object references.
+
+Setup-field decoding, configuration-event cleanup, configuration storage, and factory-reset cleanup use lightweight internal helpers. This maintenance does not change field names, Chinese text handling, truncation feedback, save results, existing configuration recovery, or button controls.
 
 ### 4.2 Online Mode
 
@@ -182,7 +191,7 @@ A manual city takes priority over IP location and can be set through:
 
 **Settings > Network > Weather City** displays Auto or the saved city. In manual mode, press BOOT and confirm again to clear it and return to IP location. Clearing immediately queues a weather refresh.
 
-An unrecognized QWeather city is rejected. If online validation times out, the normalized name is kept and retried during the next weather update.
+An unrecognized QWeather city is rejected while the setup hotspot remains active. The user can correct the city or clear it to restore automatic IP location; setup does not silently replace an invalid manual choice.
 
 After a city is saved, it takes effect as one complete text snapshot without a reboot across setup, Xiaozhi, Settings, and weather synchronization. Updating a Chinese city while a sync is running cannot expose a partial or mixed city name.
 
@@ -247,10 +256,13 @@ If no valid playback handle can be created, the device parks the audio pins and 
 Production audio now reuses the ES8311/ES7210 I2C controls already owned by the board Codec layer instead of registering duplicate, unused device handles for every session. Sound behavior and hardware addresses are unchanged.
 The network transaction lock shared by weather, daily text, Xiaozhi, and OTA is now a static lifetime resource. This removes a cold-start heap allocation and a source of long-lived fragmentation without changing request order, timeouts, or user operation.
 The fixed capacities for OTA version, download URL, and SHA256 metadata are now owned by the OTA module, so the pure parser interface no longer carries unrelated display or application-state dependencies. Manifest format, source priority, download validation, and user operation are unchanged.
-Daily text and its successful synchronization time are now published as one consistent snapshot, preventing a page refresh from pairing new text with an older timestamp. Text content, fetch timing, and display behavior are unchanged.
+Daily text and its successful synchronization time are now published as one consistent snapshot, preventing a page refresh from pairing new text with an older timestamp. The internal cache remains 160 bytes; the 22-character limit, fetch timing, and display behavior are unchanged.
 The depth counter mutex used by network and audio power locks is also a static lifetime resource. This reduces startup heap allocation and long-lived fragmentation without changing light sleep, network, or audio behavior.
 Current local temperature, humidity, trends, and refresh version are also published as one task-level snapshot, so pages and Xiaozhi cannot observe fields from different sampling batches. Sampling intervals, arrows, and display behavior are unchanged.
 Internal sensor, battery, hourly-history, wall-clock, and power-lock interfaces now declare their own actual dependencies. This reduces unrelated maintenance coupling without changing sampling cadence, RTC behavior, charging detection, light sleep, or displayed readings.
+Xiaozhi internals now read the application log tag and version through a lightweight metadata contract instead of also importing unrelated display, weather, and system-state declarations. Binding, wake-up, conversation, MCP, audio, networking, and page behavior are unchanged.
+Shared audio and chime orchestration also declare only the logging, task, battery, and hardware contracts they actually use instead of importing unrelated display, weather, network, and OTA internals. Hourly chimes, setting previews, provisioning prompts, Xiaozhi audio, power behavior, and controls are unchanged.
+Weather location text and QWeather response handling now load only the weather types, JSON, buffer, and logging contracts they actually use instead of unrelated display, OTA, audio, and system state. City resolution, weather data, failure messages, and page output are unchanged.
 The four-hour trend samples and 48-slot hourly history now share one stable production data definition, and host validation uses the real firmware layout instead of a parallel test copy. NVS data, restart recovery, history charts, and page operation are unchanged.
 The application event identifiers and event-group resource shared by provisioning, synchronization, OTA, and startup are managed by one internal owner and remain a static lifetime resource. Calls made before initialization or after startup-failure cleanup fail safely instead of touching an invalid handle. Event delivery, wait timeouts, and user operation are unchanged.
 The Xiaozhi page snapshot lock also uses a static control block, reducing startup internal-memory allocation and long-term fragmentation without changing wake-up, subtitles, expressions, Pomodoro, or page controls.
@@ -361,6 +373,8 @@ The dedicated `assets` partition supports desktop-client uploads for:
 
 The firmware validates package header, dimensions, offsets, lengths, and CRC. Missing or invalid custom data falls back to built-in assets.
 
+Internal resource-loader dependencies and duplicate diagnostic declarations have been simplified without changing the package format, validation sequence, messages, desktop-client interface, or built-in fallback behavior.
+
 Because `v1.5.0` moved partition addresses, an old desktop client must be updated to use the current partition table before writing resources.
 
 ## 9. Battery and Low-power Behavior
@@ -369,6 +383,7 @@ Because `v1.5.0` moved partition addresses, an old desktop client must be update
 - When not charging, battery ADC follows the same schedule as local temperature/humidity: every minute during the day and every two minutes at night.
 - Temperature and humidity samples notify the active page for an on-demand update. Stable text is not redrawn repeatedly; a roughly one-minute fallback check remains for resilience.
 - During confirmed active charging, battery sampling increases to about once per second.
+- Low-battery thresholds, charging detection, animation stopping, and fast charging sampling now share one internal policy source. This maintenance change does not alter the displayed percentage, sampling cadence, charging indication, low-battery behavior, or OTA protection.
 - Each battery reading releases the ADC and calibration resources after publishing the result, so the measurement peripheral is not kept active between samples.
 - Percentage, charging state, and low-battery mode are published consistently from the same sample; pages, OTA, and Xiaozhi do not trigger an extra ADC conversion when reading battery status.
 - Low battery enters a minimal page and stops non-essential networking, animation, audio, and high-frequency refresh.
@@ -452,6 +467,8 @@ In the rare event of a display-resource or panel-register startup failure, the f
 If the shared I2C master bus itself cannot be created, startup stops before RTC, sensor, audio, networking, and application tasks are initialized instead of entering a reset loop. Power-cycle the device and inspect the serial log for `I2C master bus unavailable` and the preceding driver error. A missing individual RTC or temperature/humidity sensor remains a separate recoverable device error and does not by itself stop the clock.
 
 During normal operation, a temporary SPI display allocation or timeout error is retried within a fixed limit. If it still fails, only that frame is skipped and `RLCD command/data tx failed` is logged instead of rebooting the device. The network/OTA DMA protection mode uses an allocation-free atomic snapshot, so display transfers no longer disable cross-core interrupts merely to read the active protection tier; chunk sizes, retry counts, and rendered output are unchanged. Repeated messages warrant checking power stability and the logged DMA headroom.
+
+Shared bitmap, label, and font declarations use lightweight internal interfaces. This maintenance does not change Chinese glyphs, icon pixels, page coordinates, trend arrows, or partial-refresh behavior.
 
 ## 12. Safety and Use Restrictions
 

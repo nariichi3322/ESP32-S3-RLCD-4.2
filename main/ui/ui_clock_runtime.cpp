@@ -16,6 +16,37 @@ int s_last_ui_date_key = -1;
 int s_last_ui_date_page = -1;
 int s_last_second_progress_filled = -1;
 
+bool update_clock_minute_canvas(const ClockUiTimeSnapshot &time_snapshot,
+                                const struct tm &local)
+{
+    if (time_snapshot.minute_key == s_last_ui_minute) {
+        return false;
+    }
+    draw_time_canvas(local);
+    s_last_ui_minute = time_snapshot.minute_key;
+    return true;
+}
+
+bool update_clock_date_label(const ClockUiTimeSnapshot &time_snapshot,
+                             const struct tm &local,
+                             int date_page)
+{
+    if (time_snapshot.date_key == s_last_ui_date_key &&
+        date_page == s_last_ui_date_page) {
+        return false;
+    }
+    char date[kClockDateTextSize] = {};
+    format_clock_date_text(date,
+                           sizeof(date),
+                           local,
+                           time_snapshot.weekday);
+    WorkPageStatusLabels labels = get_work_page_status_labels(date_page);
+    const bool changed = set_label_text_if_changed(labels.date, date);
+    s_last_ui_date_key = time_snapshot.date_key;
+    s_last_ui_date_page = date_page;
+    return changed;
+}
+
 } // namespace
 
 void invalidate_clock_time_draw_cache()
@@ -43,10 +74,8 @@ bool update_time_ui(const struct tm &local,
     bool changed = false;
     static int last_chime_hour_key = -1;
     ClockUiTimeSnapshot time_snapshot = clock_ui_time_snapshot(local);
-    if (clock_page_active && time_snapshot.minute_key != s_last_ui_minute) {
-        draw_time_canvas(local);
-        s_last_ui_minute = time_snapshot.minute_key;
-        changed = true;
+    if (clock_page_active) {
+        changed |= update_clock_minute_canvas(time_snapshot, local);
     }
     if (clock_page_active &&
         !battery_low_mode_load() &&
@@ -65,18 +94,7 @@ bool update_time_ui(const struct tm &local,
                      setup_portal_active_load())
                         ? kWorkPageWeatherClock
                         : active_work_page;
-    if (time_snapshot.date_key != s_last_ui_date_key ||
-        date_page != s_last_ui_date_page) {
-        char date[kClockDateTextSize] = {};
-        format_clock_date_text(date,
-                               sizeof(date),
-                               local,
-                               time_snapshot.weekday);
-        WorkPageStatusLabels labels = get_work_page_status_labels(date_page);
-        changed |= set_label_text_if_changed(labels.date, date);
-        s_last_ui_date_key = time_snapshot.date_key;
-        s_last_ui_date_page = date_page;
-    }
+    changed |= update_clock_date_label(time_snapshot, local, date_page);
 
     bool chime_enabled = chime_runtime_any_enabled();
     if (clock_hourly_chime_due(local,
@@ -87,5 +105,15 @@ bool update_time_ui(const struct tm &local,
         last_chime_hour_key = time_snapshot.hour_key;
         play_hourly_chime(local.tm_hour);
     }
+    return changed;
+}
+
+bool update_setup_clock_header_time_ui(const struct tm &local)
+{
+    ClockUiTimeSnapshot time_snapshot = clock_ui_time_snapshot(local);
+    bool changed = update_clock_minute_canvas(time_snapshot, local);
+    changed |= update_clock_date_label(time_snapshot,
+                                       local,
+                                       kWorkPageWeatherClock);
     return changed;
 }

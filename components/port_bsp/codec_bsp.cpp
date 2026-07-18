@@ -42,7 +42,9 @@ extern const uint8_t chime_3_pcm_end[] asm("_binary_chime_3_pcm_end");
 extern const uint8_t wifi_prompt_pcm_start[] asm("_binary_wifi_prompt_pcm_start");
 extern const uint8_t wifi_prompt_pcm_end[] asm("_binary_wifi_prompt_pcm_end");
 
-CodecPort::CodecPort(I2cMasterBus& i2cbus,const char *strName)
+CodecPort::CodecPort(I2cMasterBus& i2cbus,
+                     const char *strName,
+                     bool microphone_enabled)
 {
     if (!i2cbus.IsReady()) {
         ESP_LOGW(TAG, "codec init failed: %s", esp_err_to_name(ESP_ERR_INVALID_STATE));
@@ -50,11 +52,13 @@ CodecPort::CodecPort(I2cMasterBus& i2cbus,const char *strName)
     }
     set_codec_board_type(strName);
     codec_init_cfg_t codec_cfg = {};
-    // 与官方同板卡 BoxAudioCodec 保持一致：ES8311 走标准 TX，ES7210
-    // 走四时隙 TDM RX，从 slot0/1 取得麦克风与播放参考用于设备端 AEC。
-    codec_cfg.in_mode          = CODEC_I2S_MODE_TDM;
+    // 小智会话与官方同板卡 BoxAudioCodec 保持一致：ES8311 走标准 TX，
+    // ES7210 走四时隙 TDM RX；普通提示音不申请未使用的录音 DMA 通道。
+    codec_cfg.in_mode          = microphone_enabled
+                                     ? CODEC_I2S_MODE_TDM
+                                     : CODEC_I2S_MODE_NONE;
     codec_cfg.out_mode         = CODEC_I2S_MODE_STD;
-    codec_cfg.in_use_tdm       = true;
+    codec_cfg.in_use_tdm       = microphone_enabled;
     codec_cfg.reuse_dev        = false;
     esp_err_t err = init_codec(&codec_cfg);
     if (err != ESP_OK) {
@@ -62,7 +66,7 @@ CodecPort::CodecPort(I2cMasterBus& i2cbus,const char *strName)
         return;
     }
     playback = get_playback_handle();
-    record   = get_record_handle();
+    record   = microphone_enabled ? get_record_handle() : nullptr;
     initialized = playback != NULL;
 }
 

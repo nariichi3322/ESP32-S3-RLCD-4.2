@@ -1,8 +1,8 @@
 // 实现小智实时会话与待唤醒阶段的网络和电源所有权切换。
 #include "xiaozhi_power_session.h"
 
+#include "app_metadata.h"
 #include "app_event_group.h"
-#include "app_state.h"
 #include "audio_services.h"
 #include "network_services.h"
 #include "power_services.h"
@@ -10,6 +10,7 @@
 
 #include <atomic>
 
+#include <esp_log.h>
 #include "esp_wifi.h"
 
 namespace {

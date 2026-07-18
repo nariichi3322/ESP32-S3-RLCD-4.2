@@ -10,8 +10,9 @@
 #ifdef XIAOZHI_MCP_HOST_TEST
 #include "xiaozhi_mcp_host_port.h"
 #else
-#include "app_state.h"
+#include "app_metadata.h"
 #include "audio_services.h"
+#include "battery_runtime_state.h"
 #include "local_sensor_state.h"
 #include "network_services.h"
 #endif

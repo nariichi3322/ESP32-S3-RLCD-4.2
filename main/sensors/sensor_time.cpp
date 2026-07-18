@@ -2,7 +2,6 @@
 #include "sensor_time.h"
 
 #include "app_time_constants.h"
-#include "app_state.h"
 
 namespace {
 constexpr int kSecondsPerHour = 60 * 60;

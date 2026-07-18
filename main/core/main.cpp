@@ -402,6 +402,8 @@ extern "C" void app_main(void)
 
     if (setup_prompt_playback_pending()) {
         vTaskDelay(pdMS_TO_TICKS(kSetupPromptStartDelayMs));
-        (void)start_setup_prompt_playback();
+        if (setup_prompt_playback_pending()) {
+            (void)start_setup_prompt_playback();
+        }
     }
 }

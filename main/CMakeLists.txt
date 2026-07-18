@@ -82,6 +82,7 @@ idf_component_register(
         "network/network_weather_city_storage.cpp"
         "network/network_page_storage.cpp"
         "network/network_provisioning.cpp"
+        "network/provisioning_validation.cpp"
         "network/network_text.cpp"
         "network/weather_city_text.cpp"
         "network/weather_city_pending_state.cpp"

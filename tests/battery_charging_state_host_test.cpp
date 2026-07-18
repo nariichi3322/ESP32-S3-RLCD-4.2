@@ -1,10 +1,21 @@
 // 验证电池充电趋势状态机的进入、动画完成、回落退出和 Tick 回绕。
 #include "battery_charging_state.h"
+#include "battery_policy.h"
 
 #include <assert.h>
 #include <stdint.h>
 
 namespace {
+static_assert(kLowBatteryEnterPercent == 10);
+static_assert(kLowBatteryExitPercent == 13);
+static_assert(kBatteryChargingRiseVoltage == 0.035f);
+static_assert(kBatteryChargingStopVoltage == 0.006f);
+static_assert(kBatteryChargingRiseSamples == 1);
+static_assert(kBatteryChargingStopSamples == 5);
+static_assert(kBatteryChargingAnimationStopPercent == 96);
+static_assert(kBatteryChargingAnimationIdleMs == 10 * 60 * 1000);
+static_assert(kBatteryChargingSampleMs == 1000);
+
 constexpr BatteryChargingPolicy kPolicy = {
     3.0f,
     0.035f,

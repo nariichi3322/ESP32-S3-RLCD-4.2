@@ -1,8 +1,10 @@
 // 解析配网页 application/x-www-form-urlencoded 字段，保持兼容字段和非法转义回退语义。
 #include "network_form.h"
 
+#include "app_metadata.h"
 #include "app_text_format.h"
-#include "app_state.h"
+
+#include <esp_log.h>
 
 #include <string.h>
 

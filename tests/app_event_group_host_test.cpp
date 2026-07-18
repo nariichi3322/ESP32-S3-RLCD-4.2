@@ -16,12 +16,14 @@ static_assert(kBootSyncDoneBit == (1U << 9));
 static_assert(kBootAnimDoneBit == (1U << 10));
 static_assert(kNetworkDiagBit == (1U << 11));
 static_assert(kNetworkStateChangedBit == (1U << 12));
+static_assert(kSetupPortalStartBit == (1U << 13));
 static_assert((kWifiConnectedBit | kTimeSyncedBit | kWeatherReadyBit |
                kProvisioningSyncBit | kManualNtpSyncBit |
                kManualWeatherSyncBit | kOtaCheckBit | kOtaInstallBit |
                kManualSayingSyncBit | kBootSyncDoneBit | kBootAnimDoneBit |
-               kNetworkDiagBit | kNetworkStateChangedBit) ==
-              ((1U << 13) - 1U));
+               kNetworkDiagBit | kNetworkStateChangedBit |
+               kSetupPortalStartBit) ==
+              ((1U << 14) - 1U));
 
 namespace {
 bool s_create_allowed = true;

@@ -2,12 +2,14 @@
 #include "network_factory_reset.h"
 
 #include "app_constexpr.h"
-#include "app_state.h"
+#include "app_metadata.h"
 #include "network_chime_storage.h"
 #include "network_config_keys.h"
 #include "network_config_nvs.h"
 #include "network_page_storage.h"
 #include "network_weather_city_storage.h"
+
+#include <esp_log.h>
 
 namespace network_factory_reset {
 namespace {

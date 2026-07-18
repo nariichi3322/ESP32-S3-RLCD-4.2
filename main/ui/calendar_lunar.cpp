@@ -5,7 +5,9 @@
 #include "app_text_format.h"
 #include "app_time_constants.h"
 
-#include "app_state.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 struct LunarYearInfo {
     int year;

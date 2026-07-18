@@ -1,7 +1,7 @@
 // 管理小智 TTS PCM 队列、播放任务及其一次会话资源。
 #include "xiaozhi_tts_playback.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "audio_services.h"
 #include "checked_size.h"
 

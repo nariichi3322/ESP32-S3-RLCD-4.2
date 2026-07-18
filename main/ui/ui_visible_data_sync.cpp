@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "app_event_group.h"
 #include "app_state.h"
+#include "daily_saying_contract.h"
 #include "daily_saying_state.h"
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"

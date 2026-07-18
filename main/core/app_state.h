@@ -32,29 +32,26 @@
 #include "mbedtls/sha256.h"
 
 #include "active_work_page_state.h"
+#include "app_metadata.h"
+#include "app_time_constants.h"
 #include "app_event_group.h"
 #include "work_page_ids.h"
+#include "battery_policy.h"
 #include "battery_runtime_state.h"
 #include "lvgl_bsp.h"
 #include "dseg_digits.h"
 #include "network_diagnostics_catalog.h"
+#include "daily_saying_contract.h"
 #include "weather_city_contract.h"
 #include "weather_types.h"
+#include "ota_download_policy.h"
 #include "ota_flow_policy.h"
 #include "ota_manifest_limits.h"
 #include "sensor_history_types.h"
 #include "status_gif_60.h"
+#include "ui_fonts.h"
 #include "ui_icons.h"
 #include "ui_settings_contract.h"
-
-LV_FONT_DECLARE(qweather_icons_36);
-LV_FONT_DECLARE(zh_font_16);
-LV_FONT_DECLARE(zh_flip_lunar_22);
-LV_FONT_DECLARE(zh_pomodoro_title_24);
-
-extern const char *const TAG;
-extern const char *const APP_VERSION;
-extern const char *const APP_BUILD_DATE;
 
 inline constexpr int kDisplayWidth = 400;
 inline constexpr int kDisplayHeight = 300;
@@ -82,16 +79,10 @@ inline constexpr int kBootWifiConnectTimeoutMs = 5 * kAppMsPerSecond;
 inline constexpr int kBootNtpRetries = 2;
 inline constexpr int kBootStartupBudgetMs = 6 * kAppMsPerSecond;
 inline constexpr int kHttpBootTimeoutMs = 2500;
-inline constexpr int kMinValidYear = 2024;
-inline constexpr int kMaxValidYear = 2035;
-inline constexpr int kLowBatteryEnterPercent = 10;
-inline constexpr int kLowBatteryExitPercent = 13;
 inline constexpr int kDisplayPartialMaxWidth = (kDisplayWidth * 7) / 10;
 inline constexpr int kMaxFlushRanges = 8;
 inline constexpr int kFlushRangeMergeGap = 8;
 inline constexpr int kDisplayFlushDiagIntervalMs = kAppMsPerMinute;
-inline constexpr int kDailySayingLen = 160;
-inline constexpr const char *kDailySayingUrl = "https://uapis.cn/api/v1/saying";
 #ifndef WEATHER_CLOCK_OTA_MANIFEST_URL
 #if __has_include("ota_endpoint_local.h")
 #include "ota_endpoint_local.h"
@@ -104,19 +95,4 @@ inline constexpr const char *kOtaManifestUrl = WEATHER_CLOCK_OTA_MANIFEST_URL;
 #define WEATHER_CLOCK_OTA_BACKUP_MANIFEST_URL "https://example.invalid/firmware/latest.json"
 #endif
 inline constexpr const char *kOtaBackupManifestUrl = WEATHER_CLOCK_OTA_BACKUP_MANIFEST_URL;
-inline constexpr int kOtaHttpTimeoutMs = 8 * kAppMsPerSecond;
-inline constexpr int kOtaNoProgressTimeoutMs = 45 * kAppMsPerSecond;
-inline constexpr int kOtaMaxDownloadMs = 10 * kAppMsPerMinute;
-inline constexpr int kOtaStatusMinIntervalMs = 3 * kAppMsPerSecond;
-inline constexpr int kOtaAvailableConfirmTimeoutMs = kAppMsPerMinute;
-inline constexpr int kOtaDownloadBufferSize = 4096;
-inline constexpr int kOtaChunkDelayMs = 25;
-inline constexpr float kBatteryChargingRiseVoltage = 0.035f;
-inline constexpr float kBatteryChargingStopVoltage = 0.006f;
-inline constexpr int kBatteryChargingRiseSamples = 1;
-inline constexpr int kBatteryChargingStopSamples = 5;
-inline constexpr int kBatteryChargingAnimationStopPercent = 96;
-inline constexpr int kBatteryChargingAnimationIdleMs = 10 * kAppMsPerMinute;
-inline constexpr int kBatteryChargingSampleMs = kAppMsPerSecond;
-
 static_assert(kXiaozhiAutoReturnTimeoutMs > 0, "Xiaozhi auto-return timeout must be positive");

@@ -3,7 +3,9 @@
 
 #include "app_constexpr.h"
 #include "app_event_group.h"
-#include "app_state.h"
+#include "app_metadata.h"
+
+#include <esp_log.h>
 
 namespace {
 constexpr const char *kConfigEventReasonFallback = "config";

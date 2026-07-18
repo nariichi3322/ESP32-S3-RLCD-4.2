@@ -447,7 +447,7 @@ void handle_system_settings_action(int selected)
             set_settings_feedback(kOfflineSetupConfirmFeedback, kSettingsTimeoutMs);
             return;
         }
-        if (!start_wifi_radio(true)) {
+        if (!request_setup_portal_start()) {
             set_settings_feedback(kSetupStartFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
@@ -482,11 +482,10 @@ void handle_system_settings_action(int selected)
             set_settings_feedback(kFactoryResetFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        if (!start_wifi_radio(true)) {
+        if (!request_setup_portal_start()) {
             set_settings_feedback(kSetupStartFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        settings_page_clear();
         SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
         navigation.page_toggle_mode = false;
         navigation.page_order_mode = false;

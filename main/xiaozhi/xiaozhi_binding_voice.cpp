@@ -1,13 +1,15 @@
 // 播放小智首次绑定提示和逐位数字语音，并管理独立播放任务。
 #include "xiaozhi_binding_voice.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "audio_services.h"
 #include "single_pending_task_gate.h"
 #include "xiaozhi_binding_voice_state.h"
 
 #include <esp_codec_dev_types.h>
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #include <cstdint>
 

@@ -1,10 +1,12 @@
 // 管理 OTA 固件下载 HTTP client、手动重定向和所有失败出口清理。
 #include "ota_download_http.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
+#include "ota_download_policy.h"
 #include "ota_validation.h"
 
 #include <esp_crt_bundle.h>
+#include <esp_err.h>
 #include <esp_log.h>
 
 #include <cstring>

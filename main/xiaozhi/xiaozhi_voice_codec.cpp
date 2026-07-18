@@ -1,7 +1,7 @@
 // 实现小智实时语音编解码资源的固定参数初始化与幂等释放。
 #include "xiaozhi_voice_codec.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 
 #include <esp_log.h>
 #include <esp_opus_dec.h>

@@ -1,23 +1,30 @@
 // 编排整点提醒、设置试听和配网提示音任务。
 #include "audio_services.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "audio_chime_policy.h"
 #include "audio_services_internal.h"
+#include "battery_runtime_state.h"
 #include "chime_runtime_state.h"
 #include "ota_runtime_state.h"
 #include "single_pending_task_gate.h"
-#include "startup_state.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_state.h"
 
+#include "display_bsp.h"
+
 #include <atomic>
 #include <cstdint>
+
+#include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #define AUDIO_TASK_FUNCTION_UNAVAILABLE_LOG_FORMAT "failed to create %s task: task function unavailable"
 #define AUDIO_TASK_CREATE_FAILED_LOG_FORMAT "failed to create %s task rtos=%s stack=%u priority=%u core=%d rc=%d"
 #define HOURLY_CHIME_PLAYED_LOG_FORMAT "hourly chime played sound=%d volume=%d"
 #define HOURLY_CHIME_SKIPPED_LOG_FORMAT "hourly chime skipped sound=%d"
+#define SETUP_PROMPT_RETRY_LOG_FORMAT "setup prompt retry %d/%d"
 
 namespace {
 std::atomic<bool> s_setup_prompt_pending{false};
@@ -29,9 +36,12 @@ constexpr UBaseType_t kSettingsChimeRetryTaskPriority = 3;
 constexpr BaseType_t kAudioTaskCore = 1;
 constexpr int kSettingsChimeRetryAttempts = 8;
 constexpr uint32_t kSettingsChimeRetryDelayMs = 180;
-constexpr uint32_t kSetupPromptChainDelayMs = 120;
 constexpr TickType_t kSettingsChimeRetryDelay = pdMS_TO_TICKS(kSettingsChimeRetryDelayMs);
-constexpr TickType_t kSetupPromptChainDelay = pdMS_TO_TICKS(kSetupPromptChainDelayMs);
+constexpr int kSetupPromptPlaybackAttempts = 4;
+constexpr uint32_t kSetupPromptDmaSettleMs = 350;
+constexpr uint32_t kSetupPromptRetryDelayMs = 750;
+constexpr TickType_t kSetupPromptDmaSettleDelay = pdMS_TO_TICKS(kSetupPromptDmaSettleMs);
+constexpr TickType_t kSetupPromptRetryDelay = pdMS_TO_TICKS(kSetupPromptRetryDelayMs);
 constexpr const char *kDefaultAudioTaskName = "audio_play";
 constexpr const char *kHourlyChimeTaskName = "hourly_chime";
 constexpr const char *kSetupPromptTaskName = "setup_prompt";
@@ -56,8 +66,26 @@ static_assert(kSettingsChimeRetryAttempts > 0,
               "settings chime retry attempts must be positive");
 static_assert(kSettingsChimeRetryDelay > 0,
               "settings chime retry delay must be positive");
-static_assert(kSetupPromptChainDelay > 0,
-              "setup prompt chain delay must be positive");
+static_assert(kSetupPromptPlaybackAttempts > 1,
+              "setup prompt must retain at least one retry");
+static_assert(kSetupPromptDmaSettleDelay > 0 && kSetupPromptRetryDelay > 0,
+              "setup prompt DMA delays must be positive");
+
+class SetupPromptDisplayDmaGuard {
+public:
+    SetupPromptDisplayDmaGuard()
+    {
+        Display_AcquireDmaConservativeMode();
+    }
+
+    ~SetupPromptDisplayDmaGuard()
+    {
+        Display_ReleaseDmaConservativeMode();
+    }
+
+    SetupPromptDisplayDmaGuard(const SetupPromptDisplayDmaGuard &) = delete;
+    SetupPromptDisplayDmaGuard &operator=(const SetupPromptDisplayDmaGuard &) = delete;
+};
 
 const char *audio_text_or_default(const char *text, const char *fallback)
 {
@@ -125,22 +153,39 @@ void run_hourly_chime(int sound_index)
         ESP_LOGW(TAG, HOURLY_CHIME_SKIPPED_LOG_FORMAT, sound_index);
     }
     audio_finish_playback();
-    if (s_setup_prompt_pending.load(std::memory_order_acquire) &&
-        !startup_screen_active()) {
-        vTaskDelay(kSetupPromptChainDelay);
-        (void)start_setup_prompt_playback();
-    }
 }
 
 void run_setup_prompt()
 {
-    CodecPort *codec = audio_prepare_codec_for_playback();
-    if (codec && codec->CodecPort_PlayWifiPrompt()) {
-        ESP_LOGI(TAG, "%s", kSetupPromptPlayedLog);
-    } else {
-        ESP_LOGW(TAG, "%s", kSetupPromptSkippedLog);
+    SetupPromptDisplayDmaGuard display_dma_guard;
+    vTaskDelay(kSetupPromptDmaSettleDelay);
+    for (int attempt = 0; attempt < kSetupPromptPlaybackAttempts; ++attempt) {
+        if (!setup_portal_active_load()) {
+            if (attempt == 0) {
+                audio_finish_playback();
+            }
+            return;
+        }
+        if (attempt > 0 && !audio_try_mark_playing()) {
+            vTaskDelay(kSetupPromptRetryDelay);
+            continue;
+        }
+        CodecPort *codec = audio_prepare_codec_for_playback();
+        const bool played = codec && codec->CodecPort_PlayWifiPrompt();
+        audio_finish_playback();
+        if (played) {
+            ESP_LOGI(TAG, "%s", kSetupPromptPlayedLog);
+            return;
+        }
+        if (attempt + 1 < kSetupPromptPlaybackAttempts) {
+            ESP_LOGW(TAG,
+                     SETUP_PROMPT_RETRY_LOG_FORMAT,
+                     attempt + 1,
+                     kSetupPromptPlaybackAttempts);
+            vTaskDelay(kSetupPromptRetryDelay);
+        }
     }
-    audio_finish_playback();
+    ESP_LOGW(TAG, "%s", kSetupPromptSkippedLog);
 }
 } // namespace
 
@@ -248,14 +293,10 @@ bool setup_prompt_playback_pending()
 
 void request_setup_prompt_once()
 {
-    if (startup_screen_active() ||
-        is_audio_playing()) {
-        s_setup_prompt_pending.store(true, std::memory_order_release);
+    const bool already_pending =
+        s_setup_prompt_pending.exchange(true, std::memory_order_acq_rel);
+    if (!already_pending) {
         ESP_LOGI(TAG, "%s", kSetupPromptPendingLog);
-        return;
-    }
-    if (!start_setup_prompt_playback()) {
-        s_setup_prompt_pending.store(true, std::memory_order_release);
     }
 }
 

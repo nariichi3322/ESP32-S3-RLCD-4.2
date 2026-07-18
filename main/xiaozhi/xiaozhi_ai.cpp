@@ -3,7 +3,7 @@
 
 #include "app_tick_time.h"
 #include "app_event_group.h"
-#include "app_state.h"
+#include "app_metadata.h"
 #include "alarm_services.h"
 #include "audio_services.h"
 #include "network_services.h"

@@ -2,7 +2,7 @@
 #include "audio_services.h"
 
 #include "app_hardware.h"
-#include "app_state.h"
+#include "app_metadata.h"
 #include "chime_runtime_state.h"
 #include "audio_power_lock_ownership.h"
 #include "audio_services_internal.h"
@@ -13,7 +13,12 @@
 #include <cstddef>
 #include <new>
 
+#include <esp_codec_dev_types.h>
+#include <esp_err.h>
+#include <esp_log.h>
 #include "driver/gpio.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 #define AUDIO_IDLE_GPIO_CONFIG_FAILED_LOG_FORMAT "audio idle gpio config failed pin=%d err=%s"
 #define AUDIO_IDLE_GPIO_LEVEL_FAILED_LOG_FORMAT "audio idle gpio level failed pin=%d err=%s"
@@ -172,11 +177,12 @@ bool audio_codec_active()
     return s_audio_codec_present.load(std::memory_order_acquire);
 }
 
-static CodecPort *ensure_audio_codec()
+static CodecPort *ensure_audio_codec(bool microphone_enabled)
 {
     if (!s_audio_codec) {
         CodecPort *codec = new (s_audio_codec_storage) CodecPort(app_i2c(),
-                                                                 kAudioCodecBoardName);
+                                                                 kAudioCodecBoardName,
+                                                                 microphone_enabled);
         if (!codec->CodecPort_IsReady()) {
             ESP_LOGW(TAG, "audio codec playback handle unavailable");
             codec->~CodecPort();
@@ -206,13 +212,13 @@ void audio_finish_playback()
     audio_clear_playing();
 }
 
-CodecPort *audio_prepare_codec_for_playback()
+static CodecPort *prepare_audio_codec(bool microphone_enabled)
 {
     if (!s_audio_power_lock.acquire()) {
         ESP_LOGW(TAG, "audio PM lock unavailable");
         return nullptr;
     }
-    CodecPort *codec = ensure_audio_codec();
+    CodecPort *codec = ensure_audio_codec(microphone_enabled);
     if (!codec) {
         // 不把失败构造后的 GPIO 和三类 PM 锁留给调用方兜底；播放门仍由
         // 发起方通过统一 audio_finish_playback() 按原所有权顺序归还。
@@ -222,13 +228,18 @@ CodecPort *audio_prepare_codec_for_playback()
     return codec;
 }
 
+CodecPort *audio_prepare_codec_for_playback()
+{
+    return prepare_audio_codec(false);
+}
+
 bool start_xiaozhi_audio_session()
 {
     if (!audio_try_mark_playing()) {
         return false;
     }
     s_xiaozhi_audio_session_owned = true;
-    CodecPort *codec = audio_prepare_codec_for_playback();
+    CodecPort *codec = prepare_audio_codec(true);
     if (!codec || !codec->CodecPort_OpenXiaozhiMic()) {
         ESP_LOGW(TAG, "%s", kXiaozhiAudioStartFailedLog);
         audio_finish_playback();

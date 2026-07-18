@@ -2,8 +2,9 @@
 #include "qweather_response.h"
 
 #include "app_constexpr.h"
-#include "app_state.h"
+#include "app_metadata.h"
 
+#include <esp_log.h>
 #include <string.h>
 
 namespace {

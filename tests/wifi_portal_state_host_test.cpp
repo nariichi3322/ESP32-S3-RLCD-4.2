@@ -23,6 +23,34 @@ int main()
     clear_wifi_last_disconnect_reason();
     assert(wifi_last_disconnect_reason() == 0);
 
+    assert(wifi_portal_save_result_load() == WifiPortalSaveResult::kNone);
+    assert(!wifi_portal_result_preserves_client_lease(
+        WifiPortalSaveResult::kNone));
+    assert(wifi_portal_result_preserves_client_lease(
+        WifiPortalSaveResult::kValidating));
+    assert(wifi_portal_result_preserves_client_lease(
+        WifiPortalSaveResult::kSuccess));
+    assert(!wifi_portal_result_preserves_client_lease(
+        WifiPortalSaveResult::kWifiConnectionFailed));
+    assert(!wifi_portal_result_preserves_client_lease(
+        WifiPortalSaveResult::kWeatherApiFailed));
+    assert(!wifi_portal_result_preserves_client_lease(
+        WifiPortalSaveResult::kWeatherCityInvalid));
+    wifi_portal_save_result_store(WifiPortalSaveResult::kValidating);
+    assert(wifi_portal_save_result_load() == WifiPortalSaveResult::kValidating);
+    wifi_portal_save_result_store(WifiPortalSaveResult::kWifiConnectionFailed);
+    assert(wifi_portal_save_result_load() ==
+           WifiPortalSaveResult::kWifiConnectionFailed);
+    wifi_portal_save_result_store(WifiPortalSaveResult::kWeatherApiFailed);
+    assert(wifi_portal_save_result_load() == WifiPortalSaveResult::kWeatherApiFailed);
+    wifi_portal_save_result_store(WifiPortalSaveResult::kNone);
+
+    assert(!wifi_portal_save_feedback_seen_load());
+    wifi_portal_save_feedback_seen_store(true);
+    assert(wifi_portal_save_feedback_seen_load());
+    wifi_portal_save_feedback_seen_store(false);
+    assert(!wifi_portal_save_feedback_seen_load());
+
     char station_ip[kWifiStationIpTextLen] = {};
     char setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
     assert(!wifi_station_ip_snapshot(station_ip, sizeof(station_ip)));

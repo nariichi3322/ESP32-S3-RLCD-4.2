@@ -2,18 +2,23 @@
 #include "network_services.h"
 
 #include "app_event_group.h"
+#include "daily_saying_contract.h"
 #include "daily_saying_state.h"
 #include "ota_runtime_state.h"
 
 #include "network_https_resources.h"
 #include "network_credentials_state.h"
+#include "network_diagnostics_state.h"
 #include "offline_mode_state.h"
+#include "provisioning_validation.h"
 #include "network_diagnostics_catalog.h"
 #include "network_sync_requests.h"
 #include "network_sync_schedule.h"
 #include "network_task_guards.h"
 #include "sensor_time.h"
 #include "startup_state.h"
+#include "ui_info_page_state.h"
+#include "ui_settings_activity_state.h"
 #include "ui_views.h"
 #include "weather_state.h"
 #include "wifi_portal_state.h"
@@ -34,11 +39,15 @@ static constexpr EventBits_t kNetworkSyncWakeBits = kProvisioningSyncBit |
                                                      kManualWeatherSyncBit |
                                                      kManualSayingSyncBit |
                                                      kNetworkDiagBit |
-                                                     kNetworkStateChangedBit;
+                                                     kNetworkStateChangedBit |
+                                                     kSetupPortalStartBit;
 static constexpr time_t kBootWeatherRefreshDelaySec = 10;
 static constexpr time_t kBootSayingRefreshDelaySec = 25;
 static constexpr time_t kBootHttpsInterRequestGapSec = 8;
 static constexpr uint32_t kBootHttpsMemoryRetryMs = 10000;
+static constexpr uint32_t kProvisioningFeedbackWaitMs = 30000;
+static constexpr uint32_t kProvisioningFeedbackPollMs = 100;
+static constexpr uint32_t kProvisioningFeedbackDisplayGraceMs = 750;
 static_assert(kBootWeatherRefreshDelaySec > 0,
               "boot weather refresh delay must be positive");
 static_assert(kBootSayingRefreshDelaySec > kBootWeatherRefreshDelaySec,
@@ -51,6 +60,10 @@ static_assert(kBootHttpsMemoryRetryMs % 1000 == 0,
               "boot HTTPS memory retry must convert exactly to seconds");
 static_assert(kNetworkBootSyncGateWarningMs > 0,
               "boot sync gate warning delay must be positive");
+static_assert(kProvisioningFeedbackWaitMs >= kProvisioningFeedbackDisplayGraceMs,
+              "provisioning feedback wait must cover its display grace");
+static_assert(kProvisioningFeedbackPollMs > 0,
+              "provisioning feedback poll delay must be positive");
 static_assert(kNetworkDiagOtaLine == kNetworkDiagLineCount - 1,
               "network service diagnostics line mapping must match diagnostics line count");
 static constexpr const char *kNetworkDiagIpLocationWifiStartFailed = "IP定位: WiFi启动失败";
@@ -78,6 +91,18 @@ static constexpr const char *kNetworkSyncPowerLockUnavailableLog =
     "network PM lock unavailable during sync window";
 static constexpr const char *kNetworkSyncWifiConnectTimeoutLog = "wifi connect timeout during sync window";
 static constexpr const char *kNetworkBootSyncGateWaitLog = "network sync waiting for boot connectivity task";
+static constexpr const char *kProvisioningValidationFailedKeepPortalLog =
+    "provisioning validation failed; setup portal remains active";
+static constexpr const char *kSetupPortalStartRequestedLog =
+    "setup portal start queued behind active network work";
+static constexpr const char *kSetupPortalStartFailedLog =
+    "queued setup portal start failed; retrying";
+static constexpr const char *kSetupPortalStartedLog =
+    "queued setup portal start completed";
+#define PROVISIONING_FEEDBACK_WAIT_DONE_FORMAT \
+    "provisioning result feedback wait complete: seen=%d elapsed_ms=%u"
+#define PROVISIONING_BACKGROUND_REFRESH_FORMAT \
+    "provisioning background refresh scheduled: ntp=1 weather=%d saying=%d"
 
 struct NetworkRuntimeAvailabilitySnapshot {
     bool have_wifi_creds;
@@ -132,6 +157,22 @@ void wait_for_network_sync_event(uint32_t timeout_ms)
                               pdFALSE,
                               pdFALSE,
                               pdMS_TO_TICKS(timeout_ms));
+}
+
+bool request_setup_portal_start()
+{
+    if (!app_event_group_ready()) {
+        return false;
+    }
+    app_event_group_set_bits(kSetupPortalStartBit | kNetworkStateChangedBit);
+    ESP_LOGI(TAG, "%s", kSetupPortalStartRequestedLog);
+    return true;
+}
+
+bool setup_portal_start_requested()
+{
+    return app_event_group_ready() &&
+           (app_event_group_get_bits() & kSetupPortalStartBit) != 0;
 }
 
 static void wait_for_network_runtime_request()
@@ -250,6 +291,88 @@ static void finish_network_radio_session(NetworkAwakeLockGuard &awake_lock,
     }
     awake_lock.release();
     service_wifi_radio_stop_when_idle();
+}
+
+static bool service_setup_portal_start_request()
+{
+    if (!setup_portal_start_requested()) {
+        return false;
+    }
+    if (!start_wifi_radio(true)) {
+        ESP_LOGW(TAG, "%s", kSetupPortalStartFailedLog);
+        return true;
+    }
+    app_event_group_clear_bits(kSetupPortalStartBit);
+    settings_page_clear();
+    network_diag_page_clear();
+    info_page_clear();
+    notify_ui_task();
+    ESP_LOGI(TAG, "%s", kSetupPortalStartedLog);
+    return true;
+}
+
+static void wait_for_provisioning_result_feedback()
+{
+    const TickType_t started_at = xTaskGetTickCount();
+    const TickType_t timeout_ticks = pdMS_TO_TICKS(kProvisioningFeedbackWaitMs);
+    bool seen = false;
+    while (setup_portal_active_load() &&
+           xTaskGetTickCount() - started_at < timeout_ticks) {
+        if (wifi_portal_save_feedback_seen_load()) {
+            seen = true;
+            break;
+        }
+        vTaskDelay(pdMS_TO_TICKS(kProvisioningFeedbackPollMs));
+    }
+    if (seen) {
+        vTaskDelay(pdMS_TO_TICKS(kProvisioningFeedbackDisplayGraceMs));
+    }
+    const uint32_t elapsed_ms = static_cast<uint32_t>(
+        (xTaskGetTickCount() - started_at) * portTICK_PERIOD_MS);
+    ESP_LOGI(TAG,
+             PROVISIONING_FEEDBACK_WAIT_DONE_FORMAT,
+             seen,
+             static_cast<unsigned>(elapsed_ms));
+}
+
+static void schedule_background_refresh_after_provisioning(
+    bool have_weather_key,
+    bool &boot_ntp_due,
+    bool &boot_weather_due,
+    bool &boot_saying_due,
+    time_t &boot_weather_due_at,
+    time_t &boot_saying_due_at,
+    time_t &next_ntp_retry_at,
+    bool &daily_ntp_pending,
+    time_t &next_daily_ntp_at)
+{
+    time_t now = 0;
+    time(&now);
+    boot_ntp_due = true;
+    boot_weather_due = have_weather_key && enabled_weather_data_page_exists();
+    boot_saying_due = enabled_daily_saying_page_exists();
+    boot_weather_due_at = now + kBootWeatherRefreshDelaySec;
+    boot_saying_due_at = now + kBootSayingRefreshDelaySec;
+    next_ntp_retry_at = 0;
+    daily_ntp_pending = false;
+    next_daily_ntp_at = 0;
+    ESP_LOGI(TAG,
+             PROVISIONING_BACKGROUND_REFRESH_FORMAT,
+             boot_weather_due,
+             boot_saying_due);
+}
+
+static void keep_setup_portal_after_provisioning_failure(
+    NetworkAwakeLockGuard &awake_lock,
+    WifiPortalSaveResult result)
+{
+    (void)prepare_setup_portal_result_delivery();
+    wifi_portal_save_result_store(result);
+    // The AP and HTTP server must remain available so the phone can display
+    // the stored error and submit corrected credentials. Only release the CPU
+    // awake lock owned by this validation attempt.
+    awake_lock.release();
+    ESP_LOGW(TAG, "%s", kProvisioningValidationFailedKeepPortalLog);
 }
 
 static void settle_between_network_operations(bool more_work_pending)
@@ -487,6 +610,10 @@ void network_sync_task(void *)
             wait_for_ota_network_block_change();
             continue;
         }
+        if (service_setup_portal_start_request()) {
+            wait_for_network_sync_event(kNetworkShortRetryWaitMs);
+            continue;
+        }
         if (runtime.offline_mode) {
             boot_weather_due = false;
             boot_saying_due = false;
@@ -596,7 +723,7 @@ void network_sync_task(void *)
                  schedule.boot_weather_ready,
                  schedule.boot_saying_ready);
         NetworkAwakeLockGuard awake_lock;
-        if (!awake_lock.locked() || !start_wifi_radio(false)) {
+        if (!awake_lock.locked() || !start_wifi_radio(requests.provisioning)) {
             ESP_LOGW(TAG,
                      "%s",
                      awake_lock.locked()
@@ -610,11 +737,51 @@ void network_sync_task(void *)
             stagger_boot_saying_after_weather(schedule,
                                               boot_saying_due,
                                               &boot_saying_due_at);
-            finish_network_radio_session(awake_lock, requests.provisioning);
+            if (requests.provisioning) {
+                keep_setup_portal_after_provisioning_failure(
+                    awake_lock,
+                    WifiPortalSaveResult::kWifiConnectionFailed);
+            } else {
+                finish_network_radio_session(awake_lock);
+            }
             wait_for_network_sync_event(kNetworkShortRetryWaitMs);
             continue;
         }
         if (wait_for_wifi_connected(kNetworkWifiConnectTimeoutMs)) {
+            if (requests.provisioning) {
+                WifiPortalSaveResult validation_result =
+                    validate_saved_provisioning_weather_configuration();
+                if (validation_result != WifiPortalSaveResult::kSuccess) {
+                    finalize_failed_network_sync_window(schedule,
+                                                        requests,
+                                                        &boot_weather_due,
+                                                        &boot_saying_due,
+                                                        &next_ntp_retry_at);
+                    stagger_boot_saying_after_weather(schedule,
+                                                      boot_saying_due,
+                                                      &boot_saying_due_at);
+                    keep_setup_portal_after_provisioning_failure(awake_lock,
+                                                                 validation_result);
+                    wait_for_network_sync_event(kNetworkShortRetryWaitMs);
+                    continue;
+                }
+                (void)prepare_setup_portal_result_delivery();
+                wifi_portal_save_result_store(WifiPortalSaveResult::kSuccess);
+                app_event_group_clear_bits(kProvisioningSyncBit);
+                wait_for_provisioning_result_feedback();
+                finish_network_radio_session(awake_lock, true);
+                schedule_background_refresh_after_provisioning(
+                    runtime.have_weather_key,
+                    boot_ntp_due,
+                    boot_weather_due,
+                    boot_saying_due,
+                    boot_weather_due_at,
+                    boot_saying_due_at,
+                    next_ntp_retry_at,
+                    daily_ntp_pending,
+                    next_daily_ntp_at);
+                continue;
+            }
             execute_connected_sync_window(schedule,
                                           requests,
                                           boot_ntp_due,
@@ -637,6 +804,13 @@ void network_sync_task(void *)
             stagger_boot_saying_after_weather(schedule,
                                               boot_saying_due,
                                               &boot_saying_due_at);
+            if (requests.provisioning) {
+                keep_setup_portal_after_provisioning_failure(
+                    awake_lock,
+                    WifiPortalSaveResult::kWifiConnectionFailed);
+                wait_for_network_sync_event(kNetworkShortRetryWaitMs);
+                continue;
+            }
         }
         finish_network_radio_session(awake_lock, requests.provisioning);
     }

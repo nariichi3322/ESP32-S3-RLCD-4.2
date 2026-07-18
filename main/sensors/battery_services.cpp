@@ -1,13 +1,20 @@
 // 负责电池电压采样、电量估算和充电状态判断。
 #include "sensor_services.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "app_time_constants.h"
 #include "battery_charging_state.h"
+#include "battery_policy.h"
+#include "battery_runtime_state.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
+
+#include "esp_err.h"
+#include "esp_log.h"
+
+#include <time.h>
 
 #define BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT "battery adc calibration release failed: %s"
 #define BATTERY_ADC_UNIT_RELEASE_FAILED_LOG_FORMAT "battery adc unit release failed: %s"

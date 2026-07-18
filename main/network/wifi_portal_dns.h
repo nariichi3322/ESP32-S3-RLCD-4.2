@@ -4,3 +4,4 @@
 #include "esp_netif.h"
 
 void configure_captive_portal_dhcp(esp_netif_t *ap_netif);
+bool restart_captive_portal_dhcp(esp_netif_t *ap_netif);

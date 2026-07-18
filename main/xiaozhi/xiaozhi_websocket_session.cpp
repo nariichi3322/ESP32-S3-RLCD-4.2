@@ -1,7 +1,7 @@
 // 实现小智 WebSocket transport、事务锁和基础协议消息生命周期。
 #include "xiaozhi_websocket_session.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "network_http_transaction_lock.h"
 #include "xiaozhi_activation_client.h"
 #include "xiaozhi_activation_storage.h"
@@ -11,7 +11,7 @@
 #include <cstring>
 
 #include "esp_crt_bundle.h"
-#include "esp_log.h"
+#include <esp_log.h>
 #include "esp_transport_ssl.h"
 #include "esp_transport_tcp.h"
 #include "esp_transport_ws.h"

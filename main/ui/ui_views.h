@@ -78,5 +78,6 @@ void build_calendar_page();
 bool update_weather_board_page(const struct tm &local);
 void build_weather_board_page();
 bool update_time_ui(const struct tm &local, bool clock_page_active, int active_work_page);
+bool update_setup_clock_header_time_ui(const struct tm &local);
 void handle_settings_action();
 void ui_task(void *);

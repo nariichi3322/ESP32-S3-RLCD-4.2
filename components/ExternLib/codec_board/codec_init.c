@@ -173,12 +173,11 @@ static int _i2s_init(uint8_t port, esp_codec_dev_type_t dev_type, codec_init_cfg
     if (input == false && output == false) {
         return 0;
     }
-    // 小智同板卡官方实现使用 STD TX + TDM RX 全双工。缩小 DMA 缓冲，
-    // 为 AEC、TLS 与 Opus 保留内部 SRAM，同时仍覆盖多个 30 ms AFE 分块。
-    if (input && output) {
-        chan_cfg.dma_desc_num = 3;
-        chan_cfg.dma_frame_num = 64;
-    }
+    // 所有音频方向统一使用已经由小智全双工链路验证的紧凑 DMA 参数。
+    // 普通提示音只创建 TX，避免恢复出厂配网首屏占用连续内存时又申请
+    // IDF 默认的大块 DMA 缓冲。
+    chan_cfg.dma_desc_num = 3;
+    chan_cfg.dma_frame_num = 64;
 #ifdef SOC_I2S_SUPPORTS_TDM
     i2s_tdm_slot_mask_t slot_mask = I2S_TDM_SLOT0 | I2S_TDM_SLOT1 | I2S_TDM_SLOT2 | I2S_TDM_SLOT3;
     i2s_tdm_config_t tdm_cfg = {
@@ -228,6 +227,9 @@ static int _i2s_init(uint8_t port, esp_codec_dev_type_t dev_type, codec_init_cfg
             ESP_LOGI(TAG, "output init pdm ret %d", ret);
         }
 #endif
+        if (ret != ESP_OK) {
+            return ret;
+        }
     }
     if (i2s_keep[port]->rx_handle) {
         if (init_cfg->in_mode == CODEC_I2S_MODE_STD) {
@@ -257,6 +259,9 @@ static int _i2s_init(uint8_t port, esp_codec_dev_type_t dev_type, codec_init_cfg
             ESP_LOGI(TAG, "Input init pdm ret %d", ret);
         }
 #endif
+        if (ret != ESP_OK) {
+            return ret;
+        }
     }
     // Enable I2S here for maybe some codec need I2S clock to set register correctly
     if (i2s_keep[port]->tx_handle) {
@@ -373,6 +378,12 @@ int init_codec(codec_init_cfg_t *cfg)
     }
     if (get_in_codec_cfg(&in_cfg) == 0) {
         has_in = true;
+    }
+    if (cfg->out_mode == CODEC_I2S_MODE_NONE) {
+        has_out = false;
+    }
+    if (cfg->in_mode == CODEC_I2S_MODE_NONE) {
+        has_in = false;
     }
     if (has_out == false && has_in == false) {
         ESP_LOGE(TAG, "No codec device found");

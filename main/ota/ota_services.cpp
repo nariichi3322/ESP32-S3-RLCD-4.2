@@ -3,6 +3,8 @@
 
 #include "app_state.h"
 #include "app_event_group.h"
+#include "battery_policy.h"
+#include "ota_download_policy.h"
 #include "ota_download_http.h"
 #include "ota_download_progress_policy.h"
 #include "ota_flow_policy.h"

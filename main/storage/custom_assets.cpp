@@ -6,11 +6,17 @@
 #include "custom_asset_catalog.h"
 #include "custom_asset_format.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "clock_gallery_images.h"
+#include "ota_manifest_limits.h"
 #include "status_gif_60.h"
+#include "weather_city_contract.h"
 
+#include "esp_err.h"
+#include "esp_log.h"
 #include "esp_partition.h"
+
+#include <cstring>
 
 #define CUSTOM_ASSETS_PARTITION_RANGE_INVALID_LOG_FORMAT "custom assets partition range invalid offset=0x%08lx length=%u partition=%lu"
 #define CUSTOM_ASSETS_PARTITION_READ_FAILED_LOG_FORMAT "read assets partition failed: %s"
@@ -39,36 +45,6 @@
 #define CUSTOM_ASSETS_DIAG_DUPLICATE_GALLERY_LOG_FORMAT "custom assets diag: duplicate gallery entry index=%u"
 #define CUSTOM_ASSETS_DIAG_DUPLICATE_CONFIG_LOG_FORMAT "custom assets diag: duplicate config entry type=%u"
 #define CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT "custom assets diag: ready main_gif=%d gallery=%d weather_city=%d ota_url=%d"
-constexpr const char *const kCustomAssetLogTexts[] = {
-    CUSTOM_ASSETS_PARTITION_RANGE_INVALID_LOG_FORMAT,
-    CUSTOM_ASSETS_PARTITION_READ_FAILED_LOG_FORMAT,
-    CUSTOM_ASSETS_READ_FAILED_LOG_FORMAT,
-    CUSTOM_ASSETS_ENTRY_BEFORE_PAYLOAD_LOG_FORMAT,
-    CUSTOM_ASSETS_ENTRY_OFFSET_INVALID_LOG_FORMAT,
-    CUSTOM_ASSETS_ENTRY_LENGTH_INVALID_LOG_FORMAT,
-    CUSTOM_ASSETS_ENTRY_SHAPE_INVALID_LOG_FORMAT,
-    CUSTOM_ASSETS_ENTRY_CRC_MISMATCH_LOG_FORMAT,
-    CUSTOM_ASSETS_HEADER_CRC_MISMATCH_LOG_FORMAT,
-    CUSTOM_ASSETS_PAYLOAD_RANGE_INVALID_LOG_FORMAT,
-    CUSTOM_ASSETS_PAYLOAD_CRC_MISMATCH_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_GIF_FRAME_READ_FAILED_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_GIF_FRAME_DENSITY_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_INIT_ENTER_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_PARTITION_NOT_FOUND_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_PARTITION_FOUND_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_HEADER_READ_FAILED_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_HEADER_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_NO_VALID_PACKAGE_LOG_FORMAT,
-    CUSTOM_ASSETS_HEADER_SIZE_INVALID_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_ENTRIES_READ_FAILED_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_ENTRY_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_ENTRY_REJECTED_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_DUPLICATE_MAIN_GIF_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_DUPLICATE_GALLERY_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_DUPLICATE_CONFIG_LOG_FORMAT,
-    CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT,
-};
-
 static const esp_partition_t *s_assets_partition = nullptr;
 static CustomAssetsHeader s_assets_header = {};
 static CustomAssetEntry s_entries[kCustomAssetMaxEntries] = {};
@@ -138,10 +114,6 @@ static_assert(sizeof(CustomAssetsHeader) +
                   UINT16_MAX,
               "custom asset header must fit its 16-bit wire size");
 static_assert(kCustomAssetCrcChunkSize > 0, "custom asset CRC chunk size must be positive");
-static_assert(array_count(kCustomAssetLogTexts) > 0,
-              "custom assets log guard must cover log texts");
-static_assert(cstr_array_nonempty(kCustomAssetLogTexts), "custom assets log texts must be non-empty");
-
 static bool partition_range_valid(uint32_t offset, size_t length)
 {
     if (!s_assets_partition) {

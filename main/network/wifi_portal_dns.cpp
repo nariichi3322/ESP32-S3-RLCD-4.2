@@ -36,6 +36,9 @@ constexpr const char *kCaptiveDnsTaskName = "captive_dns";
 #define CAPTIVE_AP_DNS_SETUP_FAILED_FORMAT "ap dns setup failed: %s"
 #define CAPTIVE_DHCPS_URI_OPTION_FAILED_FORMAT "dhcps captive uri option failed: %s"
 #define CAPTIVE_DHCPS_RESTART_FAILED_FORMAT "dhcps restart after captive setup failed: %s"
+#define CAPTIVE_DHCPS_LEASE_RESET_STOP_FAILED_FORMAT "dhcps lease reset stop failed: %s"
+#define CAPTIVE_DHCPS_LEASE_RESET_START_FAILED_FORMAT "dhcps lease reset start failed: %s"
+#define CAPTIVE_DHCPS_LEASE_RESET_LOG "captive dhcp leases reset"
 #define CAPTIVE_DNS_TASK_STILL_STOPPING_LOG "previous captive dns task still stopping"
 #define CAPTIVE_DNS_TASK_START_FAILED_LOG "captive dns task start failed"
 
@@ -176,6 +179,29 @@ void configure_captive_portal_dhcp(esp_netif_t *ap_netif)
     if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
         ESP_LOGW(TAG, CAPTIVE_DHCPS_RESTART_FAILED_FORMAT, esp_err_to_name(err));
     }
+}
+
+bool restart_captive_portal_dhcp(esp_netif_t *ap_netif)
+{
+    if (!ap_netif) {
+        return false;
+    }
+    esp_err_t err = esp_netif_dhcps_stop(ap_netif);
+    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STOPPED) {
+        ESP_LOGW(TAG,
+                 CAPTIVE_DHCPS_LEASE_RESET_STOP_FAILED_FORMAT,
+                 esp_err_to_name(err));
+        return false;
+    }
+    err = esp_netif_dhcps_start(ap_netif);
+    if (err != ESP_OK && err != ESP_ERR_ESP_NETIF_DHCP_ALREADY_STARTED) {
+        ESP_LOGW(TAG,
+                 CAPTIVE_DHCPS_LEASE_RESET_START_FAILED_FORMAT,
+                 esp_err_to_name(err));
+        return false;
+    }
+    ESP_LOGI(TAG, "%s", CAPTIVE_DHCPS_LEASE_RESET_LOG);
+    return true;
 }
 
 bool start_captive_dns_server()

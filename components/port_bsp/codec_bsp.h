@@ -16,7 +16,9 @@ private:
     int speaker_sample_rate = 0;
 
 public:
-    CodecPort(I2cMasterBus& i2cbus,const char *strName);
+    CodecPort(I2cMasterBus& i2cbus,
+              const char *strName,
+              bool microphone_enabled = true);
     ~CodecPort();
 
     void CodecPort_SetSpeakerVol(int vol);

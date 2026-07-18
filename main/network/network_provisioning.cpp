@@ -103,6 +103,5 @@ bool save_credentials_from_body(const char *body)
     if (!save_config(fields.ssid, fields.pass, fields.api_key, fields.weather_city)) {
         return false;
     }
-    (void)apply_station_config(true);
     return true;
 }

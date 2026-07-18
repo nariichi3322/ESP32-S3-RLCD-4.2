@@ -19,7 +19,7 @@ constexpr size_t kPortalEscapedSsidSize = 80;
 constexpr size_t kPortalEscapedCitySize = 80;
 constexpr size_t kPortalSaveExtraTextSize = 220;
 constexpr size_t kPortalRootHtmlSize = 12288;
-constexpr size_t kPortalSaveResultHtmlSize = 1700;
+constexpr size_t kPortalSaveResultHtmlSize = 2800;
 constexpr size_t kPortalOfflineResultHtmlSize = 1200;
 constexpr const char *kPortalSectionCloseHtml = "</div></section>";
 constexpr const char *kPortalHtmlContentType = "text/html; charset=utf-8";
@@ -27,16 +27,27 @@ constexpr const char *kPortalHttpStatusInternalError = "500 Internal Server Erro
 constexpr const char *kPortalHttpStatusFound = "302 Found";
 constexpr const char *kPortalHeaderLocation = "Location";
 constexpr const char *kPortalHeaderCacheControl = "Cache-Control";
+constexpr const char *kPortalHeaderConnection = "Connection";
 constexpr const char *kPortalCacheNoStore = "no-store";
+constexpr const char *kPortalConnectionClose = "close";
 constexpr const char *kPortalErrorNotEnoughMemory = "设备内存不足，请稍后重试。";
 constexpr const char *kPortalSaveConnectedTitle = "网络连接成功";
-constexpr const char *kPortalSaveConnectingTitle = "设置已保存，正在连接";
+constexpr const char *kPortalSaveValidatingTitle = "正在验证网络配置";
 constexpr const char *kPortalSaveMissingTitle = "配置信息不完整";
+constexpr const char *kPortalSaveWifiFailedTitle = "Wi-Fi 连接失败";
+constexpr const char *kPortalSaveWeatherApiFailedTitle = "天气 API 验证失败";
+constexpr const char *kPortalSaveWeatherCityInvalidTitle = "天气城市无效";
 constexpr const char *kPortalSaveConnectedBody = "天气时钟已连接到 Wi-Fi 网络。";
-constexpr const char *kPortalSaveConnectingBody =
-    "设置已经保存，但设备暂未获取到 IP 地址。请检查 Wi-Fi 密码和路由器信号后重试。";
+constexpr const char *kPortalSaveValidatingBody =
+    "设备正在连接 Wi-Fi，并验证天气 API 密钥和天气城市，请稍候。";
 constexpr const char *kPortalSaveMissingBody =
     "请填写 Wi-Fi 和和风天气 API 密钥；如果只使用离线模式，也可以仅设置日期和时间。";
+constexpr const char *kPortalSaveWifiFailedBody =
+    "设备未能连接到该 Wi-Fi。请检查密码、信号和路由器状态后重新填写。";
+constexpr const char *kPortalSaveWeatherApiFailedBody =
+    "Wi-Fi 已连接，但和风天气 API 密钥无法使用。请检查密钥后重新填写。";
+constexpr const char *kPortalSaveWeatherCityInvalidBody =
+    "Wi-Fi 与 API 密钥可用，但和风天气无法识别该城市。请修改城市，或留空使用自动定位。";
 constexpr const char *kPortalOfflineSavedTitle = "离线模式已开启";
 constexpr const char *kPortalOfflineInvalidTitle = "日期或时间无效";
 constexpr const char *kPortalOfflineSavedBody = "天气时钟将使用 RTC 时间，并停止所有网络更新。";
@@ -61,12 +72,19 @@ static_assert(kPortalRootHtmlSize > kPortalOfflineResultHtmlSize,
               "portal root HTML buffer must exceed offline result buffer");
 static_assert(kPortalSaveExtraTextSize > 1, "portal save extra text buffer must fit text and NUL");
 
+void set_portal_common_response_headers(httpd_req_t *req)
+{
+    httpd_resp_set_hdr(req, kPortalHeaderCacheControl, kPortalCacheNoStore);
+    httpd_resp_set_hdr(req, kPortalHeaderConnection, kPortalConnectionClose);
+}
+
 esp_err_t send_portal_html(httpd_req_t *req, const char *html)
 {
     if (!req || !html) {
         return ESP_ERR_INVALID_ARG;
     }
     httpd_resp_set_type(req, kPortalHtmlContentType);
+    set_portal_common_response_headers(req);
     return httpd_resp_send(req, html, HTTPD_RESP_USE_STRLEN);
 }
 
@@ -75,23 +93,53 @@ esp_err_t send_portal_empty_response(httpd_req_t *req)
     if (!req) {
         return ESP_ERR_INVALID_ARG;
     }
+    set_portal_common_response_headers(req);
     return httpd_resp_send(req, "", 0);
 }
 
-const char *portal_save_result_title(bool saved, bool connected)
+const char *portal_save_result_title(WifiPortalSaveResult result)
 {
-    if (!saved) {
+    switch (result) {
+    case WifiPortalSaveResult::kSuccess:
+        return kPortalSaveConnectedTitle;
+    case WifiPortalSaveResult::kValidating:
+        return kPortalSaveValidatingTitle;
+    case WifiPortalSaveResult::kWifiConnectionFailed:
+        return kPortalSaveWifiFailedTitle;
+    case WifiPortalSaveResult::kWeatherApiFailed:
+        return kPortalSaveWeatherApiFailedTitle;
+    case WifiPortalSaveResult::kWeatherCityInvalid:
+        return kPortalSaveWeatherCityInvalidTitle;
+    case WifiPortalSaveResult::kNone:
+    case WifiPortalSaveResult::kInvalidInput:
+    default:
         return kPortalSaveMissingTitle;
     }
-    return connected ? kPortalSaveConnectedTitle : kPortalSaveConnectingTitle;
 }
 
-const char *portal_save_result_body(bool saved, bool connected)
+const char *portal_save_result_body(WifiPortalSaveResult result)
 {
-    if (!saved) {
+    switch (result) {
+    case WifiPortalSaveResult::kSuccess:
+        return kPortalSaveConnectedBody;
+    case WifiPortalSaveResult::kValidating:
+        return kPortalSaveValidatingBody;
+    case WifiPortalSaveResult::kWifiConnectionFailed:
+        return kPortalSaveWifiFailedBody;
+    case WifiPortalSaveResult::kWeatherApiFailed:
+        return kPortalSaveWeatherApiFailedBody;
+    case WifiPortalSaveResult::kWeatherCityInvalid:
+        return kPortalSaveWeatherCityInvalidBody;
+    case WifiPortalSaveResult::kNone:
+    case WifiPortalSaveResult::kInvalidInput:
+    default:
         return kPortalSaveMissingBody;
     }
-    return connected ? kPortalSaveConnectedBody : kPortalSaveConnectingBody;
+}
+
+bool portal_save_result_is_visible(WifiPortalSaveResult result)
+{
+    return result != WifiPortalSaveResult::kNone;
 }
 
 void append_wifi_scan_message(char *html, size_t html_len, const char *message)
@@ -171,6 +219,7 @@ esp_err_t send_portal_text_status(httpd_req_t *req, const char *status, const ch
         return ESP_ERR_INVALID_ARG;
     }
     httpd_resp_set_status(req, status);
+    set_portal_common_response_headers(req);
     return httpd_resp_sendstr(req, text);
 }
 
@@ -272,6 +321,13 @@ esp_err_t root_get_handler(httpd_req_t *req)
     (void)wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid));
     html_escape(wifi_ssid, safe_ssid, sizeof(safe_ssid));
     html_escape(weather_city, safe_weather_city, sizeof(safe_weather_city));
+    const WifiPortalSaveResult save_result = wifi_portal_save_result_load();
+    const bool show_feedback = portal_save_result_is_visible(save_result);
+    const char *feedback_open = save_result == WifiPortalSaveResult::kValidating
+                                    ? "<div class='feedback pending' role='status'><strong>"
+                                    : (save_result == WifiPortalSaveResult::kSuccess
+                                           ? "<div class='feedback success' role='status'><strong>"
+                                           : "<div class='feedback' role='alert'><strong>");
     ScopedHeapBuffer<char> html(kPortalRootHtmlSize, HeapBufferInit::kZeroed);
     if (!html) {
         return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
@@ -286,26 +342,44 @@ esp_err_t root_get_handler(httpd_req_t *req)
                 "h1{font-size:26px;line-height:1.12;margin:0 0 4px}p{margin:0}.sub{font-size:14px;color:#5d6b78}.panel{background:#fff;border:1px solid #d3dae2;border-radius:8px;padding:16px;box-shadow:0 8px 24px rgba(23,32,42,.08)}"
                 "label{display:block;font-size:12px;font-weight:700;letter-spacing:.03em;color:#465563;margin:13px 0 6px;text-transform:uppercase}"
                 "input{width:100%;height:46px;border:1px solid #aeb8c2;border-radius:6px;padding:0 12px;font-size:17px;background:#fbfcfd;color:#111;outline:none}"
-                "input:focus{border-color:#17202a;box-shadow:0 0 0 3px rgba(23,32,42,.10)}.submit{width:100%;height:48px;border:0;border-radius:6px;margin-top:16px;background:#17202a;color:#fff;font-size:17px;font-weight:800}"
+                "input:focus{border-color:#17202a;box-shadow:0 0 0 3px rgba(23,32,42,.10)}.hint{margin:7px 1px 0;color:#697784;font-size:13px;line-height:1.4}.feedback{margin:14px 0 2px;padding:12px;border:2px solid #9a2f2f;border-radius:6px;background:#fff7f7;color:#651f1f;font-size:14px;line-height:1.45}.feedback.pending{border-color:#697784;background:#fbfcfd;color:#465563}.feedback.success{border-color:#2f6f4e;background:#f4fbf7;color:#24563d}.feedback strong{display:block;font-size:16px;margin-bottom:3px}.actions{display:block;margin-top:24px}.submit{display:block;width:100%;height:48px;border:0;border-radius:6px;margin:0;background:#17202a;color:#fff;font-size:17px;font-weight:800}.submit:disabled{opacity:.72}.save-status{display:none;margin:12px 0 0;padding:10px;border:1px solid #c7d0d9;border-radius:6px;background:#fbfcfd;color:#465563;font-size:14px}.save-status.show{display:block}"
                 "section{margin-top:16px}.section-title{display:flex;align-items:center;justify-content:space-between;margin:0 2px 8px;font-size:13px;font-weight:800;color:#465563}.section-title a{color:#17202a;text-decoration:none}"
                 ".wifi-list{display:grid;gap:8px}.wifi{width:100%;border:1px solid #d3dae2;background:#fff;border-radius:6px;padding:12px;display:flex;justify-content:space-between;gap:12px;text-align:left;font-size:16px;color:#17202a}"
                 ".wifi b{font-size:12px;color:#697784;white-space:nowrap}.muted{padding:12px;border:1px dashed #c7d0d9;border-radius:6px;color:#697784;background:#fbfcfd}"
-                "</style><script>function pick(s){document.querySelector('[name=ssid]').value=s;document.querySelector('[name=pass]').focus();}</script></head>"
+                "</style><script>function pick(s){document.querySelector('[name=ssid]').value=s;document.querySelector('[name=pass]').focus();}function beginSave(f){var b=f.querySelector('.submit'),m=document.getElementById('save-status');if(b){b.disabled=true;b.textContent='正在保存，请稍候…';}if(m){m.classList.add('show');}setTimeout(function(){f.submit();},80);return false;}</script></head>"
                 "<body><main class='wrap'><div class='brand'><div><h1>天气时钟</h1><p class='sub'>连接 Wi-Fi 使用联网功能，或设置时间进入离线模式。</p></div><div class='mark'>42</div></div>"
-                "<div class='panel'><div class='pill'>配网热点：%s</div><form method='get' action='/save' accept-charset='UTF-8'>"
+                "<div class='panel'><div class='pill'>配网热点：%s</div>%s%s%s",
+                kPortalHtmlHeadPrefix,
+                setup_ap_ssid,
+                show_feedback ? feedback_open : "",
+                show_feedback ? portal_save_result_title(save_result) : "",
+                show_feedback ? "</strong>" : "");
+    if (show_feedback) {
+        html_append(html.data(), html.size(), "%s</div>", portal_save_result_body(save_result));
+    }
+    html_append(html.data(), html.size(),
+                "<form method='post' action='/save' accept-charset='UTF-8' onsubmit='return beginSave(this)'>"
                 "<label>Wi-Fi 名称（SSID）</label><input name='ssid' placeholder='请选择或输入 Wi-Fi 名称' value='%s' autocomplete='off'>"
                 "<label>Wi-Fi 密码</label><input name='pass' placeholder='请输入 Wi-Fi 密码' type='password' autocomplete='current-password'>"
                 "<label>和风天气 API 密钥</label><input name='api_key' placeholder='已有密钥时可留空，继续使用原密钥' value='' autocomplete='off'>"
                 "<label>天气城市（选填）</label><input name='weather_city' placeholder='例如：杭州；留空则根据公网 IP 自动定位' value='%s' autocomplete='off'>"
-                "<label>离线日期和时间</label><input name='manual_time' type='datetime-local' placeholder='不使用 Wi-Fi 时设置设备时间'>"
-                "<button class='submit' type='submit'>保存并连接</button></form></div>",
-                kPortalHtmlHeadPrefix, setup_ap_ssid, safe_ssid, safe_weather_city);
+                "<label for='manual_time'>离线日期和时间（选填）</label><input id='manual_time' name='manual_time' type='datetime-local' placeholder='连接 Wi-Fi 时可留空' aria-describedby='manual-time-hint'>"
+                "<p id='manual-time-hint' class='hint'>连接 Wi-Fi 时可以留空；仅离线使用时填写。</p>"
+                "<div class='actions'><button class='submit' type='submit'>保存并连接</button></div><p id='save-status' class='save-status' role='status' aria-live='polite'>正在保存设置并连接，请稍候…</p></form></div>",
+                safe_ssid,
+                safe_weather_city);
     append_wifi_scan_list(html.data(), html.size());
     html_append(html.data(), html.size(), "</main></body></html>");
-    return send_portal_html(req, html.data());
+    esp_err_t err = send_portal_html(req, html.data());
+    if (err == ESP_OK && save_result == WifiPortalSaveResult::kSuccess) {
+        wifi_portal_save_feedback_seen_store(true);
+    }
+    return err;
 }
 
-esp_err_t send_save_result_page(httpd_req_t *req, bool saved, bool connected, const char *extra_message)
+esp_err_t send_save_result_page(httpd_req_t *req,
+                                WifiPortalSaveResult result,
+                                const char *extra_message)
 {
     char wifi_ssid[kNetworkWifiSsidLen] = {};
     char safe_ssid[kPortalEscapedSsidSize] = {};
@@ -322,8 +396,16 @@ esp_err_t send_save_result_page(httpd_req_t *req, bool saved, bool connected, co
     if (!html) {
         return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
     }
-    const char *title = portal_save_result_title(saved, connected);
-    const char *body = portal_save_result_body(saved, connected);
+    const char *title = portal_save_result_title(result);
+    const char *body = portal_save_result_body(result);
+    const char *poll_script = result == WifiPortalSaveResult::kValidating
+                                  ? "<script>function poll(){fetch('/status',{cache:'no-store'}).then(function(r){if(r.status===200){document.getElementById('save-state').textContent='已连接';document.getElementById('save-title').textContent='网络连接成功';document.getElementById('save-body').textContent='验证通过，设备即将进入工作状态。';return;}if(r.status===409){location.replace('/');return;}setTimeout(poll,1000);}).catch(function(){setTimeout(poll,1200);});}setTimeout(poll,800);</script>"
+                                  : "";
+    const char *state_text = result == WifiPortalSaveResult::kSuccess
+                                 ? "已连接"
+                                 : (result == WifiPortalSaveResult::kValidating
+                                        ? "验证中"
+                                        : "失败");
     const int disconnect_reason = wifi_last_disconnect_reason();
     html_append(html.data(), html.size(),
                 "%s"
@@ -333,10 +415,11 @@ esp_err_t send_save_result_page(httpd_req_t *req, bool saved, bool connected, co
                 ".state{width:72px;height:42px;border-radius:8px;border:2px solid #17202a;display:grid;place-items:center;font-size:16px;font-weight:900;margin-bottom:14px}"
                 "h1{font-size:24px;margin:0 0 8px}p{font-size:15px;line-height:1.45;color:#4d5b68;margin:0 0 14px}.note{border:1px solid #d3dae2;border-radius:6px;padding:10px;margin:0 0 14px;color:#17202a;background:#fbfcfd;font-size:14px}.meta{border-top:1px solid #e1e6eb;padding-top:12px;color:#697784;font-size:13px}"
                 "a{display:block;height:46px;line-height:46px;text-align:center;background:#17202a;color:#fff;text-decoration:none;border-radius:6px;font-weight:800;margin-top:16px}"
-                "</style></head><body><main class='wrap'><section class='panel'><div class='state'>%s</div><h1>%s</h1><p>%s</p>"
+                "</style>%s</head><body><main class='wrap'><section class='panel'><div id='save-state' class='state'>%s</div><h1 id='save-title'>%s</h1><p id='save-body'>%s</p>"
                 "%s%s%s<div class='meta'>Wi-Fi 名称：%s<br>天气城市：%s<br>最近一次 Wi-Fi 断开原因：%d</div><a href='/'>返回配网页</a></section></main></body></html>",
                 kPortalHtmlHeadPrefix,
-                connected ? "已连接" : "提示",
+                poll_script,
+                state_text,
                 title,
                 body,
                 safe_extra[0] ? "<div class='note'>" : "",

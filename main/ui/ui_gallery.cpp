@@ -5,6 +5,7 @@
 #include "app_time_constants.h"
 #include "clock_gallery_images.h"
 #include "custom_assets.h"
+#include "daily_saying_contract.h"
 #include "daily_saying_state.h"
 #include "ui_battery.h"
 #include "ui_gallery_selection.h"

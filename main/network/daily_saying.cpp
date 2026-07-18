@@ -2,6 +2,7 @@
 #include "network_services.h"
 
 #include "app_constexpr.h"
+#include "daily_saying_contract.h"
 #include "daily_saying_state.h"
 #include "daily_saying_parser.h"
 #include "scoped_heap_buffer.h"
@@ -16,6 +17,7 @@
 #define DAILY_SAYING_UPDATED_LOG_FORMAT "daily saying updated"
 
 namespace {
+constexpr const char *kDailySayingUrl = "https://uapis.cn/api/v1/saying";
 constexpr size_t kDailySayingResponseBufferSize = 768;
 constexpr int kMaxSayingAttempts = 8;
 constexpr uint32_t kDailySayingRetrySettleMs = 120;
@@ -105,8 +107,14 @@ bool perform_daily_saying_update()
     }
     DailySayingAttemptStats stats;
     for (int attempt = 1; attempt <= kMaxSayingAttempts; ++attempt) {
+        if (setup_portal_start_requested()) {
+            break;
+        }
         response.clear();
         esp_err_t err = http_get_text(kDailySayingUrl, response.get(), response.size(), nullptr);
+        if (setup_portal_start_requested()) {
+            break;
+        }
         if (err != ESP_OK) {
             stats.record_http_failure();
             ESP_LOGW(TAG, DAILY_SAYING_HTTP_FAILED_LOG_FORMAT, esp_err_to_name(err));

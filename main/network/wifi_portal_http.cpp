@@ -1,9 +1,8 @@
-// 实现配网 HTTP 路由、表单保存、城市校验和强制门户服务生命周期。
+// 实现配网 HTTP 路由、表单保存和强制门户服务生命周期。
 #include "network_services.h"
 
 #include "app_constexpr.h"
 #include "app_event_group.h"
-#include "manual_weather_city_state.h"
 #include "network_diagnostics_state.h"
 #include "network_form.h"
 #include "network_text.h"
@@ -15,24 +14,24 @@
 #include "ui_settings_activity_state.h"
 #include "ui_views.h"
 
+#include "display_bsp.h"
+
 namespace {
 httpd_handle_t s_http_server = nullptr;
+bool s_display_dma_guard_active = false;
 constexpr uint16_t kSetupHttpServerPort = 80;
 constexpr size_t kSetupHttpServerStackSize = 8192;
 constexpr size_t kPortalSubmitSsidFieldSize = 33;
 constexpr size_t kPortalRequestBufferSize = 640;
-constexpr size_t kPortalWeatherCityIdSize = 24;
-constexpr size_t kPortalWeatherCityNameSize = 32;
-constexpr uint32_t kPortalSaveWifiConnectWaitMs = 12000;
+constexpr uint32_t kPortalResponseSettleMs = 750;
 constexpr const char *kPortalHttpStatusBadRequest = "400 Bad Request";
+constexpr const char *kPortalHttpStatusOk = "200 OK";
+constexpr const char *kPortalHttpStatusConflict = "409 Conflict";
 constexpr const char *kPortalHttpStatusNoContent = "204 No Content";
 constexpr const char *kPortalErrorMissingQuery = "缺少请求参数。";
-constexpr const char *kPortalWeatherCityInvalidMessage =
-    "QWeather 无法识别填写的天气城市，已恢复为自动定位。";
-constexpr const char *kPortalWeatherCityDeferredMessage =
-    "天气城市已保存，但在线校验超时；下次同步天气时会自动重试。";
 constexpr const char *kPortalRootUri = "/";
 constexpr const char *kPortalSaveUri = "/save";
+constexpr const char *kPortalStatusUri = "/status";
 constexpr const char *kPortalFaviconUri = "/favicon.ico";
 constexpr const char *kPortalAppleTouchIconUri = "/apple-touch-icon.png";
 constexpr const char *kPortalAppleTouchIconPrecomposedUri = "/apple-touch-icon-precomposed.png";
@@ -43,16 +42,11 @@ struct PortalHttpRoute {
     esp_err_t (*handler)(httpd_req_t *);
 };
 
-enum ManualWeatherCityValidationResult {
-    kManualWeatherCityValidationOk,
-    kManualWeatherCityValidationInvalid,
-    kManualWeatherCityValidationDeferred,
-};
-
 constexpr PortalHttpRoute kPortalHttpRoutes[] = {
     {kPortalRootUri, HTTP_GET, root_get_handler},
     {kPortalSaveUri, HTTP_POST, save_post_handler},
     {kPortalSaveUri, HTTP_GET, save_get_handler},
+    {kPortalStatusUri, HTTP_GET, portal_status_get_handler},
     {kPortalFaviconUri, HTTP_GET, empty_asset_handler},
     {kPortalAppleTouchIconUri, HTTP_GET, empty_asset_handler},
     {kPortalAppleTouchIconPrecomposedUri, HTTP_GET, empty_asset_handler},
@@ -73,9 +67,8 @@ static_assert(kSetupHttpServerPort > 0, "setup HTTP server port must be positive
 static_assert(kSetupHttpServerStackSize > 0, "setup HTTP server stack must be positive");
 static_assert(kPortalRequestBufferSize > kPortalSubmitSsidFieldSize,
               "portal request buffer must exceed submitted SSID field size");
-static_assert(kPortalWeatherCityIdSize > 1, "portal weather city id buffer must fit text and NUL");
-static_assert(kPortalWeatherCityNameSize > 1, "portal weather city name buffer must fit text and NUL");
-static_assert(kPortalSaveWifiConnectWaitMs > 0, "portal save Wi-Fi wait must be positive");
+static_assert(kPortalResponseSettleMs > 0,
+              "portal response settle delay must be positive");
 static_assert(array_count(kPortalHttpRoutes) > 0, "portal HTTP route table must not be empty");
 static_assert(portal_http_routes_valid(), "portal HTTP routes must have URI and handler");
 
@@ -85,23 +78,40 @@ static_assert(portal_http_routes_valid(), "portal HTTP routes must have URI and 
 #define PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT "http uri register failed: %s"
 #define PORTAL_POST_BODY_TRUNCATED_FORMAT "setup POST body truncated content_len=%d buffer=%u"
 #define PORTAL_POST_BODY_RECEIVE_FAILED_FORMAT "setup POST body receive failed ret=%d received=%d expected=%d"
-#define MANUAL_WEATHER_CITY_VALIDATED_FORMAT "manual weather city validated: %s id=%s"
-#define MANUAL_WEATHER_CITY_VALIDATION_FAILED_LOG "manual weather city validation failed, restoring auto location"
-#define MANUAL_WEATHER_CITY_VALIDATION_DEFERRED_LOG "manual weather city validation deferred after network/API error"
 #define PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG "setup save skipped initial sync request: app events unavailable"
 
-void request_provisioning_sync_after_save()
+bool request_provisioning_sync_after_save()
 {
     if (!app_event_group_ready()) {
         ESP_LOGW(TAG, "%s", PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG);
-        return;
+        return false;
     }
     app_event_group_set_bits(kProvisioningSyncBit);
+    return true;
+}
+
+void acquire_portal_display_dma_guard()
+{
+    if (s_display_dma_guard_active) {
+        return;
+    }
+    Display_AcquireDmaConservativeMode();
+    s_display_dma_guard_active = true;
+}
+
+void release_portal_display_dma_guard()
+{
+    if (!s_display_dma_guard_active) {
+        return;
+    }
+    Display_ReleaseDmaConservativeMode();
+    s_display_dma_guard_active = false;
 }
 
 bool stop_http_server_handle()
 {
     if (!s_http_server) {
+        release_portal_display_dma_guard();
         return true;
     }
     esp_err_t err = httpd_stop(s_http_server);
@@ -110,42 +120,22 @@ bool stop_http_server_handle()
         return false;
     }
     s_http_server = nullptr;
+    release_portal_display_dma_guard();
     return true;
-}
-
-ManualWeatherCityValidationResult validate_saved_manual_weather_city()
-{
-    char weather_city[kManualWeatherCityLen] = {};
-    if (!manual_weather_city_snapshot(weather_city, sizeof(weather_city))) {
-        return kManualWeatherCityValidationOk;
-    }
-    char city_id[kPortalWeatherCityIdSize] = {};
-    char city_name[kPortalWeatherCityNameSize] = {};
-    QweatherCityLookupStatus status = qweather_lookup_city_status(weather_city,
-                                                                  city_id,
-                                                                  sizeof(city_id),
-                                                                  city_name,
-                                                                  sizeof(city_name));
-    if (status == kQweatherCityLookupOk) {
-        ESP_LOGI(TAG, MANUAL_WEATHER_CITY_VALIDATED_FORMAT, city_name, city_id);
-        return kManualWeatherCityValidationOk;
-    }
-    if (status == kQweatherCityLookupNotFound) {
-        ESP_LOGW(TAG, MANUAL_WEATHER_CITY_VALIDATION_FAILED_LOG);
-        (void)clear_manual_weather_city();
-        return kManualWeatherCityValidationInvalid;
-    }
-    ESP_LOGW(TAG, MANUAL_WEATHER_CITY_VALIDATION_DEFERRED_LOG);
-    return kManualWeatherCityValidationDeferred;
 }
 
 esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
 {
+    wifi_portal_save_result_store(WifiPortalSaveResult::kNone);
+    wifi_portal_save_feedback_seen_store(false);
     char ssid[kPortalSubmitSsidFieldSize] = {};
     form_value(body, "ssid", ssid, sizeof(ssid));
     trim_ascii(ssid);
     if (ssid[0] == '\0') {
         bool offline_saved = save_offline_datetime_from_body(body);
+        if (!offline_saved) {
+            wifi_portal_save_result_store(WifiPortalSaveResult::kInvalidInput);
+        }
         esp_err_t err = send_offline_result_page(req, offline_saved);
         if (offline_saved) {
             settings_page_clear();
@@ -156,20 +146,22 @@ esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
         }
         return err;
     }
-    bool saved = save_credentials_from_body(body);
-    bool connected = saved && wait_for_wifi_connected(kPortalSaveWifiConnectWaitMs);
-    const char *extra_message = nullptr;
-    if (connected) {
-        ManualWeatherCityValidationResult city_result = validate_saved_manual_weather_city();
-        if (city_result == kManualWeatherCityValidationInvalid) {
-            extra_message = kPortalWeatherCityInvalidMessage;
-        } else if (city_result == kManualWeatherCityValidationDeferred) {
-            extra_message = kPortalWeatherCityDeferredMessage;
+    const bool saved = save_credentials_from_body(body);
+    WifiPortalSaveResult result = saved
+                                      ? WifiPortalSaveResult::kValidating
+                                      : WifiPortalSaveResult::kInvalidInput;
+    wifi_portal_save_result_store(result);
+    esp_err_t err = send_save_result_page(req, result);
+    if (saved) {
+        // httpd_resp_send() has handed the body to lwIP, but changing an APSTA
+        // channel immediately afterwards can still disconnect the phone before
+        // its captive browser renders the result page.
+        if (err == ESP_OK) {
+            vTaskDelay(pdMS_TO_TICKS(kPortalResponseSettleMs));
         }
-    }
-    esp_err_t err = send_save_result_page(req, saved, connected, extra_message);
-    if (connected) {
-        request_provisioning_sync_after_save();
+        if (!request_provisioning_sync_after_save()) {
+            wifi_portal_save_result_store(WifiPortalSaveResult::kWifiConnectionFailed);
+        }
     }
     return err;
 }
@@ -238,6 +230,23 @@ esp_err_t save_get_handler(httpd_req_t *req)
     return handle_setup_save(req, query);
 }
 
+esp_err_t portal_status_get_handler(httpd_req_t *req)
+{
+    const WifiPortalSaveResult result = wifi_portal_save_result_load();
+    if (result == WifiPortalSaveResult::kSuccess) {
+        esp_err_t err = send_portal_empty_status(req, kPortalHttpStatusOk);
+        if (err == ESP_OK) {
+            wifi_portal_save_feedback_seen_store(true);
+        }
+        return err;
+    }
+    if (result != WifiPortalSaveResult::kNone &&
+        result != WifiPortalSaveResult::kValidating) {
+        return send_portal_empty_status(req, kPortalHttpStatusConflict);
+    }
+    return send_portal_empty_status(req, kPortalHttpStatusNoContent);
+}
+
 esp_err_t empty_asset_handler(httpd_req_t *req)
 {
     return send_portal_empty_status(req, kPortalHttpStatusNoContent);
@@ -254,6 +263,7 @@ bool start_http_server()
         return false;
     }
     if (s_http_server) {
+        acquire_portal_display_dma_guard();
         setup_portal_active_store(true);
         if (!start_captive_dns_server()) {
             ESP_LOGW(TAG, SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG);
@@ -288,6 +298,7 @@ bool start_http_server()
     if (!start_captive_dns_server()) {
         ESP_LOGW(TAG, SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG);
     }
+    acquire_portal_display_dma_guard();
     setup_portal_active_store(true);
     return true;
 }

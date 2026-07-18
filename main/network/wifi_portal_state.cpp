@@ -11,6 +11,8 @@
 namespace {
 std::atomic<bool> s_setup_portal_active{false};
 std::atomic<int> s_last_wifi_disconnect_reason{0};
+std::atomic<WifiPortalSaveResult> s_save_result{WifiPortalSaveResult::kNone};
+std::atomic<bool> s_save_feedback_seen{false};
 StaticSemaphore_t s_portal_text_mutex_storage = {};
 SemaphoreHandle_t s_portal_text_mutex = nullptr;
 char s_setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
@@ -104,4 +106,24 @@ void wifi_station_ip_store(const char *ip_text)
 void clear_wifi_station_ip()
 {
     wifi_station_ip_store("");
+}
+
+WifiPortalSaveResult wifi_portal_save_result_load()
+{
+    return s_save_result.load(std::memory_order_acquire);
+}
+
+void wifi_portal_save_result_store(WifiPortalSaveResult result)
+{
+    s_save_result.store(result, std::memory_order_release);
+}
+
+bool wifi_portal_save_feedback_seen_load()
+{
+    return s_save_feedback_seen.load(std::memory_order_acquire);
+}
+
+void wifi_portal_save_feedback_seen_store(bool seen)
+{
+    s_save_feedback_seen.store(seen, std::memory_order_release);
 }

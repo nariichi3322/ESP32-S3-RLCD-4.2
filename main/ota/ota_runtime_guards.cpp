@@ -1,9 +1,11 @@
 // 实现 OTA 下载期间的显示静默和任务看门狗资源生命周期。
 #include "ota_runtime_guards.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "display_bsp.h"
 
+#include "esp_err.h"
+#include "esp_log.h"
 #include "esp_task_wdt.h"
 
 #define OTA_TASK_WATCHDOG_SUBSCRIBE_SKIPPED_FORMAT "OTA task watchdog subscribe skipped: %s"

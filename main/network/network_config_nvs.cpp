@@ -1,7 +1,9 @@
 // 实现联网配置 NVS 原语，不包含页面、天气城市或离线模式业务规则。
 #include "network_config_nvs.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
+
+#include <esp_log.h>
 
 #include <string.h>
 
