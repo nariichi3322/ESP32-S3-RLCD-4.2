@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.23",
+  "latest": "v1.5.24",
   "items": [
+    {
+      "version": "v1.5.24",
+      "notes": "v1.5.24：共 12 项更新。\n1. 修复恢复出厂和首次进入配网时提示音可能因 I2S DMA 初始化失败而缺失，并恢复 R…\n2. 修复手机离开后重新连接配网热点无法取得 IP，以及提交正确配置后结果页没有成功反馈的问…\n3. 配网现在串行验证 Wi-Fi、天气 API Key 和可选手动城市；错误配置会显示明确…\n4. 修复天气凭据验证占满 HTTP 任务栈导致设备重启；TLS、gzip 与 JSON 验…\n5. 修复恢复出厂进入配网时与后台 HTTPS 冲突导致异常，并将成功反馈与 NTP、天气、…\n6. 修复 APSTA 验证期间 SoftAP 跟随路由器切换信道后，手机无法重新进入强制门…\n其余 6 项见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.24.bin",
+        "sha256": "9bd56894e1bc6385f191a3e33cdaa153f40bf603d680170a3445e9df7236cc37",
+        "size": 6234720
+      },
+      "merged": {
+        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.24_merged.bin",
+        "sha256": "7dfdecaf22b9624ea7f5d1170ce62bfa460cd4d97087af99d40de708fd68d2a4",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.23",
       "notes": "v1.5.23：共 6 项更新。\n1. 显示与共享I2C对象改由app_hardware私有持有，启动、显示刷新、RTC、SH…\n2. 集中管理应用事件组生命周期并为所有事件访问增加空句柄保护，保持事件位和业务时序不变。\n3. 应用事件位编号与事件组生命周期统一由轻量契约维护，业务模块不再为了事件位依赖聚合状态头…\n4. 六个通用 UI 公共头改为只声明 LVGL、时间和事件组等真实类型依赖，调用方不再因基…\n5. 传感器服务公共头只保留 Tick、小时历史和 I2C 引用等真实签名依赖，电源锁、本地…\n其余 1 项见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.15_merged.bin",
         "sha256": "2a2c3fb988536894ce2c1912790f711ef6c0507df5f330daa05fea39909876f8",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.14",
-      "notes": "v1.5.14：ESP32-S3 RLCD 4.2 天气时钟 v1.5.14 源码发布。 `v1.5.14`： 自动化发布版本，包含本次代码迭代、构建产物和 OTA 更新清单。 本 Release 仅包含公…\n完整说明见同版本 Release。",
-      "app": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.14.bin",
-        "sha256": "f68ce32bedbc6cc1a18876800f04a0320946ea5a8e80346add681a113d7546bb",
-        "size": 6215328
-      },
-      "merged": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.14_merged.bin",
-        "sha256": "6c6c5c2bbe3f29bd4ace8f964bd4f57686a594cb353f0822673269661b841383",
         "size": 16509951
       }
     }
