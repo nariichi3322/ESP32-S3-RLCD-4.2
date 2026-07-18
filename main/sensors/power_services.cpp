@@ -1,8 +1,12 @@
 // 管理网络和音频期间的电源管理锁，避免关键流程被睡眠打断。
 #include "power_services.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "scoped_semaphore_lock.h"
+
+#include <esp_err.h>
+#include <esp_log.h>
+#include <esp_pm.h>
 
 #define POWER_PM_LOCK_MUTEX_UNAVAILABLE_LOG_FORMAT "%s pm lock mutex unavailable"
 #define POWER_PM_LOCK_MUTEX_TIMEOUT_LOG_FORMAT "%s pm lock mutex timeout"
@@ -30,11 +34,8 @@ constexpr const char *kAudioCpuPmLogName = "audio_cpu";
 } // namespace
 
 #if CONFIG_PM_ENABLE
-#include "freertos/semphr.h"
-
 namespace {
-StaticSemaphore_t s_pm_lock_mutex_storage = {};
-SemaphoreHandle_t s_pm_lock_mutex = nullptr;
+StaticTaskMutex s_pm_lock_mutex;
 esp_pm_lock_handle_t s_network_pm_lock = nullptr;
 esp_pm_lock_handle_t s_audio_pm_lock = nullptr;
 esp_pm_lock_handle_t s_audio_wake_pm_lock = nullptr;
@@ -49,7 +50,7 @@ static_assert(kPmLockMutexTimeout > 0, "PM lock mutex tick timeout must be posit
 
 void log_pm_lock_mutex_failure(const char *name)
 {
-    if (!s_pm_lock_mutex) {
+    if (!s_pm_lock_mutex.handle()) {
         ESP_LOGW(TAG, POWER_PM_LOCK_MUTEX_UNAVAILABLE_LOG_FORMAT, name);
     } else {
         ESP_LOGW(TAG, POWER_PM_LOCK_MUTEX_TIMEOUT_LOG_FORMAT, name);
@@ -61,7 +62,7 @@ bool acquire_pm_lock(esp_pm_lock_handle_t lock, int *depth, const char *name)
     if (!lock || !depth) {
         return false;
     }
-    ScopedSemaphoreLock state_lock(s_pm_lock_mutex, kPmLockMutexTimeout);
+    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
     if (!state_lock) {
         log_pm_lock_mutex_failure(name);
         return false;
@@ -82,7 +83,7 @@ void release_pm_lock(esp_pm_lock_handle_t lock, int *depth, const char *name)
     if (!lock || !depth) {
         return;
     }
-    ScopedSemaphoreLock state_lock(s_pm_lock_mutex, kPmLockMutexTimeout);
+    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
     if (!state_lock) {
         log_pm_lock_mutex_failure(name);
         return;
@@ -106,7 +107,7 @@ bool set_pm_lock_active(esp_pm_lock_handle_t lock, int *depth, const char *name,
     if (!lock || !depth) {
         return false;
     }
-    ScopedSemaphoreLock state_lock(s_pm_lock_mutex, kPmLockMutexTimeout);
+    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
     if (!state_lock) {
         log_pm_lock_mutex_failure(name);
         return false;
@@ -137,7 +138,11 @@ bool set_pm_lock_active(esp_pm_lock_handle_t lock, int *depth, const char *name,
 void init_power_management()
 {
 #if CONFIG_PM_ENABLE
-    if (s_pm_lock_mutex) {
+    if (s_pm_lock_mutex.handle()) {
+        return;
+    }
+    if (!s_pm_lock_mutex.init()) {
+        ESP_LOGW(TAG, POWER_MUTEX_CREATE_FAILED_LOG_FORMAT);
         return;
     }
     esp_pm_config_t pm_config = {};
@@ -151,10 +156,6 @@ void init_power_management()
     } else {
         ESP_LOGI(TAG, POWER_SETUP_OK_LOG_FORMAT,
                  pm_config.max_freq_mhz, pm_config.min_freq_mhz);
-    }
-    s_pm_lock_mutex = xSemaphoreCreateMutexStatic(&s_pm_lock_mutex_storage);
-    if (!s_pm_lock_mutex) {
-        ESP_LOGW(TAG, POWER_MUTEX_CREATE_FAILED_LOG_FORMAT);
     }
     err = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, kNetworkPmLockName, &s_network_pm_lock);
     if (err != ESP_OK) {
@@ -200,7 +201,7 @@ void release_network_awake_lock()
 bool network_awake_lock_active()
 {
 #if CONFIG_PM_ENABLE
-    ScopedSemaphoreLock state_lock(s_pm_lock_mutex, kPmLockMutexTimeout);
+    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
     if (!state_lock) {
         log_pm_lock_mutex_failure(kNetworkPmLogName);
         return true;
@@ -218,7 +219,7 @@ bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out)
     }
     *out = {};
 #if CONFIG_PM_ENABLE
-    ScopedSemaphoreLock state_lock(s_pm_lock_mutex, kPmLockMutexTimeout);
+    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
     if (!state_lock) {
         log_pm_lock_mutex_failure(kNetworkPmLogName);
         return false;

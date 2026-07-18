@@ -2,25 +2,17 @@
 #include "manual_weather_city_state.h"
 
 #include "scoped_semaphore_lock.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 
 #include <string.h>
 
 namespace {
-StaticSemaphore_t s_manual_weather_city_mutex_storage = {};
-SemaphoreHandle_t s_manual_weather_city_mutex = nullptr;
+StaticTaskMutex s_manual_weather_city_mutex;
 char s_manual_weather_city[kManualWeatherCityLen] = {};
 }
 
 bool init_manual_weather_city_state()
 {
-    if (s_manual_weather_city_mutex) {
-        return true;
-    }
-    s_manual_weather_city_mutex =
-        xSemaphoreCreateMutexStatic(&s_manual_weather_city_mutex_storage);
-    return s_manual_weather_city_mutex != nullptr;
+    return s_manual_weather_city_mutex.init();
 }
 
 bool manual_weather_city_snapshot(char *out, size_t out_len)

@@ -572,6 +572,7 @@ void ui_task(void *)
         TickType_t delay_ticks = ui_runtime_next_loop_delay_ticks(
             local,
             now,
+            battery,
             battery_blink_visible);
         ulTaskNotifyTake(pdTRUE, delay_ticks);
     }

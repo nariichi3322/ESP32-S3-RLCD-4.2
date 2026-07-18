@@ -1,13 +1,18 @@
 // 验证网络与音频 PM 锁的嵌套计数、失败回滚和作用域互斥释放语义。
 #include "power_services.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
+
+#include <esp_err.h>
+#include <esp_pm.h>
 
 #include <assert.h>
 #include <string.h>
 
 const char *const TAG = "PowerServicesHostTest";
+bool g_fail_mutex_create = false;
 bool g_fail_mutex_take = false;
+int g_mutex_create_calls = 0;
 
 struct FakePmLock {
     const char *name = nullptr;
@@ -98,8 +103,18 @@ int main()
     assert(network_awake_lock_active());
     assert(!get_power_lock_depth_snapshot(&unavailable));
 
+    g_fail_mutex_create = true;
+    init_power_management();
+    assert(g_mutex_create_calls == 1);
+    assert(s_configure_calls == 0);
+    assert(s_lock_count == 0);
+    assert(network_awake_lock_active());
+    assert(!get_power_lock_depth_snapshot(&unavailable));
+
+    g_fail_mutex_create = false;
     init_power_management();
     init_power_management();
+    assert(g_mutex_create_calls == 2);
     assert(s_configure_calls == 1);
     assert(s_lock_count == 4);
     expect_depths(0, 0, 0, 0);

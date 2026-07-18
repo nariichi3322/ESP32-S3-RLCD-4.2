@@ -38,7 +38,9 @@ endif()
 add_executable(weather_clock_sdl
     "main.cpp"
     "sdl_preview_backend.cpp"
+    "sdl_preview_boot.cpp"
     "sdl_preview_calendar.cpp"
+    "sdl_preview_clock.cpp"
     "sdl_preview_flip_cards.cpp"
     "sdl_preview_flip_clock.cpp"
     "sdl_preview_gallery.cpp"
@@ -47,6 +49,7 @@ add_executable(weather_clock_sdl
     "sdl_preview_settings.cpp"
     "sdl_preview_weather.cpp"
     "sdl_preview_widgets.cpp"
+    "sdl_preview_work_status.cpp"
     "sdl_preview_xiaozhi.cpp"
     "../main/assets/boot_anim.c"
     "../main/assets/qweather_icons_36.c"

@@ -58,6 +58,16 @@ void close_websocket(WebsocketSession *session)
     }
 }
 
+ScopedWebsocketSession::~ScopedWebsocketSession()
+{
+    reset();
+}
+
+void ScopedWebsocketSession::reset()
+{
+    close_websocket(&session_);
+}
+
 bool websocket_send_text(WebsocketSession *session, const char *text)
 {
     return session && session->socket && text &&

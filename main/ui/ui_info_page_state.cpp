@@ -3,22 +3,14 @@
 
 #include "scoped_semaphore_lock.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-
 namespace {
-StaticSemaphore_t s_info_page_mutex_storage = {};
-SemaphoreHandle_t s_info_page_mutex = nullptr;
+StaticTaskMutex s_info_page_mutex;
 InfoPageStateSnapshot s_info_page_state;
 }
 
 bool info_page_state_init()
 {
-    if (s_info_page_mutex) {
-        return true;
-    }
-    s_info_page_mutex = xSemaphoreCreateMutexStatic(&s_info_page_mutex_storage);
-    return s_info_page_mutex != nullptr;
+    return s_info_page_mutex.init();
 }
 
 void info_page_state_load(InfoPageStateSnapshot *out)

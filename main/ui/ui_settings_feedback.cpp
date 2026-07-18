@@ -11,14 +11,10 @@
 #include "ui_task_notify.h"
 #include "ui_text_format.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-
 #include <string.h>
 
 namespace {
-StaticSemaphore_t s_settings_feedback_mutex_storage = {};
-SemaphoreHandle_t s_settings_feedback_mutex = nullptr;
+StaticTaskMutex s_settings_feedback_mutex;
 char s_settings_feedback[kSettingsFeedbackTextLen] = {};
 TickType_t s_settings_feedback_until_tick = 0;
 #define SETTINGS_MANUAL_SYNC_TIMEOUT_LOG_FORMAT "settings manual sync timeout: op=%d"
@@ -33,12 +29,7 @@ bool settings_feedback_state_init()
     if (!settings_sync_state_init()) {
         return false;
     }
-    if (s_settings_feedback_mutex) {
-        return true;
-    }
-    s_settings_feedback_mutex =
-        xSemaphoreCreateMutexStatic(&s_settings_feedback_mutex_storage);
-    return s_settings_feedback_mutex != nullptr;
+    return s_settings_feedback_mutex.init();
 }
 
 void set_settings_feedback(const char *text, uint32_t duration_ms)
@@ -48,7 +39,7 @@ void set_settings_feedback(const char *text, uint32_t duration_ms)
     TickType_t now = xTaskGetTickCount();
     TickType_t until_tick = now + pdMS_TO_TICKS(duration_ms);
     {
-        ScopedSemaphoreLock lock(s_settings_feedback_mutex);
+        ScopedSemaphoreLock lock(s_settings_feedback_mutex.handle());
         if (!lock) {
             return;
         }
@@ -63,7 +54,7 @@ void set_settings_feedback(const char *text, uint32_t duration_ms)
 
 void clear_settings_feedback()
 {
-    ScopedSemaphoreLock lock(s_settings_feedback_mutex);
+    ScopedSemaphoreLock lock(s_settings_feedback_mutex.handle());
     if (!lock) {
         return;
     }
@@ -80,7 +71,7 @@ bool settings_feedback_copy_active(TickType_t now, char *out, size_t out_len)
     char snapshot[kSettingsFeedbackTextLen] = {};
     bool active = false;
     {
-        ScopedSemaphoreLock lock(s_settings_feedback_mutex);
+        ScopedSemaphoreLock lock(s_settings_feedback_mutex.handle());
         if (!lock) {
             return false;
         }

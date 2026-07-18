@@ -600,10 +600,14 @@ bool save_xiaozhi_auto_return_setting()
 
 bool clear_saved_config()
 {
-    if (!clear_saved_config_nvs()) {
+    // alarm_v1 is a separate NVS namespace. Clear it before the Wi-Fi
+    // namespace so an alarm-storage failure leaves credentials intact and the
+    // user can retry instead of being stranded between persisted and runtime
+    // configuration states.
+    if (!alarm_clear_saved_state()) {
         return false;
     }
-    if (!alarm_clear_saved_state()) {
+    if (!clear_saved_config_nvs()) {
         return false;
     }
     reset_saved_config_runtime_state();

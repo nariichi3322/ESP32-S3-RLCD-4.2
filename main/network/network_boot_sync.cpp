@@ -4,6 +4,7 @@
 #include "app_event_group.h"
 #include "app_text_format.h"
 #include "network_credentials_state.h"
+#include "ntp_services.h"
 #include "offline_mode_state.h"
 #include "network_sync_schedule.h"
 #include "network_task_guards.h"

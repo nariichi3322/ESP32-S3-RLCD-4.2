@@ -45,6 +45,7 @@ Depending on the page, the status area shows date, weekday, battery, Wi-Fi, remi
 - Shared bitmap, digit-clock, day-progress, OTA-panel, visible-data-sync, and base-widget interfaces now declare only their actual dependencies. This internal maintenance reduces unrelated coupling without changing page pixels, refresh timing, network rules, or controls.
 - Provisioning, weather, NTP, HTTP, and background synchronization keep the same public behavior while their internal helpers now declare dependencies directly. Request order, weather data, failure handling, and controls are unchanged.
 - **Battery icon:** shows the shared battery state on all seven work pages while refreshing only the visible page. During detected charging it blinks on whole-second boundaries. The hardware has no dedicated CHG/VBUS input, so plug/unplug detection based on ADC voltage trends can be delayed briefly.
+- Page rendering, charging animation, and low-power scheduling reuse one battery snapshot per UI loop, reducing idle overhead without changing sampling intervals, icons, or controls.
 - **Day-progress strip:** shared by all seven pages. Its 60 segments each represent about 24 minutes and refresh only on page entry or when crossing a new segment.
 - Every page uses the same internal drawing and boundary rules for this strip. Segment count, placement, refresh timing, and visible behavior remain unchanged.
 
@@ -87,7 +88,7 @@ Shows city, current temperature and condition, air quality, humidity, wind, sunr
 
 Shows three high-contrast hour/minute/second cards plus local temperature, humidity, trend arrows, comfort faces, date, and lunar date.
 
-- Seconds refresh locally once per second; ordinary ticks update only the changed digit region instead of redrawing the whole card. The page sleeps until the next wall-clock second instead of polling repeatedly between ticks.
+- Seconds refresh locally once per second; ordinary ticks write the pixel buffer directly and send only the changed digit region instead of implicitly invalidating the whole card per pixel. The page sleeps until the next wall-clock second instead of polling repeatedly between ticks.
 - Local temperature/humidity is sampled every minute during the day and every two minutes at night.
 - Trend arrows use the rolling average of valid samples from the latest four-hour window and restart after reboot.
 - Internal page construction and runtime refresh are isolated. A page rebuild restores all clock cards, sensor, trend/comfort, date, and lunar objects while reusing pixel buffers; display, refresh frequency, controls, and stored data are unchanged.
@@ -124,12 +125,14 @@ Provides local wake-word detection, voice conversations, on-screen transcripts, 
 - If the cloud service recognizes only an incomplete phrase and returns no text or audio reply, the page shows that it did not hear the complete request. Continue or repeat the request; about 12 seconds of silence returns to wake-word standby.
 - User transcripts, assistant replies, emotions, and playback completion use one conversation-state path so multi-turn listening, farewell return, and minimum transcript visibility remain consistent.
 - Xiaozhi page state is published as a complete snapshot before the UI is notified. If the resource is temporarily busy, the previous complete state remains visible instead of mixing partial new and old text.
+- Xiaozhi conversation, retry, and page-lifecycle paths now use the same snapshot entry points directly instead of passing through duplicate forwarding wrappers. Status text, subtitles, expressions, wake-up, and controls are unchanged.
 - Service handshakes, ordinary replies, and MCP tool messages share a bounded session buffer. An invalid oversized text frame ends the current session instead of overwriting adjacent memory.
 - Wake-word listening starts only after Xiaozhi has acquired the microphone and audio hardware. If an alarm, Pomodoro alert, or prompt is using audio, the existing recovery path retries after the hardware is released instead of starting a partial listener.
 - Device-status queries format sensor, battery, and volume data in a fixed-capacity buffer. Under memory pressure, the current query fails cleanly without retaining temporary memory or disrupting later conversations.
 - Xiaozhi validates audio lengths before sending, decoding, sample-rate conversion, and playback queueing. An invalid frame ends only the current conversation instead of reading beyond its buffer.
 - WebSocket receive, Opus encode, and audio-decode scratch now share one PSRAM lease across conversations and are cleared before and after each one. The encoder no longer allocates a separate buffer per conversation; microphone, speaker, Wi-Fi, and voice tasks still stop after leaving the Xiaozhi page.
-- The short first-binding code now crosses into its playback task through a fixed slot protected by an application-lifetime static task mutex, avoiding both per-announcement heap allocation and interrupt masking during string copies. Prompt and digit order are unchanged, and a failed playback remains eligible for a later activation retry.
+- Each voice connection now owns its WebSocket, TLS, and network-serialization resources through one scoped lifecycle. Handshake, buffer, or audio startup failures therefore clean up automatically without retaining network resources. Connection behavior, retry timing, and controls are unchanged.
+- The short first-binding code now crosses into its playback task through a fixed slot protected by an application-lifetime static task mutex, avoiding both per-announcement heap allocation and interrupt masking during string copies. Its state is also rolled back if later Xiaozhi initialization fails, allowing a clean retry; prompt and digit order are unchanged, and a failed playback remains eligible for a later activation retry.
 - Page status, subtitles, and emotion refresh only when their content changes. Offline, unconfigured, or retry states do not repeatedly redraw the same message.
 - After setup transitions, page-resource recovery, or a full UI rebuild, Xiaozhi status, emotion, and an active Pomodoro are immediately restored on the new page objects instead of retaining stale display references.
 - While offline mode is enabled or Wi-Fi has not been saved, Xiaozhi waits for a configuration change instead of periodically starting network work. Saving setup, changing offline mode, or leaving the page wakes it immediately.
@@ -176,6 +179,8 @@ The device publishes the Wi-Fi name, password, and weather API key to background
 After setup, NTP, weather, and daily-text requests are staggered to avoid concurrent HTTPS memory peaks. Enabled network pages receive an initial data prefetch even if they are not the first visible page.
 
 Regular HTTPS synchronization and Xiaozhi WebSocket connection setup share one serialized network boundary. If they overlap, the later operation waits for the active transaction to finish instead of competing for TLS memory. User-facing synchronization, OTA, and Xiaozhi controls are unchanged.
+
+While Xiaozhi keeps Wi-Fi online, ordinary weather, time, or daily-text synchronization reuses the connected station instead of disconnecting to reapply identical credentials. It also preserves the real-time Wi-Fi power policy required by the voice session. Setup mode and a genuinely disconnected station still reconnect through the normal path.
 
 The clock synchronizes time once at startup and then at local midnight each day. A failed midnight synchronization remains pending and retries after the normal delay, so crossing past 00:00 does not discard the daily update.
 
@@ -254,15 +259,21 @@ Hourly chimes, previews, alarms, Pomodoro completion, and Xiaozhi share one atom
 The audio layer validates speaker and microphone readiness separately. A partial Codec startup cannot publish an unusable audio resource or pass a missing microphone handle to the driver; the current attempt ends safely and a later reminder or Xiaozhi entry may retry.
 If no valid playback handle can be created, the device parks the audio pins and releases the high-performance power resources before returning from that attempt, so one initialization failure cannot leave sustained extra power draw.
 Production audio now reuses the ES8311/ES7210 I2C controls already owned by the board Codec layer instead of registering duplicate, unused device handles for every session. Sound behavior and hardware addresses are unchanged.
-The network transaction lock shared by weather, daily text, Xiaozhi, and OTA is now a static lifetime resource. This removes a cold-start heap allocation and a source of long-lived fragmentation without changing request order, timeouts, or user operation.
+The network transaction lock shared by weather, daily text, Xiaozhi, and OTA is now an independently owned static lifetime resource with direct production tests for initialization retry and contention. This removes a cold-start heap allocation and a source of long-lived fragmentation without changing request order, timeouts, or user operation.
+The OTA status snapshot and the provisioning page's AP-name/IP text snapshots now use the same application-lifetime lock owner as other permanent runtime state. This removes duplicated initialization bookkeeping without changing OTA sources, progress UI, reboot behavior, provisioning feedback, Wi-Fi operation, or displayed addresses.
 The fixed capacities for OTA version, download URL, and SHA256 metadata are now owned by the OTA module, so the pure parser interface no longer carries unrelated display or application-state dependencies. Manifest format, source priority, download validation, and user operation are unchanged.
 Daily text and its successful synchronization time are now published as one consistent snapshot, preventing a page refresh from pairing new text with an older timestamp. The internal cache remains 160 bytes; the 22-character limit, fetch timing, and display behavior are unchanged.
-The depth counter mutex used by network and audio power locks is also a static lifetime resource. This reduces startup heap allocation and long-lived fragmentation without changing light sleep, network, or audio behavior.
+The depth counter mutex used by network and audio power locks now uses the same static lifetime owner as other permanent task state. If that owner cannot initialize, power-lock setup stops before creating partially usable handles and can be retried later. Normal light sleep, network, and audio behavior is unchanged.
 Current local temperature, humidity, trends, and refresh version are also published as one task-level snapshot, so pages and Xiaozhi cannot observe fields from different sampling batches. Sampling intervals, arrows, and display behavior are unchanged.
+Battery runtime, the current local-sensor snapshot, and the 48-slot hourly history now share the same application-lifetime lock ownership pattern. This maintenance cleanup removes duplicated initialization bookkeeping without changing sampling, charging detection, NVS history, page readings, or controls.
 Internal sensor, battery, hourly-history, wall-clock, and power-lock interfaces now declare their own actual dependencies. This reduces unrelated maintenance coupling without changing sampling cadence, RTC behavior, charging detection, light sleep, or displayed readings.
+The power-management implementation also imports only its lightweight metadata, ESP PM, logging, and lock contracts instead of the full application-state aggregate. This is a maintenance boundary only; CPU frequency, light sleep, networking, and audio behavior remain unchanged.
 Xiaozhi internals now read the application log tag and version through a lightweight metadata contract instead of also importing unrelated display, weather, and system-state declarations. Binding, wake-up, conversation, MCP, audio, networking, and page behavior are unchanged.
 Shared audio and chime orchestration also declare only the logging, task, battery, and hardware contracts they actually use instead of importing unrelated display, weather, network, and OTA internals. Hourly chimes, setting previews, provisioning prompts, Xiaozhi audio, power behavior, and controls are unchanged.
 Weather location text and QWeather response handling now load only the weather types, JSON, buffer, and logging contracts they actually use instead of unrelated display, OTA, audio, and system state. City resolution, weather data, failure messages, and page output are unchanged.
+The generic HTTP client, IP geolocation, provisioning weather validation, QWeather client, and weather runtime state now follow the same lightweight dependency boundary. Network requests, parsing, caches, event notifications, and controls are unchanged.
+Provisioning AP credentials, portal addresses, and built-in primary/backup OTA manifest endpoints are now owned by one lightweight compile-time configuration contract. Provisioning, diagnostics, and update behavior are unchanged, and private deployment endpoints remain outside the tracked source tree.
+NTP synchronization and last-successful-sync queries now use a dedicated lightweight service interface. Startup time recovery, scheduled synchronization, RTC updates, diagnostics, and displayed information remain unchanged.
 The four-hour trend samples and 48-slot hourly history now share one stable production data definition, and host validation uses the real firmware layout instead of a parallel test copy. NVS data, restart recovery, history charts, and page operation are unchanged.
 The application event identifiers and event-group resource shared by provisioning, synchronization, OTA, and startup are managed by one internal owner and remain a static lifetime resource. Calls made before initialization or after startup-failure cleanup fail safely instead of touching an invalid handle. Event delivery, wait timeouts, and user operation are unchanged.
 The Xiaozhi page snapshot lock also uses a static control block, reducing startup internal-memory allocation and long-term fragmentation without changing wake-up, subtitles, expressions, Pomodoro, or page controls.
@@ -291,7 +302,7 @@ About Device and Network Diagnostics each maintain their own dynamic content. Af
 
 The idle, running, and completed diagnostics states now use the same internal typed snapshot, preventing maintenance-time numeric state mismatches without changing the nine checks, their display order, or any controls.
 
-The settings menu, feedback line, and update progress panel are likewise maintained by their owning UI modules. Returning from setup, About Device, or Network Diagnostics rebuilds them from current state without changing item order, the 30-second timeout, OTA percentage, speed, or progress bar.
+The settings menu, feedback line, manual-sync status, page order, and update progress panel are likewise maintained by their owning UI modules. The first three shared states now use the same application-lifetime lock owner, removing duplicated initialization bookkeeping. Returning from setup, About Device, or Network Diagnostics rebuilds them from current state without changing item order, page sorting, the 30-second timeout, OTA percentage, speed, or progress bar.
 
 Settings menu indexes, item counts, and manual synchronization operations now share one internal definition. This prevents display, key handling, and network actions from drifting apart without changing any visible menu order, labels, or controls.
 
@@ -330,9 +341,13 @@ For each public source release, GitHub Actions automatically attaches two build 
 
 After the GitHub build completes, the Cloudflare OTA service imports and verifies both files automatically. If the automatic notification is delayed, the maintenance release flow requests a protected retry. The previous online manifest remains active until both new firmware images pass validation.
 
+Cloudflare maintenance upload, cleanup, and manual GitHub-sync endpoints use one consistent unauthorized response and reject invalid tokens before changing stored firmware or contacting GitHub. GitHub webhook signature failures remain a separate error, so maintainers can distinguish token and webhook configuration problems without changing device OTA behavior.
+
 The GitHub OTA fallback repository is updated from the same source build. The source repository dispatches an event after its app, merged image, and manifests are ready; the fallback repository then downloads both Release assets, verifies size and SHA256, and only afterward updates its own Releases and manifests. It no longer polls Cloudflare on a daily schedule, and fallback manifest URLs point to the fallback repository's own Release assets.
 
 Both automation paths now share one firmware-artifact naming and validation contract, preventing the app and complete flash image from drifting apart. Existing filenames, verification, device OTA steps, and serial flashing instructions are unchanged.
+
+The source-build and fallback-mirror tools also share the same manifest field names, 1,800-byte `latest.json` limit, and ten-version history limit. This maintenance change does not alter the JSON consumed by devices or the desktop client.
 
 Internally, provisioning, offline mode, chime, volume, and Xiaozhi auto-return settings are safely published to background tasks. Xiaozhi auto-return now has one dedicated runtime state shared by Settings, storage, and the five-minute decision, without changing where it is edited, how it is saved, or how it is restored after restart.
 
@@ -406,7 +421,7 @@ Factory reset retains:
 - Stored sensor history.
 - Desktop-client DIY assets.
 
-The device then enters setup as an unconfigured clock.
+The device enters setup as an unconfigured clock only after both the regular settings and the one-shot alarm have been cleared. If storage cleanup fails, the device reports the failure and preferentially retains Wi-Fi/API Key data so the reset can be retried.
 
 ## 11. Troubleshooting
 
@@ -418,9 +433,15 @@ The startup screen, on-device setup status, and phone portal all show the same c
 
 If portal startup fails, the device removes the incomplete AP and restores its previous Wi-Fi mode instead of leaving an unusable high-power hotspot active. Retry setup after a short wait.
 
+If another network operation is finishing, or temporary resource pressure prevents the AP from starting immediately, the setup request remains queued and retries at a bounded interval instead of repeatedly restarting Wi-Fi. The portal, validation feedback, and correction flow remain unchanged.
+
+The portal accepts the longer request headers commonly sent by current phone browsers. If the phone still shows `Header fields are too long` or HTTP `431`, close the automatically opened captive window, reconnect to the device AP, and browse to `http://192.168.4.1/` manually. This means that particular web request was rejected before save processing; it does not indicate damaged NVS, Wi-Fi credentials, or QWeather API Key.
+
 ### Weather remains “Waiting for data”
 
 Verify Wi-Fi, QWeather API Key, and city. Run **Network > Sync Weather** or use **System > Network Diagnostics** to inspect QWeather, DNS, and Internet access.
+
+If an automatic sync encounters Wi-Fi startup failure, connection timeout, or setup weather-configuration validation failure, the device keeps its existing weather cache and resumes through the existing bounded retry or next scheduled attempt. A setup validation failure keeps the portal available with the specific reason, while a normal background failure releases that network session. User interaction and retry timing are unchanged, and Wi-Fi, API Key, or city settings are not erased. If data remains unavailable, use manual sync or Network Diagnostics.
 
 If the display is rebuilt after setup-mode switching or display-resource recovery, the weather city, status, icon, temperature, and humidity are repopulated on the new page objects. Existing cached weather is not cleared by a UI rebuild.
 
@@ -460,9 +481,11 @@ With an implausible RTC time, the device first shows placeholders and attempts N
 
 The last-sync value shown under About Device is read from the same task-mutex snapshot that the network task updates. SNTP waiting, RTC writes, and UI notifications remain outside that mutex, so viewing the value cannot extend a sync attempt or change its result.
 
+Alarm, Pomodoro, last-NTP-sync, About Device, daily saying, manual weather city, network credentials, network diagnostics, complete weather data, and pending Xiaozhi weather-city requests now share the same application-lifetime static-mutex owner internally. This removes repeated initialization code without changing countdowns, alarm timing, synchronization, provisioning, weather updates, network checks, page timeouts, memory allocation, or controls; resources that require explicit rollback keep their existing lifecycle.
+
 ### Startup screen does not continue
 
-In the rare event of a display-resource or panel-register startup failure, the firmware releases any acquired SPI bus, panel interface, reset GPIO, display buffers, lookup tables, LVGL buffers, timer, and lock instead of rebooting repeatedly or continuing periodic wake-ups in an unusable state. The long-lived LVGL display lock, handler-task stack, and task control block use static storage to reduce internal-heap allocation and long-term fragmentation at startup; page, button, and refresh behavior are unchanged. Power-cycle the device; if it still cannot enter a work page, inspect the serial log for `RLCD display resources unavailable`, `RLCD panel register initialization failed`, or `LVGL initialization failed` and the preceding specific error.
+In the rare event of a display-resource or panel-register startup failure, the firmware releases any acquired SPI bus, panel interface, reset GPIO, display buffers, lookup tables, LVGL buffers, timer, and lock instead of rebooting repeatedly or continuing periodic wake-ups in an unusable state. RLCD lifecycle and transfer diagnostics now share one module tag instead of storing an unnecessary pointer in the single display object; log text and rollback behavior are unchanged. The long-lived LVGL display lock, handler-task stack, and task control block use static storage to reduce internal-heap allocation and long-term fragmentation at startup; page, button, and refresh behavior are unchanged. Power-cycle the device; if it still cannot enter a work page, inspect the serial log for `RLCD display resources unavailable`, `RLCD panel register initialization failed`, or `LVGL initialization failed` and the preceding specific error.
 
 If the shared I2C master bus itself cannot be created, startup stops before RTC, sensor, audio, networking, and application tasks are initialized instead of entering a reset loop. Power-cycle the device and inspect the serial log for `I2C master bus unavailable` and the preceding driver error. A missing individual RTC or temperature/humidity sensor remains a separate recoverable device error and does not by itself stop the clock.
 
@@ -470,8 +493,20 @@ During normal operation, a temporary SPI display allocation or timeout error is 
 
 Shared bitmap, label, and font declarations use lightweight internal interfaces. This maintenance does not change Chinese glyphs, icon pixels, page coordinates, trend arrows, or partial-refresh behavior.
 
+The network task's page checks, waits, and NTP retry helpers now remain private implementation details. This maintenance does not change Wi-Fi connections, weather/daily-text synchronization, NTP retry timing, or setup interaction.
+
+The network task now keeps NTP retries, the daily-midnight deadline, and startup refresh deadlines in one internal runtime state. Success, failure, memory deferral, and setup completion retain their existing timing while future maintenance is less likely to omit a pending item or deadline. Sync frequency, network traffic, and user interaction are unchanged.
+
+The SDL startup-page objects, animation, and screenshot flow are now maintained in a dedicated preview module, with a byte-identical fixed-frame image. This development-tool cleanup does not change the device startup screen, startup timing, or firmware behavior.
+
+The SDL work-page date, battery, sensor summary, and sound/Wi-Fi/alarm icons are now maintained by one shared status-bar module. Thirteen fixed preview states remain byte-identical, so device pages, icons, refresh behavior, power use, and controls are unchanged.
+
+The SDL weather-clock preview now maintains its time, weather, sensor, GIF, alert, low-battery, and setup states in a dedicated module. All 22 fixed preview modes remain byte-identical, so this development-tool cleanup does not change firmware or user operation.
+
 ## 12. Safety and Use Restrictions
 
+- Before release, the project runs host tests, sanitizers, SDL pixel regression, an ESP-IDF build, and a real ESP32-S3 core-board smoke test when that optional board is online. The core board does not replace full-device display, audio, sensor, or power validation.
+- Development-time optimization scanning prioritizes production firmware and never runs on the clock itself. It recognizes JavaScript `typeof` type results by context while retaining identical business text as a maintenance candidate; this does not change pages, controls, networking, storage, or power behavior.
 - Never expose Wi-Fi passwords, QWeather keys, Xiaozhi credentials, or private OTA endpoints in public logs or repositories.
 - Keep stable power during OTA or full flashing.
 - Xiaozhi AI draws much more current and warms the PCB; leave the page or enable auto-return when battery runtime matters.

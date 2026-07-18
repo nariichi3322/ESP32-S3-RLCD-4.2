@@ -42,6 +42,26 @@ struct WebsocketSession {
 };
 
 void close_websocket(WebsocketSession *session);
+
+class ScopedWebsocketSession {
+public:
+    ScopedWebsocketSession() = default;
+    ~ScopedWebsocketSession();
+
+    ScopedWebsocketSession(const ScopedWebsocketSession &) = delete;
+    ScopedWebsocketSession &operator=(const ScopedWebsocketSession &) = delete;
+
+    WebsocketSession &get()
+    {
+        return session_;
+    }
+
+    void reset();
+
+private:
+    WebsocketSession session_;
+};
+
 bool websocket_send_text(WebsocketSession *session, const char *text);
 bool websocket_send_listen_start(WebsocketSession *session);
 bool websocket_send_wake_abort(WebsocketSession *session);

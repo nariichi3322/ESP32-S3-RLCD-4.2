@@ -2,6 +2,7 @@
 #include "network_services.h"
 
 #include "app_event_group.h"
+#include "app_network_config.h"
 #include "ota_runtime_state.h"
 
 #include "app_constexpr.h"
@@ -40,10 +41,34 @@ enum class StationConnectAttempt {
     Reconnect,
 };
 
+constexpr bool should_reconnect_running_station(bool enable_setup_portal,
+                                                bool station_connected)
+{
+    return enable_setup_portal || !station_connected;
+}
+
+constexpr bool should_reconfigure_running_power_save(bool enable_setup_portal,
+                                                     bool xiaozhi_keepalive_active)
+{
+    return enable_setup_portal || !xiaozhi_keepalive_active;
+}
+
 static_assert(kSetupApChannel > 0, "setup AP channel must be positive");
 static_assert(kSetupApMaxConnections > 0, "setup AP max connections must be positive");
 static_assert(cstr_length(kSetupApSsidFallback) < kWifiSetupApSsidTextLen,
               "setup AP SSID fallback must fit portal state buffer");
+static_assert(!should_reconnect_running_station(false, true),
+              "connected STA must be reused outside setup mode");
+static_assert(should_reconnect_running_station(false, false),
+              "disconnected STA must reconnect outside setup mode");
+static_assert(should_reconnect_running_station(true, true),
+              "setup mode must apply submitted station credentials");
+static_assert(!should_reconfigure_running_power_save(false, true),
+              "Xiaozhi keepalive must retain realtime Wi-Fi power policy");
+static_assert(should_reconfigure_running_power_save(false, false),
+              "ordinary running Wi-Fi may restore modem power save");
+static_assert(should_reconfigure_running_power_save(true, true),
+              "setup mode must retain its own Wi-Fi power policy");
 #define WIFI_START_SKIPPED_OFFLINE_LOG "wifi start skipped in offline mode"
 #define WIFI_STA_ONLY_MODE_FAILED_FORMAT "wifi sta-only mode failed: %s"
 #define WIFI_POWER_SAVE_SETUP_FAILED_FORMAT "wifi power save setup failed: %s"
@@ -320,6 +345,10 @@ static void rollback_running_setup_transition(wifi_mode_t previous_mode,
 static bool configure_running_wifi_radio(bool enable_setup_portal,
                                          bool entering_setup_portal)
 {
+    const bool station_connected =
+        app_event_group_ready() &&
+        ((app_event_group_get_bits() & kWifiConnectedBit) != 0);
+    const bool xiaozhi_keepalive_active = xiaozhi_ai_network_keepalive_active();
     if (!enable_setup_portal) {
         stop_http_server();
         esp_err_t mode_err = esp_wifi_set_mode(WIFI_MODE_STA);
@@ -327,7 +356,10 @@ static bool configure_running_wifi_radio(bool enable_setup_portal,
             ESP_LOGW(TAG, WIFI_STA_ONLY_MODE_FAILED_FORMAT, esp_err_to_name(mode_err));
             return false;
         }
-        configure_wifi_power_save(false);
+        if (should_reconfigure_running_power_save(enable_setup_portal,
+                                                  xiaozhi_keepalive_active)) {
+            configure_wifi_power_save(false);
+        }
     } else {
         wifi_mode_t previous_mode = WIFI_MODE_STA;
         esp_err_t previous_mode_err = esp_wifi_get_mode(&previous_mode);
@@ -366,7 +398,9 @@ static bool configure_running_wifi_radio(bool enable_setup_portal,
         }
         configure_wifi_power_save(true);
     }
-    if (network_wifi_credentials_configured()) {
+    if (network_wifi_credentials_configured() &&
+        should_reconnect_running_station(enable_setup_portal,
+                                         station_connected)) {
         (void)apply_station_config(true);
     }
     if (entering_setup_portal) {

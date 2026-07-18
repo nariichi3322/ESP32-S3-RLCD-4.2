@@ -27,6 +27,7 @@ static constexpr int kRlcdLcdCommandBits = 8;
 static constexpr int kRlcdLcdParamBits = 8;
 static constexpr int kRlcdSpiMode = 0;
 static constexpr int kRlcdSpiTransQueueDepth = 10;
+static constexpr char kDisplayLogTag[] = "Display";
 static constexpr const char *kRlcdKeepPinsActiveLog = "keep RLCD pins active in light sleep";
 static constexpr uint32_t kRlcdSleepOutDelayMs = 200;
 static constexpr uint32_t kRlcdResetHighDelayMs = 50;
@@ -74,7 +75,7 @@ static bool RlcdTxCanRetry(esp_err_t err)
 
 static void LogDisplayAllocationFailure(const char *name, size_t bytes)
 {
-    ESP_LOGE("Display",
+    ESP_LOGE(kDisplayLogTag,
              "%s allocation failed bytes=%u psram_free=%u psram_largest=%u internal_free=%u dma_largest=%u",
              name,
              (unsigned)bytes,
@@ -86,13 +87,13 @@ static void LogDisplayAllocationFailure(const char *name, size_t bytes)
 
 static void LogDisplayStageFailure(const char *stage, esp_err_t err)
 {
-    ESP_LOGE("Display", RLCD_INIT_STAGE_FAILED_LOG_FORMAT, stage, esp_err_to_name(err));
+    ESP_LOGE(kDisplayLogTag, RLCD_INIT_STAGE_FAILED_LOG_FORMAT, stage, esp_err_to_name(err));
 }
 
 static void LogDisplayReleaseFailure(const char *stage, esp_err_t err)
 {
     if (err != ESP_OK) {
-        ESP_LOGW("Display", RLCD_RELEASE_STAGE_FAILED_LOG_FORMAT, stage, esp_err_to_name(err));
+        ESP_LOGW(kDisplayLogTag, RLCD_RELEASE_STAGE_FAILED_LOG_FORMAT, stage, esp_err_to_name(err));
     }
 }
 
@@ -128,7 +129,7 @@ spihost_(spihost)
 {
     if (width_ <= 0 || height_ <= 0 ||
         width_ > std::numeric_limits<int>::max() / height_) {
-        ESP_LOGE(TAG, RLCD_INIT_INVALID_SIZE_LOG_FORMAT, width_, height_);
+        ESP_LOGE(kDisplayLogTag, RLCD_INIT_INVALID_SIZE_LOG_FORMAT, width_, height_);
         return;
     }
 
@@ -380,7 +381,7 @@ void DisplayPort::KeepPinsActiveInLightSleep(void) {
     for (gpio_num_t pin : pins) {
         ESP_ERROR_CHECK_WITHOUT_ABORT(gpio_sleep_sel_dis(pin));
     }
-    ESP_LOGI(TAG, "%s", kRlcdKeepPinsActiveLog);
+    ESP_LOGI(kDisplayLogTag, "%s", kRlcdKeepPinsActiveLog);
 }
 
 void DisplayPort::RLCD_ColorClear(uint8_t color) {
@@ -462,7 +463,7 @@ bool DisplayPort::RLCD_SendParamChecked(int command,
         vTaskDelay(pdMS_TO_TICKS(RlcdTxRetryDelayMs(conservative, attempt)));
     }
 
-    ESP_LOGW(TAG,
+    ESP_LOGW(kDisplayLogTag,
              RLCD_PARAM_TX_FAILED_LOG_FORMAT,
              kind,
              value,
@@ -511,7 +512,7 @@ void DisplayPort::RLCD_Sendbuffera(uint8_t *Data, int len) {
         }
 
         if (err != ESP_OK) {
-            ESP_LOGW(TAG,
+            ESP_LOGW(kDisplayLogTag,
                      RLCD_TX_FAILED_LOG_FORMAT,
                      esp_err_to_name(err),
                      len,

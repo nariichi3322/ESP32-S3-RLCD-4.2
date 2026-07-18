@@ -1,20 +1,18 @@
 // 提供 HTTPS 文本请求、gzip 解码和响应日志预览工具。
 #include "network_services.h"
 
-#include "app_state.h"
 #include "app_constexpr.h"
+#include "app_metadata.h"
 #include "app_text_format.h"
 #include "http_timeout_state.h"
 #include "network_gzip.h"
-#include "network_http_transaction_lock.h"
 #include "network_task_guards.h"
 #include "qweather_ca.h"
 #include "scoped_heap_buffer.h"
 #include "scoped_http_client.h"
 
-#include "freertos/semphr.h"
-
 #include "esp_crt_bundle.h"
+#include "esp_log.h"
 #include "miniz.h"
 
 namespace {
@@ -36,10 +34,7 @@ constexpr const char *kHttpDecodeInvalidArgLog = "decode http body invalid arg";
 constexpr const char *kHttpGetInvalidArgLog = "http get invalid arg";
 constexpr const char *kHttpBootBudgetExhaustedLog = "http get skipped: boot sync time budget exhausted";
 constexpr const char *kHttpClientInitFailedLog = "http client init failed";
-constexpr const char *kHttpTransactionMutexCreateFailedLog = "http transaction mutex create failed";
 constexpr const char *kHttpTransactionLockTimeoutLog = "http transaction deferred: TLS session is busy";
-StaticSemaphore_t s_http_transaction_mutex_storage = {};
-SemaphoreHandle_t s_http_transaction_mutex = nullptr;
 static_assert(kGzipHeaderProbeSize >= 3, "gzip header probe must cover magic and compression method");
 static_assert(kHttpStatusOkMin >= 100 && kHttpStatusOkMin < kHttpStatusOkMax,
               "HTTP success lower bound must be a valid status below upper bound");
@@ -228,31 +223,6 @@ esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len)
     *body_len = written;
     ESP_LOGI(TAG, HTTP_GZIP_DECOMPRESSED_FORMAT, (unsigned)written);
     return ESP_OK;
-}
-
-bool init_network_http_transaction_lock()
-{
-    if (s_http_transaction_mutex) {
-        return true;
-    }
-    s_http_transaction_mutex = xSemaphoreCreateMutexStatic(&s_http_transaction_mutex_storage);
-    if (!s_http_transaction_mutex) {
-        ESP_LOGE(TAG, "%s", kHttpTransactionMutexCreateFailedLog);
-        return false;
-    }
-    return true;
-}
-
-bool acquire_network_http_transaction_lock(TickType_t timeout)
-{
-    return s_http_transaction_mutex && xSemaphoreTake(s_http_transaction_mutex, timeout) == pdTRUE;
-}
-
-void release_network_http_transaction_lock()
-{
-    if (s_http_transaction_mutex) {
-        xSemaphoreGive(s_http_transaction_mutex);
-    }
 }
 
 esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *api_key)

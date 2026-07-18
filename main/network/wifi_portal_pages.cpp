@@ -1,15 +1,21 @@
 // 生成配网页 HTML、Wi-Fi 扫描列表和保存结果页面。
 #include "wifi_portal_pages.h"
 
+#include "app_metadata.h"
+#include "app_network_config.h"
 #include "app_text_format.h"
-#include "app_state.h"
 #include "checked_size.h"
 #include "manual_weather_city_state.h"
 #include "network_credentials_state.h"
 #include "scoped_heap_buffer.h"
 #include "wifi_portal_state.h"
 
+#include "esp_log.h"
+#include "esp_wifi.h"
+
 #include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
 
 namespace {
 constexpr uint16_t kMaxListedApCount = 32;

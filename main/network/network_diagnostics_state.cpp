@@ -3,15 +3,11 @@
 
 #include "scoped_semaphore_lock.h"
 
-#include <freertos/FreeRTOS.h>
-#include <freertos/semphr.h>
-
 #include <atomic>
 #include <cstring>
 
 namespace {
-StaticSemaphore_t s_network_diag_mutex_storage = {};
-SemaphoreHandle_t s_network_diag_mutex = nullptr;
+StaticTaskMutex s_network_diag_mutex;
 NetworkDiagState s_network_diag_state = kNetworkDiagIdle;
 char s_network_diag_lines[kNetworkDiagLineCount][kNetworkDiagLineLen] = {};
 std::atomic<bool> s_network_diag_page_requested{false};
@@ -29,12 +25,7 @@ void copy_line(char *out, const char *text)
 
 bool network_diagnostics_state_init()
 {
-    if (s_network_diag_mutex) {
-        return true;
-    }
-    s_network_diag_mutex =
-        xSemaphoreCreateMutexStatic(&s_network_diag_mutex_storage);
-    return s_network_diag_mutex != nullptr;
+    return s_network_diag_mutex.init();
 }
 
 void network_diag_state_clear(NetworkDiagState state)

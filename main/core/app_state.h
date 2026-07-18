@@ -33,6 +33,7 @@
 
 #include "active_work_page_state.h"
 #include "app_metadata.h"
+#include "app_network_config.h"
 #include "app_time_constants.h"
 #include "app_event_group.h"
 #include "work_page_ids.h"
@@ -57,9 +58,6 @@ inline constexpr int kDisplayWidth = 400;
 inline constexpr int kDisplayHeight = 300;
 inline constexpr gpio_num_t kBootButtonGpio = GPIO_NUM_0;
 inline constexpr gpio_num_t kKeyButtonGpio = GPIO_NUM_18;
-inline constexpr const char *kSetupApPassword = "12345678";
-inline constexpr const char *kSetupPortalIp = "192.168.4.1";
-inline constexpr const char *kSetupPortalUrl = "http://192.168.4.1/";
 inline constexpr int kAppMsPerSecond = 1000;
 inline constexpr int kAppSecondsPerMinute = 60;
 inline constexpr int kAppMsPerMinute = kAppSecondsPerMinute * kAppMsPerSecond;
@@ -83,16 +81,4 @@ inline constexpr int kDisplayPartialMaxWidth = (kDisplayWidth * 7) / 10;
 inline constexpr int kMaxFlushRanges = 8;
 inline constexpr int kFlushRangeMergeGap = 8;
 inline constexpr int kDisplayFlushDiagIntervalMs = kAppMsPerMinute;
-#ifndef WEATHER_CLOCK_OTA_MANIFEST_URL
-#if __has_include("ota_endpoint_local.h")
-#include "ota_endpoint_local.h"
-#else
-#define WEATHER_CLOCK_OTA_MANIFEST_URL "https://example.invalid/firmware/latest.json"
-#endif
-#endif
-inline constexpr const char *kOtaManifestUrl = WEATHER_CLOCK_OTA_MANIFEST_URL;
-#ifndef WEATHER_CLOCK_OTA_BACKUP_MANIFEST_URL
-#define WEATHER_CLOCK_OTA_BACKUP_MANIFEST_URL "https://example.invalid/firmware/latest.json"
-#endif
-inline constexpr const char *kOtaBackupManifestUrl = WEATHER_CLOCK_OTA_BACKUP_MANIFEST_URL;
 static_assert(kXiaozhiAutoReturnTimeoutMs > 0, "Xiaozhi auto-return timeout must be positive");

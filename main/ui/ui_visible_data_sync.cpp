@@ -88,15 +88,14 @@ bool weather_cache_stale(time_t now_value)
     return ui_weather_cache_stale(now_value, get_last_weather_sync_time());
 }
 
-bool saying_cache_stale(const struct tm &local_value, time_t now_value)
+bool saying_cache_stale(time_t now_value)
 {
     char saying[kDailySayingLen] = {};
     time_t last_sync_time = 0;
     bool snapshot_ready = get_daily_saying_snapshot(saying,
                                                     sizeof(saying),
                                                     &last_sync_time);
-    return ui_daily_saying_cache_stale(local_value,
-                                       now_value,
+    return ui_daily_saying_cache_stale(now_value,
                                        snapshot_ready,
                                        last_sync_time);
 }
@@ -187,7 +186,7 @@ void update_visible_daily_saying_sync(const ActiveWorkPageState &state,
     const bool offline_mode = offline_mode_enabled_load();
     bool needs_sync = state.gallery &&
                       !offline_mode &&
-                      saying_cache_stale(local, now);
+                      saying_cache_stale(now);
     if (!state.gallery) {
         retry.reset_request();
         return;

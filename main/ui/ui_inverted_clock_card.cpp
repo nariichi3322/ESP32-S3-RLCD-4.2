@@ -1,4 +1,4 @@
-// 绘制反显 DSEG 数字牌的黑底、缩放数字和圆角裁切像素。
+// 绘制反显 DSEG 数字牌，并按变化字形的包围框局部失效刷新。
 #include "ui_inverted_clock_card.h"
 
 #include "ui_views.h"
@@ -35,9 +35,17 @@ static_assert(kX[0] >= 0 && kX[kCount - 1] + kWidth <= kDisplayWidth,
 static_assert(kY >= 0 && kY + kHeight <= kDisplayHeight,
               "inverted clock card group must fit display height");
 
-void apply_rounding(lv_obj_t *canvas)
+void set_buffer_px_safe(lv_img_dsc_t *image, int x, int y, lv_color_t color)
 {
-    if (!canvas) {
+    if (!image || x < 0 || y < 0 || x >= kWidth || y >= kHeight) {
+        return;
+    }
+    lv_img_buf_set_px_color(image, x, y, color);
+}
+
+void apply_rounding(lv_img_dsc_t *image)
+{
+    if (!image) {
         return;
     }
     int r2 = kRadius * kRadius;
@@ -46,14 +54,12 @@ void apply_rounding(lv_obj_t *canvas)
             int dx = kRadius - 1 - x;
             int dy = kRadius - 1 - y;
             if (dx * dx + dy * dy > r2) {
-                canvas_set_px_safe(canvas, x, y, kWidth, kHeight, lv_color_white());
-                canvas_set_px_safe(canvas, kWidth - 1 - x, y, kWidth, kHeight, lv_color_white());
-                canvas_set_px_safe(canvas, x, kHeight - 1 - y, kWidth, kHeight, lv_color_white());
-                canvas_set_px_safe(canvas,
+                set_buffer_px_safe(image, x, y, lv_color_white());
+                set_buffer_px_safe(image, kWidth - 1 - x, y, lv_color_white());
+                set_buffer_px_safe(image, x, kHeight - 1 - y, lv_color_white());
+                set_buffer_px_safe(image,
                                    kWidth - 1 - x,
                                    kHeight - 1 - y,
-                                   kWidth,
-                                   kHeight,
                                    lv_color_white());
             }
         }
@@ -110,7 +116,7 @@ bool pair_placement(int value, PairPlacement *placement)
     return true;
 }
 
-void draw_scaled_dseg_digit(lv_obj_t *canvas,
+void draw_scaled_dseg_digit(lv_img_dsc_t *image,
                             const DsegGlyph *glyph,
                             int origin_x,
                             int origin_y,
@@ -119,7 +125,7 @@ void draw_scaled_dseg_digit(lv_obj_t *canvas,
                             int clip_y0 = 0,
                             int clip_y1 = kHeight)
 {
-    if (!canvas || !glyph || scale_num <= 0 || scale_den <= 0) {
+    if (!image || !glyph || scale_num <= 0 || scale_den <= 0) {
         return;
     }
     int dst_w = (glyph->width * scale_num + scale_den - 1) / scale_den;
@@ -133,25 +139,26 @@ void draw_scaled_dseg_digit(lv_obj_t *canvas,
             int py = dst_y + y;
             if (py >= clip_y0 && py < clip_y1 &&
                 dseg_pixel_on(kDSEG84Font, glyph, src_x, src_y)) {
-                canvas_set_px_safe(canvas,
+                set_buffer_px_safe(image,
                                    dst_x + x,
                                    dst_y + y,
-                                   kWidth,
-                                   kHeight,
                                    lv_color_white());
             }
         }
     }
 }
 
-void draw_digits(lv_obj_t *canvas, int value, int clip_y0 = 0, int clip_y1 = kHeight)
+void draw_digits(lv_img_dsc_t *image,
+                 int value,
+                 int clip_y0 = 0,
+                 int clip_y1 = kHeight)
 {
     PairPlacement placement = {};
     if (!pair_placement(value, &placement)) {
         return;
     }
     for (const DigitPlacement &digit : placement.digits) {
-        draw_scaled_dseg_digit(canvas,
+        draw_scaled_dseg_digit(image,
                                digit.glyph,
                                digit.origin_x,
                                kDigitBaselineY,
@@ -175,29 +182,33 @@ bool digit_placement_equal(const DigitPlacement &left,
            dseg_glyph_bounds_equal(left.bounds, right.bounds);
 }
 
-void fill_digit_bounds(lv_obj_t *canvas,
+void fill_digit_bounds(lv_img_dsc_t *image,
                        const DsegGlyphBounds &bounds,
                        lv_color_t color)
 {
-    if (!canvas || !dseg_glyph_bounds_valid(bounds)) {
+    if (!image || !dseg_glyph_bounds_valid(bounds)) {
         return;
     }
     for (int y = bounds.y1; y <= bounds.y2; ++y) {
         for (int x = bounds.x1; x <= bounds.x2; ++x) {
-            canvas_set_px_safe(canvas, x, y, kWidth, kHeight, color);
+            set_buffer_px_safe(image, x, y, color);
         }
     }
 }
 
 void render_transition(lv_obj_t *canvas, int previous_value, int next_value)
 {
+    lv_img_dsc_t *image = canvas ? lv_canvas_get_img(canvas) : nullptr;
+    if (!image) {
+        return;
+    }
     PairPlacement previous = {};
     PairPlacement next = {};
     if (!pair_placement(previous_value, &previous) ||
         !pair_placement(next_value, &next)) {
         draw_shell(canvas);
-        draw_digits(canvas, next_value);
-        apply_rounding(canvas);
+        draw_digits(image, next_value);
+        apply_rounding(image);
         lv_obj_invalidate(canvas);
         return;
     }
@@ -223,14 +234,14 @@ void render_transition(lv_obj_t *canvas, int previous_value, int next_value)
     }
     for (int i = 0; i < kPairDigitCount; ++i) {
         if (dirty[i]) {
-            fill_digit_bounds(canvas, dirty_bounds[i], lv_color_black());
+            fill_digit_bounds(image, dirty_bounds[i], lv_color_black());
         }
     }
     for (int i = 0; i < kPairDigitCount; ++i) {
         if (!dirty[i]) {
             continue;
         }
-        draw_scaled_dseg_digit(canvas,
+        draw_scaled_dseg_digit(image,
                                next.digits[i].glyph,
                                next.digits[i].origin_x,
                                kDigitBaselineY,
@@ -255,9 +266,13 @@ void render(lv_obj_t *canvas, int value)
     if (!canvas) {
         return;
     }
+    lv_img_dsc_t *image = lv_canvas_get_img(canvas);
+    if (!image) {
+        return;
+    }
     draw_shell(canvas);
-    draw_digits(canvas, value);
-    apply_rounding(canvas);
+    draw_digits(image, value);
+    apply_rounding(image);
     lv_obj_invalidate(canvas);
 }
 
@@ -266,8 +281,12 @@ void clear(lv_obj_t *canvas)
     if (!canvas) {
         return;
     }
+    lv_img_dsc_t *image = lv_canvas_get_img(canvas);
+    if (!image) {
+        return;
+    }
     draw_shell(canvas);
-    apply_rounding(canvas);
+    apply_rounding(image);
     lv_obj_invalidate(canvas);
 }
 

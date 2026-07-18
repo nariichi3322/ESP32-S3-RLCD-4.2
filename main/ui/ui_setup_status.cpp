@@ -2,12 +2,15 @@
 #include "ui_setup_status.h"
 
 #include "app_constexpr.h"
-#include "app_state.h"
+#include "app_metadata.h"
+#include "app_network_config.h"
 #include "network_credentials_state.h"
 #include "ui_page_state.h"
 #include "ui_text_format.h"
 #include "ui_views.h"
 #include "wifi_portal_state.h"
+
+#include "esp_log.h"
 
 namespace {
 #define SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT "setup status label create failed index=%d"

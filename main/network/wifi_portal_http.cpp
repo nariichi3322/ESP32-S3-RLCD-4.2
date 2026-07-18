@@ -21,6 +21,7 @@ httpd_handle_t s_http_server = nullptr;
 bool s_display_dma_guard_active = false;
 constexpr uint16_t kSetupHttpServerPort = 80;
 constexpr size_t kSetupHttpServerStackSize = 8192;
+constexpr size_t kSetupHttpMaxRequestHeaderLength = 1024;
 constexpr size_t kPortalSubmitSsidFieldSize = 33;
 constexpr size_t kPortalRequestBufferSize = 640;
 constexpr uint32_t kPortalResponseSettleMs = 750;
@@ -65,6 +66,10 @@ constexpr bool portal_http_routes_valid()
 
 static_assert(kSetupHttpServerPort > 0, "setup HTTP server port must be positive");
 static_assert(kSetupHttpServerStackSize > 0, "setup HTTP server stack must be positive");
+static_assert(kSetupHttpMaxRequestHeaderLength >= 1024,
+              "setup HTTP request headers must support modern captive browsers");
+static_assert(kSetupHttpMaxRequestHeaderLength <= 2048,
+              "setup HTTP request headers must keep bounded parser memory");
 static_assert(kPortalRequestBufferSize > kPortalSubmitSsidFieldSize,
               "portal request buffer must exceed submitted SSID field size");
 static_assert(kPortalResponseSettleMs > 0,
@@ -273,6 +278,10 @@ bool start_http_server()
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = kSetupHttpServerPort;
     config.stack_size = kSetupHttpServerStackSize;
+    // The project-wide 512-byte default is too small for some modern captive
+    // browsers once User-Agent, language and portal-probe headers are combined.
+    // Scope the official ESP-IDF 1024-byte default to this temporary server.
+    config.max_req_hdr_len = kSetupHttpMaxRequestHeaderLength;
     config.lru_purge_enable = true;
     config.uri_match_fn = httpd_uri_match_wildcard;
     esp_err_t err = httpd_start(&s_http_server, &config);

@@ -1,13 +1,19 @@
 // 获取自定义、R2 与 GitHub OTA manifest，并维护安装前的运行态清单缓存。
 #include "ota_manifest_client.h"
 
-#include "app_state.h"
 #include "app_constexpr.h"
+#include "app_metadata.h"
+#include "app_network_config.h"
 #include "app_text_format.h"
 #include "custom_assets.h"
 #include "network_services.h"
 #include "ota_validation.h"
 #include "scoped_heap_buffer.h"
+
+#include "esp_err.h"
+#include "esp_log.h"
+
+#include <string.h>
 
 namespace {
 constexpr size_t kManifestResponseBufferSize = 2048;

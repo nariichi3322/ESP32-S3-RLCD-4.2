@@ -3,12 +3,8 @@
 
 #include "scoped_semaphore_lock.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-
 namespace {
-StaticSemaphore_t s_hourly_history_mutex_storage = {};
-SemaphoreHandle_t s_hourly_history_mutex = nullptr;
+StaticTaskMutex s_hourly_history_mutex;
 HourlySensorHistoryBlob s_hourly_history;
 int64_t s_last_hourly_saved_at = 0;
 uint32_t s_hourly_history_version = 0;
@@ -22,17 +18,12 @@ void clear_history_locked()
 
 bool init_hourly_sensor_history_state()
 {
-    if (s_hourly_history_mutex) {
-        return true;
-    }
-    s_hourly_history_mutex =
-        xSemaphoreCreateMutexStatic(&s_hourly_history_mutex_storage);
-    return s_hourly_history_mutex != nullptr;
+    return s_hourly_history_mutex.init();
 }
 
 bool reset_hourly_sensor_history_state()
 {
-    ScopedSemaphoreLock lock(s_hourly_history_mutex);
+    ScopedSemaphoreLock lock(s_hourly_history_mutex.handle());
     if (!lock) {
         return false;
     }
@@ -44,7 +35,7 @@ bool reset_hourly_sensor_history_state()
 bool publish_loaded_hourly_sensor_history(const HourlySensorHistoryBlob &history,
                                           int64_t last_saved_at)
 {
-    ScopedSemaphoreLock lock(s_hourly_history_mutex);
+    ScopedSemaphoreLock lock(s_hourly_history_mutex.handle());
     if (!lock) {
         return false;
     }
@@ -61,7 +52,7 @@ bool publish_hourly_sensor_sample(int index,
     if (index < 0 || index >= kHourlyHistoryCount) {
         return false;
     }
-    ScopedSemaphoreLock lock(s_hourly_history_mutex);
+    ScopedSemaphoreLock lock(s_hourly_history_mutex.handle());
     if (!lock) {
         return false;
     }
@@ -73,7 +64,7 @@ bool publish_hourly_sensor_sample(int index,
 
 int64_t hourly_sensor_history_last_saved_at()
 {
-    ScopedSemaphoreLock lock(s_hourly_history_mutex);
+    ScopedSemaphoreLock lock(s_hourly_history_mutex.handle());
     return lock ? s_last_hourly_saved_at : 0;
 }
 
@@ -83,7 +74,7 @@ bool hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history,
     if (!history && !version) {
         return false;
     }
-    ScopedSemaphoreLock lock(s_hourly_history_mutex);
+    ScopedSemaphoreLock lock(s_hourly_history_mutex.handle());
     if (!lock) {
         return false;
     }

@@ -69,5 +69,16 @@ int main()
         consumed_iteration.store(iteration, std::memory_order_release);
     }
     writer.join();
+
+    assert(xiaozhi_binding_voice_record_announced("123456"));
+    assert(xiaozhi_binding_voice_store_pending("654321"));
+    xiaozhi_binding_voice_state_deinit();
+    assert(!xiaozhi_binding_voice_needs_announcement("123456"));
+    assert(!xiaozhi_binding_voice_take_pending(pending, sizeof(pending)));
+    assert(pending[0] == '\0');
+    assert(xiaozhi_binding_voice_state_init());
+    assert(xiaozhi_binding_voice_needs_announcement("123456"));
+    assert(!xiaozhi_binding_voice_take_pending(pending, sizeof(pending)));
+    xiaozhi_binding_voice_state_deinit();
     return 0;
 }

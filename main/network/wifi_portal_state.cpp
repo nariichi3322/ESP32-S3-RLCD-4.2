@@ -2,8 +2,6 @@
 #include "wifi_portal_state.h"
 
 #include "scoped_semaphore_lock.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 
 #include <atomic>
 #include <string.h>
@@ -13,8 +11,7 @@ std::atomic<bool> s_setup_portal_active{false};
 std::atomic<int> s_last_wifi_disconnect_reason{0};
 std::atomic<WifiPortalSaveResult> s_save_result{WifiPortalSaveResult::kNone};
 std::atomic<bool> s_save_feedback_seen{false};
-StaticSemaphore_t s_portal_text_mutex_storage = {};
-SemaphoreHandle_t s_portal_text_mutex = nullptr;
+StaticTaskMutex s_portal_text_mutex;
 char s_setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
 char s_station_ip[kWifiStationIpTextLen] = {};
 
@@ -27,7 +24,7 @@ bool portal_text_snapshot(const char (&source)[N], char *out, size_t out_len)
         }
         return false;
     }
-    ScopedSemaphoreLock lock(s_portal_text_mutex);
+    ScopedSemaphoreLock lock(s_portal_text_mutex.handle());
     if (!lock) {
         out[0] = '\0';
         return false;
@@ -41,7 +38,7 @@ void portal_text_store(char (&target)[N], const char *value)
 {
     char replacement[N] = {};
     strlcpy(replacement, value ? value : "", sizeof(replacement));
-    ScopedSemaphoreLock lock(s_portal_text_mutex);
+    ScopedSemaphoreLock lock(s_portal_text_mutex.handle());
     if (!lock) {
         return;
     }
@@ -51,11 +48,7 @@ void portal_text_store(char (&target)[N], const char *value)
 
 bool wifi_portal_state_init()
 {
-    if (s_portal_text_mutex) {
-        return true;
-    }
-    s_portal_text_mutex = xSemaphoreCreateMutexStatic(&s_portal_text_mutex_storage);
-    return s_portal_text_mutex != nullptr;
+    return s_portal_text_mutex.init();
 }
 
 bool setup_portal_active_load()

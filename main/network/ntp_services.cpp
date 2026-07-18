@@ -1,10 +1,10 @@
 // 执行 NTP 时间同步并维护系统可信时间状态。
-#include "network_services.h"
+#include "ntp_services.h"
 
-#include "app_state.h"
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "app_event_group.h"
+#include "app_metadata.h"
 #include "app_time_constants.h"
 #include "ntp_runtime_state.h"
 #include "sensor_services.h"
@@ -12,7 +12,10 @@
 #include "ui_task_notify.h"
 
 #include "sdkconfig.h"
+#include "esp_log.h"
 #include "esp_sntp.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #define NTP_SYNCED_LOG_FORMAT "ntp synced: %04d-%02d-%02d %02d:%02d:%02d"
 #define NTP_TIMEOUT_LOG_FORMAT "ntp sync timeout retries=%d poll_ms=%lu"

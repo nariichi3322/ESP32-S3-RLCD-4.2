@@ -6,10 +6,13 @@
 #include <stdint.h>
 #include <time.h>
 
+struct BatteryRuntimeSnapshot;
+
 bool ui_runtime_settings_timeout_elapsed(TickType_t last_activity);
 bool ui_runtime_auxiliary_page_requested();
 TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
                                             time_t sampled_wall_second,
+                                            const BatteryRuntimeSnapshot &battery,
                                             bool battery_blink_visible);
 void ui_runtime_update_xiaozhi_auto_return(TickType_t tick_now,
                                            TickType_t &last_activity_tick,

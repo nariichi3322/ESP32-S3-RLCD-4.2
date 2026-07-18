@@ -55,8 +55,6 @@ void request_wifi_radio_stop_when_idle();
 void service_wifi_radio_stop_when_idle();
 void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, void *event_data);
 void init_wifi();
-bool perform_ntp_sync(int max_retries = 30);
-time_t get_last_ntp_sync_time();
 int boot_sync_remaining_ms();
 esp_err_t http_event_handler(esp_http_client_event_t *evt);
 esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len);
@@ -101,7 +99,6 @@ bool wait_for_wifi_connected(uint32_t timeout_ms);
 bool is_time_valid(struct tm *local_out = nullptr);
 void run_boot_connectivity_sync();
 void boot_connectivity_task(void *);
-void wait_for_network_sync_event(uint32_t timeout_ms);
 uint32_t network_idle_wait_ms(time_t now,
                               time_t next_boot_due_at,
                               time_t next_ntp_retry_at,

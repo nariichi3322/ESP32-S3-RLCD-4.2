@@ -2,11 +2,13 @@
 #include "network_services.h"
 
 #include "app_constexpr.h"
+#include "app_network_config.h"
 #include "app_text_format.h"
 #include "network_credentials_state.h"
 #include "network_diagnostics_catalog.h"
 #include "network_diagnostics_state.h"
 #include "network_json_root.h"
+#include "ntp_services.h"
 #include "scoped_heap_buffer.h"
 #include "ui_views.h"
 

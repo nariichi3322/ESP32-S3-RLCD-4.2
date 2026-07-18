@@ -3,23 +3,14 @@
 
 #include "scoped_semaphore_lock.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-
 namespace {
-StaticSemaphore_t s_settings_sync_mutex_storage = {};
-SemaphoreHandle_t s_settings_sync_mutex = nullptr;
+StaticTaskMutex s_settings_sync_mutex;
 SettingsSyncStateSnapshot s_settings_sync_state;
 }
 
 bool settings_sync_state_init()
 {
-    if (s_settings_sync_mutex) {
-        return true;
-    }
-    s_settings_sync_mutex =
-        xSemaphoreCreateMutexStatic(&s_settings_sync_mutex_storage);
-    return s_settings_sync_mutex != nullptr;
+    return s_settings_sync_mutex.init();
 }
 
 void settings_sync_state_load(SettingsSyncStateSnapshot *out)
@@ -28,7 +19,7 @@ void settings_sync_state_load(SettingsSyncStateSnapshot *out)
         return;
     }
     *out = {};
-    ScopedSemaphoreLock lock(s_settings_sync_mutex);
+    ScopedSemaphoreLock lock(s_settings_sync_mutex.handle());
     if (!lock) {
         return;
     }
@@ -37,7 +28,7 @@ void settings_sync_state_load(SettingsSyncStateSnapshot *out)
 
 void settings_sync_state_begin(int operation, uint32_t deadline_tick)
 {
-    ScopedSemaphoreLock lock(s_settings_sync_mutex);
+    ScopedSemaphoreLock lock(s_settings_sync_mutex.handle());
     if (!lock) {
         return;
     }
@@ -47,7 +38,7 @@ void settings_sync_state_begin(int operation, uint32_t deadline_tick)
 
 bool settings_sync_state_clear_if(int operation)
 {
-    ScopedSemaphoreLock lock(s_settings_sync_mutex);
+    ScopedSemaphoreLock lock(s_settings_sync_mutex.handle());
     if (!lock) {
         return false;
     }

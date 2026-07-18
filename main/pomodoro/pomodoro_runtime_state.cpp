@@ -2,12 +2,9 @@
 #include "pomodoro_runtime_state.h"
 
 #include "scoped_semaphore_lock.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 
 namespace {
-StaticSemaphore_t s_runtime_mutex_storage = {};
-SemaphoreHandle_t s_runtime_mutex = nullptr;
+StaticTaskMutex s_runtime_mutex;
 PomodoroSnapshot s_visible = {kPomodoroIdle, 0, 0, false, 1};
 int64_t s_deadline_us = 0;
 int64_t s_completed_at_us = 0;
@@ -24,11 +21,7 @@ uint32_t remaining_ms(int64_t now_us)
 
 bool pomodoro_runtime_state_init()
 {
-    if (s_runtime_mutex) {
-        return true;
-    }
-    s_runtime_mutex = xSemaphoreCreateMutexStatic(&s_runtime_mutex_storage);
-    return s_runtime_mutex != nullptr;
+    return s_runtime_mutex.init();
 }
 
 bool pomodoro_runtime_publish(PomodoroState state,

@@ -2,14 +2,20 @@
 #include "wifi_portal_dns.h"
 
 #include "app_constexpr.h"
-#include "app_state.h"
+#include "app_metadata.h"
+#include "app_network_config.h"
 #include "captive_dns_packet.h"
 
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 
 #include <atomic>
 #include <errno.h>
+#include <string.h>
+#include <sys/time.h>
 
 namespace {
 std::atomic<bool> s_captive_dns_task_active{false};

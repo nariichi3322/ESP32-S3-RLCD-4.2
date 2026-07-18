@@ -42,8 +42,8 @@
 #include <string.h>
 
 namespace {
+using xiaozhi_websocket::ScopedWebsocketSession;
 using xiaozhi_websocket::WebsocketSession;
-using xiaozhi_websocket::close_websocket;
 using xiaozhi_websocket::open_websocket;
 using xiaozhi_websocket::websocket_send_listen_start;
 using xiaozhi_websocket::websocket_send_wake_abort;
@@ -129,24 +129,6 @@ void log_voice_resources(const char *stage)
              static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)));
 }
 
-void snapshot_set(XiaozhiAiState state,
-                  const char *status,
-                  const char *detail,
-                  const char *binding_code = nullptr)
-{
-    xiaozhi_snapshot_set(state, status, detail, binding_code);
-}
-
-void snapshot_set_status_preserving_detail(XiaozhiAiState state, const char *status)
-{
-    xiaozhi_snapshot_set_status_preserving_detail(state, status);
-}
-
-void snapshot_mark_user_activity()
-{
-    xiaozhi_snapshot_mark_user_activity();
-}
-
 void return_from_xiaozhi_to_home()
 {
     active_work_page_store(first_enabled_work_page());
@@ -174,7 +156,7 @@ bool handle_wake_interrupt(WebsocketSession &session, VoiceCodecRuntime &codec_r
     session.user_text_hold_until = 0;
     session.user_text_hold_set = false;
     session.pending_assistant_text[0] = '\0';
-    snapshot_set(kXiaozhiAiListening, "已打断", "请继续说话");
+    xiaozhi_snapshot_set(kXiaozhiAiListening, "已打断", "请继续说话");
     ESP_LOGI(TAG,
              "Xiaozhi wake interrupt: abort=%d listen=%d feedback=%d playback=%d",
              abort_sent,
@@ -196,7 +178,8 @@ bool run_voice_conversation()
     if (!xiaozhi_load_websocket_config(url, sizeof(url), token, sizeof(token), &version)) {
         return false;
     }
-    WebsocketSession session = {};
+    ScopedWebsocketSession session_owner;
+    WebsocketSession &session = session_owner.get();
     if (!open_websocket(&session, url, token, version)) {
         log_voice_resources("websocket failed");
         return false;
@@ -204,7 +187,6 @@ bool run_voice_conversation()
     log_voice_resources("websocket connected");
     XiaozhiVoiceIoLease buffers_lease;
     if (!buffers_lease) {
-        close_websocket(&session);
         return false;
     }
     XiaozhiVoiceIoBuffers *buffers = buffers_lease.get();
@@ -212,7 +194,6 @@ bool run_voice_conversation()
                                                buffers->incoming,
                                                sizeof(buffers->incoming))) {
         buffers_lease.reset();
-        close_websocket(&session);
         return false;
     }
     VoiceCodecRuntime codec_runtime;
@@ -230,7 +211,7 @@ bool run_voice_conversation()
     log_voice_resources(ready ? "opus ready" : "opus failed");
     if (ready) {
         xiaozhi_voice_set_streaming(true);
-        snapshot_set(kXiaozhiAiListening, "正在聆听", "请开始说话");
+        xiaozhi_snapshot_set(kXiaozhiAiListening, "正在聆听", "请开始说话");
     }
     TickType_t last_activity = xTaskGetTickCount();
     while (ready && (xEventGroupGetBits(s_events) & kAiPageActiveBit) != 0 &&
@@ -336,7 +317,7 @@ bool run_voice_conversation()
                    tts_final_frames_settled(session)) {
             if (weather_city_mcp_save_pending()) {
                 ESP_LOGI(TAG, "Xiaozhi weather city reply finished; closing voice session for safe refresh");
-                snapshot_set(kXiaozhiAiActivating, "天气城市已设置", "正在后台更新全部天气");
+                xiaozhi_snapshot_set(kXiaozhiAiActivating, "天气城市已设置", "正在后台更新全部天气");
                 break;
             }
             if (!resume_xiaozhi_microphone_after_playback() ||
@@ -357,17 +338,17 @@ bool run_voice_conversation()
                 session.empty_reply_continuation_pending = true;
                 session.empty_reply_continuation_deadline =
                     last_activity + pdMS_TO_TICKS(kXiaozhiEmptyReplyContinuationMs);
-                snapshot_set(kXiaozhiAiListening, "没有听完整", "请继续说，或重新说一遍");
+                xiaozhi_snapshot_set(kXiaozhiAiListening, "没有听完整", "请继续说，或重新说一遍");
                 ESP_LOGI(TAG,
                          "Xiaozhi empty reply; continuation window=%u ms",
                          static_cast<unsigned>(kXiaozhiEmptyReplyContinuationMs));
             } else if (user_subtitle_hold_active(&session)) {
-                snapshot_set_status_preserving_detail(kXiaozhiAiListening, "正在聆听");
+                xiaozhi_snapshot_set_status_preserving_detail(kXiaozhiAiListening, "正在聆听");
             } else {
                 bool had_pending_subtitle = session.pending_assistant_text[0] != '\0';
                 publish_pending_assistant_text(&session);
                 if (!had_pending_subtitle) {
-                    snapshot_set(kXiaozhiAiListening, "正在聆听", "请继续说话");
+                    xiaozhi_snapshot_set(kXiaozhiAiListening, "正在聆听", "请继续说话");
                 }
             }
             session.turn_user_text_received = false;
@@ -391,7 +372,7 @@ bool run_voice_conversation()
     xiaozhi_voice_set_streaming(false);
     codec_runtime.release();
     buffers_lease.reset();
-    close_websocket(&session);
+    session_owner.reset();
     log_voice_resources("conversation closed");
     return ready;
 }
@@ -437,11 +418,11 @@ void ensure_wake_word_listening()
         stop_voice_session();
     }
     if (!xiaozhi_voice_start()) {
-        snapshot_set(kXiaozhiAiError, kErrorStatus, kWakeWordFailureDetail);
+        xiaozhi_snapshot_set(kXiaozhiAiError, kErrorStatus, kWakeWordFailureDetail);
         return;
     }
     s_voice_started = true;
-    snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
+    xiaozhi_snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
     xiaozhi_power_session_set_idle(true);
 }
 
@@ -476,7 +457,7 @@ void xiaozhi_ai_task(void *)
         bool active = (bits & kAiPageActiveBit) != 0;
         if (!active) {
             release_realtime_network();
-            snapshot_set(kXiaozhiAiInactive, kXiaozhiDefaultStatus, "");
+            xiaozhi_snapshot_set(kXiaozhiAiInactive, kXiaozhiDefaultStatus, "");
             s_task_exited.store(true);
             vTaskSuspend(nullptr);
             return;
@@ -487,7 +468,7 @@ void xiaozhi_ai_task(void *)
             if (!pomodoro_audio_paused) {
                 xiaozhi_tts_playback_stop();
                 stop_voice_session();
-                snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
+                xiaozhi_snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
                 xiaozhi_power_session_set_idle(true);
                 pomodoro_audio_paused = true;
                 ESP_LOGI(TAG, "Xiaozhi audio paused for pomodoro completion");
@@ -501,7 +482,7 @@ void xiaozhi_ai_task(void *)
         }
         if (pomodoro_audio_paused) {
             pomodoro_audio_paused = false;
-            snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
+            xiaozhi_snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
             ESP_LOGI(TAG, "Xiaozhi audio resuming after pomodoro completion");
         }
         const bool offline_mode = offline_mode_enabled_load();
@@ -509,9 +490,9 @@ void xiaozhi_ai_task(void *)
                                              network_wifi_credentials_configured())) {
             release_realtime_network();
             if (offline_mode) {
-                snapshot_set(kXiaozhiAiError, kErrorStatus, kOfflineDetail);
+                xiaozhi_snapshot_set(kXiaozhiAiError, kErrorStatus, kOfflineDetail);
             } else {
-                snapshot_set(kXiaozhiAiWaitingForWifi, kWifiStatus, kNoWifiDetail);
+                xiaozhi_snapshot_set(kXiaozhiAiWaitingForWifi, kWifiStatus, kNoWifiDetail);
             }
             xEventGroupWaitBits(s_events,
                                 kAiWakeBit,
@@ -526,7 +507,7 @@ void xiaozhi_ai_task(void *)
             // 15-second retry backoff instead of keeping the failed session at
             // realtime power for the whole delay.
             release_realtime_network();
-            snapshot_set(kXiaozhiAiWaitingForWifi, kWifiStatus, "连接失败，正在重试");
+            xiaozhi_snapshot_set(kXiaozhiAiWaitingForWifi, kWifiStatus, "连接失败，正在重试");
             xEventGroupWaitBits(s_events, kAiWakeBit, pdTRUE, pdFALSE, pdMS_TO_TICKS(kActivationRetryMs));
             continue;
         }
@@ -550,20 +531,20 @@ void xiaozhi_ai_task(void *)
             // protocol I/O cannot create a competing I2S or Wi-Fi stack.
             if (!xiaozhi_power_session_set_idle(false)) {
                 stop_voice_session();
-                snapshot_set(kXiaozhiAiError, kErrorStatus, "系统繁忙，稍后重试");
+                xiaozhi_snapshot_set(kXiaozhiAiError, kErrorStatus, "系统繁忙，稍后重试");
                 continue;
             }
             // 待唤醒阶段会释放 CPU MAX 锁。恢复实时模式后给 APB/I2S/PA
             // 一个短稳定窗口，再打开扬声器，避免首段提示音偶发失真。
             vTaskDelay(pdMS_TO_TICKS(kWakeAudioPerformanceSettleMs));
-            snapshot_mark_user_activity();
+            xiaozhi_snapshot_mark_user_activity();
             if (!play_xiaozhi_wake_feedback()) {
                 ESP_LOGW(TAG, "Xiaozhi wake feedback failed; rebuilding voice session");
                 stop_voice_session();
-                snapshot_set(kXiaozhiAiError, kErrorStatus, "音频状态异常，正在重试");
+                xiaozhi_snapshot_set(kXiaozhiAiError, kErrorStatus, "音频状态异常，正在重试");
                 continue;
             }
-            snapshot_set(kXiaozhiAiListening, "已唤醒", "正在连接语音会话");
+            xiaozhi_snapshot_set(kXiaozhiAiListening, "已唤醒", "正在连接语音会话");
             bool conversation_ok = run_voice_conversation();
             bool weather_city_pending = weather_city_mcp_save_pending();
             if (xiaozhi_mcp_volume_save_pending() ||
@@ -583,19 +564,19 @@ void xiaozhi_ai_task(void *)
                     // Full weather refresh includes current weather, warning,
                     // forecast and air quality. Run it only after WebSocket,
                     // Opus, AEC and Codec resources have been released.
-                    snapshot_set(kXiaozhiAiActivating,
-                                 "天气城市已保存",
-                                 "正在后台更新全部天气");
+                    xiaozhi_snapshot_set(kXiaozhiAiActivating,
+                                         "天气城市已保存",
+                                         "正在后台更新全部天气");
                     release_realtime_network();
                     (void)wait_for_mcp_weather_refresh();
                 }
             }
             if (!conversation_ok) {
                 stop_voice_session();
-                snapshot_set(kXiaozhiAiError, kErrorStatus, "语音会话中断，稍后重试");
+                xiaozhi_snapshot_set(kXiaozhiAiError, kErrorStatus, "语音会话中断，稍后重试");
             } else if ((xEventGroupGetBits(s_events) & kAiPageActiveBit) != 0 &&
                        !s_pomodoro_audio_suspended.load(std::memory_order_acquire)) {
-                snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
+                xiaozhi_snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
                 xiaozhi_power_session_set_idle(true);
             }
         }
@@ -634,6 +615,7 @@ void xiaozhi_ai_init()
             vEventGroupDelete(s_events);
             s_events = nullptr;
         }
+        xiaozhi_binding_voice_state_deinit();
         return;
     }
     xiaozhi_voice_set_event_callback(notify_ai_voice_event);
@@ -690,7 +672,7 @@ void xiaozhi_ai_set_page_active(bool active)
         s_task_exited.store(true);
         s_task_handle = nullptr;
         xEventGroupClearBits(s_events, kAiWakeBit);
-        snapshot_set(kXiaozhiAiError, kErrorStatus, "小智任务启动失败");
+        xiaozhi_snapshot_set(kXiaozhiAiError, kErrorStatus, "小智任务启动失败");
         return;
     }
     s_task_start_retry.reset();

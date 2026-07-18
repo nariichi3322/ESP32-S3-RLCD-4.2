@@ -5,14 +5,10 @@
 #include "daily_saying_contract.h"
 #include "scoped_semaphore_lock.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-
 #include <string.h>
 
 namespace {
-StaticSemaphore_t s_daily_saying_mutex_storage = {};
-SemaphoreHandle_t s_daily_saying_mutex = nullptr;
+StaticTaskMutex s_daily_saying_mutex;
 char s_daily_saying[kDailySayingLen] = {};
 time_t s_last_saying_sync_time = 0;
 
@@ -37,12 +33,7 @@ void copy_daily_saying_snapshot(char *out,
 
 bool daily_saying_state_init()
 {
-    if (s_daily_saying_mutex) {
-        return true;
-    }
-    s_daily_saying_mutex =
-        xSemaphoreCreateMutexStatic(&s_daily_saying_mutex_storage);
-    return s_daily_saying_mutex != nullptr;
+    return s_daily_saying_mutex.init();
 }
 
 void load_daily_saying_cache()

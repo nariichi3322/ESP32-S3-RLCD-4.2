@@ -3,9 +3,6 @@
 
 #include "scoped_semaphore_lock.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-
 namespace {
 struct LocalSensorSnapshot {
     float temperature = 0.0f;
@@ -16,19 +13,13 @@ struct LocalSensorSnapshot {
     bool available = false;
 };
 
-StaticSemaphore_t s_local_sensor_mutex_storage = {};
-SemaphoreHandle_t s_local_sensor_mutex = nullptr;
+StaticTaskMutex s_local_sensor_mutex;
 LocalSensorSnapshot s_local_sensor;
 } // namespace
 
 bool init_local_sensor_state()
 {
-    if (s_local_sensor_mutex) {
-        return true;
-    }
-    s_local_sensor_mutex =
-        xSemaphoreCreateMutexStatic(&s_local_sensor_mutex_storage);
-    return s_local_sensor_mutex != nullptr;
+    return s_local_sensor_mutex.init();
 }
 
 bool local_sensor_state_publish_sample(float temperature,
@@ -36,7 +27,7 @@ bool local_sensor_state_publish_sample(float temperature,
                                        int temperature_trend,
                                        int humidity_trend)
 {
-    ScopedSemaphoreLock lock(s_local_sensor_mutex);
+    ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
     if (!lock) {
         return false;
     }
@@ -51,7 +42,7 @@ bool local_sensor_state_publish_sample(float temperature,
 
 bool local_sensor_state_publish_unavailable()
 {
-    ScopedSemaphoreLock lock(s_local_sensor_mutex);
+    ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
     if (!lock) {
         return false;
     }
@@ -63,7 +54,7 @@ bool local_sensor_state_publish_unavailable()
 bool local_sensor_state_publish_trends(int temperature_trend,
                                        int humidity_trend)
 {
-    ScopedSemaphoreLock lock(s_local_sensor_mutex);
+    ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
     if (!lock) {
         return false;
     }
@@ -77,7 +68,7 @@ bool get_local_sensor_snapshot(float *temperature,
                                int *temperature_trend,
                                int *humidity_trend)
 {
-    ScopedSemaphoreLock lock(s_local_sensor_mutex);
+    ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
     if (!lock) {
         return false;
     }
@@ -98,6 +89,6 @@ bool get_local_sensor_snapshot(float *temperature,
 
 uint32_t local_sensor_state_version()
 {
-    ScopedSemaphoreLock lock(s_local_sensor_mutex);
+    ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
     return lock ? s_local_sensor.version : 0;
 }

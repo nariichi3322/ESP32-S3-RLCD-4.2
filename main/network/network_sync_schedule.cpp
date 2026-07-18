@@ -211,26 +211,6 @@ uint32_t network_idle_wait_ms(time_t now,
     return wait_ms;
 }
 
-bool network_cache_age_is_fresh(time_t now, time_t cached_at, time_t max_age)
-{
-    return cached_at > 0 && max_age > 0 && now >= cached_at &&
-           now - cached_at < max_age;
-}
-
-bool network_cache_local_day_matches(const struct tm &now_local,
-                                     const struct tm &cached_local)
-{
-    return now_local.tm_year == cached_local.tm_year &&
-           now_local.tm_yday == cached_local.tm_yday;
-}
-
-bool network_cache_local_hour_matches(const struct tm &now_local,
-                                      const struct tm &cached_local)
-{
-    return network_cache_local_day_matches(now_local, cached_local) &&
-           now_local.tm_hour == cached_local.tm_hour;
-}
-
 bool network_boot_https_memory_sufficient(size_t internal_free,
                                           size_t internal_largest,
                                           size_t dma_largest)

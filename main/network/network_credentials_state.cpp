@@ -3,9 +3,6 @@
 
 #include "scoped_semaphore_lock.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-
 #include <atomic>
 #include <stdint.h>
 #include <string.h>
@@ -13,8 +10,7 @@
 namespace {
 constexpr uint8_t kWifiConfiguredMask = 1U << 0;
 constexpr uint8_t kWeatherApiKeyConfiguredMask = 1U << 1;
-StaticSemaphore_t s_credentials_mutex_storage = {};
-SemaphoreHandle_t s_credentials_mutex = nullptr;
+StaticTaskMutex s_credentials_mutex;
 NetworkCredentialsSnapshot s_credentials;
 std::atomic<uint8_t> s_credentials_availability_mask{0};
 
@@ -64,12 +60,7 @@ bool copy_field_snapshot(char *out, size_t out_len, const char (&field)[N], cons
 
 bool network_credentials_state_init()
 {
-    if (s_credentials_mutex) {
-        return true;
-    }
-    s_credentials_mutex =
-        xSemaphoreCreateMutexStatic(&s_credentials_mutex_storage);
-    return s_credentials_mutex != nullptr;
+    return s_credentials_mutex.init();
 }
 
 void network_credentials_snapshot(NetworkCredentialsSnapshot *out)

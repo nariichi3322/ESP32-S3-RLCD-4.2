@@ -2,14 +2,11 @@
 #include "battery_runtime_state.h"
 
 #include "scoped_semaphore_lock.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 
 #include <atomic>
 
 namespace {
-StaticSemaphore_t s_battery_runtime_mutex_storage = {};
-SemaphoreHandle_t s_battery_runtime_mutex = nullptr;
+StaticTaskMutex s_battery_runtime_mutex;
 BatteryRuntimeSnapshot s_battery_runtime;
 std::atomic<int> s_battery_percent{-1};
 std::atomic<bool> s_battery_charging{false};
@@ -18,12 +15,7 @@ std::atomic<bool> s_battery_low_mode{false};
 
 bool battery_runtime_state_init()
 {
-    if (s_battery_runtime_mutex) {
-        return true;
-    }
-    s_battery_runtime_mutex =
-        xSemaphoreCreateMutexStatic(&s_battery_runtime_mutex_storage);
-    return s_battery_runtime_mutex != nullptr;
+    return s_battery_runtime_mutex.init();
 }
 
 void battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out)
@@ -31,7 +23,7 @@ void battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out)
     if (!out) {
         return;
     }
-    ScopedSemaphoreLock lock(s_battery_runtime_mutex);
+    ScopedSemaphoreLock lock(s_battery_runtime_mutex.handle());
     if (!lock) {
         *out = BatteryRuntimeSnapshot{};
         return;
@@ -41,7 +33,7 @@ void battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out)
 
 void battery_runtime_snapshot_store(const BatteryRuntimeSnapshot &snapshot)
 {
-    ScopedSemaphoreLock lock(s_battery_runtime_mutex);
+    ScopedSemaphoreLock lock(s_battery_runtime_mutex.handle());
     if (!lock) {
         return;
     }
@@ -53,7 +45,7 @@ void battery_runtime_snapshot_store(const BatteryRuntimeSnapshot &snapshot)
 
 void battery_runtime_voltage_store(float voltage)
 {
-    ScopedSemaphoreLock lock(s_battery_runtime_mutex);
+    ScopedSemaphoreLock lock(s_battery_runtime_mutex.handle());
     if (!lock) {
         return;
     }
@@ -94,7 +86,7 @@ bool battery_low_mode_for_percent(bool current_mode,
 
 bool battery_runtime_low_mode_update(int enter_percent, int exit_percent)
 {
-    ScopedSemaphoreLock lock(s_battery_runtime_mutex);
+    ScopedSemaphoreLock lock(s_battery_runtime_mutex.handle());
     if (!lock) {
         return false;
     }

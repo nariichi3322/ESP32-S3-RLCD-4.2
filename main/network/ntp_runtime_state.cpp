@@ -3,22 +3,14 @@
 
 #include "scoped_semaphore_lock.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-
 namespace {
-StaticSemaphore_t s_ntp_state_mutex_storage = {};
-SemaphoreHandle_t s_ntp_state_mutex = nullptr;
+StaticTaskMutex s_ntp_state_mutex;
 time_t s_last_ntp_sync_time = 0;
 }
 
 bool ntp_runtime_state_init()
 {
-    if (s_ntp_state_mutex) {
-        return true;
-    }
-    s_ntp_state_mutex = xSemaphoreCreateMutexStatic(&s_ntp_state_mutex_storage);
-    return s_ntp_state_mutex != nullptr;
+    return s_ntp_state_mutex.init();
 }
 
 time_t ntp_last_sync_time_load()

@@ -2,14 +2,11 @@
 #include "weather_city_pending_state.h"
 
 #include "scoped_semaphore_lock.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 
 #include <string.h>
 
 namespace {
-StaticSemaphore_t s_pending_mutex_storage = {};
-SemaphoreHandle_t s_pending_mutex = nullptr;
+StaticTaskMutex s_pending_mutex;
 char s_pending_city[kManualWeatherCityLen] = {};
 bool s_pending = false;
 uint32_t s_generation = 0;
@@ -23,11 +20,7 @@ uint32_t next_generation(uint32_t current)
 
 bool weather_city_pending_state_init()
 {
-    if (s_pending_mutex) {
-        return true;
-    }
-    s_pending_mutex = xSemaphoreCreateMutexStatic(&s_pending_mutex_storage);
-    return s_pending_mutex != nullptr;
+    return s_pending_mutex.init();
 }
 
 bool weather_city_pending_store(const char *city)

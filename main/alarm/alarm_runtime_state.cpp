@@ -2,14 +2,11 @@
 #include "alarm_runtime_state.h"
 
 #include "scoped_semaphore_lock.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 
 #include <atomic>
 
 namespace {
-StaticSemaphore_t s_runtime_mutex_storage = {};
-SemaphoreHandle_t s_runtime_mutex = nullptr;
+StaticTaskMutex s_runtime_mutex;
 AlarmSnapshot s_alarm = {false, false, 0, 0, 1};
 AlarmReplacementConfirmation s_replacement_confirmation = {};
 std::atomic<bool> s_enabled{false};
@@ -17,11 +14,7 @@ std::atomic<bool> s_enabled{false};
 
 bool alarm_runtime_state_init()
 {
-    if (s_runtime_mutex) {
-        return true;
-    }
-    s_runtime_mutex = xSemaphoreCreateMutexStatic(&s_runtime_mutex_storage);
-    return s_runtime_mutex != nullptr;
+    return s_runtime_mutex.init();
 }
 
 bool alarm_runtime_publish(bool enabled,

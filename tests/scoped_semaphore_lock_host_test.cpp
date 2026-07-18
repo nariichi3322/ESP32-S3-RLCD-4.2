@@ -5,6 +5,26 @@
 
 int main()
 {
+    StaticTaskMutex owned;
+    assert(owned.handle() == nullptr);
+    test_mutex_create_allowed = false;
+    assert(!owned.init());
+    assert(owned.handle() == nullptr);
+    assert(test_mutex_create_count == 1);
+    test_mutex_create_allowed = true;
+    assert(owned.init());
+    assert(owned.handle() != nullptr);
+    assert(test_mutex_create_count == 2);
+    assert(owned.init());
+    assert(test_mutex_create_count == 2);
+    owned.handle()->take_allowed = true;
+    {
+        ScopedSemaphoreLock lock(owned, 9);
+        assert(lock);
+        assert(owned.handle()->last_wait_ticks == 9);
+    }
+    assert(owned.handle()->give_count == 1);
+
     TestSemaphore available = {.take_allowed = true};
     {
         ScopedSemaphoreLock lock(&available, 17);

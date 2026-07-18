@@ -94,10 +94,9 @@ bool ui_runtime_auxiliary_page_requested()
 
 TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
                                             time_t sampled_wall_second,
+                                            const BatteryRuntimeSnapshot &battery,
                                             bool battery_blink_visible)
 {
-    BatteryRuntimeSnapshot battery;
-    battery_runtime_snapshot_load(&battery);
     bool low_idle = battery.low_battery_mode &&
                     !battery.charging &&
                     !ui_runtime_auxiliary_page_requested() &&

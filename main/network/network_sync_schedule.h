@@ -63,11 +63,6 @@ uint32_t network_idle_wait_ms(time_t now,
                               time_t next_boot_due_at,
                               time_t next_ntp_retry_at,
                               time_t next_daily_ntp_at);
-bool network_cache_age_is_fresh(time_t now, time_t cached_at, time_t max_age);
-bool network_cache_local_hour_matches(const struct tm &now_local,
-                                      const struct tm &cached_local);
-bool network_cache_local_day_matches(const struct tm &now_local,
-                                     const struct tm &cached_local);
 bool network_boot_https_memory_sufficient(size_t internal_free,
                                           size_t internal_largest,
                                           size_t dma_largest);

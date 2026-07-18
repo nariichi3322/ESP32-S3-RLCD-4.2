@@ -1,16 +1,15 @@
 // 维护天气数据的一致快照、成功更新时间和 ready 事件发布。
 #include "weather_state.h"
 
-#include "app_state.h"
 #include "app_event_group.h"
+#include "app_metadata.h"
 #include "scoped_semaphore_lock.h"
 #include "weather_snapshot_store.h"
 
-#include <freertos/semphr.h>
+#include "esp_log.h"
 
 namespace {
-StaticSemaphore_t s_weather_state_mutex_storage = {};
-SemaphoreHandle_t s_weather_state_mutex = nullptr;
+StaticTaskMutex s_weather_state_mutex;
 WeatherSnapshotStore s_weather_store;
 #define WEATHER_UPDATED_LOG_FORMAT "weather updated: %s %s %sC %s%% icon=%s forecast=%s air=%s"
 constexpr const char *kWeatherFetchStatusOk = "ok";
@@ -30,12 +29,7 @@ void publish_weather_ready_event()
 
 bool init_weather_state()
 {
-    if (s_weather_state_mutex) {
-        return true;
-    }
-    s_weather_state_mutex =
-        xSemaphoreCreateMutexStatic(&s_weather_state_mutex_storage);
-    return s_weather_state_mutex != nullptr;
+    return s_weather_state_mutex.init();
 }
 
 void get_weather_full_snapshot(WeatherData *weather,

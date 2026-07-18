@@ -1,9 +1,11 @@
 // 在网络任务栈上校验配网保存的天气 API 密钥和可选手动城市。
 #include "provisioning_validation.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
 #include "manual_weather_city_state.h"
 #include "network_services.h"
+
+#include "esp_log.h"
 
 namespace {
 constexpr size_t kProvisioningWeatherCityIdSize = 24;

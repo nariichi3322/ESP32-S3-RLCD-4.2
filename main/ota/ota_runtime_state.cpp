@@ -5,14 +5,10 @@
 #include "ota_flow_policy.h"
 #include "scoped_semaphore_lock.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-
 #include <cstring>
 
 namespace {
-StaticSemaphore_t s_ota_runtime_mutex_storage = {};
-SemaphoreHandle_t s_ota_runtime_mutex = nullptr;
+StaticTaskMutex s_ota_runtime_mutex;
 OtaRuntimeSnapshot s_ota_runtime = {
     kOtaIdle,
     -1,
@@ -44,12 +40,7 @@ void notify_background_network_block_changed(int previous_state,
 
 bool ota_runtime_state_init()
 {
-    if (s_ota_runtime_mutex) {
-        return true;
-    }
-    s_ota_runtime_mutex =
-        xSemaphoreCreateMutexStatic(&s_ota_runtime_mutex_storage);
-    return s_ota_runtime_mutex != nullptr;
+    return s_ota_runtime_mutex.init();
 }
 
 void ota_runtime_snapshot_load(OtaRuntimeSnapshot *snapshot)
@@ -57,7 +48,7 @@ void ota_runtime_snapshot_load(OtaRuntimeSnapshot *snapshot)
     if (!snapshot) {
         return;
     }
-    ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+    ScopedSemaphoreLock lock(s_ota_runtime_mutex.handle());
     if (!lock) {
         return;
     }
@@ -66,13 +57,13 @@ void ota_runtime_snapshot_load(OtaRuntimeSnapshot *snapshot)
 
 int ota_runtime_state_load()
 {
-    ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+    ScopedSemaphoreLock lock(s_ota_runtime_mutex.handle());
     return lock ? s_ota_runtime.state : kOtaIdle;
 }
 
 bool ota_runtime_reboot_pending_load()
 {
-    ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+    ScopedSemaphoreLock lock(s_ota_runtime_mutex.handle());
     return lock && s_ota_runtime.reboot_pending;
 }
 
@@ -87,7 +78,7 @@ void ota_runtime_publish_status(int state,
 
     int previous_state = kOtaIdle;
     {
-        ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+        ScopedSemaphoreLock lock(s_ota_runtime_mutex.handle());
         if (!lock) {
             return;
         }
@@ -111,7 +102,7 @@ void ota_runtime_publish_download_status(const char *status,
 
     int previous_state = kOtaIdle;
     {
-        ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+        ScopedSemaphoreLock lock(s_ota_runtime_mutex.handle());
         if (!lock) {
             return;
         }
@@ -129,7 +120,7 @@ void ota_runtime_publish_download_status(const char *status,
 
 void ota_runtime_reboot_pending_store(bool pending)
 {
-    ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+    ScopedSemaphoreLock lock(s_ota_runtime_mutex.handle());
     if (!lock) {
         return;
     }
@@ -144,7 +135,7 @@ void ota_runtime_reset_status_if_idle(TickType_t now, const char *idle_status)
     int previous_state = kOtaIdle;
     int current_state = kOtaIdle;
     {
-        ScopedSemaphoreLock lock(s_ota_runtime_mutex);
+        ScopedSemaphoreLock lock(s_ota_runtime_mutex.handle());
         if (!lock) {
             return;
         }

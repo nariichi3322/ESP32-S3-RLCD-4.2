@@ -4,8 +4,6 @@
 #include "active_work_page_state.h"
 #include "app_constexpr.h"
 #include "scoped_semaphore_lock.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
 
 #include <atomic>
 #include <string.h>
@@ -24,8 +22,7 @@ constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
     kWorkPageHistory,
     kWorkPageXiaozhiAI,
 };
-StaticSemaphore_t s_work_page_order_mutex_storage = {};
-SemaphoreHandle_t s_work_page_order_mutex = nullptr;
+StaticTaskMutex s_work_page_order_mutex;
 uint8_t s_work_page_order[kWorkPageCount] = {
     kWorkPageWeatherClock,
     kWorkPageGallery,
@@ -220,7 +217,7 @@ bool copy_normalized_work_page_order(uint8_t *order,
     if (!order || order_size != sizeof(s_work_page_order)) {
         return false;
     }
-    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
     if (!lock) {
         return false;
     }
@@ -257,12 +254,7 @@ static_assert(page_list_covers_each_work_page_once(kDisplaySettingPages),
 
 bool work_page_catalog_init()
 {
-    if (s_work_page_order_mutex) {
-        return true;
-    }
-    s_work_page_order_mutex =
-        xSemaphoreCreateMutexStatic(&s_work_page_order_mutex_storage);
-    return s_work_page_order_mutex != nullptr;
+    return s_work_page_order_mutex.init();
 }
 
 bool is_work_page_enabled(int page)
@@ -356,7 +348,7 @@ void reset_work_page_order()
 {
     static_assert(sizeof(kDefaultWorkPageOrder) == sizeof(s_work_page_order),
                   "default work page order storage must match runtime order storage");
-    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
     if (!lock) {
         return;
     }
@@ -366,7 +358,7 @@ void reset_work_page_order()
 void normalize_work_page_order()
 {
     const uint8_t page_mask = work_page_enabled_mask_load();
-    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
     if (!lock) {
         return;
     }
@@ -395,7 +387,7 @@ bool work_page_order_copy(uint8_t *order, size_t order_size)
     if (!order || order_size != sizeof(s_work_page_order)) {
         return false;
     }
-    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
     if (!lock) {
         return false;
     }
@@ -412,7 +404,7 @@ void work_page_order_replace(const uint8_t *order, size_t order_size)
         memcpy(replacement, kDefaultWorkPageOrder, sizeof(replacement));
     }
     normalize_work_page_order_values(replacement, work_page_enabled_mask_load());
-    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
     if (!lock) {
         return;
     }
@@ -427,7 +419,7 @@ bool swap_work_page_order_entries_preserving_home(int first_index, int second_in
     }
     const uint8_t page_mask = work_page_enabled_mask_load();
     bool accepted = false;
-    ScopedSemaphoreLock lock(s_work_page_order_mutex);
+    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
     if (!lock) {
         return false;
     }

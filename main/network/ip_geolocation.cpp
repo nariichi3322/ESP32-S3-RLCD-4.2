@@ -1,11 +1,13 @@
 // 调用独立 IP 定位服务并转换为天气城市查询所需的位置文本。
 #include "network_services.h"
 
-#include "app_state.h"
 #include "app_constexpr.h"
+#include "app_metadata.h"
 #include "app_text_format.h"
 #include "qweather_location_text.h"
 #include "qweather_response.h"
+
+#include "esp_log.h"
 
 namespace {
 constexpr size_t kIpGeoResponseBufferSize = 2048;
