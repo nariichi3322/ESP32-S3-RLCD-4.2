@@ -1,6 +1,8 @@
 // 执行设置页里的网络诊断流程，逐项显示联网链路状态。
 #include "network_services.h"
 
+#include "network_http_client.h"
+
 #include "app_constexpr.h"
 #include "app_network_config.h"
 #include "app_text_format.h"

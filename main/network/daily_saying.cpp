@@ -5,6 +5,7 @@
 #include "daily_saying_contract.h"
 #include "daily_saying_state.h"
 #include "daily_saying_parser.h"
+#include "network_http_client.h"
 #include "scoped_heap_buffer.h"
 #include "ui_views.h"
 

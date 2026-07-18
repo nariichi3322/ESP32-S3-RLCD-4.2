@@ -1,6 +1,8 @@
 // 对接 IP 定位、QWeather 城市查询、实时天气和天气预警接口。
 #include "network_services.h"
 
+#include "network_http_client.h"
+
 #include "app_constexpr.h"
 #include "app_metadata.h"
 #include "app_text_format.h"

@@ -1,9 +1,10 @@
 // 执行启动页 Wi-Fi 连接与时间校准，页面 HTTPS 数据统一留给后台错峰同步。
-#include "network_services.h"
+#include "network_boot_sync.h"
 
 #include "app_event_group.h"
 #include "app_text_format.h"
 #include "network_credentials_state.h"
+#include "network_services.h"
 #include "ntp_services.h"
 #include "offline_mode_state.h"
 #include "network_sync_schedule.h"

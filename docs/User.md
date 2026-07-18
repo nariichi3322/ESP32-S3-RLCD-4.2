@@ -88,7 +88,7 @@ Shows city, current temperature and condition, air quality, humidity, wind, sunr
 
 Shows three high-contrast hour/minute/second cards plus local temperature, humidity, trend arrows, comfort faces, date, and lunar date.
 
-- Seconds refresh locally once per second; ordinary ticks write the pixel buffer directly and send only the changed digit region instead of implicitly invalidating the whole card per pixel. The page sleeps until the next wall-clock second instead of polling repeatedly between ticks.
+- Seconds refresh locally once per second. Ordinary ticks write the pixel buffer directly and translate the changed digit region to its correct screen coordinates, so the visible card cannot remain frozen while its backing pixels change. This also avoids implicitly invalidating the whole card per pixel. The page sleeps until the next wall-clock second instead of polling repeatedly between ticks.
 - Local temperature/humidity is sampled every minute during the day and every two minutes at night.
 - Trend arrows use the rolling average of valid samples from the latest four-hour window and restart after reboot.
 - Internal page construction and runtime refresh are isolated. A page rebuild restores all clock cards, sensor, trend/comfort, date, and lunar objects while reusing pixel buffers; display, refresh frequency, controls, and stored data are unchanged.
@@ -274,6 +274,8 @@ Weather location text and QWeather response handling now load only the weather t
 The generic HTTP client, IP geolocation, provisioning weather validation, QWeather client, and weather runtime state now follow the same lightweight dependency boundary. Network requests, parsing, caches, event notifications, and controls are unchanged.
 Provisioning AP credentials, portal addresses, and built-in primary/backup OTA manifest endpoints are now owned by one lightweight compile-time configuration contract. Provisioning, diagnostics, and update behavior are unchanged, and private deployment endpoints remain outside the tracked source tree.
 NTP synchronization and last-successful-sync queries now use a dedicated lightweight service interface. Startup time recovery, scheduled synchronization, RTC updates, diagnostics, and displayed information remain unchanged.
+
+Generic HTTP text requests and the startup connectivity budget now use separate lightweight interfaces as well. Weather, IP geolocation, daily text, diagnostics, and OTA checks retain their existing URLs, certificates, timeouts, startup staggering, retry behavior, display, and user controls.
 The four-hour trend samples and 48-slot hourly history now share one stable production data definition, and host validation uses the real firmware layout instead of a parallel test copy. NVS data, restart recovery, history charts, and page operation are unchanged.
 The application event identifiers and event-group resource shared by provisioning, synchronization, OTA, and startup are managed by one internal owner and remain a static lifetime resource. Calls made before initialization or after startup-failure cleanup fail safely instead of touching an invalid handle. Event delivery, wait timeouts, and user operation are unchanged.
 The Xiaozhi page snapshot lock also uses a static control block, reducing startup internal-memory allocation and long-term fragmentation without changing wake-up, subtitles, expressions, Pomodoro, or page controls.
@@ -330,6 +332,7 @@ The single alarm can be set, changed, or disabled through Xiaozhi voice.
 - If the Pomodoro finishes while Xiaozhi is visible, voice listening pauses only for the completion sound. The service is not restarted while paused, and wake-word standby resumes directly afterward.
 - Ordinary “remind me in 10 minutes” requests remain alarm requests.
 - It continues after changing pages but is cleared by reboot.
+- While Xiaozhi remains visible, the ordinary clock and Pomodoro cards share the same second-level partial-refresh path, so an active countdown continues to advance while voice services are running.
 - Pomodoro state, monotonic deadline, and completion time are published as one thread-safe snapshot. Page changes, concurrent background work, and NTP corrections cannot expose mixed timer state; countdown behavior and normal-clock restoration after completion or cancellation are unchanged.
 - In the final minute, the minute card shows `00` and the right card shows whole remaining seconds; hundredths are intentionally not displayed.
 - Completion shows a completed state and plays two prompts. Either key stops playback.

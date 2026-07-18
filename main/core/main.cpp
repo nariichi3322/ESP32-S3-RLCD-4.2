@@ -14,6 +14,7 @@
 #include "manual_weather_city_state.h"
 #include "network_credentials_state.h"
 #include "network_diagnostics_state.h"
+#include "network_boot_sync.h"
 #include "network_http_transaction_lock.h"
 #include "network_services.h"
 #include "ntp_runtime_state.h"

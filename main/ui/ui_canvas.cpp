@@ -145,11 +145,16 @@ void invalidate_canvas_rect(lv_obj_t *canvas, int x1, int y1, int x2, int y2)
     if (!canvas) {
         return;
     }
+    order_int_pair(&x1, &x2);
+    order_int_pair(&y1, &y2);
+
+    lv_area_t canvas_coords = {};
+    lv_obj_get_coords(canvas, &canvas_coords);
     lv_area_t area = {};
-    area.x1 = static_cast<lv_coord_t>(x1);
-    area.y1 = static_cast<lv_coord_t>(y1);
-    area.x2 = static_cast<lv_coord_t>(x2);
-    area.y2 = static_cast<lv_coord_t>(y2);
+    area.x1 = static_cast<lv_coord_t>(canvas_coords.x1 + x1);
+    area.y1 = static_cast<lv_coord_t>(canvas_coords.y1 + y1);
+    area.x2 = static_cast<lv_coord_t>(canvas_coords.x1 + x2);
+    area.y2 = static_cast<lv_coord_t>(canvas_coords.y1 + y2);
     lv_obj_invalidate_area(canvas, &area);
 }
 

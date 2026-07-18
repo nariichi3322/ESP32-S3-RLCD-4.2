@@ -1,10 +1,11 @@
 // 提供 HTTPS 文本请求、gzip 解码和响应日志预览工具。
-#include "network_services.h"
+#include "network_http_client.h"
 
 #include "app_constexpr.h"
 #include "app_metadata.h"
 #include "app_text_format.h"
 #include "http_timeout_state.h"
+#include "network_boot_sync.h"
 #include "network_gzip.h"
 #include "network_task_guards.h"
 #include "qweather_ca.h"

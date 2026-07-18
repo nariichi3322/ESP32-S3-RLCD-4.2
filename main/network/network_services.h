@@ -1,22 +1,15 @@
-// 声明配网、Wi-Fi、HTTP、天气、NTP、OTA 调度等网络服务接口。
+// 声明配网、Wi-Fi、天气与后台同步调度等聚合网络服务接口。
 #pragma once
 
 #include "weather_types.h"
 
 #include "esp_err.h"
 #include "esp_event_base.h"
-#include "esp_http_client.h"
 #include "esp_http_server.h"
 
 #include <stddef.h>
 #include <stdint.h>
 #include <time.h>
-
-struct HttpBuffer {
-    char *data;
-    size_t len;
-    size_t cap;
-};
 
 bool load_saved_config();
 bool save_config(const char *ssid, const char *pass, const char *api_key, const char *weather_city = nullptr);
@@ -55,11 +48,6 @@ void request_wifi_radio_stop_when_idle();
 void service_wifi_radio_stop_when_idle();
 void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, void *event_data);
 void init_wifi();
-int boot_sync_remaining_ms();
-esp_err_t http_event_handler(esp_http_client_event_t *evt);
-esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len);
-esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *api_key = nullptr);
-void log_response_preview(const char *stage, const char *response);
 bool ip_geolocation_lookup(char *location, size_t location_len, char *city, size_t city_len);
 enum QweatherCityLookupStatus {
     kQweatherCityLookupOk = 0,
@@ -97,8 +85,6 @@ WeatherUpdateResult perform_weather_update();
 bool perform_daily_saying_update();
 bool wait_for_wifi_connected(uint32_t timeout_ms);
 bool is_time_valid(struct tm *local_out = nullptr);
-void run_boot_connectivity_sync();
-void boot_connectivity_task(void *);
 uint32_t network_idle_wait_ms(time_t now,
                               time_t next_boot_due_at,
                               time_t next_ntp_retry_at,

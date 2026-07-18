@@ -6,7 +6,7 @@
 #include "app_network_config.h"
 #include "app_text_format.h"
 #include "custom_assets.h"
-#include "network_services.h"
+#include "network_http_client.h"
 #include "ota_validation.h"
 #include "scoped_heap_buffer.h"
 
