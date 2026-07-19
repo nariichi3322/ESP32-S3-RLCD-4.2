@@ -3,7 +3,7 @@
 
 #include "app_metadata.h"
 #include "manual_weather_city_state.h"
-#include "network_services.h"
+#include "qweather_client.h"
 
 #include "esp_log.h"
 

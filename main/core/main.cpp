@@ -17,6 +17,7 @@
 #include "network_boot_sync.h"
 #include "network_http_transaction_lock.h"
 #include "network_services.h"
+#include "wifi_radio_services.h"
 #include "ntp_runtime_state.h"
 #include "ota_runtime_state.h"
 #include "ota_services.h"

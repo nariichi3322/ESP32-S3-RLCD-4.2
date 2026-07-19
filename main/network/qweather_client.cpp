@@ -1,5 +1,5 @@
 // 对接 IP 定位、QWeather 城市查询、实时天气和天气预警接口。
-#include "network_services.h"
+#include "qweather_client.h"
 
 #include "network_http_client.h"
 

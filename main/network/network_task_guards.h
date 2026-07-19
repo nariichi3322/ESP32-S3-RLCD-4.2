@@ -2,7 +2,6 @@
 #pragma once
 
 #include "network_http_transaction_lock.h"
-#include "http_timeout_state.h"
 #include "power_services.h"
 
 class NetworkAwakeLockGuard {
@@ -61,23 +60,4 @@ public:
 
 private:
     bool locked_ = false;
-};
-
-class NetworkHttpTimeoutGuard {
-public:
-    explicit NetworkHttpTimeoutGuard(int timeout_ms)
-        : previous_timeout_ms_(network_http_timeout_ms_exchange(timeout_ms))
-    {
-    }
-
-    ~NetworkHttpTimeoutGuard()
-    {
-        network_http_timeout_ms_store(previous_timeout_ms_);
-    }
-
-    NetworkHttpTimeoutGuard(const NetworkHttpTimeoutGuard &) = delete;
-    NetworkHttpTimeoutGuard &operator=(const NetworkHttpTimeoutGuard &) = delete;
-
-private:
-    int previous_timeout_ms_ = 0;
 };

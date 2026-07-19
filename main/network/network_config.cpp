@@ -1,5 +1,6 @@
 // 负责 Wi-Fi、API Key、页面设置和声音设置的 NVS 配置读写。
 #include "network_services.h"
+#include "wifi_radio_services.h"
 #include "wifi_portal_state.h"
 
 #include "app_constexpr.h"

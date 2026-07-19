@@ -99,7 +99,6 @@ idf_component_register(
         "network/wifi_portal_pages.cpp"
         "network/ntp_runtime_state.cpp"
         "network/ntp_services.cpp"
-        "network/http_timeout_state.cpp"
         "network/network_http_transaction_lock.cpp"
         "network/http_client.cpp"
         "network/network_gzip.cpp"

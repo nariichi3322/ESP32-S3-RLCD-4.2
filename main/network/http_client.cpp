@@ -4,7 +4,7 @@
 #include "app_constexpr.h"
 #include "app_metadata.h"
 #include "app_text_format.h"
-#include "http_timeout_state.h"
+#include "http_timeout_policy.h"
 #include "network_boot_sync.h"
 #include "network_gzip.h"
 #include "network_task_guards.h"
@@ -79,14 +79,11 @@ bool compute_http_timeout_ms(int *timeout_ms)
     if (!timeout_ms) {
         return false;
     }
-    *timeout_ms = network_http_timeout_ms_load();
     int remaining_ms = boot_sync_remaining_ms();
-    if (remaining_ms <= 0) {
+    *timeout_ms = network_http_timeout_for_budget(remaining_ms);
+    if (*timeout_ms <= 0) {
         ESP_LOGW(TAG, "%s", kHttpBootBudgetExhaustedLog);
         return false;
-    }
-    if (remaining_ms != INT32_MAX && *timeout_ms > remaining_ms) {
-        *timeout_ms = remaining_ms;
     }
     return true;
 }

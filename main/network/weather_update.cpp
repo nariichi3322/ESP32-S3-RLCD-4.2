@@ -1,7 +1,10 @@
 // 负责选择手动城市或 IP 定位，并组合提交完整天气更新结果。
-#include "network_services.h"
+#include "weather_update.h"
+
+#include "ip_geolocation_client.h"
 #include "network_https_resources.h"
 #include "network_credentials_state.h"
+#include "qweather_client.h"
 
 #include "app_state.h"
 #include "app_constexpr.h"

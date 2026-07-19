@@ -4,8 +4,8 @@
 #include "app_metadata.h"
 #include "app_event_group.h"
 #include "audio_services.h"
-#include "network_services.h"
 #include "power_services.h"
+#include "wifi_radio_services.h"
 #include "wifi_radio_state.h"
 
 #include <atomic>

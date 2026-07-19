@@ -10,9 +10,12 @@
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"
 #include "power_services.h"
+#include "setup_portal_control.h"
 #include "wifi_idle_stop_policy.h"
 #include "wifi_portal_dns.h"
+#include "wifi_portal_http.h"
 #include "wifi_portal_state.h"
+#include "wifi_radio_services.h"
 #include "wifi_radio_state.h"
 
 #include "audio_services.h"
@@ -93,6 +96,7 @@ static_assert(should_reconfigure_running_power_save(true, true),
 #define WIFI_GOT_IP_FORMAT "got ip: " IPSTR
 #define WIFI_STA_IP_FORMAT_FAILED_LOG "sta ip format failed"
 #define WIFI_CONNECTION_EVENT_GROUP_UNAVAILABLE_LOG "wifi connection event unavailable: app events not initialized"
+#define WIFI_WAIT_SKIPPED_EVENT_GROUP_UNAVAILABLE_LOG "wifi wait skipped: app events unavailable"
 #define WIFI_MAC_READ_FAILED_FORMAT "wifi mac read failed: %s"
 #define WIFI_SETUP_AP_SSID_FORMAT_FAILED_LOG "setup AP ssid format failed"
 #define WIFI_STA_NETIF_CREATE_FAILED_LOG "wifi sta netif create failed"
@@ -469,6 +473,19 @@ bool start_wifi_radio(bool enable_setup_portal)
     }
     return start_stopped_wifi_radio(enable_setup_portal,
                                     entering_setup_portal);
+}
+
+bool wait_for_wifi_connected(uint32_t timeout_ms)
+{
+    if (!app_event_group_ready()) {
+        ESP_LOGW(TAG, "%s", WIFI_WAIT_SKIPPED_EVENT_GROUP_UNAVAILABLE_LOG);
+        return false;
+    }
+    EventBits_t bits = app_event_group_wait_bits(kWifiConnectedBit,
+                                                 pdFALSE,
+                                                 pdTRUE,
+                                                 pdMS_TO_TICKS(timeout_ms));
+    return (bits & kWifiConnectedBit) != 0;
 }
 
 bool prepare_setup_portal_result_delivery()

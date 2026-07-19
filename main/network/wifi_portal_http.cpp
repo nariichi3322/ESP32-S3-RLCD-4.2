@@ -1,5 +1,8 @@
 // 实现配网 HTTP 路由、表单保存和强制门户服务生命周期。
+#include "wifi_portal_http.h"
+
 #include "network_services.h"
+#include "wifi_radio_services.h"
 
 #include "app_constexpr.h"
 #include "app_event_group.h"
@@ -37,6 +40,13 @@ constexpr const char *kPortalFaviconUri = "/favicon.ico";
 constexpr const char *kPortalAppleTouchIconUri = "/apple-touch-icon.png";
 constexpr const char *kPortalAppleTouchIconPrecomposedUri = "/apple-touch-icon-precomposed.png";
 constexpr const char *kPortalWildcardUri = "/*";
+
+esp_err_t save_post_handler(httpd_req_t *req);
+esp_err_t save_get_handler(httpd_req_t *req);
+esp_err_t portal_status_get_handler(httpd_req_t *req);
+esp_err_t empty_asset_handler(httpd_req_t *req);
+esp_err_t captive_portal_handler(httpd_req_t *req);
+
 struct PortalHttpRoute {
     const char *uri;
     httpd_method_t method;
@@ -213,6 +223,7 @@ void stop_http_server()
     setup_portal_active_store(false);
 }
 
+namespace {
 esp_err_t save_post_handler(httpd_req_t *req)
 {
     char body[kPortalRequestBufferSize] = {};
@@ -261,6 +272,7 @@ esp_err_t captive_portal_handler(httpd_req_t *req)
 {
     return redirect_to_setup_portal(req);
 }
+} // namespace
 
 bool start_http_server()
 {

@@ -3,10 +3,12 @@
 
 #include "app_event_group.h"
 #include "network_diagnostics_catalog.h"
+#include "network_diagnostics.h"
 #include "network_services.h"
 #include "ui_settings_feedback.h"
 #include "ui_task_notify.h"
 #include "wifi_portal_state.h"
+#include "wifi_radio_services.h"
 #include "wifi_radio_state.h"
 
 namespace {

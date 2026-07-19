@@ -17,7 +17,7 @@
 #include "app_text_format.h"
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"
-#include "network_services.h"
+#include "wifi_radio_services.h"
 #include "network_task_guards.h"
 #include "power_services.h"
 #include "scoped_heap_buffer.h"

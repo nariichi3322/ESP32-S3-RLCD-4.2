@@ -9,6 +9,7 @@
 #include "network_https_resources.h"
 #include "network_cache_policy.h"
 #include "network_credentials_state.h"
+#include "network_diagnostics.h"
 #include "network_diagnostics_state.h"
 #include "ntp_services.h"
 #include "offline_mode_state.h"
@@ -18,12 +19,15 @@
 #include "network_sync_schedule.h"
 #include "network_task_guards.h"
 #include "sensor_time.h"
+#include "setup_portal_control.h"
 #include "startup_state.h"
 #include "ui_info_page_state.h"
 #include "ui_settings_activity_state.h"
 #include "ui_views.h"
 #include "weather_state.h"
+#include "weather_update.h"
 #include "wifi_portal_state.h"
+#include "wifi_radio_services.h"
 #include "wifi_radio_state.h"
 
 static constexpr uint32_t kNetworkNoWorkWaitMs = 30000;
@@ -72,7 +76,6 @@ static constexpr const char *kNetworkDiagIpLocationPowerLockUnavailable = "IP定
 static constexpr const char *kNetworkDiagIpLocationWifiConnectTimeout = "IP定位: WiFi连接超时";
 static constexpr const char *kNetworkSyncWeatherKeyMissing = "未配置 API Key";
 static constexpr const char *kNetworkSyncLowBatterySkipped = "电量低，已跳过";
-static constexpr const char *kNetworkWifiWaitSkippedLog = "wifi wait skipped: app events unavailable";
 #define NETWORK_BOOT_REFRESH_SCHEDULED_FORMAT "boot network refresh scheduled: weather=%d saying=%d"
 #define NETWORK_BOOT_HTTPS_MEMORY_DEFERRED_FORMAT \
     "background boot HTTPS deferred: internal_free=%u internal_largest=%u dma_largest=%u"
@@ -135,24 +138,6 @@ static NetworkRuntimeAvailabilitySnapshot capture_network_runtime_availability()
         offline_mode_enabled_load(),
         battery_low_mode_load(),
     };
-}
-
-bool wait_for_wifi_connected(uint32_t timeout_ms)
-{
-    if (!app_event_group_ready()) {
-        ESP_LOGW(TAG, "%s", kNetworkWifiWaitSkippedLog);
-        return false;
-    }
-    EventBits_t bits = app_event_group_wait_bits(kWifiConnectedBit,
-                                                 pdFALSE,
-                                                 pdTRUE,
-                                                 pdMS_TO_TICKS(timeout_ms));
-    return (bits & kWifiConnectedBit) != 0;
-}
-
-bool is_time_valid(struct tm *local_out)
-{
-    return is_system_time_plausible(local_out);
 }
 
 static bool enabled_weather_data_page_exists()

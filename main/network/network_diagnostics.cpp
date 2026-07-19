@@ -1,20 +1,31 @@
 // 执行设置页里的网络诊断流程，逐项显示联网链路状态。
-#include "network_services.h"
+#include "network_diagnostics.h"
 
+#include "daily_saying_contract.h"
+#include "ip_geolocation_client.h"
 #include "network_http_client.h"
 
 #include "app_constexpr.h"
+#include "app_metadata.h"
 #include "app_network_config.h"
 #include "app_text_format.h"
+#include "battery_runtime_state.h"
 #include "network_credentials_state.h"
 #include "network_diagnostics_catalog.h"
 #include "network_diagnostics_state.h"
 #include "network_json_root.h"
 #include "ntp_services.h"
 #include "scoped_heap_buffer.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
+#include "weather_update.h"
+#include "wifi_portal_state.h"
 
+#include "esp_log.h"
 #include "lwip/netdb.h"
+
+#include <cstdarg>
+#include <cstdio>
+#include <cstring>
 
 namespace {
 constexpr size_t kNetworkDiagPublicIpResponseBufferSize = 2048;
