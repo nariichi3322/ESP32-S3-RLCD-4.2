@@ -1,5 +1,5 @@
 // 调度 NTP、天气、预警、每日文字和 OTA 等联网同步流程。
-#include "network_services.h"
+#include "network_sync_task.h"
 
 #include "app_event_group.h"
 #include "daily_saying_contract.h"
@@ -94,8 +94,6 @@ static constexpr const char *kNetworkSyncWifiConnectTimeoutLog = "wifi connect t
 static constexpr const char *kNetworkBootSyncGateWaitLog = "network sync waiting for boot connectivity task";
 static constexpr const char *kProvisioningValidationFailedKeepPortalLog =
     "provisioning validation failed; setup portal remains active";
-static constexpr const char *kSetupPortalStartRequestedLog =
-    "setup portal start queued behind active network work";
 static constexpr const char *kSetupPortalStartFailedLog =
     "queued setup portal start failed; retrying";
 static constexpr const char *kSetupPortalStartedLog =
@@ -168,22 +166,6 @@ static void wait_for_setup_portal_retry()
                               pdFALSE,
                               pdFALSE,
                               pdMS_TO_TICKS(kNetworkShortRetryWaitMs));
-}
-
-bool request_setup_portal_start()
-{
-    if (!app_event_group_ready()) {
-        return false;
-    }
-    app_event_group_set_bits(kSetupPortalStartBit | kNetworkStateChangedBit);
-    ESP_LOGI(TAG, "%s", kSetupPortalStartRequestedLog);
-    return true;
-}
-
-bool setup_portal_start_requested()
-{
-    return app_event_group_ready() &&
-           (app_event_group_get_bits() & kSetupPortalStartBit) != 0;
 }
 
 static void wait_for_network_runtime_request()

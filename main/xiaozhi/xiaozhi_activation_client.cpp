@@ -2,7 +2,6 @@
 #include "xiaozhi_activation_client.h"
 
 #include "app_state.h"
-#include "network_services.h"
 #include "network_https_resources.h"
 #include "network_task_guards.h"
 #include "scoped_http_client.h"

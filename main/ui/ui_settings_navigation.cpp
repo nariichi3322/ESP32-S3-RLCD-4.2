@@ -2,7 +2,7 @@
 #include "ui_settings_navigation.h"
 
 #include "app_tick_time.h"
-#include "network_services.h"
+#include "device_settings_persistence.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_confirmation_state.h"
 #include "ui_settings_feedback.h"

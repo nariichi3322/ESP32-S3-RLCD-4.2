@@ -1,7 +1,7 @@
 // 实现配网 HTTP 路由、表单保存和强制门户服务生命周期。
 #include "wifi_portal_http.h"
 
-#include "network_services.h"
+#include "network_provisioning.h"
 #include "wifi_radio_services.h"
 
 #include "app_constexpr.h"

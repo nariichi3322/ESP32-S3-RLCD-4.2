@@ -8,7 +8,6 @@
 #include "daily_saying_state.h"
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"
-#include "network_services.h"
 #include "network_sync_schedule.h"
 #include "ota_services.h"
 #include "qweather_icons.h"

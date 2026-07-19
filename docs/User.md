@@ -168,7 +168,7 @@ When the last phone leaves the setup hotspot, the device resets the captive DHCP
 
 The on-device setup status rows follow setup-mode visibility as one panel. If the UI is rebuilt after a mode switch or resource recovery, those rows are recreated and continue refreshing without retaining stale object references.
 
-Setup-field decoding, configuration-event cleanup, configuration storage, and factory-reset cleanup use lightweight internal helpers. This maintenance does not change field names, Chinese text handling, truncation feedback, save results, existing configuration recovery, or button controls.
+Setup-field decoding, configuration-event cleanup, configuration storage, setup-start requests, and factory-reset cleanup use lightweight internal helpers. This maintenance does not change field names, Chinese text handling, truncation feedback, save results, hotspot timing, existing configuration recovery, or button controls.
 
 ### 4.2 Online Mode
 
@@ -312,7 +312,7 @@ About Device and Network Diagnostics each maintain their own dynamic content. Af
 
 The idle, running, and completed diagnostics states now use the same internal typed snapshot, preventing maintenance-time numeric state mismatches without changing the nine checks, their display order, or any controls.
 
-The settings menu, feedback line, manual-sync status, page order, and update progress panel are likewise maintained by their owning UI modules. The first three shared states now use the same application-lifetime lock owner, removing duplicated initialization bookkeeping. Returning from setup, About Device, or Network Diagnostics rebuilds them from current state without changing item order, page sorting, the 30-second timeout, OTA percentage, speed, or progress bar.
+The settings menu, feedback line, manual-sync status, page order, and update progress panel are likewise maintained by their owning UI modules. The first three shared states now use the same application-lifetime lock owner, removing duplicated initialization bookkeeping. Startup configuration loading and routine configuration saving use separate internal entries, while sound, page enable/order, and Xiaozhi auto-return settings share their dedicated persistence entry. NVS content, reboot recovery, save timing, and feedback are unchanged. Returning from setup, About Device, or Network Diagnostics rebuilds them from current state without changing item order, page sorting, the 30-second timeout, OTA percentage, speed, or progress bar.
 
 Settings menu indexes, item counts, and manual synchronization operations now share one internal definition. This prevents display, key handling, and network actions from drifting apart without changing any visible menu order, labels, or controls.
 
@@ -363,6 +363,8 @@ The maintenance release gate also confirms that online assets came from the late
 The source-build and fallback-mirror tools also share the same manifest field names, 1,800-byte `latest.json` limit, and ten-version history limit. This maintenance change does not alter the JSON consumed by devices or the desktop client.
 
 Internally, provisioning, offline mode, chime, volume, and Xiaozhi auto-return settings are safely published to background tasks. Xiaozhi auto-return now has one dedicated runtime state shared by Settings, storage, and the five-minute decision, without changing where it is edited, how it is saved, or how it is restored after restart.
+
+Network configuration, setup-form submission, the background synchronization task, and the Wi-Fi radio lifecycle are now maintained by separate internal modules instead of one aggregate interface. This is a maintenance-boundary change only: Wi-Fi, QWeather API Key, manual city, offline mode, setup feedback, and synchronization behavior are unchanged, so an update does not require reconfiguration or a factory reset.
 
 OTA check state, download progress, speed, and reboot notices are likewise published as one consistent snapshot between background tasks and the UI. The check, confirmation, download, and restart workflow is unchanged.
 

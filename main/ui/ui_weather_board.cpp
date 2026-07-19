@@ -3,7 +3,6 @@
 
 #include "app_constexpr.h"
 #include "app_event_group.h"
-#include "network_services.h"
 #include "qweather_icons.h"
 #include "ui_battery.h"
 #include "ui_weather_board_sun.h"

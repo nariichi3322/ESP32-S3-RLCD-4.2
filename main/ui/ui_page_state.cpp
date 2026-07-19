@@ -7,7 +7,6 @@
 #include "app_constexpr.h"
 #include "battery_policy.h"
 #include "chime_runtime_state.h"
-#include "network_services.h"
 #include "ui_clock.h"
 #include "ui_clock_header_objects.h"
 #include "ui_clock_surface_objects.h"

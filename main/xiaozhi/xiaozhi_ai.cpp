@@ -6,7 +6,6 @@
 #include "app_metadata.h"
 #include "alarm_services.h"
 #include "audio_services.h"
-#include "network_services.h"
 #include "network_credentials_state.h"
 #include "network_https_resources.h"
 #include "offline_mode_state.h"

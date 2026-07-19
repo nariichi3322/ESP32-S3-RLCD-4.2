@@ -1,6 +1,4 @@
 // 实现设备配网 AP、STA 连接、Wi-Fi 事件和射频启停生命周期。
-#include "network_services.h"
-
 #include "app_event_group.h"
 #include "app_network_config.h"
 #include "ota_runtime_state.h"

@@ -7,7 +7,6 @@
 #include "network_credentials_state.h"
 #include "network_diagnostics_catalog.h"
 #include "network_diagnostics_state.h"
-#include "network_services.h"
 #include "ntp_services.h"
 #include "ota_services.h"
 #include "ui_text_format.h"

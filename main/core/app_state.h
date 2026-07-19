@@ -63,7 +63,6 @@ inline constexpr int kAppSecondsPerMinute = 60;
 inline constexpr int kAppMsPerMinute = kAppSecondsPerMinute * kAppMsPerSecond;
 inline constexpr int kSettingsTimeoutMs = 30 * kAppMsPerSecond;
 inline constexpr int kXiaozhiAutoReturnTimeoutMs = 5 * kAppMsPerMinute;
-inline constexpr int kChimeSoundCount = 4;
 inline constexpr int kSettingsManualSyncTimeoutMs = kAppMsPerMinute;
 inline constexpr int kWeatherClockAutoRetryMs = 2 * kAppMsPerMinute;
 inline constexpr int kWeatherClockAutoSyncMaxAttempts = 3;

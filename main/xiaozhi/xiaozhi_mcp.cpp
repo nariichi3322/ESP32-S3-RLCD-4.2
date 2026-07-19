@@ -14,7 +14,7 @@
 #include "audio_services.h"
 #include "battery_runtime_state.h"
 #include "local_sensor_state.h"
-#include "network_services.h"
+#include "device_settings_persistence.h"
 #endif
 
 #include <atomic>

@@ -33,6 +33,8 @@ int main()
                   "existing settings UI exposes five volume levels");
     static_assert(chime_settings::kDefaultVolumePercent == 80,
                   "existing startup volume must remain 80 percent");
+    static_assert(chime_settings::kSoundCount == 4,
+                  "existing settings UI exposes four sounds");
 
     assert(chime_settings::normalize_stored_volume(0) == 0);
     assert(chime_settings::normalize_stored_volume(1) == 1);

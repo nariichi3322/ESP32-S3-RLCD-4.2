@@ -9,6 +9,7 @@ namespace chime_settings {
 inline constexpr int kVolumeLevels[] = {20, 40, 60, 80, 100};
 inline constexpr size_t kVolumeLevelCount = sizeof(kVolumeLevels) / sizeof(kVolumeLevels[0]);
 inline constexpr int kDefaultVolumePercent = 80;
+inline constexpr uint8_t kSoundCount = 4;
 
 constexpr bool volume_levels_ordered_and_bounded()
 {
@@ -51,6 +52,7 @@ constexpr int next_volume_percent(int current)
 }
 
 static_assert(kVolumeLevelCount > 0, "chime volume level list must not be empty");
+static_assert(kSoundCount > 0, "chime sound list must not be empty");
 static_assert(volume_levels_ordered_and_bounded(),
               "chime volume levels must be ordered percentages in 1..100");
 static_assert(volume_levels_include_default(), "default chime volume must be selectable");

@@ -8,10 +8,11 @@
 #include "chime_runtime_state.h"
 #include "chime_settings.h"
 #include "manual_weather_city_state.h"
+#include "network_config.h"
+#include "device_settings_persistence.h"
 #include "network_diagnostics.h"
 #include "network_diagnostics_state.h"
 #include "offline_mode_state.h"
-#include "network_services.h"
 #include "ota_services.h"
 #include "pomodoro_services.h"
 #include "setup_portal_control.h"
@@ -290,7 +291,8 @@ void handle_sound_settings_action(int selected)
     } else if (selected == kSoundSettingsSoundItem) {
         const ChimeRuntimeSnapshot previous = chime_runtime_snapshot_load();
         ChimeRuntimeSnapshot next = previous;
-        next.sound_index = static_cast<uint8_t>((previous.sound_index + 1) % kChimeSoundCount);
+        next.sound_index = static_cast<uint8_t>(
+            (previous.sound_index + 1) % chime_settings::kSoundCount);
         chime_runtime_snapshot_store(next);
         if (!save_chime_setting_or_restore(previous)) {
             return;
