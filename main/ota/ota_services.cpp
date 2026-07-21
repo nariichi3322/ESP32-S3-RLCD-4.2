@@ -1,8 +1,9 @@
 // 处理固件更新检查、下载、校验、写入和重启提示流程。
 #include "ota_services.h"
 
-#include "app_state.h"
 #include "app_event_group.h"
+#include "app_metadata.h"
+#include "app_state.h"
 #include "battery_policy.h"
 #include "ota_download_policy.h"
 #include "ota_download_http.h"
@@ -24,10 +25,11 @@
 #include "ui_info_page_state.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_navigation.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
 
 #include "esp_app_format.h"
 #include "esp_heap_caps.h"
+#include <esp_log.h>
 
 struct OtaCrashBreadcrumb {
     uint32_t magic = 0;

@@ -2,6 +2,8 @@
 #include "network_sync_task.h"
 
 #include "app_event_group.h"
+#include "app_metadata.h"
+#include "battery_runtime_state.h"
 #include "daily_saying_contract.h"
 #include "daily_saying_state.h"
 #include "ota_runtime_state.h"
@@ -10,49 +12,37 @@
 #include "network_cache_policy.h"
 #include "network_credentials_state.h"
 #include "network_diagnostics.h"
-#include "network_diagnostics_state.h"
 #include "ntp_services.h"
 #include "offline_mode_state.h"
+#include "network_provisioning_session.h"
 #include "provisioning_validation.h"
 #include "network_diagnostics_catalog.h"
 #include "network_sync_requests.h"
 #include "network_sync_schedule.h"
+#include "network_sync_wait.h"
 #include "network_task_guards.h"
 #include "sensor_time.h"
 #include "setup_portal_control.h"
 #include "startup_state.h"
-#include "ui_info_page_state.h"
-#include "ui_settings_activity_state.h"
-#include "ui_views.h"
+#include "ui_work_page_catalog.h"
 #include "weather_state.h"
 #include "weather_update.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_services.h"
 #include "wifi_radio_state.h"
 
+#include <esp_log.h>
+#include <esp_timer.h>
+
 static constexpr uint32_t kNetworkNoWorkWaitMs = 30000;
 static constexpr uint32_t kNetworkShortRetryWaitMs = 1000;
 static constexpr uint32_t kNetworkWifiConnectTimeoutMs = 45000;
 static constexpr uint32_t kNetworkTaskStartupDelayMs = 2500;
 static constexpr uint32_t kNetworkBootSyncGateWarningMs = 1000;
-static constexpr EventBits_t kNetworkSyncWakeBits = kProvisioningSyncBit |
-                                                     kManualNtpSyncBit |
-                                                     kManualWeatherSyncBit |
-                                                     kManualSayingSyncBit |
-                                                     kNetworkDiagBit |
-                                                     kNetworkStateChangedBit |
-                                                     kSetupPortalStartBit;
-static constexpr EventBits_t kSetupPortalRetryWakeBits =
-    kNetworkSyncWakeBits & ~kSetupPortalStartBit;
-static_assert((kSetupPortalRetryWakeBits & kSetupPortalStartBit) == 0,
-              "setup portal retry wait must ignore its pending level bit");
 static constexpr time_t kBootWeatherRefreshDelaySec = 10;
 static constexpr time_t kBootSayingRefreshDelaySec = 25;
 static constexpr time_t kBootHttpsInterRequestGapSec = 8;
 static constexpr uint32_t kBootHttpsMemoryRetryMs = 10000;
-static constexpr uint32_t kProvisioningFeedbackWaitMs = 30000;
-static constexpr uint32_t kProvisioningFeedbackPollMs = 100;
-static constexpr uint32_t kProvisioningFeedbackDisplayGraceMs = 750;
 static_assert(kBootWeatherRefreshDelaySec > 0,
               "boot weather refresh delay must be positive");
 static_assert(kBootSayingRefreshDelaySec > kBootWeatherRefreshDelaySec,
@@ -65,10 +55,6 @@ static_assert(kBootHttpsMemoryRetryMs % 1000 == 0,
               "boot HTTPS memory retry must convert exactly to seconds");
 static_assert(kNetworkBootSyncGateWarningMs > 0,
               "boot sync gate warning delay must be positive");
-static_assert(kProvisioningFeedbackWaitMs >= kProvisioningFeedbackDisplayGraceMs,
-              "provisioning feedback wait must cover its display grace");
-static_assert(kProvisioningFeedbackPollMs > 0,
-              "provisioning feedback poll delay must be positive");
 static_assert(kNetworkDiagOtaLine == kNetworkDiagLineCount - 1,
               "network service diagnostics line mapping must match diagnostics line count");
 static constexpr const char *kNetworkDiagIpLocationWifiStartFailed = "IP定位: WiFi启动失败";
@@ -92,14 +78,6 @@ static constexpr const char *kNetworkSyncPowerLockUnavailableLog =
     "network PM lock unavailable during sync window";
 static constexpr const char *kNetworkSyncWifiConnectTimeoutLog = "wifi connect timeout during sync window";
 static constexpr const char *kNetworkBootSyncGateWaitLog = "network sync waiting for boot connectivity task";
-static constexpr const char *kProvisioningValidationFailedKeepPortalLog =
-    "provisioning validation failed; setup portal remains active";
-static constexpr const char *kSetupPortalStartFailedLog =
-    "queued setup portal start failed; retrying";
-static constexpr const char *kSetupPortalStartedLog =
-    "queued setup portal start completed";
-#define PROVISIONING_FEEDBACK_WAIT_DONE_FORMAT \
-    "provisioning result feedback wait complete: seen=%d elapsed_ms=%u"
 #define PROVISIONING_BACKGROUND_REFRESH_FORMAT \
     "provisioning background refresh scheduled: ntp=1 weather=%d saying=%d"
 
@@ -119,12 +97,6 @@ struct NetworkSyncRuntimeState {
     bool daily_ntp_pending = false;
     bool boot_weather_due = false;
     bool boot_saying_due = false;
-};
-
-enum class SetupPortalStartResult {
-    kNoRequest,
-    kStarted,
-    kRetryPending,
 };
 
 static NetworkRuntimeAvailabilitySnapshot capture_network_runtime_availability()
@@ -147,44 +119,6 @@ static bool enabled_weather_data_page_exists()
 static bool enabled_daily_saying_page_exists()
 {
     return is_work_page_enabled(kWorkPageGallery);
-}
-
-static void wait_for_network_sync_event(uint32_t timeout_ms)
-{
-    app_event_group_wait_bits(kNetworkSyncWakeBits,
-                              pdFALSE,
-                              pdFALSE,
-                              pdMS_TO_TICKS(timeout_ms));
-}
-
-static void wait_for_setup_portal_retry()
-{
-    // kSetupPortalStartBit remains set until the AP starts successfully. Do
-    // not wait on that same level-triggered bit or the task will wake itself
-    // immediately and spin through Wi-Fi start attempts without backoff.
-    app_event_group_wait_bits(kSetupPortalRetryWakeBits,
-                              pdFALSE,
-                              pdFALSE,
-                              pdMS_TO_TICKS(kNetworkShortRetryWaitMs));
-}
-
-static void wait_for_network_runtime_request()
-{
-    app_event_group_wait_bits(kNetworkSyncWakeBits,
-                              pdFALSE,
-                              pdFALSE,
-                              portMAX_DELAY);
-}
-
-static void wait_for_ota_network_block_change()
-{
-    // Pending level-triggered sync bits remain queued while OTA owns HTTPS and
-    // Wi-Fi. Wait only for the edge-like runtime-state bit so those requests do
-    // not turn the protection branch into a busy loop.
-    app_event_group_wait_bits(kNetworkStateChangedBit,
-                              pdTRUE,
-                              pdFALSE,
-                              portMAX_DELAY);
 }
 
 static void schedule_ntp_retry(time_t *next_ntp_retry_at)
@@ -254,48 +188,6 @@ static void finish_network_radio_session(NetworkAwakeLockGuard &awake_lock,
     service_wifi_radio_stop_when_idle();
 }
 
-static SetupPortalStartResult service_setup_portal_start_request()
-{
-    if (!setup_portal_start_requested()) {
-        return SetupPortalStartResult::kNoRequest;
-    }
-    if (!start_wifi_radio(true)) {
-        ESP_LOGW(TAG, "%s", kSetupPortalStartFailedLog);
-        return SetupPortalStartResult::kRetryPending;
-    }
-    app_event_group_clear_bits(kSetupPortalStartBit);
-    settings_page_clear();
-    network_diag_page_clear();
-    info_page_clear();
-    notify_ui_task();
-    ESP_LOGI(TAG, "%s", kSetupPortalStartedLog);
-    return SetupPortalStartResult::kStarted;
-}
-
-static void wait_for_provisioning_result_feedback()
-{
-    const TickType_t started_at = xTaskGetTickCount();
-    const TickType_t timeout_ticks = pdMS_TO_TICKS(kProvisioningFeedbackWaitMs);
-    bool seen = false;
-    while (setup_portal_active_load() &&
-           xTaskGetTickCount() - started_at < timeout_ticks) {
-        if (wifi_portal_save_feedback_seen_load()) {
-            seen = true;
-            break;
-        }
-        vTaskDelay(pdMS_TO_TICKS(kProvisioningFeedbackPollMs));
-    }
-    if (seen) {
-        vTaskDelay(pdMS_TO_TICKS(kProvisioningFeedbackDisplayGraceMs));
-    }
-    const uint32_t elapsed_ms = static_cast<uint32_t>(
-        (xTaskGetTickCount() - started_at) * portTICK_PERIOD_MS);
-    ESP_LOGI(TAG,
-             PROVISIONING_FEEDBACK_WAIT_DONE_FORMAT,
-             seen,
-             static_cast<unsigned>(elapsed_ms));
-}
-
 static void schedule_background_refresh_after_provisioning(
     bool have_weather_key,
     NetworkSyncRuntimeState &runtime)
@@ -314,19 +206,6 @@ static void schedule_background_refresh_after_provisioning(
              PROVISIONING_BACKGROUND_REFRESH_FORMAT,
              runtime.boot_weather_due,
              runtime.boot_saying_due);
-}
-
-static void keep_setup_portal_after_provisioning_failure(
-    NetworkAwakeLockGuard &awake_lock,
-    WifiPortalSaveResult result)
-{
-    (void)prepare_setup_portal_result_delivery();
-    wifi_portal_save_result_store(result);
-    // The AP and HTTP server must remain available so the phone can display
-    // the stored error and submit corrected credentials. Only release the CPU
-    // awake lock owned by this validation attempt.
-    awake_lock.release();
-    ESP_LOGW(TAG, "%s", kProvisioningValidationFailedKeepPortalLog);
 }
 
 static void settle_between_network_operations(bool more_work_pending)

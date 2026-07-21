@@ -11,6 +11,11 @@ inline constexpr int kBatteryChargingAnimationStopPercent = 96;
 inline constexpr int kBatteryChargingAnimationIdleMs = 10 * 60 * 1000;
 inline constexpr int kBatteryChargingSampleMs = 1000;
 
+constexpr bool battery_charging_requires_fast_sampling(bool charging)
+{
+    return charging;
+}
+
 static_assert(kLowBatteryEnterPercent >= 0,
               "low-battery entry threshold must be non-negative");
 static_assert(kLowBatteryExitPercent > kLowBatteryEnterPercent,

@@ -21,6 +21,7 @@ struct NetworkSyncRequestSnapshot {
 };
 
 NetworkSyncRequestSnapshot snapshot_network_sync_requests();
+void clear_network_request_bits();
 void finish_settings_sync_and_clear_bit(SettingsSyncOp op,
                                         const char *status,
                                         EventBits_t bit);

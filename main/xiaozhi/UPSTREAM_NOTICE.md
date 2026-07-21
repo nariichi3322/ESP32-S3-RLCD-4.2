@@ -18,9 +18,13 @@ time to 16 kHz mono PCM as `components/port_bsp/pcm/xiaozhi_binding/popup.pcm`.
 
 The Xiaozhi-only codec path also follows the upstream Waveshare
 ESP32-S3-RLCD-4.2 topology: standard TX, four-slot TDM RX with microphone and
-playback-reference selection, device-side AEC, and realtime listening. The
-existing RLCD network, power, audio ownership and non-AI playback services
-remain authoritative.
+playback-reference selection, device-side AEC, and realtime listening. Wake
+listening uses an SR AFE with the model's default WakeNet threshold; after a
+wake event it is released before a separate VC AFE with VOIP AEC is created for
+the realtime conversation. Only one AFE pipeline is alive at a time. The
+existing RLCD network, power, audio-hardware ownership and non-AI playback
+services remain authoritative, but the two ESP-SR algorithm pipelines are not
+merged merely to reuse code.
 
 The firmware also implements a small independent MCP JSON-RPC adapter for the
 official WebSocket envelope. Only local sensor/battery status and speaker

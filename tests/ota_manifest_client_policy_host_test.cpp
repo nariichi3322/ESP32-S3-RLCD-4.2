@@ -6,7 +6,7 @@
 
 int main()
 {
-    OtaManifestSource valid = {"R2", "https://ota.example.com/latest.json"};
+    OtaManifestSource valid = {"GitHub", "https://ota.example.com/latest.json"};
     assert(ota_manifest_source_valid(valid));
 
     OtaManifestSource missing_name = {nullptr, valid.url};
@@ -21,6 +21,7 @@ int main()
     assert(!ota_manifest_source_valid(placeholder));
 
     assert(strcmp(ota_manifest_source_name_or_unknown("Custom"), "Custom") == 0);
+    assert(strcmp(ota_manifest_source_name_or_unknown("Gitee"), "Gitee") == 0);
     assert(strcmp(ota_manifest_source_name_or_unknown(nullptr), "unknown") == 0);
     assert(strcmp(ota_manifest_source_name_or_unknown(""), "unknown") == 0);
     assert(kOtaManifestSourceNameLen > strlen("unknown"));

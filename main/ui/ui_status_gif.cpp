@@ -4,10 +4,11 @@
 #include <cstring>
 
 #include "custom_assets.h"
+#include "status_gif_60.h"
 #include "ui_bitmap.h"
+#include "ui_canvas_primitives.h"
 #include "ui_clock_surface_objects.h"
 #include "ui_draw_cache.h"
-#include "ui_views.h"
 
 namespace {
 static_assert(STATUS_GIF_FRAME_COUNT > 0, "status gif must contain at least one frame");

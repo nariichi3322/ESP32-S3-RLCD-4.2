@@ -2,12 +2,14 @@
 #include "ui_history_chart.h"
 
 #include "app_constexpr.h"
-#include "app_state.h"
+#include "app_metadata.h"
 #include "ui_canvas_primitives.h"
 #include "ui_history_format.h"
 #include "ui_history_window.h"
 #include "ui_page_state.h"
 #include "ui_widgets.h"
+
+#include <esp_log.h>
 
 namespace {
 constexpr int kHistoryAxisMaxIndex = 0;

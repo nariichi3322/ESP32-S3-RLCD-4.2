@@ -58,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--version", required=True)
     parser.add_argument("--app", required=True, type=Path)
     parser.add_argument("--merged", required=True, type=Path)
-    parser.add_argument("--public-base", required=True)
+    parser.add_argument("--artifact-base", required=True)
     parser.add_argument("--notes-file", required=True, type=Path)
     parser.add_argument("--latest", required=True, type=Path)
     parser.add_argument("--versions", required=True, type=Path)
@@ -165,7 +165,7 @@ def atomic_write(path: Path, content: bytes) -> None:
 def main() -> int:
     args = parse_args()
     require_version(args.version)
-    public_base = normalize_public_base(args.public_base)
+    artifact_base = normalize_public_base(args.artifact_base)
     notes = load_release_notes(args.notes_file, args.version)
     artifact_paths = {"app": args.app, "merged": args.merged}
     artifact_metadata = {
@@ -178,7 +178,7 @@ def main() -> int:
         **{
             artifact.manifest_key: {
                 FIELD_URL: (
-                    f"{public_base}/firmware/"
+                    f"{artifact_base}/"
                     f"{firmware_artifact_name(args.version, artifact)}"
                 ),
                 FIELD_SHA256: artifact_metadata[artifact.manifest_key][0],

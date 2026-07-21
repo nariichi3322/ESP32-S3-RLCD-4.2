@@ -26,6 +26,7 @@
 #include "power_services.h"
 #include "sensor_services.h"
 #include "startup_state.h"
+#include "ui_boot_screen.h"
 #include "ui_display_flush.h"
 #include "ui_info_page_state.h"
 #include "ui_settings_feedback.h"

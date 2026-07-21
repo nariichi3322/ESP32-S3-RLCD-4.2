@@ -66,7 +66,7 @@ TickType_t next_battery_wake_after_sample(TickType_t sampled_tick)
 {
     BatteryRuntimeSnapshot battery;
     battery_runtime_snapshot_load(&battery);
-    if (battery.charging && !battery.animation_complete) {
+    if (battery_charging_requires_fast_sampling(battery.charging)) {
         return sampled_tick + kBatteryChargingSampleDelay;
     }
     return next_battery_sample_tick(sampled_tick);

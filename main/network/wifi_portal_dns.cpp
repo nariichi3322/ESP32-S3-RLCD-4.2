@@ -1,6 +1,7 @@
 // 实现配网强制门户的 DHCP 选项和 UDP DNS 响应任务。
 #include "wifi_portal_dns.h"
 
+#include "atomic_ownership_gate.h"
 #include "app_constexpr.h"
 #include "app_metadata.h"
 #include "app_network_config.h"
@@ -12,14 +13,12 @@
 #include "lwip/inet.h"
 #include "lwip/sockets.h"
 
-#include <atomic>
 #include <errno.h>
 #include <string.h>
 #include <sys/time.h>
 
 namespace {
-std::atomic<bool> s_captive_dns_task_active{false};
-std::atomic<bool> s_captive_dns_stop{false};
+AtomicTaskLifecycleGate s_captive_dns_task;
 constexpr size_t kCaptivePortalUriSize = 64;
 char s_captive_portal_uri[kCaptivePortalUriSize] = {};
 constexpr uint16_t kCaptiveDnsPort = 53;
@@ -114,7 +113,7 @@ bool run_captive_dns_server()
     }
 
     ESP_LOGI(TAG, CAPTIVE_DNS_STARTED_LOG);
-    while (!s_captive_dns_stop.load(std::memory_order_acquire)) {
+    while (!s_captive_dns_task.stop_requested()) {
         uint8_t query[kCaptiveDnsPacketSize] = {};
         sockaddr_in from = {};
         socklen_t from_len = sizeof(from);
@@ -135,7 +134,7 @@ bool run_captive_dns_server()
 void captive_dns_task(void *)
 {
     bool started = run_captive_dns_server();
-    s_captive_dns_task_active.store(false, std::memory_order_release);
+    s_captive_dns_task.mark_stopped();
     if (started) {
         ESP_LOGI(TAG, CAPTIVE_DNS_STOPPED_LOG);
     }
@@ -212,23 +211,23 @@ bool restart_captive_portal_dhcp(esp_netif_t *ap_netif)
 
 bool start_captive_dns_server()
 {
-    if (s_captive_dns_task_active.load(std::memory_order_acquire)) {
-        if (!s_captive_dns_stop.load(std::memory_order_acquire)) {
-            return true;
-        }
-        for (int i = 0;
-             i < kCaptiveDnsStopWaitAttempts &&
-             s_captive_dns_task_active.load(std::memory_order_acquire);
-             ++i) {
-            vTaskDelay(kCaptiveDnsStopWaitDelay);
-        }
-        if (s_captive_dns_task_active.load(std::memory_order_acquire)) {
-            ESP_LOGW(TAG, CAPTIVE_DNS_TASK_STILL_STOPPING_LOG);
-            return false;
-        }
+    AtomicTaskStartClaim claim = s_captive_dns_task.try_begin_start();
+    for (int attempt = 0;
+         claim == AtomicTaskStartClaim::Stopping &&
+         attempt < kCaptiveDnsStopWaitAttempts;
+         ++attempt) {
+        vTaskDelay(kCaptiveDnsStopWaitDelay);
+        claim = s_captive_dns_task.try_begin_start();
     }
-    s_captive_dns_stop.store(false, std::memory_order_release);
-    s_captive_dns_task_active.store(true, std::memory_order_release);
+    if (claim == AtomicTaskStartClaim::AlreadyActive) {
+        return true;
+    }
+    if (claim == AtomicTaskStartClaim::Stopping) {
+        ESP_LOGW(TAG, CAPTIVE_DNS_TASK_STILL_STOPPING_LOG);
+        return false;
+    }
+    // Publish the committed start before the new task can run and report Stopped.
+    s_captive_dns_task.mark_running();
     BaseType_t ok = xTaskCreatePinnedToCore(captive_dns_task,
                                             kCaptiveDnsTaskName,
                                             kCaptiveDnsTaskStack,
@@ -237,7 +236,7 @@ bool start_captive_dns_server()
                                             nullptr,
                                             kCaptiveDnsTaskCore);
     if (ok != pdPASS) {
-        s_captive_dns_task_active.store(false, std::memory_order_release);
+        s_captive_dns_task.mark_stopped();
         ESP_LOGW(TAG, CAPTIVE_DNS_TASK_START_FAILED_LOG);
         return false;
     }
@@ -246,9 +245,7 @@ bool start_captive_dns_server()
 
 void stop_captive_dns_server()
 {
-    if (!s_captive_dns_task_active.load(std::memory_order_acquire)) {
-        s_captive_dns_stop.store(false, std::memory_order_release);
+    if (!s_captive_dns_task.request_stop()) {
         return;
     }
-    s_captive_dns_stop.store(true, std::memory_order_release);
 }

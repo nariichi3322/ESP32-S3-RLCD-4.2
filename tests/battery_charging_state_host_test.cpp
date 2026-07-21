@@ -15,6 +15,8 @@ static_assert(kBatteryChargingStopSamples == 5);
 static_assert(kBatteryChargingAnimationStopPercent == 96);
 static_assert(kBatteryChargingAnimationIdleMs == 10 * 60 * 1000);
 static_assert(kBatteryChargingSampleMs == 1000);
+static_assert(!battery_charging_requires_fast_sampling(false));
+static_assert(battery_charging_requires_fast_sampling(true));
 
 constexpr BatteryChargingPolicy kPolicy = {
     3.0f,

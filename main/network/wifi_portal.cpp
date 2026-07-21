@@ -1,5 +1,6 @@
 // 实现设备配网 AP、STA 连接、Wi-Fi 事件和射频启停生命周期。
 #include "app_event_group.h"
+#include "app_metadata.h"
 #include "app_network_config.h"
 #include "ota_runtime_state.h"
 
@@ -17,10 +18,17 @@
 #include "wifi_radio_state.h"
 
 #include "audio_services.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
 #include "xiaozhi_ai.h"
 
 #include <atomic>
+
+#include <esp_event.h>
+#include <esp_log.h>
+#include <esp_mac.h>
+#include <esp_netif.h>
+#include <esp_wifi.h>
+#include <esp_wifi_default.h>
 
 namespace {
 esp_netif_t *s_sta_netif = nullptr;
@@ -30,8 +38,6 @@ esp_event_handler_instance_t s_ip_event_handler_instance = nullptr;
 // 射频控制任务与 Wi-Fi 事件回调并发访问，用于抑制主动断开后的自动重连。
 std::atomic<bool> s_wifi_stop_requested{false};
 std::atomic<bool> s_wifi_stop_when_idle_requested{false};
-std::atomic<uint8_t> s_setup_ap_client_count{0};
-std::atomic<bool> s_setup_ap_channel_transition_active{false};
 constexpr uint8_t kSetupApChannel = 1;
 constexpr uint8_t kSetupApMaxConnections = 4;
 constexpr const char *kSetupApSsidFormat = "WeatherClock-%02X%02X";
@@ -459,11 +465,7 @@ bool start_wifi_radio(bool enable_setup_portal)
     }
     bool entering_setup_portal = enable_setup_portal && !setup_portal_active_load();
     if (entering_setup_portal) {
-        s_setup_ap_client_count.store(0, std::memory_order_release);
-        s_setup_ap_channel_transition_active.store(false,
-                                                   std::memory_order_release);
-        wifi_portal_save_result_store(WifiPortalSaveResult::kNone);
-        wifi_portal_save_feedback_seen_store(false);
+        wifi_portal_session_reset();
     }
     if (wifi_radio_on_load()) {
         return configure_running_wifi_radio(enable_setup_portal,
@@ -495,8 +497,7 @@ bool prepare_setup_portal_result_delivery()
     // APSTA must follow the router channel while credentials are validated.
     // Return to AP-only before publishing the result so the phone can rejoin
     // the original setup channel with its existing DHCP lease.
-    s_setup_ap_channel_transition_active.store(true,
-                                               std::memory_order_release);
+    wifi_portal_ap_channel_transition_begin();
     s_wifi_stop_requested.store(true, std::memory_order_release);
     esp_err_t disconnect_err = esp_wifi_disconnect();
     if (disconnect_err != ESP_OK &&
@@ -509,8 +510,7 @@ bool prepare_setup_portal_result_delivery()
     esp_err_t mode_err = esp_wifi_set_mode(WIFI_MODE_AP);
     s_wifi_stop_requested.store(false, std::memory_order_release);
     if (mode_err != ESP_OK) {
-        s_setup_ap_channel_transition_active.store(false,
-                                                   std::memory_order_release);
+        wifi_portal_ap_channel_transition_end();
         ESP_LOGW(TAG,
                  WIFI_SETUP_RESULT_AP_ONLY_FAILED_FORMAT,
                  esp_err_to_name(mode_err));
@@ -635,37 +635,18 @@ void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, v
         set_wifi_connected_event(true);
         notify_ui_task();
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STACONNECTED) {
-        s_setup_ap_channel_transition_active.store(false,
-                                                   std::memory_order_release);
-        uint8_t client_count = s_setup_ap_client_count.load(std::memory_order_acquire);
-        while (client_count < kSetupApMaxConnections &&
-               !s_setup_ap_client_count.compare_exchange_weak(
-                   client_count,
-                   static_cast<uint8_t>(client_count + 1),
-                   std::memory_order_acq_rel,
-                   std::memory_order_acquire)) {
-        }
-        client_count = s_setup_ap_client_count.load(std::memory_order_acquire);
+        wifi_portal_ap_channel_transition_end();
+        const uint8_t client_count =
+            wifi_portal_ap_client_connected(kSetupApMaxConnections);
         ESP_LOGI(TAG,
                  WIFI_SETUP_AP_CLIENT_COUNT_FORMAT,
                  (unsigned)client_count);
     } else if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_AP_STADISCONNECTED) {
-        uint8_t client_count = s_setup_ap_client_count.load(std::memory_order_acquire);
-        while (client_count > 0 &&
-               !s_setup_ap_client_count.compare_exchange_weak(
-                   client_count,
-                   static_cast<uint8_t>(client_count - 1),
-                   std::memory_order_acq_rel,
-                   std::memory_order_acquire)) {
-        }
-        client_count = s_setup_ap_client_count.load(std::memory_order_acquire);
+        const uint8_t client_count = wifi_portal_ap_client_disconnected();
         ESP_LOGI(TAG,
                  WIFI_SETUP_AP_CLIENT_COUNT_FORMAT,
                  (unsigned)client_count);
-        const WifiPortalSaveResult save_result = wifi_portal_save_result_load();
-        if (client_count == 0 && setup_portal_active_load() &&
-            !s_setup_ap_channel_transition_active.load(std::memory_order_acquire) &&
-            !wifi_portal_result_preserves_client_lease(save_result)) {
+        if (wifi_portal_should_restart_dhcp()) {
             (void)restart_captive_portal_dhcp(s_ap_netif);
         }
     }

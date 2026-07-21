@@ -1,5 +1,6 @@
 // 验证工作页名称、启用掩码、离线筛选和自定义顺序规则。
 #include "ui_work_page_catalog.h"
+#include "ui_work_page_order_policy.h"
 
 #include "active_work_page_state.h"
 
@@ -31,10 +32,85 @@ void expect_default_order()
     assert(memcmp(actual, expected, sizeof(expected)) == 0);
 }
 
+void expect_order_policy_boundaries()
+{
+    const uint8_t default_order[kWorkPageCount] = {
+        kWorkPageWeatherClock,
+        kWorkPageGallery,
+        kWorkPageWeatherBoard,
+        kWorkPageFlipClock,
+        kWorkPageCalendar,
+        kWorkPageHistory,
+        kWorkPageXiaozhiAI,
+    };
+    assert(!work_page_order_policy::order_is_valid(nullptr, kWorkPageCount));
+    assert(!work_page_order_policy::order_is_valid(default_order,
+                                                    kWorkPageCount - 1));
+    assert(work_page_order_policy::order_is_valid(default_order,
+                                                   sizeof(default_order)));
+    assert(work_page_order_policy::index_of(default_order,
+                                             sizeof(default_order),
+                                             kWorkPageCalendar) == 4);
+    assert(work_page_order_policy::index_of(nullptr,
+                                             kWorkPageCount,
+                                             kWorkPageCalendar) ==
+           work_page_order_policy::kInvalidIndex);
+
+    uint8_t invalid_order[kWorkPageCount] = {};
+    assert(!work_page_order_policy::order_is_valid(invalid_order,
+                                                    sizeof(invalid_order)));
+    assert(work_page_order_policy::normalize(invalid_order,
+                                              sizeof(invalid_order),
+                                              page_bit(kWorkPageCalendar),
+                                              default_order,
+                                              sizeof(default_order)));
+    assert(memcmp(invalid_order, default_order, sizeof(default_order)) == 0);
+
+    uint8_t xiaozhi_first[kWorkPageCount] = {
+        kWorkPageXiaozhiAI,
+        kWorkPageHistory,
+        kWorkPageCalendar,
+        kWorkPageFlipClock,
+        kWorkPageWeatherBoard,
+        kWorkPageGallery,
+        kWorkPageWeatherClock,
+    };
+    const uint8_t enabled = page_bit(kWorkPageXiaozhiAI) |
+                            page_bit(kWorkPageHistory) |
+                            page_bit(kWorkPageCalendar);
+    assert(work_page_order_policy::normalize(xiaozhi_first,
+                                              sizeof(xiaozhi_first),
+                                              enabled,
+                                              default_order,
+                                              sizeof(default_order)));
+    assert(xiaozhi_first[0] == kWorkPageHistory);
+    assert(xiaozhi_first[1] == kWorkPageXiaozhiAI);
+    assert(work_page_order_policy::first_enabled_index(xiaozhi_first,
+                                                        sizeof(xiaozhi_first),
+                                                        enabled) == 0);
+    assert(work_page_order_policy::next_enabled_index(xiaozhi_first,
+                                                       sizeof(xiaozhi_first),
+                                                       enabled,
+                                                       0) == 1);
+    assert(work_page_order_policy::valid_enabled_index(xiaozhi_first,
+                                                        sizeof(xiaozhi_first),
+                                                        enabled,
+                                                        3) == 0);
+    assert(work_page_order_policy::mask_has_valid_home(enabled));
+    assert(!work_page_order_policy::mask_has_valid_home(
+        page_bit(kWorkPageXiaozhiAI)));
+    assert(!work_page_order_policy::normalize(invalid_order,
+                                               sizeof(invalid_order),
+                                               enabled,
+                                               nullptr,
+                                               kWorkPageCount));
+}
+
 } // namespace
 
 int main()
 {
+    expect_order_policy_boundaries();
     uint8_t unavailable[kWorkPageCount] = {};
     assert(!work_page_order_copy(unavailable, sizeof(unavailable)));
     assert(!swap_work_page_order_entries_preserving_home(0, 1));

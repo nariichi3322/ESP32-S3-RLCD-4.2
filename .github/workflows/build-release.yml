@@ -117,27 +117,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          OTA_PUBLIC_BASE="$(python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          data = json.loads(Path("firmware/latest.json").read_text(encoding="utf-8"))
-          url = str(data.get("url", ""))
-          marker = "/firmware/"
-          if not url.startswith("https://") or marker not in url:
-              raise SystemExit("existing latest.json does not contain a usable HTTPS OTA URL")
-          print(url.split(marker, 1)[0])
-          PY
-          )"
-          if [[ -z "$OTA_PUBLIC_BASE" ]]; then
-            echo "无法从现有 latest.json 推导 OTA 公网基址" >&2
-            exit 1
-          fi
+          artifact_base="https://github.com/$GITHUB_REPOSITORY/releases/download/$VERSION"
           python3 .github/scripts/update_manifests.py \
             --version "$VERSION" \
             --app "weather_clock_${VERSION}.bin" \
             --merged "weather_clock_${VERSION}_merged.bin" \
-            --public-base "$OTA_PUBLIC_BASE" \
+            --artifact-base "$artifact_base" \
             --notes-file firmware/OTA_RELEASE_NOTES.md \
             --latest firmware/latest.json \
             --versions firmware/versions.json
@@ -195,7 +180,7 @@ jobs:
             git push origin HEAD:main
           fi
 
-      - name: 通知 OTA 备用仓库同步
+      - name: 通知 GitHub OTA 主仓库同步
         env:
           OTA_MIRROR_DISPATCH_TOKEN: ${{ secrets.OTA_MIRROR_DISPATCH_TOKEN }}
           OTA_MIRROR_REPOSITORY: ${{ vars.OTA_MIRROR_REPOSITORY }}
@@ -235,11 +220,34 @@ jobs:
             --data-binary "@$payload" \
             "https://api.github.com/repos/$mirror_repo/dispatches")"
           if [[ "$status" != "204" ]]; then
-            echo "通知 OTA 备用仓库失败：HTTP $status" >&2
+            echo "通知 GitHub OTA 主仓库失败：HTTP $status" >&2
             cat "$response" >&2
             exit 1
           fi
-          echo "OTA mirror dispatch accepted for $VERSION"
+          echo "GitHub OTA mirror dispatch accepted for $VERSION"
+
+      - name: 通知 Gitee OTA 备用仓库同步
+        env:
+          GITEE_OTA_TOKEN: ${{ secrets.GITEE_OTA_TOKEN }}
+          GITEE_OTA_REPOSITORY: ${{ vars.GITEE_OTA_REPOSITORY }}
+          VERSION: ${{ steps.version.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "$GITEE_OTA_TOKEN" ]]; then
+            echo "GITEE_OTA_TOKEN 未配置" >&2
+            exit 1
+          fi
+          target_repo="${GITEE_OTA_REPOSITORY:-liu-zhonghao/esp32-s3-rlcd-4.2_-up}"
+          python3 .github/scripts/gitee_ota_notify.py \
+            --target-repository "$target_repo" \
+            --version "$VERSION" \
+            --source-repository "$GITHUB_REPOSITORY" \
+            --source-sha "$GITHUB_SHA" \
+            --source-run-id "$GITHUB_RUN_ID" \
+            --latest firmware/latest.json \
+            --versions firmware/versions.json
+          echo "Gitee OTA mirror request accepted for $VERSION"
 
   notify-feishu:
     name: 飞书构建结果通知

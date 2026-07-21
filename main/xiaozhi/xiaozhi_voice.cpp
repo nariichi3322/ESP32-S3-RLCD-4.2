@@ -4,6 +4,7 @@
 #include "app_tick_time.h"
 #include "audio_services.h"
 #include "checked_size.h"
+#include "xiaozhi_voice_pipeline_policy.h"
 #include "xiaozhi_voice_read_health.h"
 
 #include <esp_codec_dev_types.h>
@@ -22,14 +23,12 @@
 namespace {
 constexpr const char *kTag = "XiaozhiVoice";
 constexpr int kMicChannels = 2;
-constexpr uint32_t kFeedTaskStackBytes = 6144;
 constexpr uint32_t kDetectTaskStackBytes = 4096;
 constexpr UBaseType_t kTaskPriority = 5;
 constexpr TickType_t kFetchWaitTicks = pdMS_TO_TICKS(100);
 constexpr int kTaskStopRetries = 100;
 constexpr uint32_t kTaskStopWaitMs = 20;
 constexpr TickType_t kTaskStopWaitTicks = pdMS_TO_TICKS(kTaskStopWaitMs);
-constexpr float kWakeNetThreshold = 0.60f;
 constexpr TickType_t kLevelLogIntervalTicks = pdMS_TO_TICKS(3000);
 constexpr TickType_t kFetchWarningIntervalTicks = pdMS_TO_TICKS(3000);
 constexpr uint32_t kStreamFullWarningIntervalMs = 1000;
@@ -49,11 +48,14 @@ std::atomic<bool> s_detected{false};
 std::atomic<bool> s_streaming{false};
 std::atomic<bool> s_feed_exited{true};
 std::atomic<bool> s_detect_exited{true};
+std::atomic<XiaozhiVoicePipelineMode> s_pipeline_mode{
+    XiaozhiVoicePipelineMode::kNone};
 std::atomic<XiaozhiVoiceEventCallback> s_event_callback{nullptr};
 TaskHandle_t s_feed_task = nullptr;
 TaskHandle_t s_detect_task = nullptr;
 StackType_t *s_feed_task_stack = nullptr;
 StackType_t *s_detect_task_stack = nullptr;
+uint32_t s_feed_task_stack_bytes = 0;
 StaticTask_t s_feed_task_buffer = {};
 StaticTask_t s_detect_task_buffer = {};
 std::atomic<int16_t *> s_capture_buffer{nullptr};
@@ -135,17 +137,19 @@ void release_task_storage()
     free(s_detect_task_stack);
     s_feed_task_stack = nullptr;
     s_detect_task_stack = nullptr;
+    s_feed_task_stack_bytes = 0;
 }
 
-bool allocate_task_storage()
+bool allocate_task_storage(XiaozhiVoicePipelineMode mode)
 {
     release_task_storage();
+    s_feed_task_stack_bytes = xiaozhi_voice_feed_task_stack_bytes(mode);
     // ESP-IDF accepts the static stack depth in bytes.  Keeping the large stacks
     // in PSRAM avoids depending on a pair of contiguous internal-RAM blocks after
     // ESP-SR has created its AFE/AEC pipeline. The small TCBs use fixed internal
     // storage and are reused only after delete_voice_tasks() completes.
     s_feed_task_stack = static_cast<StackType_t *>(heap_caps_calloc(
-        1, kFeedTaskStackBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+        1, s_feed_task_stack_bytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     s_detect_task_stack = static_cast<StackType_t *>(heap_caps_calloc(
         1, kDetectTaskStackBytes, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (!s_feed_task_stack || !s_detect_task_stack) {
@@ -161,13 +165,26 @@ bool allocate_task_storage()
     }
     ESP_LOGI(kTag,
              "MR AEC task storage: feed_psram=%u detect_psram=%u tcb_static=%u",
-             static_cast<unsigned>(kFeedTaskStackBytes),
+             static_cast<unsigned>(s_feed_task_stack_bytes),
              static_cast<unsigned>(kDetectTaskStackBytes),
              static_cast<unsigned>(sizeof(StaticTask_t) * 2));
     return true;
 }
 
-void release_model()
+const char *pipeline_name(XiaozhiVoicePipelineMode mode)
+{
+    switch (mode) {
+        case XiaozhiVoicePipelineMode::kWakeWord:
+            return "wake-word";
+        case XiaozhiVoicePipelineMode::kConversation:
+            return "conversation";
+        case XiaozhiVoicePipelineMode::kNone:
+            return "none";
+    }
+    return "unknown";
+}
+
+void release_pipeline()
 {
     if (s_afe_data && s_afe_iface) {
         s_afe_iface->destroy(s_afe_data);
@@ -178,22 +195,24 @@ void release_model()
         esp_srmodel_deinit(s_models);
     }
     s_models = nullptr;
+    s_pipeline_mode.store(XiaozhiVoicePipelineMode::kNone,
+                          std::memory_order_release);
 }
 
-bool create_model()
+bool create_wake_word_pipeline()
 {
     s_models = esp_srmodel_init("model");
     if (!s_models || s_models->num <= 0) {
         ESP_LOGW(kTag, "WakeNet model partition is unavailable");
-        release_model();
+        release_pipeline();
         return false;
     }
-    // 官方同板卡使用一路麦克风与一路播放参考（MR），设备端 AEC 后的
-    // 单声道结果同时供 WakeNet 和 realtime Opus 上行使用。
+    // WakeNet retains the upstream SR AFE topology. Realtime conversation uses
+    // a separate VC/VOIP pipeline created only after this pipeline is released.
     afe_config_t *config = afe_config_init("MR", s_models, AFE_TYPE_SR, AFE_MODE_HIGH_PERF);
     if (!config) {
         ESP_LOGW(kTag, "MR AEC configuration failed");
-        release_model();
+        release_pipeline();
         return false;
     }
     config->aec_init = true;
@@ -211,14 +230,54 @@ bool create_model()
     afe_config_free(config);
     if (!s_afe_iface || !s_afe_data) {
         ESP_LOGW(kTag, "MR AEC WakeNet initialization failed");
-        release_model();
+        release_pipeline();
         return false;
     }
-    (void)s_afe_iface->set_wakenet_threshold(s_afe_data, 1, kWakeNetThreshold);
+    s_pipeline_mode.store(XiaozhiVoicePipelineMode::kWakeWord,
+                          std::memory_order_release);
     s_afe_iface->print_pipeline(s_afe_data);
     ESP_LOGI(kTag,
-             "MR AEC WakeNet ready: %s (%d Hz, feed=%d, fetch=%d, channels=%d)",
+             "MR AEC WakeNet ready: %s model-default-threshold "
+             "(%d Hz, feed=%d, fetch=%d, channels=%d)",
              model_name[0] ? model_name : "unknown",
+             s_afe_iface->get_samp_rate(s_afe_data),
+             s_afe_iface->get_feed_chunksize(s_afe_data),
+             s_afe_iface->get_fetch_chunksize(s_afe_data),
+             s_afe_iface->get_feed_channel_num(s_afe_data));
+    return true;
+}
+
+bool create_conversation_pipeline()
+{
+    afe_config_t *config = afe_config_init(
+        "MR", nullptr, AFE_TYPE_VC, AFE_MODE_HIGH_PERF);
+    if (!config) {
+        ESP_LOGW(kTag, "MR conversation AEC configuration failed");
+        release_pipeline();
+        return false;
+    }
+    config->aec_init = true;
+    config->aec_mode = AEC_MODE_VOIP_HIGH_PERF;
+    config->wakenet_init = false;
+    config->vad_init = false;
+    config->agc_init = false;
+    config->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;
+    config->afe_perferred_core = 1;
+    config->afe_perferred_priority = kTaskPriority;
+    config = afe_config_check(config);
+    s_afe_iface = config ? esp_afe_handle_from_config(config) : nullptr;
+    s_afe_data = s_afe_iface ? s_afe_iface->create_from_config(config) : nullptr;
+    afe_config_free(config);
+    if (!s_afe_iface || !s_afe_data) {
+        ESP_LOGW(kTag, "MR conversation VOIP AEC initialization failed");
+        release_pipeline();
+        return false;
+    }
+    s_pipeline_mode.store(XiaozhiVoicePipelineMode::kConversation,
+                          std::memory_order_release);
+    s_afe_iface->print_pipeline(s_afe_data);
+    ESP_LOGI(kTag,
+             "MR conversation VOIP AEC ready: %d Hz feed=%d fetch=%d channels=%d",
              s_afe_iface->get_samp_rate(s_afe_data),
              s_afe_iface->get_feed_chunksize(s_afe_data),
              s_afe_iface->get_fetch_chunksize(s_afe_data),
@@ -389,12 +448,18 @@ void detect_task(void *)
                 }
             }
         }
-        if (result->wakeup_state == WAKENET_DETECTED) {
+        if (xiaozhi_voice_pipeline_uses_wakenet(
+                s_pipeline_mode.load(std::memory_order_acquire)) &&
+            result->wakeup_state == WAKENET_DETECTED &&
+            !s_detected.exchange(true, std::memory_order_acq_rel)) {
+            // Match upstream behavior: a successful wake detection disarms
+            // WakeNet immediately. The coordinator explicitly rebuilds the
+            // wake pipeline after the conversation has ended.
+            s_afe_iface->disable_wakenet(s_afe_data);
             ESP_LOGI(kTag,
                      "Wake word detected: channel=%d volume=%.1f dB",
                      result->trigger_channel_id,
                      static_cast<double>(result->data_volume));
-            s_detected.store(true);
             notify_voice_event();
         }
     }
@@ -434,6 +499,80 @@ void delete_voice_tasks()
     s_feed_exited.store(true);
     s_detect_exited.store(true);
 }
+
+void stop_pipeline(bool close_audio_session)
+{
+    s_running.store(false);
+    s_streaming.store(false);
+    wait_for_tasks_to_stop();
+    delete_voice_tasks();
+    release_capture_storage();
+    release_task_storage();
+    release_pipeline();
+    if (s_processed_stream) {
+        xStreamBufferReset(s_processed_stream);
+    }
+    if (close_audio_session) {
+        stop_xiaozhi_audio_session();
+    }
+}
+
+bool start_pipeline(XiaozhiVoicePipelineMode mode)
+{
+    if (mode == XiaozhiVoicePipelineMode::kNone) {
+        return false;
+    }
+    bool pipeline_ready = mode == XiaozhiVoicePipelineMode::kWakeWord
+                              ? create_wake_word_pipeline()
+                              : create_conversation_pipeline();
+    if (!pipeline_ready) {
+        return false;
+    }
+    if (!allocate_capture_storage()) {
+        release_pipeline();
+        return false;
+    }
+    if (!allocate_task_storage(mode)) {
+        release_capture_storage();
+        release_pipeline();
+        return false;
+    }
+    s_detected.store(false);
+    s_streaming.store(
+        xiaozhi_voice_pipeline_streams_uplink(mode),
+        std::memory_order_release);
+    s_running.store(true);
+    ESP_LOGI(kTag,
+             "%s task heap: internal_free=%u internal_largest=%u dma_free=%u dma_largest=%u",
+             pipeline_name(mode),
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_DMA)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_DMA)));
+    s_feed_exited.store(false);
+    s_detect_exited.store(false);
+    s_feed_task = xTaskCreateStaticPinnedToCore(
+        feed_task, "xiaozhi_feed", s_feed_task_stack_bytes, nullptr,
+        kTaskPriority, s_feed_task_stack, &s_feed_task_buffer, 0);
+    if (s_feed_task) {
+        s_detect_task = xTaskCreateStaticPinnedToCore(
+            detect_task, "xiaozhi_detect", kDetectTaskStackBytes, nullptr,
+            kTaskPriority, s_detect_task_stack, &s_detect_task_buffer, 1);
+    }
+    if (s_feed_task && s_detect_task) {
+        return true;
+    }
+    ESP_LOGW(kTag,
+             "%s task creation failed: feed=%d detect=%d "
+             "internal_free=%u internal_largest=%u",
+             pipeline_name(mode),
+             s_feed_task ? 1 : 0,
+             s_detect_task ? 1 : 0,
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
+    stop_pipeline(false);
+    return false;
+}
 } // namespace
 
 void xiaozhi_voice_set_event_callback(XiaozhiVoiceEventCallback callback)
@@ -443,7 +582,9 @@ void xiaozhi_voice_set_event_callback(XiaozhiVoiceEventCallback callback)
 
 bool xiaozhi_voice_start()
 {
-    if (s_running.load()) {
+    if (s_running.load() &&
+        s_pipeline_mode.load(std::memory_order_acquire) ==
+            XiaozhiVoicePipelineMode::kWakeWord) {
         return true;
     }
     // A previous capture error can stop the workers before the page lifecycle
@@ -451,12 +592,7 @@ bool xiaozhi_voice_start()
     // allocating a fresh pair of PSRAM stacks.
     if (s_feed_task || s_detect_task ||
         s_capture_buffer.load(std::memory_order_acquire)) {
-        wait_for_tasks_to_stop();
-        delete_voice_tasks();
-        release_capture_storage();
-        release_task_storage();
-        release_model();
-        stop_xiaozhi_audio_session();
+        stop_pipeline(true);
     }
     s_detected.store(false);
     s_streaming.store(false);
@@ -470,64 +606,7 @@ bool xiaozhi_voice_start()
         xStreamBufferReset(s_processed_stream);
         return false;
     }
-    // A completed detection leaves the model allocated until the AI task has
-    // consumed the event.  Re-arm cleanly before creating the next listener.
-    release_model();
-    if (!create_model()) {
-        stop_xiaozhi_audio_session();
-        xStreamBufferReset(s_processed_stream);
-        return false;
-    }
-    if (!allocate_capture_storage()) {
-        release_model();
-        stop_xiaozhi_audio_session();
-        xStreamBufferReset(s_processed_stream);
-        return false;
-    }
-    if (!allocate_task_storage()) {
-        release_capture_storage();
-        release_model();
-        stop_xiaozhi_audio_session();
-        xStreamBufferReset(s_processed_stream);
-        return false;
-    }
-    s_running.store(true);
-    ESP_LOGI(kTag,
-             "WakeNet task heap: internal_free=%u internal_largest=%u dma_free=%u dma_largest=%u",
-             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
-             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
-             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_DMA)),
-             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_DMA)));
-    s_feed_exited.store(false);
-    s_detect_exited.store(false);
-    s_feed_task = xTaskCreateStaticPinnedToCore(
-        feed_task, "xiaozhi_feed", kFeedTaskStackBytes, nullptr,
-        kTaskPriority, s_feed_task_stack, &s_feed_task_buffer, 0);
-    if (s_feed_task) {
-        s_detect_task = xTaskCreateStaticPinnedToCore(
-            detect_task, "xiaozhi_detect", kDetectTaskStackBytes, nullptr,
-            kTaskPriority, s_detect_task_stack, &s_detect_task_buffer, 1);
-    }
-    if (!s_feed_task || !s_detect_task) {
-        ESP_LOGW(kTag,
-                 "MR AEC WakeNet task creation failed: feed=%d detect=%d "
-                 "internal_free=%u internal_largest=%u",
-                 s_feed_task ? 1 : 0,
-                 s_detect_task ? 1 : 0,
-                 static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
-                 static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)));
-        s_running.store(false);
-        if (!s_feed_task) {
-            s_feed_exited.store(true);
-        }
-        if (!s_detect_task) {
-            s_detect_exited.store(true);
-        }
-        wait_for_tasks_to_stop();
-        delete_voice_tasks();
-        release_capture_storage();
-        release_task_storage();
-        release_model();
+    if (!start_pipeline(XiaozhiVoicePipelineMode::kWakeWord)) {
         stop_xiaozhi_audio_session();
         xStreamBufferReset(s_processed_stream);
         return false;
@@ -535,19 +614,32 @@ bool xiaozhi_voice_start()
     return true;
 }
 
+bool xiaozhi_voice_start_conversation()
+{
+    if (!ensure_processed_stream()) {
+        return false;
+    }
+    if (s_running.load() &&
+        s_pipeline_mode.load(std::memory_order_acquire) ==
+            XiaozhiVoicePipelineMode::kConversation) {
+        xiaozhi_voice_set_streaming(true);
+        return true;
+    }
+    // The codec/I2S session remains owned while ESP-SR changes mode. Keeping
+    // only one AFE instance alive prevents the wake and conversation pipelines
+    // from competing for the same microphone and internal RAM.
+    stop_pipeline(false);
+    if (!start_pipeline(XiaozhiVoicePipelineMode::kConversation)) {
+        stop_xiaozhi_audio_session();
+        return false;
+    }
+    ESP_LOGI(kTag, "Xiaozhi voice pipeline switched: wake-word -> conversation");
+    return true;
+}
+
 void xiaozhi_voice_stop()
 {
-    s_running.store(false);
-    s_streaming.store(false);
-    wait_for_tasks_to_stop();
-    delete_voice_tasks();
-    release_capture_storage();
-    release_task_storage();
-    release_model();
-    if (s_processed_stream) {
-        xStreamBufferReset(s_processed_stream);
-    }
-    stop_xiaozhi_audio_session();
+    stop_pipeline(true);
 }
 
 bool xiaozhi_voice_take_wake_word()
@@ -581,13 +673,22 @@ void xiaozhi_voice_set_streaming(bool enabled)
     if (!s_running.load() || !s_afe_iface || !s_afe_data || !s_processed_stream) {
         return;
     }
+    XiaozhiVoicePipelineMode mode =
+        s_pipeline_mode.load(std::memory_order_acquire);
+    if (enabled && !xiaozhi_voice_pipeline_streams_uplink(mode)) {
+        ESP_LOGW(kTag,
+                 "Xiaozhi realtime stream rejected for %s pipeline",
+                 pipeline_name(mode));
+        return;
+    }
     s_streaming.store(false);
     xStreamBufferReset(s_processed_stream);
     s_afe_iface->reset_buffer(s_afe_data);
     s_detected.store(false);
-    s_afe_iface->enable_wakenet(s_afe_data);
     if (enabled) {
         s_streaming.store(true);
+    } else if (xiaozhi_voice_pipeline_uses_wakenet(mode)) {
+        s_afe_iface->enable_wakenet(s_afe_data);
     }
     ESP_LOGI(kTag, "Xiaozhi AEC stream %s", enabled ? "realtime" : "wake-word");
 }
@@ -601,7 +702,7 @@ void xiaozhi_voice_pause_streaming()
     xStreamBufferReset(s_processed_stream);
     s_detected.store(false);
     s_afe_iface->disable_wakenet(s_afe_data);
-    ESP_LOGI(kTag, "Xiaozhi AEC stream paused for blocking operation");
+    ESP_LOGI(kTag, "Xiaozhi AEC stream paused");
 }
 
 bool xiaozhi_voice_read_processed(int16_t *mono_samples,

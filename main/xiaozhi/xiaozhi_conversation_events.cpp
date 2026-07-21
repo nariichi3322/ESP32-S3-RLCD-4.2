@@ -6,6 +6,7 @@
 #include "xiaozhi_incoming_event_parser.h"
 #include "xiaozhi_snapshot_state.h"
 #include "xiaozhi_tts_playback.h"
+#include "xiaozhi_voice.h"
 
 #include <esp_log.h>
 #include <freertos/task.h>
@@ -21,6 +22,10 @@ constexpr const char *kSpeakingStatus = "小智正在说话";
 
 void handle_incoming_tts_start(xiaozhi_websocket::WebsocketSession &session)
 {
+    // The device currently does not support reliable playback interruption.
+    // Stop uploading microphone/AEC output while the speaker is active so its
+    // echo cannot be mistaken by the server for a new user turn.
+    xiaozhi_voice_pause_streaming();
     session.server_speaking = true;
     session.exit_reply_started = session.exit_after_reply_requested;
     session.resume_listening_pending = false;
@@ -60,7 +65,19 @@ void handle_incoming_tts_stop(xiaozhi_websocket::WebsocketSession &session)
 void handle_incoming_tts_sentence_start(xiaozhi_websocket::WebsocketSession &session,
                                         const char *text)
 {
+    if (session.resume_listening_pending) {
+        TickType_t now = xTaskGetTickCount();
+        uint32_t continuation_delay_ms = static_cast<uint32_t>(
+            (static_cast<uint64_t>(now - session.tts_stop_received_tick) *
+             1000U) /
+            configTICK_RATE_HZ);
+        ESP_LOGI(kTag,
+                 "Xiaozhi TTS continuation after stop: delay=%u ms",
+                 static_cast<unsigned>(continuation_delay_ms));
+    }
     session.server_speaking = true;
+    session.resume_listening_pending = false;
+    session.tts_stop_received_tick = 0;
     session.turn_assistant_text_received = true;
     session.empty_reply_continuation_pending = false;
     session.exit_reply_started = session.exit_after_reply_requested;

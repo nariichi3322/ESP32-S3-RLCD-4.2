@@ -1,4 +1,6 @@
 // 构建启动屏、播放启动动画并在启动完成后切换到首个已启用工作页。
+#include "ui_boot_screen.h"
+
 #include "ui_views.h"
 
 #include "app_constexpr.h"

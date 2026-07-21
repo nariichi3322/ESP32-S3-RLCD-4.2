@@ -1,4 +1,4 @@
-// 验证配网页活跃状态、Wi-Fi 断线原因、AP 名称和本地 IP 的跨任务快照。
+// 验证配网页会话状态、Wi-Fi 断线原因、AP 名称和本地 IP 的跨任务快照。
 #include "wifi_portal_state.h"
 
 #include <atomic>
@@ -50,6 +50,47 @@ int main()
     assert(wifi_portal_save_feedback_seen_load());
     wifi_portal_save_feedback_seen_store(false);
     assert(!wifi_portal_save_feedback_seen_load());
+
+    wifi_portal_session_reset();
+    setup_portal_active_store(true);
+    assert(wifi_portal_should_restart_dhcp());
+    assert(wifi_portal_ap_client_connected(4) == 1);
+    assert(wifi_portal_ap_client_connected(4) == 2);
+    assert(wifi_portal_ap_client_connected(4) == 3);
+    assert(wifi_portal_ap_client_connected(4) == 4);
+    assert(wifi_portal_ap_client_connected(4) == 4);
+    assert(!wifi_portal_should_restart_dhcp());
+    assert(wifi_portal_ap_client_disconnected() == 3);
+    assert(wifi_portal_ap_client_disconnected() == 2);
+    assert(wifi_portal_ap_client_disconnected() == 1);
+    assert(wifi_portal_ap_client_disconnected() == 0);
+    assert(wifi_portal_ap_client_disconnected() == 0);
+    assert(wifi_portal_should_restart_dhcp());
+
+    wifi_portal_ap_channel_transition_begin();
+    assert(!wifi_portal_should_restart_dhcp());
+    wifi_portal_ap_channel_transition_end();
+    assert(wifi_portal_should_restart_dhcp());
+
+    wifi_portal_save_result_store(WifiPortalSaveResult::kValidating);
+    assert(!wifi_portal_should_restart_dhcp());
+    wifi_portal_save_result_store(WifiPortalSaveResult::kSuccess);
+    assert(!wifi_portal_should_restart_dhcp());
+    wifi_portal_save_result_store(WifiPortalSaveResult::kWifiConnectionFailed);
+    assert(wifi_portal_should_restart_dhcp());
+    setup_portal_active_store(false);
+    assert(!wifi_portal_should_restart_dhcp());
+
+    wifi_portal_ap_client_connected(4);
+    wifi_portal_ap_channel_transition_begin();
+    wifi_portal_save_result_store(WifiPortalSaveResult::kSuccess);
+    wifi_portal_save_feedback_seen_store(true);
+    wifi_portal_session_reset();
+    setup_portal_active_store(true);
+    assert(wifi_portal_should_restart_dhcp());
+    assert(wifi_portal_save_result_load() == WifiPortalSaveResult::kNone);
+    assert(!wifi_portal_save_feedback_seen_load());
+    setup_portal_active_store(false);
 
     char station_ip[kWifiStationIpTextLen] = {};
     char setup_ap_ssid[kWifiSetupApSsidTextLen] = {};

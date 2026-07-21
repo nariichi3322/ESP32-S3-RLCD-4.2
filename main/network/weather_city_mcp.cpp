@@ -7,7 +7,7 @@
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"
 #include "qweather_client.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
 #include "weather_city_pending_state.h"
 #include "xiaozhi_mcp.h"
 

@@ -6,6 +6,7 @@
 
 #include "app_constexpr.h"
 #include "app_event_group.h"
+#include "app_metadata.h"
 #include "network_diagnostics_state.h"
 #include "network_form.h"
 #include "network_text.h"
@@ -15,9 +16,11 @@
 
 #include "ui_info_page_state.h"
 #include "ui_settings_activity_state.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
 
 #include "display_bsp.h"
+
+#include <esp_log.h>
 
 namespace {
 httpd_handle_t s_http_server = nullptr;

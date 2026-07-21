@@ -2,6 +2,7 @@
 #include "xiaozhi_ai.h"
 
 #include "app_tick_time.h"
+#include "active_work_page_state.h"
 #include "app_event_group.h"
 #include "app_metadata.h"
 #include "alarm_services.h"
@@ -9,7 +10,8 @@
 #include "network_credentials_state.h"
 #include "network_https_resources.h"
 #include "offline_mode_state.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
+#include "ui_work_page_catalog.h"
 #include "xiaozhi_activation_flow.h"
 #include "xiaozhi_activation_retry_policy.h"
 #include "xiaozhi_activation_storage.h"
@@ -209,7 +211,9 @@ bool run_voice_conversation()
              static_cast<unsigned>(sizeof(VoiceEncodeBuffers)));
     log_voice_resources(ready ? "opus ready" : "opus failed");
     if (ready) {
-        xiaozhi_voice_set_streaming(true);
+        ready = xiaozhi_voice_start_conversation();
+    }
+    if (ready) {
         xiaozhi_snapshot_set(kXiaozhiAiListening, "正在聆听", "请开始说话");
     }
     TickType_t last_activity = xTaskGetTickCount();
@@ -258,6 +262,9 @@ bool run_voice_conversation()
         // receive path waiting for a 60 ms uplink frame; otherwise TTS packets
         // arrive slower than the speaker consumes them and cause underruns.
         if (!session.peer_disconnected &&
+            xiaozhi_microphone_uplink_allowed(
+                session.server_speaking,
+                session.resume_listening_pending) &&
             xiaozhi_voice_processed_bytes_available() >=
             static_cast<size_t>(codec_runtime.encoder_input_size)) {
             if (!xiaozhi_send_encoded_microphone(&session, &codec_runtime)) {
@@ -319,8 +326,14 @@ bool run_voice_conversation()
                 xiaozhi_snapshot_set(kXiaozhiAiActivating, "天气城市已设置", "正在后台更新全部天气");
                 break;
             }
-            if (!resume_xiaozhi_microphone_after_playback() ||
-                !websocket_send_listen_start(&session)) {
+            if (!resume_xiaozhi_microphone_after_playback()) {
+                ready = false;
+                break;
+            }
+            // Discard all samples captured while TTS was playing before the
+            // server starts the next automatic listening turn.
+            xiaozhi_voice_set_streaming(true);
+            if (!websocket_send_listen_start(&session)) {
                 ready = false;
                 break;
             }
@@ -368,7 +381,7 @@ bool run_voice_conversation()
         }
     }
     xiaozhi_tts_playback_stop();
-    xiaozhi_voice_set_streaming(false);
+    xiaozhi_voice_stop();
     codec_runtime.release();
     buffers_lease.reset();
     session_owner.reset();

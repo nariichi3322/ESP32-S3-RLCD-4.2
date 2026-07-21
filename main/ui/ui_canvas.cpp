@@ -1,7 +1,13 @@
 // 提供 LVGL canvas 缓冲分配、安全打点、线段、虚线和圆点等基础工具。
-#include "ui_views.h"
+#include "ui_canvas_primitives.h"
 
+#include "app_metadata.h"
 #include "checked_size.h"
+
+#include <esp_heap_caps.h>
+#include <esp_log.h>
+
+#include <cstdlib>
 
 #define UI_CANVAS_BUFFER_INVALID_SIZE_FORMAT "canvas buffer invalid size %dx%d"
 #define UI_CANVAS_BUFFER_SIZE_OVERFLOW_FORMAT "canvas buffer size overflow %dx%d"

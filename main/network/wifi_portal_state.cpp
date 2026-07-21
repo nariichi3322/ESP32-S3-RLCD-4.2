@@ -1,4 +1,4 @@
-// 集中维护配网页活跃状态、断线原因、AP 名称和本地 IP 完整快照。
+// 集中维护配网页会话状态、断线原因、AP 名称和本地 IP 完整快照。
 #include "wifi_portal_state.h"
 
 #include "scoped_semaphore_lock.h"
@@ -11,6 +11,8 @@ std::atomic<bool> s_setup_portal_active{false};
 std::atomic<int> s_last_wifi_disconnect_reason{0};
 std::atomic<WifiPortalSaveResult> s_save_result{WifiPortalSaveResult::kNone};
 std::atomic<bool> s_save_feedback_seen{false};
+std::atomic<uint8_t> s_setup_ap_client_count{0};
+std::atomic<bool> s_setup_ap_channel_transition_active{false};
 StaticTaskMutex s_portal_text_mutex;
 char s_setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
 char s_station_ip[kWifiStationIpTextLen] = {};
@@ -119,4 +121,63 @@ bool wifi_portal_save_feedback_seen_load()
 void wifi_portal_save_feedback_seen_store(bool seen)
 {
     s_save_feedback_seen.store(seen, std::memory_order_release);
+}
+
+void wifi_portal_session_reset()
+{
+    s_setup_ap_client_count.store(0, std::memory_order_release);
+    s_setup_ap_channel_transition_active.store(false,
+                                               std::memory_order_release);
+    wifi_portal_save_result_store(WifiPortalSaveResult::kNone);
+    wifi_portal_save_feedback_seen_store(false);
+}
+
+void wifi_portal_ap_channel_transition_begin()
+{
+    s_setup_ap_channel_transition_active.store(true,
+                                               std::memory_order_release);
+}
+
+void wifi_portal_ap_channel_transition_end()
+{
+    s_setup_ap_channel_transition_active.store(false,
+                                               std::memory_order_release);
+}
+
+uint8_t wifi_portal_ap_client_connected(uint8_t max_clients)
+{
+    uint8_t client_count =
+        s_setup_ap_client_count.load(std::memory_order_acquire);
+    while (client_count < max_clients &&
+           !s_setup_ap_client_count.compare_exchange_weak(
+               client_count,
+               static_cast<uint8_t>(client_count + 1),
+               std::memory_order_acq_rel,
+               std::memory_order_acquire)) {
+    }
+    return s_setup_ap_client_count.load(std::memory_order_acquire);
+}
+
+uint8_t wifi_portal_ap_client_disconnected()
+{
+    uint8_t client_count =
+        s_setup_ap_client_count.load(std::memory_order_acquire);
+    while (client_count > 0 &&
+           !s_setup_ap_client_count.compare_exchange_weak(
+               client_count,
+               static_cast<uint8_t>(client_count - 1),
+               std::memory_order_acq_rel,
+               std::memory_order_acquire)) {
+    }
+    return s_setup_ap_client_count.load(std::memory_order_acquire);
+}
+
+bool wifi_portal_should_restart_dhcp()
+{
+    return s_setup_ap_client_count.load(std::memory_order_acquire) == 0 &&
+           setup_portal_active_load() &&
+           !s_setup_ap_channel_transition_active.load(
+               std::memory_order_acquire) &&
+           !wifi_portal_result_preserves_client_lease(
+               wifi_portal_save_result_load());
 }

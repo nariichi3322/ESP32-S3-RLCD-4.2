@@ -44,6 +44,8 @@ Depending on the page, the status area shows date, weekday, battery, Wi-Fi, remi
 - Work pages, System Info, Network Diagnostics, and Settings share one page-lifecycle manager for switching and UI rebuilding. This structural maintenance does not change the seven work pages or the entry, return, and timeout behavior of auxiliary pages.
 - Shared bitmap, digit-clock, day-progress, OTA-panel, visible-data-sync, and base-widget interfaces now declare only their actual dependencies. This internal maintenance reduces unrelated coupling without changing page pixels, refresh timing, network rules, or controls.
 - Provisioning, weather, NTP, HTTP, and background synchronization keep the same public behavior while their internal helpers now declare dependencies directly. Request order, weather data, failure handling, and controls are unchanged.
+- Offline, unconfigured, OTA-blocked, and setup-retry states continue to sleep on their existing event or timeout instead of polling continuously. Internal test coverage now executes these waits directly; response timing and user behavior are unchanged.
+- Enabling offline mode or restoring factory settings still cancels pending manual synchronization, diagnostics, and OTA requests before networking is stopped or configuration is reset. This maintenance does not change any user-visible result or confirmation flow.
 - **Battery icon:** shows the shared battery state on all seven work pages while refreshing only the visible page. During detected charging it blinks on whole-second boundaries. The hardware has no dedicated CHG/VBUS input, so plug/unplug detection based on ADC voltage trends can be delayed briefly.
 - Page rendering, charging animation, and low-power scheduling reuse one battery snapshot per UI loop, reducing idle overhead without changing sampling intervals, icons, or controls.
 - **Day-progress strip:** shared by all seven pages. Its 60 segments each represent about 24 minutes and refresh only on page entry or when crossing a new segment.
@@ -164,11 +166,11 @@ When setup starts, the device first presents the setup overlay and then plays th
 
 In the rare case that the platform cannot configure the captive DNS receive timeout, the page may not open automatically. Open the address above manually; the failed DNS service exits cleanly instead of remaining active after setup.
 
-When the last phone leaves the setup hotspot, the device resets the captive DHCP lease state. A phone that reconnects can therefore obtain a fresh `192.168.4.x` address. If the captive page does not reopen automatically, visit `http://192.168.4.1/` directly.
+When the last phone leaves the setup hotspot, the device resets the captive DHCP lease state. The current lease is preserved while Wi-Fi/API credentials are being validated or a successful result is being delivered, so a temporary channel transition is not mistaken for a real departure. A phone that reconnects can therefore obtain a fresh `192.168.4.x` address. If the captive page does not reopen automatically, visit `http://192.168.4.1/` directly.
 
 The on-device setup status rows follow setup-mode visibility as one panel. If the UI is rebuilt after a mode switch or resource recovery, those rows are recreated and continue refreshing without retaining stale object references.
 
-Setup-field decoding, configuration-event cleanup, configuration storage, setup-start requests, and factory-reset cleanup use lightweight internal helpers. This maintenance does not change field names, Chinese text handling, truncation feedback, save results, hotspot timing, existing configuration recovery, or button controls.
+Setup-field decoding, configuration-event cleanup, configuration storage, setup-start requests, hotspot startup/result handoff, and factory-reset cleanup use lightweight internal helpers. A failed hotspot start still keeps the request for bounded retry, validation failure keeps the portal available, and success still waits for the phone to read the result before closing the hotspot. This maintenance does not change field names, Chinese text handling, truncation feedback, save results, timeouts, hotspot timing, existing configuration recovery, or button controls.
 
 ### 4.2 Online Mode
 
@@ -283,7 +285,7 @@ Automatic IP geolocation now also exposes one lightweight interface shared by we
 Full weather refresh success, failure, and resource-deferral results now use a dedicated internal interface. Background synchronization, diagnostics, cache publication, and page behavior are unchanged.
 Provisioning startup/result handoff and Daily Saying retrieval now use their dedicated internal interfaces. Provisioning feedback, Daily Saying retries, caching, and gallery-clock output are unchanged.
 Network diagnostics session control and its nine checks now use a dedicated internal interface. Offline and unconfigured feedback, check order, timeouts, displayed results, and user operation are unchanged.
-Provisioning HTTP and captive-DNS lifecycles now use their dedicated internal interfaces, while route handlers remain private to the portal implementation. Browser compatibility, form submission, validation feedback, and hotspot behavior are unchanged.
+Provisioning HTTP and captive-DNS lifecycles now use their dedicated internal interfaces, while route handlers remain private to the portal implementation. Captive DNS startup, shutdown, and repeated setup entry use one task-state handoff, preventing overlapping DNS services during rapid setup transitions. Browser compatibility, form submission, validation feedback, and hotspot behavior are unchanged.
 The four-hour trend samples and 48-slot hourly history now share one stable production data definition, and host validation uses the real firmware layout instead of a parallel test copy. NVS data, restart recovery, history charts, and page operation are unchanged.
 The application event identifiers and event-group resource shared by provisioning, synchronization, OTA, and startup are managed by one internal owner and remain a static lifetime resource. Calls made before initialization or after startup-failure cleanup fail safely instead of touching an invalid handle. Event delivery, wait timeouts, and user operation are unchanged.
 The Xiaozhi page snapshot lock also uses a static control block, reducing startup internal-memory allocation and long-term fragmentation without changing wake-up, subtitles, expressions, Pomodoro, or page controls.
@@ -348,17 +350,17 @@ The single alarm can be set, changed, or disabled through Xiaozhi voice.
 
 ## 7. OTA and Flashing
 
-For each public source release, GitHub Actions automatically attaches two build outputs to the matching GitHub Release: `weather_clock_vX.X.X.bin` for OTA or app-partition flashing, and `weather_clock_vX.X.X_merged.bin` for a complete flash from address `0x0`. The automated build only adds firmware assets and does not rewrite the complete source Release notes. The source tag also contains one bounded, numbered OTA summary shared by the Cloudflare manifests and the GitHub OTA fallback repository.
+For each public source release, GitHub Actions automatically attaches two build outputs to the matching GitHub Release: `weather_clock_vX.X.X.bin` for OTA or app-partition flashing, and `weather_clock_vX.X.X_merged.bin` for a complete flash from address `0x0`. The automated build only adds firmware assets and does not rewrite the complete source Release notes. The source tag also contains one bounded, numbered OTA summary shared by the GitHub and Gitee OTA repositories.
 
-After the GitHub build completes, the Cloudflare OTA service imports and verifies both files automatically. If the automatic notification is delayed, the maintenance release flow requests a protected retry. The previous online manifest remains active until both new firmware images pass validation.
-
-Cloudflare maintenance upload, cleanup, and manual GitHub-sync endpoints use one consistent unauthorized response and reject invalid tokens before changing stored firmware or contacting GitHub. GitHub webhook signature failures remain a separate error, so maintainers can distinguish token and webhook configuration problems without changing device OTA behavior.
-
-The GitHub OTA fallback repository is updated from the same source build. The source repository dispatches an event after its app, merged image, and manifests are ready; the fallback repository then downloads both Release assets, verifies size and SHA256, and only afterward updates its own Releases and manifests. It no longer polls Cloudflare on a daily schedule, and fallback manifest URLs point to the fallback repository's own Release assets.
+The GitHub primary OTA repository and Gitee fallback OTA repository are updated from the same source build. The source workflow sends only a synchronization event; each target repository downloads both Release assets, verifies size and SHA256, reads the uploaded files back, and only then updates its own Release and manifests. A failed target keeps its previous manifest active, so devices do not see a partial release.
 
 Both automation paths now share one firmware-artifact naming and validation contract, preventing the app and complete flash image from drifting apart. Existing filenames, verification, device OTA steps, and serial flashing instructions are unchanged.
 
-The maintenance release gate also confirms that online assets came from the latest build for the current version tag and that both Cloudflare manifests match the app and merged size/SHA256 metadata. During a same-version replacement, still-reachable older assets cannot satisfy the new build; users do not need to change the update-check or download workflow.
+The maintenance release gate also confirms that online assets came from the latest build for the current version tag and that both GitHub OTA and Gitee OTA manifests match the app and merged size/SHA256 metadata. During a same-version replacement, still-reachable older assets cannot satisfy the new build; users do not need to change the update-check or download workflow.
+
+If GitHub or Gitee temporarily returns a missing, null, or incorrectly typed asset/version list, the maintenance flow treats it as not synchronized and continues its bounded retry instead of publishing half of a release. Device update, download, and fallback-source behavior are unchanged.
+
+The maintenance flow applies one SHA256 and file-size validation rule to source Release assets, GitHub OTA assets, and Gitee OTA assets. Hash letter case is normalized, while malformed hashes or invalid sizes retain the previous online manifest instead of being accepted as installable firmware. Device JSON and update steps are unchanged.
 
 The source-build and fallback-mirror tools also share the same manifest field names, 1,800-byte `latest.json` limit, and ten-version history limit. This maintenance change does not alter the JSON consumed by devices or the desktop client.
 
@@ -369,7 +371,7 @@ Network configuration, setup-form submission, the background synchronization tas
 OTA check state, download progress, speed, and reboot notices are likewise published as one consistent snapshot between background tasks and the UI. The check, confirmation, download, and restart workflow is unchanged.
 
 The online manifest may include release notes for publishing tools and the desktop client. The device retains only the version, download URL, file size, and SHA256 metadata required for installation instead of keeping unused release-note text in memory.
-OTA manifests and the GitHub OTA fallback Release use the same bounded summary from the source tag. Complete numbered notes remain in the matching Gitea/GitHub source Release so long descriptions cannot interfere with device update checks.
+OTA manifests and both OTA mirror Releases use the same bounded summary from the source tag. Complete numbered notes remain in the matching Gitea/GitHub source Release so long descriptions cannot interfere with device update checks.
 
 Open **Settings > System > Check Update**:
 
@@ -412,8 +414,8 @@ Because `v1.5.0` moved partition addresses, an old desktop client must be update
 - Battery is sampled immediately after boot.
 - When not charging, battery ADC follows the same schedule as local temperature/humidity: every minute during the day and every two minutes at night.
 - Temperature and humidity samples notify the active page for an on-demand update. Stable text is not redrawn repeatedly; a roughly one-minute fallback check remains for resilience.
-- During confirmed active charging, battery sampling increases to about once per second.
-- Low-battery thresholds, charging detection, animation stopping, and fast charging sampling now share one internal policy source. This maintenance change does not alter the displayed percentage, sampling cadence, charging indication, low-battery behavior, or OTA protection.
+- During confirmed charging, battery sampling remains at about once per second even after the visible charging animation stops. Normal day/night sampling resumes only after unplugging is detected.
+- Low-battery thresholds, charging detection, animation stopping, and fast charging sampling share one internal policy source. The animation state controls only the visible blink and no longer delays unplug detection; displayed percentage, low-battery behavior, and OTA protection are unchanged.
 - Each battery reading releases the ADC and calibration resources after publishing the result, so the measurement peripheral is not kept active between samples.
 - Percentage, charging state, and low-battery mode are published consistently from the same sample; pages, OTA, and Xiaozhi do not trigger an extra ADC conversion when reading battery status.
 - Low battery enters a minimal page and stops non-essential networking, animation, audio, and high-frequency refresh.
@@ -488,7 +490,7 @@ After Xiaozhi changes the weather city, the device releases real-time voice reso
 
 Check access to the primary manifest. The GitHub fallback is synchronized by the source-build completion event and may briefly remain on the previous version while the build or mirror job is still running.
 
-If the serial log shows both `OTA manifest source skipped: R2` and `OTA manifest source skipped: GitHub`, the firmware was built without production OTA endpoints and did not make an HTTP request. This is not caused by Wi-Fi or manifest length. Recover by flashing a corrected App image over serial while preserving NVS, or by provisioning a valid custom OTA endpoint with the desktop client.
+If the serial log shows both `OTA manifest source skipped: GitHub` and `OTA manifest source skipped: Gitee`, the firmware was built without production OTA endpoints and did not make an HTTP request. This is not caused by Wi-Fi or manifest length. Recover by flashing a corrected App image over serial while preserving NVS, or by provisioning a valid custom OTA endpoint with the desktop client.
 
 ### Time was lost and data is initially blank
 
@@ -508,6 +510,14 @@ During normal operation, a temporary SPI display allocation or timeout error is 
 
 Shared bitmap, label, and font declarations use lightweight internal interfaces. This maintenance does not change Chinese glyphs, icon pixels, page coordinates, trend arrows, or partial-refresh behavior.
 
+Canvas buffers, base configuration, and partial invalidation are also maintained through one lightweight internal contract. Day progress, history charts, the Settings OTA panel, and status animation retain their existing pixels, coordinates, and refresh timing; no user setting or interaction changes.
+
+The boot screen and startup progress now use a dedicated internal interface, while alarms, Pomodoro, daily text, weather-city updates, setup, and Xiaozhi use one lightweight UI notification boundary. Startup budgets, Wi-Fi/NTP ordering, alerts, page return, setup feedback, and user interaction remain unchanged.
+
+Sensor history, OTA, network synchronization, and Wi-Fi radio control now also use only their required internal interfaces instead of importing the complete UI declaration set. Sensor sampling, firmware updates, network timing, setup, page rendering, and button interaction remain unchanged.
+
+The maintenance workflow now records whether each optimization is awaiting validation, validated, awaiting Gitea synchronization, or synchronized. This prevents maintenance records from getting ahead of the actual repository state and does not change device features, versions, or update behavior.
+
 The network task's page checks, waits, and NTP retry helpers now remain private implementation details. This maintenance does not change Wi-Fi connections, weather/daily-text synchronization, NTP retry timing, or setup interaction.
 
 The network task now keeps NTP retries, the daily-midnight deadline, and startup refresh deadlines in one internal runtime state. Success, failure, memory deferral, and setup completion retain their existing timing while future maintenance is less likely to omit a pending item or deadline. Sync frequency, network traffic, and user interaction are unchanged.
@@ -517,6 +527,8 @@ The SDL startup-page objects, animation, and screenshot flow are now maintained 
 The SDL work-page date, battery, sensor summary, and sound/Wi-Fi/alarm icons are now maintained by one shared status-bar module. Thirteen fixed preview states remain byte-identical, so device pages, icons, refresh behavior, power use, and controls are unchanged.
 
 The SDL weather-clock preview now maintains its time, weather, sensor, GIF, alert, low-battery, and setup states in a dedicated module. All 22 fixed preview modes remain byte-identical, so this development-tool cleanup does not change firmware or user operation.
+
+Internal work-page order validation and enabled-page lookup are now maintained by a separate pure policy, while the runtime page catalog remains the sole owner of page names, switches, and user order. Default order, Settings controls, BOOT page switching, disabled-page skipping, offline mode, and NVS data formats are unchanged; no user reconfiguration is required.
 
 ## 12. Safety and Use Restrictions
 

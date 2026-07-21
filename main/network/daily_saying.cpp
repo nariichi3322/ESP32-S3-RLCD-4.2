@@ -1,12 +1,16 @@
 // 获取、筛选和缓存图片时钟底部每日文字。
 #include "app_constexpr.h"
+#include "app_metadata.h"
+#include "battery_runtime_state.h"
 #include "daily_saying_contract.h"
 #include "daily_saying_state.h"
 #include "daily_saying_parser.h"
 #include "network_http_client.h"
 #include "scoped_heap_buffer.h"
 #include "setup_portal_control.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
+
+#include <esp_log.h>
 
 #define DAILY_SAYING_RESPONSE_ALLOC_FAILED_LOG_FORMAT "daily saying response alloc failed"
 #define DAILY_SAYING_HTTP_FAILED_LOG_FORMAT "daily saying http failed err=%s"

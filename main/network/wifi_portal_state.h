@@ -1,4 +1,4 @@
-// 声明 Wi-Fi 门户、断线原因、AP 名称和本地 IP 的跨任务安全访问接口。
+// 声明 Wi-Fi 门户会话、断线原因、AP 名称和本地 IP 的跨任务安全访问接口。
 #pragma once
 
 #include <stddef.h>
@@ -39,3 +39,9 @@ WifiPortalSaveResult wifi_portal_save_result_load();
 void wifi_portal_save_result_store(WifiPortalSaveResult result);
 bool wifi_portal_save_feedback_seen_load();
 void wifi_portal_save_feedback_seen_store(bool seen);
+void wifi_portal_session_reset();
+void wifi_portal_ap_channel_transition_begin();
+void wifi_portal_ap_channel_transition_end();
+uint8_t wifi_portal_ap_client_connected(uint8_t max_clients);
+uint8_t wifi_portal_ap_client_disconnected();
+bool wifi_portal_should_restart_dhcp();

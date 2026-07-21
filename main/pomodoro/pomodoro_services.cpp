@@ -2,13 +2,15 @@
 #include "pomodoro_services.h"
 
 #include "alarm_services.h"
+#include "app_metadata.h"
 #include "audio_services.h"
+#include "battery_runtime_state.h"
 #include "ota_runtime_state.h"
 #include "pomodoro_runtime_state.h"
 #include "reminder_schedule.h"
 #include "sensor_time.h"
 #include "task_notification_target.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
 #include "wifi_portal_state.h"
 #include "xiaozhi_ai.h"
 #include "xiaozhi_mcp.h"
@@ -16,6 +18,7 @@
 #include <atomic>
 #include <cstdio>
 
+#include <esp_log.h>
 #include "esp_timer.h"
 
 namespace {

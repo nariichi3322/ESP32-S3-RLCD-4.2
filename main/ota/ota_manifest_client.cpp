@@ -1,4 +1,4 @@
-// 获取自定义、R2 与 GitHub OTA manifest，并维护安装前的运行态清单缓存。
+// 获取自定义、GitHub 与 Gitee OTA manifest，并维护安装前的运行态清单缓存。
 #include "ota_manifest_client.h"
 
 #include "app_constexpr.h"
@@ -17,14 +17,13 @@
 
 namespace {
 constexpr size_t kManifestResponseBufferSize = 2048;
-constexpr const char *kManifestSourceR2 = "R2";
 constexpr const char *kManifestSourceGithub = "GitHub";
+constexpr const char *kManifestSourceGitee = "Gitee";
 constexpr const char *kManifestSourceCustom = "Custom";
 constexpr int kBuiltInManifestSourceCount = 2;
-constexpr int kBackupManifestSourceIndex = 1;
 constexpr OtaManifestSource kBuiltInManifestSources[] = {
-    {kManifestSourceR2, kOtaManifestUrl},
-    {kManifestSourceGithub, kOtaBackupManifestUrl},
+    {kManifestSourceGithub, kOtaManifestUrl},
+    {kManifestSourceGitee, kOtaBackupManifestUrl},
 };
 OtaManifest s_cached_manifest;
 constexpr const char *kManifestParseInvalidArgLog = "OTA manifest parse invalid arg";
@@ -45,14 +44,11 @@ constexpr bool manifest_source_name_fits(const char *text)
 static_assert(kManifestResponseBufferSize > 1,
               "OTA manifest response buffer must fit text and NUL");
 static_assert(array_count(kBuiltInManifestSources) == kBuiltInManifestSourceCount,
-              "OTA built-in manifest source list must cover R2 and GitHub");
-static_assert(kBackupManifestSourceIndex >= 0 &&
-                  kBackupManifestSourceIndex < kBuiltInManifestSourceCount,
-              "OTA backup manifest source index must stay within built-in source list");
-static_assert(manifest_source_name_fits(kManifestSourceR2),
-              "R2 OTA manifest source name must fit UI storage");
+              "OTA built-in manifest source list must cover GitHub and Gitee");
 static_assert(manifest_source_name_fits(kManifestSourceGithub),
               "GitHub OTA manifest source name must fit UI storage");
+static_assert(manifest_source_name_fits(kManifestSourceGitee),
+              "Gitee OTA manifest source name must fit UI storage");
 static_assert(manifest_source_name_fits(kManifestSourceCustom),
               "custom OTA manifest source name must fit UI storage");
 static_assert(manifest_source_name_fits(kOtaUnknownManifestSource),
@@ -192,24 +188,28 @@ bool ota_manifest_fetch_backup_for_install(const OtaManifest &current,
         !ota_valid_sha256_string(current.sha256)) {
         return false;
     }
-    OtaManifest candidate;
-    const OtaManifestSource &backup_source =
-        kBuiltInManifestSources[kBackupManifestSourceIndex];
-    if (!fetch_manifest_from_source(backup_source, &candidate, failure_callback)) {
-        return false;
+    for (const OtaManifestSource &backup_source : kBuiltInManifestSources) {
+        OtaManifest candidate;
+        if (!fetch_manifest_from_source(backup_source, &candidate, failure_callback)) {
+            continue;
+        }
+        if (strcmp(candidate.url, current.url) == 0) {
+            continue;
+        }
+        if (!ota_backup_manifest_metadata_matches(current.version,
+                                                  current.sha256,
+                                                  current.size,
+                                                  candidate.version,
+                                                  candidate.sha256,
+                                                  candidate.size)) {
+            ESP_LOGW(TAG,
+                     BACKUP_MANIFEST_MISMATCH_FORMAT,
+                     current.version,
+                     candidate.version);
+            continue;
+        }
+        *backup = candidate;
+        return true;
     }
-    if (!ota_backup_manifest_metadata_matches(current.version,
-                                              current.sha256,
-                                              current.size,
-                                              candidate.version,
-                                              candidate.sha256,
-                                              candidate.size)) {
-        ESP_LOGW(TAG,
-                 BACKUP_MANIFEST_MISMATCH_FORMAT,
-                 current.version,
-                 candidate.version);
-        return false;
-    }
-    *backup = candidate;
-    return true;
+    return false;
 }

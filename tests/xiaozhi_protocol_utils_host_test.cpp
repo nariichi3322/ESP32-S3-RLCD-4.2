@@ -71,7 +71,7 @@ void test_websocket_messages()
     char out[256] = {};
     xiaozhi_protocol::format_listen_start(out, sizeof(out), "session-1");
     expect(std::strcmp(out,
-                       "{\"session_id\":\"session-1\",\"type\":\"listen\",\"state\":\"start\",\"mode\":\"realtime\"}") == 0,
+                       "{\"session_id\":\"session-1\",\"type\":\"listen\",\"state\":\"start\",\"mode\":\"auto\"}") == 0,
            "listen-start payload changed");
 
     xiaozhi_protocol::format_wake_abort(out, sizeof(out), "session-1");

@@ -19,6 +19,7 @@ using XiaozhiVoiceEventCallback = void (*)();
 
 void xiaozhi_voice_set_event_callback(XiaozhiVoiceEventCallback callback);
 bool xiaozhi_voice_start();
+bool xiaozhi_voice_start_conversation();
 void xiaozhi_voice_stop();
 bool xiaozhi_voice_take_wake_word();
 bool xiaozhi_voice_is_listening();

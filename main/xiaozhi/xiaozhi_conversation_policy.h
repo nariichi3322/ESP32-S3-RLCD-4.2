@@ -9,7 +9,7 @@
 inline constexpr bool kXiaozhiWakeInterruptDuringTtsEnabled = false;
 inline constexpr uint32_t kXiaozhiWakeInterruptArmDelayMs = 1000;
 inline constexpr uint32_t kXiaozhiEmptyReplyContinuationMs = 12000;
-inline constexpr uint32_t kXiaozhiTtsFinalFrameGraceMs = 350;
+inline constexpr uint32_t kXiaozhiTtsFinalFrameGraceMs = 700;
 inline constexpr uint32_t kXiaozhiTtsPlaybackTailSettleMs = 120;
 static_assert(kXiaozhiTtsFinalFrameGraceMs > kXiaozhiTtsPlaybackTailSettleMs,
               "TTS final-frame grace must exceed playback tail settling time");
@@ -24,6 +24,12 @@ constexpr bool xiaozhi_wake_interrupt_allowed(bool server_speaking,
            !tts_stop_pending &&
            tts_start_known &&
            speaking_elapsed_ms >= kXiaozhiWakeInterruptArmDelayMs;
+}
+
+constexpr bool xiaozhi_microphone_uplink_allowed(bool server_speaking,
+                                                 bool tts_stop_pending)
+{
+    return !server_speaking && !tts_stop_pending;
 }
 
 constexpr bool xiaozhi_turn_reply_is_empty(bool user_text_received,

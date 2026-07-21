@@ -1,9 +1,13 @@
 // 构建 60 段工作页进度条，并按填充变化执行局部刷新。
 #include "ui_progress.h"
 
-#include "app_state.h"
+#include "app_metadata.h"
+#include "ui_canvas_primitives.h"
 #include "ui_clock_time.h"
-#include "ui_views.h"
+#include "ui_page_state.h"
+#include "work_page_ids.h"
+
+#include <esp_log.h>
 
 #define UI_PROGRESS_CANVAS_BUILD_INVALID_ARG_LOG "progress canvas build invalid arg"
 #define UI_PROGRESS_CANVAS_CREATE_FAILED_LOG "progress canvas create failed"

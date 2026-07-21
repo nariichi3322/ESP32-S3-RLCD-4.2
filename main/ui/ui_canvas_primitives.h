@@ -1,9 +1,24 @@
-// 声明页面 canvas 复用的坐标钳制、线段、虚线与实心圆绘制图元。
+// 声明页面 canvas 复用的缓冲、配置、局部失效与基础绘制图元。
 #pragma once
 
 #include "lvgl.h"
 
+lv_color_t *alloc_canvas_buffer(int width, int height);
+bool ensure_canvas_buffer(lv_color_t **buffer, int width, int height);
+void configure_canvas_base(lv_obj_t *canvas,
+                           lv_color_t *buffer,
+                           int x,
+                           int y,
+                           int width,
+                           int height);
 int clamp_int(int value, int min_value, int max_value);
+void invalidate_canvas_rect(lv_obj_t *canvas, int x1, int y1, int x2, int y2);
+void canvas_set_px_safe(lv_obj_t *canvas,
+                        int x,
+                        int y,
+                        int width,
+                        int height,
+                        lv_color_t color);
 void canvas_draw_line(lv_obj_t *canvas,
                       int width,
                       int height,

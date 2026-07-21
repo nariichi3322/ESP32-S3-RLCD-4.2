@@ -5,12 +5,13 @@
 #include "alarm_runtime_state.h"
 #include "alarm_storage.h"
 #include "alarm_task_wait_policy.h"
+#include "app_metadata.h"
 #include "audio_services.h"
 #include "pomodoro_services.h"
 #include "reminder_schedule.h"
 #include "sensor_time.h"
 #include "task_notification_target.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
 #include "xiaozhi_ai.h"
 #include "xiaozhi_mcp.h"
 
@@ -18,6 +19,8 @@
 #include <ctime>
 #include <cstdio>
 #include <cstring>
+
+#include <esp_log.h>
 
 namespace {
 constexpr int kAlarmSoundIndex = 1; // 设置页“声音选择 2”。

@@ -13,5 +13,4 @@ bool is_weather_city_input_valid(const char *city);
 bool normalize_weather_city_input(const char *city, char *out, size_t out_len);
 bool set_offline_mode_enabled(bool enabled);
 bool can_leave_offline_mode_without_setup();
-void clear_network_request_bits();
 bool clear_saved_config();

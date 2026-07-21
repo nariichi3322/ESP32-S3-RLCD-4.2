@@ -153,7 +153,7 @@ namespace xiaozhi_protocol {
     }
     snprintf(out,
              out_len,
-             "{\"session_id\":\"%s\",\"type\":\"listen\",\"state\":\"start\",\"mode\":\"realtime\"}",
+             "{\"session_id\":\"%s\",\"type\":\"listen\",\"state\":\"start\",\"mode\":\"auto\"}",
              session_id);
 }
 

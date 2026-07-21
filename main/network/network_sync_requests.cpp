@@ -2,7 +2,7 @@
 #include "network_sync_requests.h"
 
 #include "app_event_group.h"
-#include "network_config.h"
+#include "network_config_internal.h"
 #include "network_diagnostics_catalog.h"
 #include "network_diagnostics.h"
 #include "ui_settings_feedback.h"
@@ -13,6 +13,21 @@
 
 namespace {
 
+constexpr EventBits_t kNetworkRequestClearBits = kProvisioningSyncBit |
+                                                 kManualNtpSyncBit |
+                                                 kManualWeatherSyncBit |
+                                                 kManualSayingSyncBit |
+                                                 kNetworkDiagBit |
+                                                 kOtaCheckBit |
+                                                 kOtaInstallBit;
+constexpr const char *kNetworkRequestResetReason = "network request reset";
+static_assert((kNetworkRequestClearBits & kManualWeatherSyncBit) != 0,
+              "network request clear bits must include manual weather sync");
+static_assert((kNetworkRequestClearBits & kOtaCheckBit) != 0 &&
+                  (kNetworkRequestClearBits & kOtaInstallBit) != 0,
+              "network request clear bits must include OTA request bits");
+static_assert((kNetworkRequestClearBits & kNetworkStateChangedBit) == 0,
+              "network runtime state notification is not a sync request");
 constexpr const char *kNetworkStatusOfflineModeEnabled = "离线模式已开启";
 constexpr const char *kNetworkStatusWifiNotConfigured = "未配置 WiFi";
 constexpr const char *kNetworkDiagLocalIpPlaceholder = "本地IP: --";
@@ -82,6 +97,12 @@ NetworkSyncRequestSnapshot snapshot_network_sync_requests()
     requests.manual_saying = (bits & kManualSayingSyncBit) != 0;
     requests.diagnostics = (bits & kNetworkDiagBit) != 0;
     return requests;
+}
+
+void clear_network_request_bits()
+{
+    clear_config_event_bits(kNetworkRequestClearBits,
+                            kNetworkRequestResetReason);
 }
 
 void finish_settings_sync_and_clear_bit(SettingsSyncOp op,

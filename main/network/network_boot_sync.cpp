@@ -2,6 +2,7 @@
 #include "network_boot_sync.h"
 
 #include "app_event_group.h"
+#include "app_metadata.h"
 #include "app_text_format.h"
 #include "network_credentials_state.h"
 #include "ntp_services.h"
@@ -9,9 +10,12 @@
 #include "network_sync_schedule.h"
 #include "network_task_guards.h"
 #include "sensor_time.h"
-#include "ui_views.h"
+#include "ui_boot_screen.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_services.h"
+
+#include <esp_log.h>
+#include <esp_timer.h>
 
 #include <stdio.h>
 #include <string.h>

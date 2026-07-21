@@ -20,6 +20,7 @@
 #include "network_factory_reset.h"
 #include "network_page_storage.h"
 #include "network_runtime_events.h"
+#include "network_sync_requests.h"
 #include "network_page_storage_policy.h"
 #include "network_weather_city_storage.h"
 #include "ui_work_page_catalog.h"
@@ -43,21 +44,6 @@ using network_config_keys::kWifiSsidKey;
 
 namespace {
 constexpr uint8_t kDefaultWorkPageMask = network_page_storage::kCurrentKnownPageMask;
-constexpr EventBits_t kNetworkRequestClearBits = kProvisioningSyncBit |
-                                                 kManualNtpSyncBit |
-                                                 kManualWeatherSyncBit |
-                                                 kManualSayingSyncBit |
-                                                 kNetworkDiagBit |
-                                                 kOtaCheckBit |
-                                                 kOtaInstallBit;
-static_assert((kNetworkRequestClearBits & kManualWeatherSyncBit) != 0,
-              "network request clear bits must include manual weather sync");
-static_assert((kNetworkRequestClearBits & kOtaCheckBit) != 0 &&
-                  (kNetworkRequestClearBits & kOtaInstallBit) != 0,
-              "network request clear bits must include OTA request bits");
-static_assert((kNetworkRequestClearBits & kNetworkStateChangedBit) == 0,
-              "network runtime state notification is not a sync request");
-constexpr const char *kConfigEventReasonNetworkRequestReset = "network request reset";
 constexpr const char *kConfigEventReasonFactoryReset = "factory reset";
 constexpr const char *kNvsActionSavingOfflineMode = "saving offline mode";
 constexpr const char *kNvsActionSavingConfig = "saving config";
@@ -101,11 +87,6 @@ bool clear_saved_config_nvs()
 }
 
 } // namespace
-
-void clear_network_request_bits()
-{
-    clear_config_event_bits(kNetworkRequestClearBits, kConfigEventReasonNetworkRequestReset);
-}
 
 static void notify_network_runtime_state_changed()
 {

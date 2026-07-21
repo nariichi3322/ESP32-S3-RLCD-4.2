@@ -2,10 +2,13 @@
 #include "ui_settings_ota_panel.h"
 
 #include "app_constexpr.h"
-#include "app_state.h"
+#include "app_metadata.h"
 #include "ota_runtime_state.h"
+#include "ui_page_state.h"
 #include "ui_text_format.h"
-#include "ui_views.h"
+#include "ui_widgets.h"
+
+#include <esp_log.h>
 
 namespace {
 lv_obj_t *s_settings_ota_status_label;
