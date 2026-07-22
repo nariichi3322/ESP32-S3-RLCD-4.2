@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.26",
+  "latest": "v1.5.27",
   "items": [
+    {
+      "version": "v1.5.27",
+      "notes": "v1.5.27：共 19 项更新。\n1. 图片时钟新增自定义图片切换周期，可选择30分钟、1小时、6小时、12小时或24小时，并…\n2. 修复页面顺序保存失败后运行态顺序和重启后顺序不一致，失败时恢复原顺序与原光标。\n3. 修复启动补拉任务排队后关闭对应页面仍可能打开Wi-Fi，执行前会重新核对页面开关。\n4. 修复设置页闹钟时间、状态圆点和文字遮挡；小智节能文字恢复对齐，首次刷写或恢复出厂后默认…\n5. 修复配网成功或失败结果发布前SoftAP状态交接不稳定，增加AP-only恢复与有界重…\n其余 14 项见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.27/weather_clock_v1.5.27.bin",
+        "sha256": "26e1390f1054f33055d22e8b808382c8282d2d33a6f4179f5a2b07399e1b4db7",
+        "size": 6237776
+      },
+      "merged": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.27/weather_clock_v1.5.27_merged.bin",
+        "sha256": "0411182ea2aa15b5537ccf32d15bbeb752c495090d2e2b9040bdb81e780779ac",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.26",
       "notes": "v1.5.26：共 8 项更新。\n1. 修复小智实时会话从唤醒切换到 VOIP AEC 时任务栈不足导致的崩溃重启。\n2. 修复小智播放回复期间残余扬声器回声被上传、导致云端误判插话并提前中断回答。\n3. 修复小智唤醒与实时对话管线交接以及 TTS 句间收尾不完整，降低误唤醒和多句回复中途切…\n4. 修复充电动画结束后电池 ADC 被过早降频、导致充满或拔电状态反馈延迟的问题。\n5. OTA 内置来源由 Cloudflare 迁移为 GitHub OTA 主源和 Git…\n6. GitHub 与 Gitee OTA 仓库采用一致的目标仓库自主镜像流程，在源码构建完…\n其余 2 项见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.18_merged.bin",
         "sha256": "72e9d6dc52f3bdbd22ddb160f8076faf3d52a83630f609430db98ade3c89362c",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.17",
-      "notes": "v1.5.17：共 3 项更新。\n重点：将应用全生命周期常驻的网络/音频 PM 锁深度计数 mutex 改为 FreeRTOS 静态互斥量，减少冷启动内部堆分配和长期碎片来源，四类性…\n完整说明见同版本 Release。",
-      "app": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.17.bin",
-        "sha256": "de726a7db96fe7782e525b89487174ae127e94e469a681f4bb34d423f1863cbf",
-        "size": 6223312
-      },
-      "merged": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.17_merged.bin",
-        "sha256": "f397985ca5b0f840480541e53f3eea2b05dac67902424559a0b1b1c002a7719e",
         "size": 16509951
       }
     }
