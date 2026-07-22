@@ -19,3 +19,4 @@ bool pomodoro_runtime_publish(PomodoroState state,
                               int64_t completed_at_us);
 bool pomodoro_runtime_snapshot(int64_t now_us, PomodoroRuntimeSnapshot *out);
 bool pomodoro_runtime_set_alerting(bool alerting);
+PomodoroState pomodoro_runtime_state_load();

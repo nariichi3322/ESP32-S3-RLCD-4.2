@@ -175,23 +175,23 @@ NetworkDiagLineLayout network_diag_line_layout(int index)
     return layout;
 }
 
-void set_info_time_label(size_t index, const char *format, time_t value)
+bool set_info_time_label(size_t index, const char *format, time_t value)
 {
     char time_text[kInfoTimeTextSize] = {};
     char line[kInfoLineTextSize] = {};
     format_time_or_dash(value, time_text, sizeof(time_text));
     ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder, format, time_text);
-    set_label_text_if_changed(s_info_labels[index], line);
+    return set_label_text_if_changed(s_info_labels[index], line);
 }
 
-void set_info_string_label(size_t index, const char *format, const char *value)
+bool set_info_string_label(size_t index, const char *format, const char *value)
 {
     char line[kInfoLineTextSize] = {};
     ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder, format, value ? value : "");
-    set_label_text_if_changed(s_info_labels[index], line);
+    return set_label_text_if_changed(s_info_labels[index], line);
 }
 
-void set_info_battery_label()
+bool set_info_battery_label()
 {
     BatteryRuntimeSnapshot battery;
     battery_runtime_snapshot_load(&battery);
@@ -207,14 +207,14 @@ void set_info_battery_label()
     } else {
         ui_text::copy(line, sizeof(line), kInfoBatteryPlaceholder);
     }
-    set_label_text_if_changed(s_info_labels[kInfoBatteryLabelIndex], line);
+    return set_label_text_if_changed(s_info_labels[kInfoBatteryLabelIndex], line);
 }
 
-void set_info_version_label()
+bool set_info_version_label()
 {
     char line[kInfoLineTextSize] = {};
     ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder, kInfoVersionFormat, APP_VERSION, APP_BUILD_DATE);
-    set_label_text_if_changed(s_info_labels[kInfoVersionLabelIndex], line);
+    return set_label_text_if_changed(s_info_labels[kInfoVersionLabelIndex], line);
 }
 } // namespace
 
@@ -252,21 +252,27 @@ void build_boot_info_page()
                                   &lv_font_montserrat_14, "system info return label create failed");
 }
 
-void update_boot_info_page()
+bool update_boot_info_page()
 {
+    bool changed = false;
     char wifi_ssid[kNetworkWifiSsidLen] = {};
     (void)network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid));
-    set_info_time_label(kInfoNtpLabelIndex, kInfoLastNtpFormat, get_last_ntp_sync_time());
-    set_info_string_label(kInfoWifiLabelIndex,
-                          kInfoWifiFormat,
-                          wifi_ssid[0] ? wifi_ssid : "--");
-    set_info_time_label(kInfoWeatherLabelIndex,
-                        kInfoLastWeatherFormat,
-                        get_last_weather_sync_time());
-    set_info_battery_label();
-    set_info_version_label();
-    set_info_string_label(kInfoSourceLabelIndex, kInfoSourceFormat, kProjectSourceUrl);
+    changed |= set_info_time_label(kInfoNtpLabelIndex,
+                                   kInfoLastNtpFormat,
+                                   get_last_ntp_sync_time());
+    changed |= set_info_string_label(kInfoWifiLabelIndex,
+                                     kInfoWifiFormat,
+                                     wifi_ssid[0] ? wifi_ssid : "--");
+    changed |= set_info_time_label(kInfoWeatherLabelIndex,
+                                   kInfoLastWeatherFormat,
+                                   get_last_weather_sync_time());
+    changed |= set_info_battery_label();
+    changed |= set_info_version_label();
+    changed |= set_info_string_label(kInfoSourceLabelIndex,
+                                     kInfoSourceFormat,
+                                     kProjectSourceUrl);
     ota_reset_status_if_idle();
+    return changed;
 }
 
 void build_network_diag_page()

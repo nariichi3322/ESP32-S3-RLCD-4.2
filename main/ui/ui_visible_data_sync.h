@@ -17,8 +17,9 @@ struct ActiveWorkPageState {
     bool uses_weather_data = false;
 };
 
-bool normal_work_page_active(int page);
 ActiveWorkPageState active_work_page_state(int active_page);
+ActiveWorkPageState active_work_page_state_for_mode(int active_page,
+                                                    bool normal_mode);
 void update_visible_weather_sync(const ActiveWorkPageState &state,
                                  time_t now,
                                  TickType_t tick_now,

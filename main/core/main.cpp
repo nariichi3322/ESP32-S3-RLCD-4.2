@@ -24,6 +24,7 @@
 #include "ota_services.h"
 #include "local_sensor_state.h"
 #include "power_services.h"
+#include "rtc_services.h"
 #include "sensor_services.h"
 #include "startup_state.h"
 #include "ui_boot_screen.h"

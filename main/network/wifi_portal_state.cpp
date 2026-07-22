@@ -1,6 +1,7 @@
 // 集中维护配网页会话状态、断线原因、AP 名称和本地 IP 完整快照。
 #include "wifi_portal_state.h"
 
+#include "app_event_group.h"
 #include "scoped_semaphore_lock.h"
 
 #include <atomic>
@@ -61,6 +62,9 @@ bool setup_portal_active_load()
 void setup_portal_active_store(bool active)
 {
     s_setup_portal_active.store(active, std::memory_order_release);
+    if (!active && app_event_group_ready()) {
+        app_event_group_set_bits(kProvisioningFeedbackBit);
+    }
 }
 
 int wifi_last_disconnect_reason()
@@ -121,6 +125,14 @@ bool wifi_portal_save_feedback_seen_load()
 void wifi_portal_save_feedback_seen_store(bool seen)
 {
     s_save_feedback_seen.store(seen, std::memory_order_release);
+    if (!app_event_group_ready()) {
+        return;
+    }
+    if (seen) {
+        app_event_group_set_bits(kProvisioningFeedbackBit);
+    } else {
+        app_event_group_clear_bits(kProvisioningFeedbackBit);
+    }
 }
 
 void wifi_portal_session_reset()

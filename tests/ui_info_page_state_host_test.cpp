@@ -25,11 +25,13 @@ int main()
     info_page_state_load(&state);
     assert(!state.requested);
     assert(state.hold_until_tick == 0);
+    assert(!info_page_requested());
 
     info_page_hold_until_store(77);
     info_page_state_load(&state);
     assert(!state.requested);
     assert(state.hold_until_tick == 77);
+    assert(!info_page_requested());
 
     info_page_request(kFirstDeadline);
     assert(info_page_requested());
@@ -63,6 +65,7 @@ int main()
 
     assert(!invalid_snapshot_seen.load(std::memory_order_relaxed));
     info_page_clear();
+    assert(!info_page_requested());
     info_page_state_load(&state);
     assert(!state.requested);
     assert(state.hold_until_tick == 0);

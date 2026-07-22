@@ -2,7 +2,6 @@
 #include "sensor_services.h"
 
 #include "app_metadata.h"
-#include "app_state.h"
 #include "app_text_format.h"
 #include "hourly_sensor_history_state.h"
 #include "i2c_bsp.h"
@@ -17,9 +16,16 @@
 
 #include "ui_task_notify.h"
 
-#include "esp_heap_caps.h"
+#include <esp_attr.h>
+#include <esp_heap_caps.h>
 #include <esp_log.h>
+#include <esp_timer.h>
+#include <nvs.h>
 
+#include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #include <new>
 #include <type_traits>
 
@@ -62,7 +68,7 @@ constexpr int kSensorTrendWindowHours = 4;
 constexpr int64_t kSensorTrendWindowMs = (int64_t)kSensorTrendWindowHours * kMinutesPerHour * kSecondsPerMinute * kMsPerSecond;
 alignas(Shtc3Port) unsigned char s_shtc3_storage[sizeof(Shtc3Port)] = {};
 Shtc3Port *s_shtc3 = nullptr;
-SensorSample s_sensor_trend_samples[kSensorHistoryMinutes] = {};
+EXT_RAM_BSS_ATTR SensorSample s_sensor_trend_samples[kSensorHistoryMinutes];
 int s_sensor_trend_next = 0;
 int s_sensor_trend_count = 0;
 bool s_sensor_average_valid = false;
@@ -382,7 +388,7 @@ static bool save_hourly_sensor_slot(int index,
     return true;
 }
 
-void record_hourly_sensor_sample(float temp, float humi)
+static void record_hourly_sensor_sample(float temp, float humi)
 {
     struct tm local = {};
     if (!is_system_time_plausible(&local)) {
@@ -407,7 +413,6 @@ void record_hourly_sensor_sample(float temp, float humi)
         ESP_LOGW(TAG, "%s", kHourlyStatePublishFailedLog);
         return;
     }
-    notify_ui_task();
 }
 
 bool get_hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history, uint32_t *version)
@@ -419,6 +424,11 @@ bool get_hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history, uint32
     return hourly_sensor_history_snapshot(history, version);
 }
 
+uint32_t get_hourly_sensor_history_version()
+{
+    return hourly_sensor_history_version_load();
+}
+
 static void calculate_updated_sensor_trends(float temp,
                                             float humi,
                                             int *temperature_trend,
@@ -428,16 +438,6 @@ static void calculate_updated_sensor_trends(float temp,
     calculate_sensor_trend_from_average(calculate_sensor_history_average(),
                                         temperature_trend,
                                         humidity_trend);
-}
-
-void update_sensor_history(float temp, float humi)
-{
-    int temperature_trend = 0;
-    int humidity_trend = 0;
-    calculate_updated_sensor_trends(temp, humi, &temperature_trend, &humidity_trend);
-    if (!local_sensor_state_publish_trends(temperature_trend, humidity_trend)) {
-        ESP_LOGW(TAG, "%s", kLocalSensorTrendPublishFailedLog);
-    }
 }
 
 void init_shtc3_sensor(I2cMasterBus &i2c)

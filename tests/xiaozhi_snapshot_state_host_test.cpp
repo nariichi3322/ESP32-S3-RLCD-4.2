@@ -70,6 +70,10 @@ void register_ui_task_handle(TaskHandle_t)
 
 int main()
 {
+    XiaozhiActivitySnapshot activity = xiaozhi_snapshot_activity_load();
+    assert(activity.state == kXiaozhiAiInactive);
+    assert(activity.activity_sequence == 0);
+
     XiaozhiAiSnapshot unavailable = {};
     xiaozhi_snapshot_get(&unavailable);
     assert(unavailable.state == kXiaozhiAiInactive);
@@ -82,6 +86,9 @@ int main()
 
     xiaozhi_snapshot_set(kXiaozhiAiReady, "等待唤醒词", "请说你好，小智", "123456");
     assert(s_notify_count == 1);
+    activity = xiaozhi_snapshot_activity_load();
+    assert(activity.state == kXiaozhiAiReady);
+    assert(activity.activity_sequence == 0);
     expect_mutex_released();
     xiaozhi_snapshot_set(kXiaozhiAiReady, "等待唤醒词", "请说你好，小智", "123456");
     assert(s_notify_count == 1);
@@ -102,6 +109,9 @@ int main()
     xiaozhi_snapshot_mark_user_activity();
     xiaozhi_snapshot_mark_user_activity();
     assert(s_notify_count == 5);
+    activity = xiaozhi_snapshot_activity_load();
+    assert(activity.state == kXiaozhiAiReady);
+    assert(activity.activity_sequence == 2);
 
     XiaozhiAiSnapshot snapshot = {};
     xiaozhi_snapshot_get(&snapshot);
@@ -123,6 +133,9 @@ int main()
     assert(s_notify_count == notify_before_take_failure);
     assert(failed_read.state == kXiaozhiAiInactive);
     assert(strcmp(failed_read.status, kXiaozhiDefaultStatus) == 0);
+    activity = xiaozhi_snapshot_activity_load();
+    assert(activity.state == kXiaozhiAiReady);
+    assert(activity.activity_sequence == 2);
     expect_mutex_released();
 
     xiaozhi_snapshot_get(&snapshot);

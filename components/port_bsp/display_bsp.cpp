@@ -135,13 +135,13 @@ spihost_(spihost)
 
     esp_err_t        ret;
     spi_bus_config_t buscfg   = {};
-    int              transfer = width_ * height_;
+    const int        pixel_count = width_ * height_;
     buscfg.miso_io_num                   = -1;
     buscfg.mosi_io_num                   = mosi;
     buscfg.sclk_io_num                   = scl;
     buscfg.quadwp_io_num                 = -1;
     buscfg.quadhd_io_num                 = -1;
-    buscfg.max_transfer_sz               = transfer;
+    buscfg.max_transfer_sz               = kRlcdTxChunkBytes;
     ret                                  = spi_bus_initialize(spihost_, &buscfg, SPI_DMA_CH_AUTO);
     if (ret != ESP_OK) {
         LogDisplayStageFailure("SPI bus initialization", ret);
@@ -182,7 +182,7 @@ spihost_(spihost)
 
     Set_ResetIOLevel(1);
 
-    DisplayLen                = transfer >> 3; //(1byte 8ipex)
+    DisplayLen                = pixel_count >> 3; //(1byte 8ipex)
     DispBuffer                = (uint8_t *) heap_caps_malloc(DisplayLen, MALLOC_CAP_SPIRAM);
     if (DispBuffer == NULL) {
         LogDisplayAllocationFailure("RLCD display buffer", DisplayLen);
@@ -191,13 +191,13 @@ spihost_(spihost)
     }
 
 #if (AlgorithmOptimization == 3)
-	PixelIndexLUT = (uint16_t (*)[300])heap_caps_malloc(transfer * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-	PixelBitLUT   = (uint8_t (*)[300])heap_caps_malloc(transfer * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
+    PixelIndexLUT = (uint16_t (*)[300])heap_caps_malloc(pixel_count * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+    PixelBitLUT   = (uint8_t (*)[300])heap_caps_malloc(pixel_count * sizeof(uint8_t), MALLOC_CAP_SPIRAM);
     if (PixelIndexLUT == NULL) {
-        LogDisplayAllocationFailure("RLCD pixel index LUT", transfer * sizeof(uint16_t));
+        LogDisplayAllocationFailure("RLCD pixel index LUT", pixel_count * sizeof(uint16_t));
     }
     if (PixelBitLUT == NULL) {
-        LogDisplayAllocationFailure("RLCD pixel bit LUT", transfer * sizeof(uint8_t));
+        LogDisplayAllocationFailure("RLCD pixel bit LUT", pixel_count * sizeof(uint8_t));
     }
     if (!PixelIndexLUT || !PixelBitLUT) {
         ReleaseResources();

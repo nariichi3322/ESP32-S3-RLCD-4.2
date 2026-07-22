@@ -2,7 +2,7 @@
 #pragma once
 
 void build_boot_info_page();
-void update_boot_info_page();
+bool update_boot_info_page();
 void build_network_diag_page();
 bool update_network_diag_page();
 void clear_aux_page_object_refs();

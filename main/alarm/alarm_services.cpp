@@ -327,13 +327,6 @@ bool alarm_is_enabled()
     return alarm_runtime_is_enabled();
 }
 
-uint32_t alarm_state_version()
-{
-    AlarmSnapshot snapshot = {};
-    alarm_get_snapshot(&snapshot);
-    return snapshot.version;
-}
-
 bool alarm_set_once(int hour, int minute)
 {
     AlarmSnapshot snapshot = {};

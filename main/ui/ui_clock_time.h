@@ -5,6 +5,7 @@
 #include <time.h>
 
 struct ClockUiTimeSnapshot {
+    int second_key;
     int minute_key;
     int date_key;
     int hour_key;

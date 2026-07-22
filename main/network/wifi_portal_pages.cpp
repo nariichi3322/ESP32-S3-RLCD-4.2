@@ -334,7 +334,9 @@ esp_err_t root_get_handler(httpd_req_t *req)
                                     : (save_result == WifiPortalSaveResult::kSuccess
                                            ? "<div class='feedback success' role='status'><strong>"
                                            : "<div class='feedback' role='alert'><strong>");
-    ScopedHeapBuffer<char> html(kPortalRootHtmlSize, HeapBufferInit::kZeroed);
+    ScopedHeapBuffer<char> html(kPortalRootHtmlSize,
+                                HeapBufferInit::kZeroed,
+                                HeapBufferStorage::kPsramPreferred);
     if (!html) {
         return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
     }
@@ -398,7 +400,9 @@ esp_err_t send_save_result_page(httpd_req_t *req,
     html_escape(wifi_ssid, safe_ssid, sizeof(safe_ssid));
     html_escape(have_weather_city ? weather_city : "自动定位", safe_city, sizeof(safe_city));
     html_escape(extra_message ? extra_message : "", safe_extra, sizeof(safe_extra));
-    ScopedHeapBuffer<char> html(kPortalSaveResultHtmlSize, HeapBufferInit::kZeroed);
+    ScopedHeapBuffer<char> html(kPortalSaveResultHtmlSize,
+                                HeapBufferInit::kZeroed,
+                                HeapBufferStorage::kPsramPreferred);
     if (!html) {
         return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
     }
@@ -439,7 +443,9 @@ esp_err_t send_save_result_page(httpd_req_t *req,
 
 esp_err_t send_offline_result_page(httpd_req_t *req, bool saved)
 {
-    ScopedHeapBuffer<char> html(kPortalOfflineResultHtmlSize, HeapBufferInit::kZeroed);
+    ScopedHeapBuffer<char> html(kPortalOfflineResultHtmlSize,
+                                HeapBufferInit::kZeroed,
+                                HeapBufferStorage::kPsramPreferred);
     if (!html) {
         return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
     }

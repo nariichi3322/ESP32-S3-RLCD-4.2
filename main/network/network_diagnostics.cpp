@@ -1,7 +1,7 @@
 // 执行设置页里的网络诊断流程，逐项显示联网链路状态。
 #include "network_diagnostics.h"
 
-#include "daily_saying_contract.h"
+#include "daily_saying_service.h"
 #include "ip_geolocation_client.h"
 #include "network_http_client.h"
 

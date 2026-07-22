@@ -18,12 +18,9 @@
 namespace {
 
 constexpr uint32_t kProvisioningFeedbackWaitMs = 30000;
-constexpr uint32_t kProvisioningFeedbackPollMs = 100;
 constexpr uint32_t kProvisioningFeedbackDisplayGraceMs = 750;
 static_assert(kProvisioningFeedbackWaitMs >= kProvisioningFeedbackDisplayGraceMs,
               "provisioning feedback wait must cover its display grace");
-static_assert(kProvisioningFeedbackPollMs > 0,
-              "provisioning feedback poll delay must be positive");
 constexpr const char *kProvisioningValidationFailedKeepPortalLog =
     "provisioning validation failed; setup portal remains active";
 constexpr const char *kSetupPortalStartFailedLog =
@@ -32,6 +29,8 @@ constexpr const char *kSetupPortalStartedLog =
     "queued setup portal start completed";
 #define PROVISIONING_FEEDBACK_WAIT_DONE_FORMAT \
     "provisioning result feedback wait complete: seen=%d elapsed_ms=%u"
+#define PROVISIONING_RESULT_DELIVERY_DEGRADED_FORMAT \
+    "setup portal AP-only result delivery unavailable; publishing result"
 
 } // namespace
 
@@ -53,19 +52,33 @@ SetupPortalStartResult service_setup_portal_start_request()
     return SetupPortalStartResult::kStarted;
 }
 
+void publish_setup_portal_result(WifiPortalSaveResult result)
+{
+    if (!prepare_setup_portal_result_delivery()) {
+        ESP_LOGW(TAG, "%s", PROVISIONING_RESULT_DELIVERY_DEGRADED_FORMAT);
+    }
+    wifi_portal_save_result_store(result);
+}
+
 void wait_for_provisioning_result_feedback()
 {
     const TickType_t started_at = xTaskGetTickCount();
     const TickType_t timeout_ticks = pdMS_TO_TICKS(kProvisioningFeedbackWaitMs);
-    bool seen = false;
-    while (setup_portal_active_load() &&
-           xTaskGetTickCount() - started_at < timeout_ticks) {
-        if (wifi_portal_save_feedback_seen_load()) {
-            seen = true;
-            break;
+    if (setup_portal_active_load() &&
+        !wifi_portal_save_feedback_seen_load()) {
+        if (app_event_group_ready()) {
+            app_event_group_wait_bits(kProvisioningFeedbackBit,
+                                      pdTRUE,
+                                      pdFALSE,
+                                      timeout_ticks);
+        } else {
+            // The application event group is a mandatory boot resource. Keep
+            // the old timeout behavior as a defensive fallback if it is lost.
+            vTaskDelay(timeout_ticks);
         }
-        vTaskDelay(pdMS_TO_TICKS(kProvisioningFeedbackPollMs));
     }
+    const bool seen = setup_portal_active_load() &&
+                      wifi_portal_save_feedback_seen_load();
     if (seen) {
         vTaskDelay(pdMS_TO_TICKS(kProvisioningFeedbackDisplayGraceMs));
     }
@@ -81,8 +94,7 @@ void keep_setup_portal_after_provisioning_failure(
     NetworkAwakeLockGuard &awake_lock,
     WifiPortalSaveResult result)
 {
-    (void)prepare_setup_portal_result_delivery();
-    wifi_portal_save_result_store(result);
+    publish_setup_portal_result(result);
     // The AP and HTTP server must remain available so the phone can display
     // the stored error and submit corrected credentials. Only release the CPU
     // awake lock owned by this validation attempt.

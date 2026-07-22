@@ -23,7 +23,6 @@
 #include "esp_sntp.h"
 #include "esp_wifi.h"
 #include "miniz.h"
-#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs.h"
@@ -56,8 +55,6 @@
 
 inline constexpr int kDisplayWidth = 400;
 inline constexpr int kDisplayHeight = 300;
-inline constexpr gpio_num_t kBootButtonGpio = GPIO_NUM_0;
-inline constexpr gpio_num_t kKeyButtonGpio = GPIO_NUM_18;
 inline constexpr int kAppMsPerSecond = 1000;
 inline constexpr int kAppSecondsPerMinute = 60;
 inline constexpr int kAppMsPerMinute = kAppSecondsPerMinute * kAppMsPerSecond;
@@ -67,10 +64,6 @@ inline constexpr int kSettingsManualSyncTimeoutMs = kAppMsPerMinute;
 inline constexpr int kWeatherClockAutoRetryMs = 2 * kAppMsPerMinute;
 inline constexpr int kWeatherClockAutoSyncMaxAttempts = 3;
 inline constexpr int kWeatherClockAutoBackoffMs = 30 * kAppMsPerMinute;
-inline constexpr int kButtonIdlePollMs = 60;
-inline constexpr int kButtonLowRefreshIdlePollMs = 50;
-inline constexpr int kButtonActivePollMs = 50;
-inline constexpr int kButtonPressedPollMs = 20;
 inline constexpr int kBootAnimRunFrameMs = 50;
 inline constexpr int kHttpBootTimeoutMs = 2500;
 inline constexpr int kDisplayPartialMaxWidth = (kDisplayWidth * 7) / 10;

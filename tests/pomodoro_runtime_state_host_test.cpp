@@ -31,12 +31,14 @@ int main()
     assert(!pomodoro_runtime_snapshot(0, &snapshot));
     assert(!pomodoro_runtime_publish(kPomodoroIdle, 0, 0, false, 0, 0));
     assert(!pomodoro_runtime_set_alerting(true));
+    assert(pomodoro_runtime_state_load() == kPomodoroIdle);
 
     assert(pomodoro_runtime_state_init());
     assert(pomodoro_runtime_state_init());
     assert(pomodoro_runtime_snapshot(0, &snapshot));
     assert(snapshot.visible.state == kPomodoroIdle);
     assert(snapshot.visible.version == 1);
+    assert(pomodoro_runtime_state_load() == snapshot.visible.state);
 
     assert(pomodoro_runtime_publish(kPomodoroRunning,
                                     65000,
@@ -47,6 +49,7 @@ int main()
     assert(pomodoro_runtime_snapshot(1000000, &snapshot));
     const uint32_t running_version = snapshot.visible.version;
     assert(snapshot.visible.remaining_ms == 65000);
+    assert(pomodoro_runtime_state_load() == kPomodoroRunning);
     assert(pomodoro_runtime_snapshot(1000001, &snapshot));
     assert(snapshot.visible.remaining_ms == 65000);
     assert(snapshot.visible.version == running_version);
@@ -91,9 +94,14 @@ int main()
         writer_done.store(true, std::memory_order_release);
     });
     do {
+        const PomodoroState state = pomodoro_runtime_state_load();
+        assert(state == kPomodoroRunning || state == kPomodoroCompleted);
         assert(pomodoro_runtime_snapshot(1000000, &snapshot));
         assert(is_state_a(snapshot) || is_state_b(snapshot));
     } while (!writer_done.load(std::memory_order_acquire));
     writer.join();
+    assert(pomodoro_runtime_snapshot(1000000, &snapshot));
+    assert(is_state_a(snapshot));
+    assert(pomodoro_runtime_state_load() == snapshot.visible.state);
     return 0;
 }

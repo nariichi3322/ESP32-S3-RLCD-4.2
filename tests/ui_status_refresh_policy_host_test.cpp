@@ -5,7 +5,7 @@
 
 int main()
 {
-    UiStatusRefreshSnapshot stable = {4, 7, false, false};
+    UiStatusRefreshSnapshot stable = {4, false, false, false};
     assert(ui_status_refresh_due(stable, stable, false, false));
     assert(!ui_status_refresh_due(stable, stable, true, false));
     assert(ui_status_refresh_due(stable, stable, true, true));
@@ -16,15 +16,15 @@ int main()
     assert(ui_status_refresh_due(changed, stable, true, false));
 
     changed = stable;
-    ++changed.alarm_version;
-    assert(ui_status_refresh_due(changed, stable, true, false));
-
-    changed = stable;
     changed.chime_enabled = true;
     assert(ui_status_refresh_due(changed, stable, true, false));
 
     changed = stable;
     changed.wifi_radio_on = true;
+    assert(ui_status_refresh_due(changed, stable, true, false));
+
+    changed = stable;
+    changed.alarm_enabled = true;
     assert(ui_status_refresh_due(changed, stable, true, false));
     return 0;
 }

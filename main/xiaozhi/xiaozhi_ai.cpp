@@ -738,6 +738,11 @@ void xiaozhi_ai_get_snapshot(XiaozhiAiSnapshot *out)
     xiaozhi_snapshot_get(out);
 }
 
+XiaozhiActivitySnapshot xiaozhi_ai_activity_snapshot_load()
+{
+    return xiaozhi_snapshot_activity_load();
+}
+
 void xiaozhi_ai_clear_activation()
 {
     release_realtime_network();

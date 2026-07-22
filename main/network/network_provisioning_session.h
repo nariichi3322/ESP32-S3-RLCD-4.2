@@ -12,6 +12,7 @@ enum class SetupPortalStartResult {
 };
 
 SetupPortalStartResult service_setup_portal_start_request();
+void publish_setup_portal_result(WifiPortalSaveResult result);
 void wait_for_provisioning_result_feedback();
 void keep_setup_portal_after_provisioning_failure(
     NetworkAwakeLockGuard &awake_lock,

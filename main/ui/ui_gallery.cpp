@@ -8,15 +8,21 @@
 #include "daily_saying_contract.h"
 #include "daily_saying_state.h"
 #include "ui_battery.h"
+#include "ui_gallery_rotation_state.h"
 #include "ui_gallery_selection.h"
+
+#include <esp_heap_caps.h>
+#include <stdint.h>
 
 #define GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG "gallery image canvas create failed"
 #define GALLERY_TIME_CANVAS_CREATE_FAILED_LOG "gallery time canvas create failed"
 #define GALLERY_SAYING_LABEL_CREATE_FAILED_LOG "gallery saying label create failed"
+#define GALLERY_CUSTOM_IMAGE_BUFFER_ALLOC_FAILED_LOG "custom gallery image buffer allocation failed"
 
 static int s_last_gallery_image_index = -1;
 static int s_last_gallery_time_key = -1;
-static uint8_t s_custom_gallery_image[CLOCK_GALLERY_IMAGE_BYTES_PER_ROW * CLOCK_GALLERY_IMAGE_HEIGHT];
+static uint32_t s_last_gallery_saying_version = UINT32_MAX;
+static uint8_t *s_custom_gallery_image;
 static lv_obj_t *s_gallery_image_canvas;
 static lv_obj_t *s_gallery_time_canvas;
 static lv_obj_t *s_gallery_saying_label;
@@ -52,6 +58,8 @@ static constexpr int kGalleryBlockDigitH = kGalleryBlockDigitRows * kGalleryBloc
 static constexpr int kGalleryBlockNumberW = kGalleryBlockDigitW * 2 + kGalleryBlockDigitGap;
 static constexpr int kGalleryTimeHourY = 15;
 static constexpr int kGalleryTimeMinuteY = 116;
+static constexpr size_t kCustomGalleryImageBufferSize =
+    CLOCK_GALLERY_IMAGE_BYTES_PER_ROW * CLOCK_GALLERY_IMAGE_HEIGHT;
 
 static const char *const kBlockDigits[][kGalleryBlockDigitRows] = {
     {"11111", "10001", "10011", "10101", "11001", "10001", "11111"},
@@ -86,6 +94,27 @@ static_assert(kGalleryTimeHourY + kGalleryBlockDigitH <= kGalleryTimeCanvasH,
               "Gallery hour digits must fit the time canvas height");
 static_assert(kGalleryTimeMinuteY + kGalleryBlockDigitH <= kGalleryTimeCanvasH,
               "Gallery minute digits must fit the time canvas height");
+static_assert(kCustomGalleryImageBufferSize > 0,
+              "custom gallery image buffer size must be positive");
+
+static uint8_t *ensure_custom_gallery_image_buffer()
+{
+    if (s_custom_gallery_image) {
+        return s_custom_gallery_image;
+    }
+    s_custom_gallery_image = static_cast<uint8_t *>(heap_caps_malloc(
+        kCustomGalleryImageBufferSize,
+        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
+    if (!s_custom_gallery_image) {
+        s_custom_gallery_image = static_cast<uint8_t *>(heap_caps_malloc(
+            kCustomGalleryImageBufferSize,
+            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    }
+    if (!s_custom_gallery_image) {
+        ESP_LOGW(TAG, "%s", GALLERY_CUSTOM_IMAGE_BUFFER_ALLOC_FAILED_LOG);
+    }
+    return s_custom_gallery_image;
+}
 
 static void canvas_fill_rect(lv_obj_t *canvas, int x, int y, int w, int h, lv_color_t color)
 {
@@ -137,8 +166,13 @@ static bool update_gallery_saying_label()
     if (!s_gallery_saying_label) {
         return false;
     }
+    const uint32_t version = daily_saying_state_version_load();
+    if (version == s_last_gallery_saying_version) {
+        return false;
+    }
     char saying[kDailySayingLen] = {};
     get_daily_saying_snapshot(saying, sizeof(saying));
+    s_last_gallery_saying_version = version;
     return set_label_text_if_changed(s_gallery_saying_label, saying);
 }
 
@@ -183,12 +217,17 @@ static bool update_gallery_image_for_date(const struct tm &local)
     }
     int custom_count = custom_assets_gallery_count();
     GalleryImageSelection selection = {};
-    if (!gallery_image_selection_for_date(local.tm_year + kTmYearOffset,
+    const int rotation_minutes = effective_gallery_rotation_minutes(
+        gallery_rotation_period_load(), custom_count);
+    if (!gallery_image_selection_for_time(local.tm_year + kTmYearOffset,
                                           local.tm_mon + kTmMonthOffset,
                                           local.tm_mday,
+                                          local.tm_hour,
+                                          local.tm_min,
                                           local.tm_wday,
                                           custom_count,
                                           CLOCK_GALLERY_IMAGE_COUNT,
+                                          rotation_minutes,
                                           &selection)) {
         return false;
     }
@@ -198,9 +237,14 @@ static bool update_gallery_image_for_date(const struct tm &local)
     }
     s_last_gallery_image_index = image_index;
     const uint8_t *image_bits = clock_gallery_images[selection.builtin_index];
-    if (selection.uses_custom_gallery &&
-        custom_assets_read_gallery_image(image_index, s_custom_gallery_image, sizeof(s_custom_gallery_image))) {
-        image_bits = s_custom_gallery_image;
+    uint8_t *custom_image = selection.uses_custom_gallery
+                                ? ensure_custom_gallery_image_buffer()
+                                : nullptr;
+    if (custom_image &&
+        custom_assets_read_gallery_image(image_index,
+                                         custom_image,
+                                         kCustomGalleryImageBufferSize)) {
+        image_bits = custom_image;
     }
     draw_1bit_icon(s_gallery_image_canvas,
                    CLOCK_GALLERY_IMAGE_WIDTH,
@@ -222,8 +266,6 @@ bool update_gallery_page(const struct tm &local)
         changed |= update_gallery_time_labels(local);
     }
     changed |= update_gallery_image_for_date(local);
-    changed |= update_work_page_sensor_summary(
-        get_work_page_status_labels(kWorkPageGallery).summary);
     changed |= update_gallery_saying_label();
     return changed;
 }
@@ -293,6 +335,7 @@ void build_gallery_page()
     update_work_page_battery_icon(kWorkPageGallery, battery_percent_load());
     s_last_gallery_image_index = -1;
     s_last_gallery_time_key = -1;
+    s_last_gallery_saying_version = UINT32_MAX;
 }
 
 void clear_gallery_object_refs()
@@ -300,4 +343,5 @@ void clear_gallery_object_refs()
     s_gallery_image_canvas = nullptr;
     s_gallery_time_canvas = nullptr;
     s_gallery_saying_label = nullptr;
+    s_last_gallery_saying_version = UINT32_MAX;
 }

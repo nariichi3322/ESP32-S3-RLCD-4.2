@@ -44,6 +44,17 @@ int main()
     }
 
     {
+        ScopedHeapBuffer<char> buffer(12,
+                                      HeapBufferInit::kZeroed,
+                                      HeapBufferStorage::kPsramPreferred);
+        assert(buffer);
+        assert(buffer.size() == 12);
+        for (size_t i = 0; i < buffer.size(); ++i) {
+            assert(buffer.data()[i] == '\0');
+        }
+    }
+
+    {
         ScopedHeapBuffer<char> buffer(0, HeapBufferInit::kCString);
         assert(!buffer);
         assert(buffer.get() == nullptr);

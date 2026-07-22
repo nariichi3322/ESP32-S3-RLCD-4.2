@@ -14,9 +14,14 @@ constexpr int kExitPercent = 13;
 int main()
 {
     BatteryRuntimeSnapshot snapshot;
+    BatteryRuntimeStatusSnapshot status = battery_runtime_status_load();
+    assert(status.percent == -1);
+    assert(!status.charging);
+    assert(!status.low_battery_mode);
     assert(battery_percent_load() == -1);
     assert(!battery_charging_load());
     assert(!battery_low_mode_load());
+    assert(battery_runtime_version_load() == 0);
     battery_runtime_snapshot_load(&snapshot);
     assert(snapshot.percent == -1);
 
@@ -35,14 +40,19 @@ int main()
 
     snapshot.percent = 9;
     battery_runtime_snapshot_store(snapshot);
+    const uint32_t low_enter_version = battery_runtime_version_load();
     assert(battery_runtime_low_mode_update(kEnterPercent, kExitPercent));
     assert(battery_low_mode_load());
+    assert(battery_runtime_version_load() == low_enter_version + 1);
     assert(!battery_runtime_low_mode_update(kEnterPercent, kExitPercent));
+    assert(battery_runtime_version_load() == low_enter_version + 1);
     snapshot.percent = 13;
     snapshot.low_battery_mode = true;
     battery_runtime_snapshot_store(snapshot);
+    const uint32_t low_exit_version = battery_runtime_version_load();
     assert(battery_runtime_low_mode_update(kEnterPercent, kExitPercent));
     assert(!battery_low_mode_load());
+    assert(battery_runtime_version_load() == low_exit_version + 1);
 
     snapshot.percent = 50;
     snapshot.voltage = 50.0f;
@@ -55,19 +65,19 @@ int main()
     assert(battery_percent_load() == 50);
     assert(battery_charging_load());
     assert(!battery_low_mode_load());
+    assert(battery_runtime_version_load() == snapshot.version);
+    status = battery_runtime_status_load();
+    assert(status.percent == snapshot.percent);
+    assert(status.charging == snapshot.charging);
+    assert(status.low_battery_mode == snapshot.low_battery_mode);
 
-    battery_runtime_voltage_store(51.0f);
-    battery_runtime_snapshot_load(&snapshot);
-    assert(snapshot.voltage == 51.0f);
-    assert(snapshot.percent == 50);
-    assert(snapshot.version == 7);
-    snapshot.voltage = 50.0f;
     snapshot.charging = false;
     snapshot.animation_complete = false;
     snapshot.last_charge_time = 50;
     battery_runtime_snapshot_store(snapshot);
 
     std::atomic<bool> inconsistent{false};
+    std::atomic<bool> status_inconsistent{false};
     std::thread writer([] {
         for (int i = 0; i < kIterations; ++i) {
             BatteryRuntimeSnapshot next;
@@ -92,13 +102,31 @@ int main()
             }
         }
     });
+    std::thread status_reader([&] {
+        for (int i = 0; i < kIterations; ++i) {
+            const BatteryRuntimeStatusSnapshot current =
+                battery_runtime_status_load();
+            if (current.percent < 0 || current.percent > 100 ||
+                current.charging != ((current.percent % 2) != 0) ||
+                current.low_battery_mode != (current.percent < kEnterPercent)) {
+                status_inconsistent.store(true, std::memory_order_relaxed);
+            }
+        }
+    });
     writer.join();
     reader.join();
+    status_reader.join();
     assert(!inconsistent.load(std::memory_order_relaxed));
+    assert(!status_inconsistent.load(std::memory_order_relaxed));
 
     battery_runtime_snapshot_load(&snapshot);
     assert(battery_percent_load() == snapshot.percent);
     assert(battery_charging_load() == snapshot.charging);
     assert(battery_low_mode_load() == snapshot.low_battery_mode);
+    assert(battery_runtime_version_load() == snapshot.version);
+    status = battery_runtime_status_load();
+    assert(status.percent == snapshot.percent);
+    assert(status.charging == snapshot.charging);
+    assert(status.low_battery_mode == snapshot.low_battery_mode);
     return 0;
 }

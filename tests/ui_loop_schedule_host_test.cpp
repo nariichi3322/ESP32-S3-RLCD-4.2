@@ -15,6 +15,11 @@ int main()
     assert(ui_next_second_delay_ms(0, 1000000) == 10);
     assert(ui_next_second_delay_ms(0, -1) == 1005);
 
+    assert(ui_local_time_cache_refresh_due(100, 100, false));
+    assert(!ui_local_time_cache_refresh_due(100, 100, true));
+    assert(ui_local_time_cache_refresh_due(101, 100, true));
+    assert(ui_local_time_cache_refresh_due(99, 100, true));
+
     assert(ui_next_minute_delay_ms(0) == 60005);
     assert(ui_next_minute_delay_ms(1) == 59005);
     assert(ui_next_minute_delay_ms(59) == 1005);

@@ -6,6 +6,7 @@
 #include "manual_weather_city_state.h"
 #include "offline_mode_state.h"
 #include "ui_settings_confirmation_state.h"
+#include "ui_gallery_rotation_state.h"
 #include "weather_city_contract.h"
 
 #include <assert.h>
@@ -14,6 +15,7 @@
 namespace {
 AlarmSnapshot s_alarm = {};
 char s_manual_weather_city[kManualWeatherCityLen] = {};
+int s_custom_gallery_count = 0;
 
 void expect_text(char items[][kSettingsSecondaryTextSize], int index, const char *expected)
 {
@@ -47,8 +49,17 @@ void alarm_get_snapshot(AlarmSnapshot *out)
     }
 }
 
+int custom_assets_gallery_count()
+{
+    return s_custom_gallery_count;
+}
+
 int main()
 {
+    static_assert(kDisplaySettingsXiaozhiAutoReturnItem == 2,
+                  "Xiaozhi power saving must use the left cell of the second row");
+    static_assert(kDisplaySettingsAlarmItem == 3,
+                  "alarm must use the right cell of the second row");
     chime_runtime_snapshot_store({false, false, 60, 2});
     char items[kSettingsSecondaryMaxCount][kSettingsSecondaryTextSize] = {};
 
@@ -79,8 +90,19 @@ int main()
     populate_settings_secondary_items(kSettingsPrimaryDisplay, items);
     expect_text(items, kDisplaySettingsPageSwitchItem, "页面开关");
     expect_text(items, kDisplaySettingsOrderItem, "页面顺序");
+    expect_text(items, kDisplaySettingsXiaozhiAutoReturnItem, "小智节能");
     expect_text(items, kDisplaySettingsAlarmItem, "闹钟 --:--");
-    expect_text(items, kDisplaySettingsXiaozhiAutoReturnItem, "小智AI自动返回");
+    expect_text(items, kDisplaySettingsGalleryRotationItem, "图片切换 24h");
+
+    gallery_rotation_period_store(kGalleryRotation30Minutes);
+    memset(items, 0, sizeof(items));
+    populate_settings_secondary_items(kSettingsPrimaryDisplay, items);
+    expect_text(items, kDisplaySettingsGalleryRotationItem, "图片切换 24h");
+
+    s_custom_gallery_count = 3;
+    memset(items, 0, sizeof(items));
+    populate_settings_secondary_items(kSettingsPrimaryDisplay, items);
+    expect_text(items, kDisplaySettingsGalleryRotationItem, "图片切换 30m");
 
     s_alarm.enabled = true;
     s_alarm.hour = 6;

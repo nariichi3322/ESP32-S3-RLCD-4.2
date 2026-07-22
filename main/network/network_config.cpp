@@ -27,6 +27,7 @@
 #include "weather_city_text.h"
 #include "xiaozhi_ai.h"
 #include "xiaozhi_auto_return_state.h"
+#include "ui_gallery_rotation_state.h"
 
 #include <esp_log.h>
 
@@ -174,7 +175,8 @@ static void reset_saved_config_runtime_state()
     manual_weather_city_store("");
     clear_wifi_station_ip();
     offline_mode_enabled_store(false);
-    xiaozhi_auto_return_enabled_store(false);
+    xiaozhi_auto_return_enabled_store(kDefaultXiaozhiAutoReturnEnabled);
+    gallery_rotation_period_store(kDefaultGalleryRotationPeriod);
     chime_runtime_snapshot_store({
         false,
         false,

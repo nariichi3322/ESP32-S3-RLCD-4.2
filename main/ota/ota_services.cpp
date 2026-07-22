@@ -3,8 +3,8 @@
 
 #include "app_event_group.h"
 #include "app_metadata.h"
-#include "app_state.h"
 #include "battery_policy.h"
+#include "battery_runtime_state.h"
 #include "ota_download_policy.h"
 #include "ota_download_http.h"
 #include "ota_download_progress_policy.h"
@@ -27,9 +27,22 @@
 #include "ui_settings_navigation.h"
 #include "ui_task_notify.h"
 
-#include "esp_app_format.h"
-#include "esp_heap_caps.h"
+#include <esp_app_format.h>
+#include <esp_heap_caps.h>
 #include <esp_log.h>
+#include <esp_ota_ops.h>
+#include <esp_system.h>
+#include <esp_timer.h>
+#include <esp_wifi.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <mbedtls/sha256.h>
+
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <strings.h>
 
 struct OtaCrashBreadcrumb {
     uint32_t magic = 0;

@@ -25,6 +25,10 @@ bool s_feedback_seen = false;
 TickType_t s_ticks = 0;
 int s_delay_calls = 0;
 TickType_t s_last_delay = 0;
+int s_wait_calls = 0;
+EventBits_t s_wait_bits = 0;
+TickType_t s_wait_timeout = 0;
+bool s_event_group_ready = true;
 
 bool s_prepare_result = false;
 int s_prepare_calls = 0;
@@ -53,6 +57,10 @@ void reset_feedback_state()
     s_ticks = 0;
     s_delay_calls = 0;
     s_last_delay = 0;
+    s_wait_calls = 0;
+    s_wait_bits = 0;
+    s_wait_timeout = 0;
+    s_event_group_ready = true;
 }
 
 } // namespace
@@ -108,6 +116,25 @@ bool wifi_portal_save_feedback_seen_load()
 TickType_t xTaskGetTickCount()
 {
     return s_ticks;
+}
+
+bool app_event_group_ready()
+{
+    return s_event_group_ready;
+}
+
+EventBits_t app_event_group_wait_bits(EventBits_t bits,
+                                      BaseType_t clear_on_exit,
+                                      BaseType_t wait_for_all,
+                                      TickType_t timeout)
+{
+    assert(clear_on_exit == pdTRUE);
+    assert(wait_for_all == pdFALSE);
+    ++s_wait_calls;
+    s_wait_bits = bits;
+    s_wait_timeout = timeout;
+    s_ticks += timeout;
+    return 0;
 }
 
 void vTaskDelay(TickType_t ticks)
@@ -172,18 +199,42 @@ int main()
     reset_feedback_state();
     s_portal_active = true;
     wait_for_provisioning_result_feedback();
-    assert(s_delay_calls == 300);
+    assert(s_wait_calls == 1);
+    assert(s_wait_bits == kProvisioningFeedbackBit);
+    assert(s_wait_timeout == pdMS_TO_TICKS(30000));
+    assert(s_delay_calls == 0);
     assert(s_ticks == pdMS_TO_TICKS(30000));
-    assert(s_last_delay == pdMS_TO_TICKS(100));
 
     reset_feedback_state();
     s_portal_active = true;
     s_feedback_seen = true;
     wait_for_provisioning_result_feedback();
+    assert(s_wait_calls == 0);
     assert(s_delay_calls == 1);
     assert(s_ticks == pdMS_TO_TICKS(750));
     assert(s_last_delay == pdMS_TO_TICKS(750));
 
+    reset_feedback_state();
+    s_portal_active = true;
+    s_event_group_ready = false;
+    wait_for_provisioning_result_feedback();
+    assert(s_wait_calls == 0);
+    assert(s_delay_calls == 1);
+    assert(s_ticks == pdMS_TO_TICKS(30000));
+    assert(s_last_delay == pdMS_TO_TICKS(30000));
+
+    reset_feedback_state();
+    s_prepare_result = false;
+    s_prepare_calls = 0;
+    s_stored_result = WifiPortalSaveResult::kNone;
+    s_store_calls = 0;
+    publish_setup_portal_result(WifiPortalSaveResult::kWeatherApiFailed);
+    assert(s_prepare_calls == 1);
+    assert(s_delay_calls == 0);
+    assert(s_store_calls == 1);
+    assert(s_stored_result == WifiPortalSaveResult::kWeatherApiFailed);
+
+    reset_feedback_state();
     s_prepare_result = true;
     s_prepare_calls = 0;
     s_stored_result = WifiPortalSaveResult::kNone;
@@ -199,6 +250,7 @@ int main()
         assert(!awake_lock.locked());
     }
     assert(s_prepare_calls == 1);
+    assert(s_delay_calls == 0);
     assert(s_store_calls == 1);
     assert(s_stored_result == WifiPortalSaveResult::kWeatherApiFailed);
     assert(s_awake_acquire_calls == 1);

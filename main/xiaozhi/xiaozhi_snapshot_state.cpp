@@ -9,16 +9,38 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
+#include <atomic>
 #include <string.h>
 
 namespace {
 constexpr const char *kNeutralEmotion = "neutral";
+constexpr uint32_t kActivityStateBits = 3;
+constexpr uint32_t kActivityStateMask = (1U << kActivityStateBits) - 1U;
 
 StaticSemaphore_t s_snapshot_mutex_storage = {};
 SemaphoreHandle_t s_snapshot_mutex = nullptr;
 // 固定 char 数组的静态聚合初始化需要字符串字面量。
 XiaozhiAiSnapshot s_snapshot = {
     kXiaozhiAiInactive, "小智准备中", "", "", "neutral", 0, 0};
+std::atomic<uint32_t> s_activity_snapshot{
+    static_cast<uint32_t>(kXiaozhiAiInactive)};
+
+static_assert(static_cast<uint32_t>(kXiaozhiAiError) <= kActivityStateMask,
+              "Xiaozhi states must fit the activity snapshot state field");
+
+constexpr uint32_t pack_activity_snapshot(XiaozhiAiState state,
+                                          uint32_t activity_sequence)
+{
+    return (activity_sequence << kActivityStateBits) |
+           (static_cast<uint32_t>(state) & kActivityStateMask);
+}
+
+void publish_activity_snapshot_locked()
+{
+    s_activity_snapshot.store(pack_activity_snapshot(s_snapshot.state,
+                                                     s_snapshot.activity_sequence),
+                              std::memory_order_release);
+}
 
 void begin_state_update_locked(XiaozhiAiState state, const char *status)
 {
@@ -35,6 +57,7 @@ void finish_state_update_locked(XiaozhiAiState state)
     }
     s_snapshot.waveform_level =
         state == kXiaozhiAiListening || state == kXiaozhiAiSpeaking ? 1 : 0;
+    publish_activity_snapshot_locked();
 }
 } // namespace
 
@@ -132,6 +155,7 @@ void xiaozhi_snapshot_mark_user_activity()
             return;
         }
         ++s_snapshot.activity_sequence;
+        publish_activity_snapshot_locked();
     }
     notify_ui_task();
 }
@@ -149,4 +173,13 @@ void xiaozhi_snapshot_get(XiaozhiAiSnapshot *out)
         return;
     }
     *out = s_snapshot;
+}
+
+XiaozhiActivitySnapshot xiaozhi_snapshot_activity_load()
+{
+    const uint32_t packed = s_activity_snapshot.load(std::memory_order_acquire);
+    return {
+        static_cast<XiaozhiAiState>(packed & kActivityStateMask),
+        packed >> kActivityStateBits,
+    };
 }

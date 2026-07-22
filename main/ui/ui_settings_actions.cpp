@@ -7,6 +7,7 @@
 #include "audio_services.h"
 #include "chime_runtime_state.h"
 #include "chime_settings.h"
+#include "custom_assets.h"
 #include "manual_weather_city_state.h"
 #include "network_config.h"
 #include "device_settings_persistence.h"
@@ -17,6 +18,7 @@
 #include "pomodoro_services.h"
 #include "setup_portal_control.h"
 #include "ui_info_page_state.h"
+#include "ui_gallery_rotation_state.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_confirmation_state.h"
 #include "ui_text_format.h"
@@ -36,7 +38,7 @@ constexpr const char *kSettingsSyncBusyFeedback = "请等待同步完成";
 constexpr const char *kSettingsOfflineEnabledFeedback = "离线模式已开启";
 constexpr const char *kSettingsOfflineDisabledFeedback = "离线模式已关闭";
 constexpr const char *kOfflinePageUnavailableFeedback = "当前处于离线模式";
-constexpr const char *kManualWeatherCityEditFeedback = "请进入配网页修改";
+constexpr const char *kManualWeatherCityEditFeedback = "请进入配网页/小智/网页修改";
 constexpr const char *kManualWeatherCityClearConfirmFeedback = "再次确认清除";
 constexpr const char *kManualWeatherCityAutoFeedback = "已恢复自动定位";
 constexpr const char *kManualNtpSyncFeedback = "正在同步时间...";
@@ -54,8 +56,10 @@ constexpr const char *kLastWorkPageFeedback = "至少保留一个页面";
 constexpr const char *kXiaozhiNeedsHomeFeedback = "请至少保留一个非小智页面";
 constexpr const char *kXiaozhiHomeBlockedFeedback = "小智AI不能设为主页";
 constexpr const char *kPomodoroRunningFeedback = "请先取消番茄钟";
-constexpr const char *kXiaozhiAutoReturnEnabledFeedback = "小智AI自动返回已开启";
-constexpr const char *kXiaozhiAutoReturnDisabledFeedback = "小智AI自动返回已关闭";
+constexpr const char *kXiaozhiAutoReturnEnabledFeedback = "小智节能已开启";
+constexpr const char *kXiaozhiAutoReturnDisabledFeedback = "小智节能已关闭";
+constexpr const char *kGalleryRotationBuiltinFeedback = "默认图片固定24h";
+constexpr const char *kGalleryRotationFeedbackFormat = "图片切换 %s";
 constexpr const char *kAlarmDisabledFeedback = "闹钟已关闭";
 constexpr const char *kAlarmSetByXiaozhiFeedback = "请通过小智AI设置";
 constexpr const char *kWorkPageFeedbackFormat = "%s%s";
@@ -108,6 +112,8 @@ constexpr const char *kSettingsActionTexts[] = {
     kPomodoroRunningFeedback,
     kXiaozhiAutoReturnEnabledFeedback,
     kXiaozhiAutoReturnDisabledFeedback,
+    kGalleryRotationBuiltinFeedback,
+    kGalleryRotationFeedbackFormat,
     kAlarmDisabledFeedback,
     kAlarmSetByXiaozhiFeedback,
     kWorkPageFeedbackFormat,
@@ -209,6 +215,11 @@ namespace {
 void handle_page_order_settings_action()
 {
     normalize_work_page_order();
+    uint8_t previous_order[kWorkPageCount] = {};
+    if (!work_page_order_copy(previous_order, sizeof(previous_order))) {
+        set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+        return;
+    }
     SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
     int current = valid_enabled_work_page_order_index(navigation.page_order_selection);
     int next = next_enabled_work_page_order_index(current);
@@ -216,12 +227,15 @@ void handle_page_order_settings_action()
         set_settings_feedback(kXiaozhiHomeBlockedFeedback, kSettingsFeedbackDefaultMs);
         return;
     }
-    navigation.page_order_selection = next;
-    settings_navigation_store(navigation);
     if (save_work_page_order()) {
+        navigation.page_order_selection = next;
+        settings_navigation_store(navigation);
         active_work_page_store(first_enabled_work_page());
         set_settings_feedback(kSettingsOrderSavedFeedback, kSettingsFeedbackSavedMs);
     } else {
+        work_page_order_replace(previous_order, sizeof(previous_order));
+        navigation.page_order_selection = current;
+        settings_navigation_store(navigation);
         set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
     }
 }
@@ -420,6 +434,24 @@ void handle_display_settings_action(int selected)
                                   ? kXiaozhiAutoReturnEnabledFeedback
                                   : kXiaozhiAutoReturnDisabledFeedback,
                               kSettingsFeedbackDefaultMs);
+        return;
+    }
+    if (selected == kDisplaySettingsGalleryRotationItem) {
+        if (custom_assets_gallery_count() <= 0) {
+            set_settings_feedback(kGalleryRotationBuiltinFeedback,
+                                  kSettingsFeedbackInstructionMs);
+            return;
+        }
+        const uint8_t previous = gallery_rotation_period_load();
+        const uint8_t next = next_gallery_rotation_period(previous);
+        gallery_rotation_period_store(next);
+        if (!save_gallery_rotation_setting()) {
+            gallery_rotation_period_store(previous);
+            set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        set_formatted_settings_feedback(kGalleryRotationFeedbackFormat,
+                                        gallery_rotation_period_label(next));
         return;
     }
     set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);

@@ -124,6 +124,15 @@ NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInp
     return schedule;
 }
 
+bool network_sync_availability_changed(const NetworkSyncAvailability &scheduled,
+                                       const NetworkSyncAvailability &current)
+{
+    return scheduled.have_wifi_creds != current.have_wifi_creds ||
+           scheduled.have_weather_key != current.have_weather_key ||
+           scheduled.offline_mode != current.offline_mode ||
+           scheduled.low_battery_mode != current.low_battery_mode;
+}
+
 time_t network_ntp_retry_delay_seconds(bool time_plausible)
 {
     return time_plausible ? kValidTimeNtpRetryDelaySeconds

@@ -34,6 +34,13 @@ uint32_t ui_next_second_delay_ms(int64_t sampled_wall_second,
     return delay_ms > kNextSecondDelayMaxMs ? kNextSecondDelayMaxMs : delay_ms;
 }
 
+bool ui_local_time_cache_refresh_due(int64_t sampled_wall_second,
+                                     int64_t cached_wall_second,
+                                     bool cache_valid)
+{
+    return !cache_valid || sampled_wall_second != cached_wall_second;
+}
+
 uint32_t ui_next_minute_delay_ms(int local_second)
 {
     int seconds_to_next = kSecondsPerMinute - local_second;

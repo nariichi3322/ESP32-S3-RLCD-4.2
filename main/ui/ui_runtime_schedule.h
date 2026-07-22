@@ -8,12 +8,29 @@
 
 struct BatteryRuntimeSnapshot;
 
+struct UiRuntimeSurfaceSnapshot {
+    bool setup_portal_active = false;
+    bool settings_requested = false;
+    bool info_requested = false;
+    bool network_diag_requested = false;
+
+    bool auxiliary_page_requested() const
+    {
+        return settings_requested || info_requested || network_diag_requested;
+    }
+};
+
 bool ui_runtime_settings_timeout_elapsed(TickType_t last_activity);
-bool ui_runtime_auxiliary_page_requested();
+UiRuntimeSurfaceSnapshot ui_runtime_surface_snapshot_load();
 TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
                                             time_t sampled_wall_second,
                                             const BatteryRuntimeSnapshot &battery,
-                                            bool battery_blink_visible);
-void ui_runtime_update_xiaozhi_auto_return(TickType_t tick_now,
+                                            bool battery_blink_visible,
+                                            int active_page,
+                                            const UiRuntimeSurfaceSnapshot &surfaces);
+void ui_runtime_update_xiaozhi_auto_return(int active_page,
+                                           bool low_battery_mode,
+                                           const UiRuntimeSurfaceSnapshot &surfaces,
+                                           TickType_t tick_now,
                                            TickType_t &last_activity_tick,
                                            uint32_t &last_activity_sequence);

@@ -185,27 +185,17 @@ void align_history_label_or_log(lv_obj_t *label,
     }
 }
 
-bool update_history_page(const struct tm &local)
+static __attribute__((noinline)) bool redraw_history_chart(time_t end_hour,
+                                                           int hour_key)
 {
-    build_history_page();
-    if (!s_history_chart_canvas) {
-        return false;
-    }
-    struct tm mutable_local = local;
-    time_t now = mktime(&mutable_local);
-    time_t end_hour = hour_start_from_time(now);
-    int hour_key = history_hour_key(local);
-    const WorkPageStatusLabels status = get_work_page_status_labels(kWorkPageHistory);
-    bool changed = update_work_page_status_time(status.time, local);
-    changed |= update_work_page_sensor_summary(status.summary);
     HourlySensorHistoryBlob history = {};
     uint32_t history_version = 0;
     if (!get_hourly_sensor_history_snapshot(&history, &history_version)) {
-        return changed;
+        return false;
     }
     if (s_last_history_drawn_version == history_version &&
         s_last_history_drawn_hour == hour_key) {
-        return changed;
+        return false;
     }
     s_last_history_drawn_version = history_version;
     s_last_history_drawn_hour = hour_key;
@@ -246,6 +236,26 @@ bool update_history_page(const struct tm &local)
                              s_history_humi_axis_labels);
     lv_obj_invalidate(s_history_chart_canvas);
     return true;
+}
+
+bool update_history_page(const struct tm &local)
+{
+    build_history_page();
+    if (!s_history_chart_canvas) {
+        return false;
+    }
+    const WorkPageStatusLabels status = get_work_page_status_labels(kWorkPageHistory);
+    bool changed = update_work_page_status_time(status.time, local);
+    const int hour_key = history_hour_key(local);
+    if (s_last_history_drawn_version == get_hourly_sensor_history_version() &&
+        s_last_history_drawn_hour == hour_key) {
+        return changed;
+    }
+    struct tm mutable_local = local;
+    const time_t now = mktime(&mutable_local);
+    const time_t end_hour = hour_start_from_time(now);
+    changed |= redraw_history_chart(end_hour, hour_key);
+    return changed;
 }
 
 static void build_history_chart_area(lv_obj_t *screen)

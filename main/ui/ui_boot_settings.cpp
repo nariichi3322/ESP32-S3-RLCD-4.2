@@ -10,10 +10,13 @@
 #include "ota_runtime_state.h"
 #include "ota_services.h"
 #include "ui_settings_content.h"
+#include "ui_settings_layout.h"
 #include "ui_settings_ota_panel.h"
 #include "xiaozhi_auto_return_state.h"
 
 namespace {
+namespace settings_layout = ui_settings_layout;
+
 lv_obj_t *s_settings_labels[kSettingsLabelCount];
 lv_obj_t *s_settings_switch_dots[kSettingsSecondaryMaxCount];
 lv_obj_t *s_settings_feedback_label;
@@ -42,26 +45,6 @@ int collect_visible_work_page_order(int *indices, uint8_t *pages, size_t capacit
 #define SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT "settings secondary label create failed index=%d"
 #define SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT "settings switch dot create failed index=%d"
 
-constexpr int kSettingsPrimaryX = 12;
-constexpr int kSettingsPrimaryW = 112;
-constexpr int kSettingsSecondaryX = 150;
-constexpr int kSettingsSecondaryW = 228;
-constexpr int kSettingsSecondaryH = 30;
-constexpr int kSettingsSwitchDotX = 362;
-constexpr int kSettingsSwitchDotYOffset = 8;
-constexpr int kSettingsSwitchDotSize = 12;
-constexpr int kSettingsListRowY[] = {66, 105, 144, 183, 222, 222, 222};
-constexpr int kSettingsGridRowY[] = {66, 105, 144, 183};
-constexpr size_t kSettingsListRowCount = array_count(kSettingsListRowY);
-constexpr size_t kSettingsGridRowCount = array_count(kSettingsGridRowY);
-constexpr int kSettingsGridColumns = 2;
-constexpr int kSettingsGridLeftX = 150;
-constexpr int kSettingsGridRightX = 267;
-constexpr int kSettingsGridColW = 111;
-constexpr int kSettingsGridSwitchDotXOffset = 92;
-constexpr int kSettingsGridSwitchDotYOffset = 9;
-constexpr int kSettingsSystemLongItemY = 144;
-constexpr int kSettingsDisplayLongItemY = 183;
 constexpr const char *kSettingsPrimaryItems[kSettingsPrimaryCount] = {"网络", "声音", "显示", "系统"};
 constexpr const char *kSettingsPageOrderEntryFormat = "%d %s";
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
@@ -76,37 +59,26 @@ constexpr const char *kBootSettingsLogTexts[] = {
     SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT,
 };
 
-struct SettingsGridCell {
-    int x;
-    int y;
-};
-
 enum SettingsMenuColumn {
     kSettingsMenuPrimaryColumn,
     kSettingsMenuSecondaryColumn,
 };
 
-SettingsGridCell settings_grid_cell(int index)
-{
-    int col = index % kSettingsGridColumns;
-    int row = index / kSettingsGridColumns;
-    return {
-        col == 0 ? kSettingsGridLeftX : kSettingsGridRightX,
-        kSettingsGridRowY[row],
-    };
-}
-
 int settings_long_item_y(int primary)
 {
-    return primary == kSettingsPrimarySystem ? kSettingsSystemLongItemY : kSettingsDisplayLongItemY;
+    return primary == kSettingsPrimarySystem
+               ? settings_layout::kSettingsSystemLongItemY
+               : settings_layout::kSettingsDisplayLongItemY;
 }
 
-static_assert(kSettingsListRowCount == kSettingsSecondaryMaxCount,
+static_assert(settings_layout::kSettingsListRowCount == kSettingsSecondaryMaxCount,
               "settings list rows must match secondary slot count");
-static_assert(kSettingsGridRowCount * kSettingsGridColumns >= kWorkPageCount,
+static_assert(settings_layout::kSettingsGridCapacity >= kWorkPageCount,
               "settings grid capacity must cover all work pages");
-static_assert(kSettingsGridRowCount * kSettingsGridColumns >= kSystemSettingsGridItemCount,
+static_assert(settings_layout::kSettingsGridCapacity >= kSystemSettingsGridItemCount,
               "settings grid capacity must cover system grid items");
+static_assert(settings_layout::kSettingsGridCapacity >= kDisplaySettingsGridItemCount,
+              "settings grid capacity must cover display grid items");
 static_assert(array_count(kSettingsPrimaryItems) == kSettingsPrimaryCount,
               "settings primary item table must match primary count");
 static_assert(array_count(s_settings_labels) == kSettingsLabelCount,
@@ -118,12 +90,15 @@ static_assert(array_count(kBootSettingsLogTexts) > 0, "boot/settings log registr
 static_assert(cstr_array_nonempty(kSettingsPrimaryItems), "settings primary menu texts must be non-empty");
 static_assert(cstr_array_nonempty(kSettingsFixedTexts), "settings fixed texts must be non-empty");
 static_assert(cstr_array_nonempty(kBootSettingsLogTexts), "boot/settings log texts must be non-empty");
-static_assert(kSettingsGridColumns > 0, "settings grid must have columns");
-static_assert(kSettingsGridColW > 0 && kSettingsSecondaryH > 0,
+static_assert(settings_layout::kSettingsGridColumns > 0,
+              "settings grid must have columns");
+static_assert(settings_layout::kSettingsGridColW > 0 &&
+                  settings_layout::kSettingsSecondaryH > 0,
               "settings grid item size must be positive");
-static_assert(kSettingsSystemLongItemY >= 0 && kSettingsDisplayLongItemY >= 0,
+static_assert(settings_layout::kSettingsSystemLongItemY >= 0 &&
+                  settings_layout::kSettingsDisplayLongItemY >= 0,
               "settings long item y positions must be non-negative");
-static_assert(kSettingsListRowCount >= kSettingsPrimaryCount,
+static_assert(settings_layout::kSettingsListRowCount >= kSettingsPrimaryCount,
               "settings list rows must fit primary menu items");
 
 void hide_settings_switch_slot(int index)
@@ -148,7 +123,7 @@ lv_obj_t *build_settings_menu_label(lv_obj_t *screen,
                                  x,
                                  y,
                                  width,
-                                 kSettingsSecondaryH,
+                                 settings_layout::kSettingsSecondaryH,
                                  kSettingsLabelPlaceholder);
     if (!label) {
         if (column == kSettingsMenuPrimaryColumn) {
@@ -219,35 +194,38 @@ void build_settings_page()
 
     for (int i = 0; i < kSettingsPrimaryCount; ++i) {
         s_settings_labels[i] = build_settings_menu_label(screen,
-                                                         kSettingsPrimaryX,
-                                                         kSettingsListRowY[i],
-                                                         kSettingsPrimaryW,
+                                                         settings_layout::kSettingsPrimaryX,
+                                                         settings_layout::kSettingsListRowY[i],
+                                                         settings_layout::kSettingsPrimaryW,
                                                          i,
                                                          kSettingsMenuPrimaryColumn);
     }
     for (int i = 0; i < kSettingsSecondaryMaxCount; ++i) {
         int slot = kSettingsPrimaryCount + i;
         s_settings_labels[slot] = build_settings_menu_label(screen,
-                                                            kSettingsSecondaryX,
-                                                            kSettingsListRowY[i],
-                                                            kSettingsSecondaryW,
+                                                            settings_layout::kSettingsSecondaryX,
+                                                            settings_layout::kSettingsListRowY[i],
+                                                            settings_layout::kSettingsSecondaryW,
                                                             i,
                                                             kSettingsMenuSecondaryColumn);
         s_settings_switch_dots[i] = lv_obj_create(screen);
         if (s_settings_switch_dots[i]) {
             lv_obj_clear_flag(s_settings_switch_dots[i], LV_OBJ_FLAG_SCROLLABLE);
             set_obj_box(s_settings_switch_dots[i],
-                        kSettingsSwitchDotX,
-                        kSettingsListRowY[i] + kSettingsSwitchDotYOffset,
-                        kSettingsSwitchDotSize,
-                        kSettingsSwitchDotSize);
+                        settings_layout::kSettingsSwitchDotX,
+                        settings_layout::kSettingsListRowY[i] +
+                            settings_layout::kSettingsSwitchDotYOffset,
+                        settings_layout::kSettingsSwitchDotSize,
+                        settings_layout::kSettingsSwitchDotSize);
             style_settings_switch_dot(s_settings_switch_dots[i], false, false);
             lv_obj_add_flag(s_settings_switch_dots[i], LV_OBJ_FLAG_HIDDEN);
         } else {
             ESP_LOGW(TAG, SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT, i);
         }
     }
-    build_settings_ota_panel(screen, kSettingsSecondaryX, kSettingsSecondaryW);
+    build_settings_ota_panel(screen,
+                             settings_layout::kSettingsSecondaryX,
+                             settings_layout::kSettingsSecondaryW);
 
     s_settings_feedback_label = make_centered_label(screen,
                                                     24,
@@ -339,9 +317,11 @@ bool layout_settings_secondary_slot(
             hide_settings_switch_slot(index);
             return false;
         }
-        SettingsGridCell cell = settings_grid_cell(index);
+        settings_layout::GridCell cell = settings_layout::settings_grid_cell(index);
         lv_obj_set_pos(s_settings_labels[slot], cell.x, cell.y);
-        lv_obj_set_size(s_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
+        lv_obj_set_size(s_settings_labels[slot],
+                        settings_layout::kSettingsGridColW,
+                        settings_layout::kSettingsSecondaryH);
         if (navigation.page_order_mode) {
             format_secondary_text(secondary_items,
                                   index,
@@ -353,35 +333,46 @@ bool layout_settings_secondary_slot(
             set_secondary_text(secondary_items, index, work_page_name(index));
             if (s_settings_switch_dots[index]) {
                 lv_obj_set_pos(s_settings_switch_dots[index],
-                               cell.x + kSettingsGridSwitchDotXOffset,
-                               cell.y + kSettingsGridSwitchDotYOffset);
+                               cell.x + settings_layout::kSettingsGridSwitchDotXOffset,
+                               cell.y + settings_layout::kSettingsGridSwitchDotYOffset);
             }
         }
-    } else if (primary == kSettingsPrimarySystem) {
-        bool grid_item = index < kSystemSettingsGridItemCount;
+    } else if (primary == kSettingsPrimarySystem || primary == kSettingsPrimaryDisplay) {
+        bool grid_item = primary == kSettingsPrimaryDisplay
+                             ? index < kDisplaySettingsGridItemCount
+                             : index < kSystemSettingsGridItemCount;
         if (grid_item) {
-            SettingsGridCell cell = settings_grid_cell(index);
+            settings_layout::GridCell cell = settings_layout::settings_grid_cell(index);
             lv_obj_set_pos(s_settings_labels[slot], cell.x, cell.y);
-            lv_obj_set_size(s_settings_labels[slot], kSettingsGridColW, kSettingsSecondaryH);
+            lv_obj_set_size(s_settings_labels[slot],
+                            settings_layout::kSettingsGridColW,
+                            settings_layout::kSettingsSecondaryH);
             if (s_settings_switch_dots[index]) {
                 lv_obj_set_pos(s_settings_switch_dots[index],
-                               cell.x + kSettingsGridSwitchDotXOffset,
-                               cell.y + kSettingsGridSwitchDotYOffset);
+                               cell.x + settings_layout::kSettingsGridSwitchDotXOffset,
+                               cell.y + settings_layout::kSettingsGridSwitchDotYOffset);
             }
         } else {
             lv_obj_set_pos(s_settings_labels[slot],
-                           kSettingsSecondaryX,
+                           settings_layout::kSettingsSecondaryX,
                            settings_long_item_y(primary));
-            lv_obj_set_size(s_settings_labels[slot], kSettingsSecondaryW, kSettingsSecondaryH);
+            lv_obj_set_size(s_settings_labels[slot],
+                            settings_layout::kSettingsSecondaryW,
+                            settings_layout::kSettingsSecondaryH);
             hide_settings_switch_slot(index);
         }
     } else {
-        lv_obj_set_pos(s_settings_labels[slot], kSettingsSecondaryX, kSettingsListRowY[index]);
-        lv_obj_set_size(s_settings_labels[slot], kSettingsSecondaryW, kSettingsSecondaryH);
+        lv_obj_set_pos(s_settings_labels[slot],
+                       settings_layout::kSettingsSecondaryX,
+                       settings_layout::kSettingsListRowY[index]);
+        lv_obj_set_size(s_settings_labels[slot],
+                        settings_layout::kSettingsSecondaryW,
+                        settings_layout::kSettingsSecondaryH);
         if (s_settings_switch_dots[index]) {
             lv_obj_set_pos(s_settings_switch_dots[index],
-                           kSettingsSwitchDotX,
-                           kSettingsListRowY[index] + kSettingsSwitchDotYOffset);
+                           settings_layout::kSettingsSwitchDotX,
+                           settings_layout::kSettingsListRowY[index] +
+                               settings_layout::kSettingsSwitchDotYOffset);
         }
     }
     return true;
@@ -473,9 +464,27 @@ bool update_settings_secondary_items(
                                          ? i == selected
                                          : (navigation.focus_secondary && i == selected);
                 style_settings_item(s_settings_labels[slot], selected_item);
-                if (primary == kSettingsPrimarySystem && i < kSystemSettingsGridItemCount) {
-                    lv_obj_set_style_pad_left(s_settings_labels[slot], 4, LV_PART_MAIN);
-                    lv_obj_set_style_pad_right(s_settings_labels[slot], 4, LV_PART_MAIN);
+                const bool compact_grid_item =
+                    (primary == kSettingsPrimarySystem && i < kSystemSettingsGridItemCount) ||
+                    (primary == kSettingsPrimaryDisplay && i < kDisplaySettingsGridItemCount);
+                if (compact_grid_item) {
+                    const bool display_switch_item =
+                        primary == kSettingsPrimaryDisplay &&
+                        !navigation.page_toggle_mode &&
+                        !navigation.page_order_mode &&
+                        i == kDisplaySettingsAlarmItem;
+                    lv_obj_set_style_pad_left(
+                        s_settings_labels[slot],
+                        display_switch_item
+                            ? settings_layout::kSettingsGridSwitchLabelLeftPadding
+                            : settings_layout::kSettingsGridLabelPadding,
+                        LV_PART_MAIN);
+                    lv_obj_set_style_pad_right(
+                        s_settings_labels[slot],
+                        display_switch_item
+                            ? settings_layout::kSettingsGridSwitchLabelRightPadding
+                            : settings_layout::kSettingsGridLabelPadding,
+                        LV_PART_MAIN);
                 }
             }
         }

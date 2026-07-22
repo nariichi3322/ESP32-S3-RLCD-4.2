@@ -96,6 +96,12 @@ EventBits_t app_event_group_clear_bits(EventBits_t bits)
 
 int main()
 {
+    WeatherAlertStatusSnapshot alert_status =
+        weather_alert_status_snapshot_load();
+    assert(!alert_status.active);
+    assert(alert_status.count == 0);
+    assert(alert_status.version == 0);
+    assert(weather_state_version_load() == 0);
     assert(get_last_weather_sync_time() == 0);
     assert(!weather_extended_data_ready());
     assert(init_weather_state());
@@ -104,12 +110,29 @@ int main()
 
     commit_marker('A');
     assert(g_event_set_count.load() == 0);
+    alert_status = weather_alert_status_snapshot_load();
+    assert(alert_status.active);
+    assert(alert_status.count == 1);
+    assert(alert_status.version == 1);
+    assert(weather_state_version_load() == alert_status.version);
 
     g_events_ready.store(true, std::memory_order_release);
     commit_marker('B');
     assert(g_event_set_count.load() == 1);
     assert(get_last_weather_sync_time() > 0);
     assert(weather_extended_data_ready());
+    alert_status = weather_alert_status_snapshot_load();
+    assert(alert_status.active);
+    assert(alert_status.count == 1);
+    assert(alert_status.version == 2);
+    assert(weather_state_version_load() == alert_status.version);
+
+    char alert_title[kWeatherAlertTitleLen] = {};
+    assert(get_weather_alert_title_snapshot(-1,
+                                            alert_title,
+                                            sizeof(alert_title)));
+    assert(strcmp(alert_title, "B") == 0);
+    assert(!get_weather_alert_title_snapshot(0, nullptr, 0));
 
     WeatherData weather = {};
     WeatherAlertData alert = {};
@@ -125,6 +148,14 @@ int main()
     commit_marker('A');
     assert(g_event_set_count.load() == 1);
     assert(get_last_weather_sync_time() == 0);
+    WeatherAlertStatusSnapshot failed_status =
+        weather_alert_status_snapshot_load();
+    assert(failed_status.version == alert_status.version);
+    assert(weather_state_version_load() == failed_status.version);
+    assert(!get_weather_alert_title_snapshot(0,
+                                             alert_title,
+                                             sizeof(alert_title)));
+    assert(alert_title[0] == '\0');
     g_fail_weather_mutex_take.store(false, std::memory_order_release);
     get_weather_full_snapshot(&weather, &alert, &forecast, &air);
     assert_snapshot_marker('B', weather, alert, forecast, air);
@@ -136,10 +167,17 @@ int main()
         }
         writer_done.store(true, std::memory_order_release);
     });
+    uint32_t last_alert_version = failed_status.version;
     do {
         get_weather_full_snapshot(&weather, &alert, &forecast, &air);
         assert(weather.city[0] == 'A' || weather.city[0] == 'B');
         assert_snapshot_marker(weather.city[0], weather, alert, forecast, air);
+        WeatherAlertStatusSnapshot current_status =
+            weather_alert_status_snapshot_load();
+        assert(current_status.active);
+        assert(current_status.count == 1);
+        assert(current_status.version >= last_alert_version);
+        last_alert_version = current_status.version;
     } while (!writer_done.load(std::memory_order_acquire));
     writer.join();
     return 0;

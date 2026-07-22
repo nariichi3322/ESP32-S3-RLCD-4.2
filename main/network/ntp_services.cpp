@@ -7,7 +7,7 @@
 #include "app_metadata.h"
 #include "app_time_constants.h"
 #include "ntp_runtime_state.h"
-#include "sensor_services.h"
+#include "rtc_services.h"
 #include "sensor_time.h"
 #include "ui_task_notify.h"
 

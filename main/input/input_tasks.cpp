@@ -1,9 +1,12 @@
 // 处理 BOOT 和 KEY 按键输入、页面切换和设置页操作请求。
 #include "input_tasks.h"
 
+#include "active_work_page_state.h"
 #include "alarm_services.h"
-#include "app_state.h"
+#include "app_metadata.h"
 #include "audio_services.h"
+#include "battery_runtime_state.h"
+#include "input_button_config.h"
 #include "input_button_wait_policy.h"
 #include "network_diagnostics_state.h"
 #include "ota_services.h"
@@ -13,6 +16,7 @@
 #include "ui_settings_activity_state.h"
 #include "ui_settings_navigation.h"
 #include "ui_views.h"
+#include "ui_work_page_catalog.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_state.h"
 
@@ -39,6 +43,19 @@ constexpr TickType_t kButtonLongPressTicks = pdMS_TO_TICKS(kButtonLongPressMs);
 constexpr const char *kSettingsBusyFeedbackText = "请等待操作完成";
 TaskNotificationTarget s_button_task_target;
 
+struct ButtonInteractiveSurfaceSnapshot {
+    bool setup_portal_active;
+    bool settings_requested;
+    bool info_requested;
+    bool network_diag_requested;
+
+    bool any_active() const
+    {
+        return setup_portal_active || settings_requested || info_requested ||
+               network_diag_requested;
+    }
+};
+
 static_assert(kButtonLongPressMs > kButtonDebounceMs,
               "button long-press duration must be longer than debounce duration");
 static_assert(kBootButtonPinMask != 0, "BOOT button pin mask must not be empty");
@@ -63,6 +80,16 @@ bool button_press_is_short(TickType_t held)
 bool button_press_is_long(TickType_t held)
 {
     return held >= kButtonLongPressTicks;
+}
+
+ButtonInteractiveSurfaceSnapshot capture_button_interactive_surfaces()
+{
+    return {
+        setup_portal_active_load(),
+        settings_page_requested(),
+        info_page_requested(),
+        network_diag_page_requested(),
+    };
 }
 
 void return_to_system_settings_item(int selection, TickType_t now)
@@ -302,13 +329,17 @@ void button_task(void *)
             key_press_stopped_alert = false;
         }
         const int active_page = active_work_page_load();
-        const bool low_battery_mode = battery_low_mode_load();
+        const BatteryRuntimeStatusSnapshot battery_status =
+            battery_runtime_status_load();
+        const bool low_battery_mode = battery_status.low_battery_mode;
+        const ButtonInteractiveSurfaceSnapshot interactive_surfaces =
+            capture_button_interactive_surfaces();
         const bool edge_idle = button_idle_work_page_context({
-            battery_charging_load(),
-            setup_portal_active_load(),
-            settings_page_requested(),
-            info_page_requested(),
-            network_diag_page_requested(),
+            battery_status.charging,
+            interactive_surfaces.setup_portal_active,
+            interactive_surfaces.settings_requested,
+            interactive_surfaces.info_requested,
+            interactive_surfaces.network_diag_requested,
             ota_flow_active(),
             is_audio_playing(),
             wifi_radio_on_load(),
@@ -331,7 +362,7 @@ void button_task(void *)
         int delay_ms = low_refresh_idle ? kButtonLowRefreshIdlePollMs : kButtonIdlePollMs;
         if (boot_pressed || key_pressed) {
             delay_ms = kButtonPressedPollMs;
-        } else if (settings_page_requested() || info_page_requested() || network_diag_page_requested() || setup_portal_active_load()) {
+        } else if (interactive_surfaces.any_active()) {
             delay_ms = kButtonActivePollMs;
         }
         vTaskDelay(pdMS_TO_TICKS(delay_ms));

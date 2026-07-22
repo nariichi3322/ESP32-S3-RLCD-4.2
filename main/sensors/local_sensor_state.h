@@ -9,8 +9,6 @@ bool local_sensor_state_publish_sample(float temperature,
                                        int temperature_trend,
                                        int humidity_trend);
 bool local_sensor_state_publish_unavailable();
-bool local_sensor_state_publish_trends(int temperature_trend,
-                                       int humidity_trend);
 bool get_local_sensor_snapshot(float *temperature,
                                float *humidity,
                                int *temperature_trend,

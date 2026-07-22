@@ -372,8 +372,6 @@ bool update_xiaozhi_page(const struct tm &local)
     if (status_time_visible) {
         changed |= update_work_page_status_time(status.time, local);
     }
-    changed |= update_work_page_sensor_summary(status.summary);
-    changed |= update_work_page_status_icons(kWorkPageXiaozhiAI);
     changed |= update_xiaozhi_clock_or_pomodoro(local, pomodoro);
     changed |= update_xiaozhi_face(s_xiaozhi_wave_canvas, snapshot);
     return changed;

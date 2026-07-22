@@ -9,20 +9,20 @@ namespace {
 bool is_state_a(const AlarmSnapshot &snapshot)
 {
     return !snapshot.enabled && snapshot.ringing &&
-           snapshot.hour == 6 && snapshot.minute == 30 &&
-           snapshot.version > 1;
+           snapshot.hour == 6 && snapshot.minute == 30;
 }
 
 bool is_state_b(const AlarmSnapshot &snapshot)
 {
     return snapshot.enabled && !snapshot.ringing &&
-           snapshot.hour == 7 && snapshot.minute == 45 &&
-           snapshot.version > 1;
+           snapshot.hour == 7 && snapshot.minute == 45;
 }
 }
 
 int main()
 {
+    static_assert(sizeof(AlarmSnapshot) == 4,
+                  "alarm snapshot should contain only visible runtime fields");
     AlarmSnapshot snapshot = {};
     assert(!alarm_runtime_snapshot(&snapshot));
     assert(!alarm_runtime_publish(true, false, 6, 30));
@@ -34,7 +34,6 @@ int main()
     assert(alarm_runtime_snapshot(&snapshot));
     assert(!snapshot.enabled && !snapshot.ringing);
     assert(snapshot.hour == 0 && snapshot.minute == 0);
-    assert(snapshot.version == 1);
 
     assert(alarm_runtime_publish(true, false, 6, 30));
     assert(alarm_runtime_is_enabled());

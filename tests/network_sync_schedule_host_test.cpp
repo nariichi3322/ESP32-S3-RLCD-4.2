@@ -20,6 +20,17 @@ NetworkSyncScheduleInput base_input()
 
 int main()
 {
+    const NetworkSyncAvailability available = {true, true, false, false};
+    assert(!network_sync_availability_changed(available, available));
+    assert(network_sync_availability_changed(
+        available, NetworkSyncAvailability{false, true, false, false}));
+    assert(network_sync_availability_changed(
+        available, NetworkSyncAvailability{true, false, false, false}));
+    assert(network_sync_availability_changed(
+        available, NetworkSyncAvailability{true, true, true, false}));
+    assert(network_sync_availability_changed(
+        available, NetworkSyncAvailability{true, true, false, true}));
+
     assert(network_boot_https_memory_sufficient(48 * 1024, 24 * 1024, 16 * 1024));
     assert(network_boot_https_memory_sufficient(96 * 1024, 48 * 1024, 32 * 1024));
     assert(!network_boot_https_memory_sufficient(48 * 1024 - 1, 24 * 1024, 16 * 1024));

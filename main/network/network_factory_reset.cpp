@@ -23,6 +23,7 @@ using network_config_keys::kWeatherApiKeyKey;
 using network_config_keys::kWifiPassKey;
 using network_config_keys::kWifiSsidKey;
 using network_config_keys::kXiaozhiAutoReturnKey;
+using network_config_keys::kGalleryRotationKey;
 using network_page_storage::kPageMaskV1Key;
 using network_page_storage::kPageMaskV2Key;
 using network_page_storage::kPageMaskV3Key;
@@ -62,9 +63,10 @@ constexpr const char *kSavedConfigKeys[] = {
     kPageOrderV4Key,
     kPageOrderV5Key,
     kXiaozhiAutoReturnKey,
+    kGalleryRotationKey,
 };
 
-static_assert(array_count(kSavedConfigKeys) == 22,
+static_assert(array_count(kSavedConfigKeys) == 23,
               "factory reset key registry count changed; update its host test");
 static_assert(cstr_array_nonempty(kSavedConfigKeys),
               "factory reset config keys must be non-empty");
@@ -98,6 +100,8 @@ static_assert(cstr_array_contains(kSavedConfigKeys, kPageOrderV5Key),
               "factory reset must clear current page order");
 static_assert(cstr_array_contains(kSavedConfigKeys, kXiaozhiAutoReturnKey),
               "factory reset must clear Xiaozhi auto-return setting");
+static_assert(cstr_array_contains(kSavedConfigKeys, kGalleryRotationKey),
+              "factory reset must clear gallery rotation setting");
 } // namespace
 
 esp_err_t erase_saved_config_keys(nvs_handle_t nvs)

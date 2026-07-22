@@ -32,6 +32,7 @@ int main()
                   "host test must cover a large history snapshot");
     HourlySensorHistoryBlob snapshot = {};
     uint32_t version = 0;
+    assert(hourly_sensor_history_version_load() == 0);
     assert(!hourly_sensor_history_snapshot(&snapshot, &version));
     assert(hourly_sensor_history_last_saved_at() == 0);
 
@@ -42,6 +43,7 @@ int main()
     assert(snapshot.magic == kHourlyHistoryMagic);
     assert(snapshot.count == kHourlyHistoryCount);
     assert(version == 1);
+    assert(hourly_sensor_history_version_load() == 1);
 
     const HourlySensorHistoryBlob history_a = make_history(10);
     const HourlySensorHistoryBlob history_b = make_history(20);
@@ -49,9 +51,11 @@ int main()
     assert(hourly_sensor_history_snapshot(&snapshot, &version));
     assert(history_equal(snapshot, history_a));
     assert(version == 2);
+    assert(hourly_sensor_history_version_load() == 2);
     assert(hourly_sensor_history_last_saved_at() == 100);
 
     std::atomic<bool> writer_done{false};
+    uint32_t last_version = hourly_sensor_history_version_load();
     std::thread writer([&]() {
         for (int i = 0; i < 10000; ++i) {
             const bool use_a = (i & 1) == 0;
@@ -63,6 +67,9 @@ int main()
     do {
         assert(hourly_sensor_history_snapshot(&snapshot, nullptr));
         assert(history_equal(snapshot, history_a) || history_equal(snapshot, history_b));
+        const uint32_t current_version = hourly_sensor_history_version_load();
+        assert(current_version >= last_version);
+        last_version = current_version;
     } while (!writer_done.load(std::memory_order_acquire));
     writer.join();
 
@@ -80,6 +87,7 @@ int main()
     assert(hourly_sensor_history_snapshot(&snapshot, &version));
     assert(memcmp(&snapshot.samples[7], &replacement, sizeof(replacement)) == 0);
     assert(version == before_sample_version + 1);
+    assert(hourly_sensor_history_version_load() == version);
     assert(hourly_sensor_history_last_saved_at() == 9999);
     assert(!hourly_sensor_history_snapshot(nullptr, nullptr));
     return 0;

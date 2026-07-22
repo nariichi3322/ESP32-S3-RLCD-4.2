@@ -15,10 +15,15 @@ constexpr EventBits_t kNetworkSyncWakeBits = kProvisioningSyncBit |
                                              kSetupPortalStartBit;
 constexpr EventBits_t kSetupPortalRetryWakeBits =
     kNetworkSyncWakeBits & ~kSetupPortalStartBit;
+constexpr EventBits_t kNetworkConnectionWakeBits =
+    kWifiConnectedBit | kNetworkStateChangedBit;
 static_assert((kNetworkSyncWakeBits & kNetworkStateChangedBit) != 0,
               "network sync wait must wake on runtime state changes");
 static_assert((kSetupPortalRetryWakeBits & kSetupPortalStartBit) == 0,
               "setup portal retry wait must ignore its pending level bit");
+static_assert((kNetworkConnectionWakeBits & kWifiConnectedBit) != 0 &&
+                  (kNetworkConnectionWakeBits & kNetworkStateChangedBit) != 0,
+              "connection wait must observe success and runtime cancellation");
 
 } // namespace
 
@@ -58,4 +63,20 @@ void wait_for_ota_network_block_change()
                               pdTRUE,
                               pdFALSE,
                               portMAX_DELAY);
+}
+
+NetworkSyncConnectionWaitResult wait_for_network_sync_connection(uint32_t timeout_ms)
+{
+    const EventBits_t bits = app_event_group_wait_bits(
+        kNetworkConnectionWakeBits,
+        pdFALSE,
+        pdFALSE,
+        pdMS_TO_TICKS(timeout_ms));
+    if ((bits & kNetworkStateChangedBit) != 0) {
+        return NetworkSyncConnectionWaitResult::kRuntimeChanged;
+    }
+    if ((bits & kWifiConnectedBit) != 0) {
+        return NetworkSyncConnectionWaitResult::kConnected;
+    }
+    return NetworkSyncConnectionWaitResult::kTimedOut;
 }

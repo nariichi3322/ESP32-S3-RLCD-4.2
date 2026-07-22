@@ -7,14 +7,18 @@
 
 namespace {
 StaticTaskMutex s_runtime_mutex;
-AlarmSnapshot s_alarm = {false, false, 0, 0, 1};
+AlarmSnapshot s_alarm = {false, false, 0, 0};
 AlarmReplacementConfirmation s_replacement_confirmation = {};
 std::atomic<bool> s_enabled{false};
+uint32_t s_generation = 1;
 }
 
 bool alarm_runtime_state_init()
 {
-    return s_runtime_mutex.init();
+    if (!s_runtime_mutex.init()) {
+        return false;
+    }
+    return true;
 }
 
 bool alarm_runtime_publish(bool enabled,
@@ -30,7 +34,7 @@ bool alarm_runtime_publish(bool enabled,
     s_alarm.ringing = ringing;
     s_alarm.hour = static_cast<uint8_t>(hour);
     s_alarm.minute = static_cast<uint8_t>(minute);
-    ++s_alarm.version;
+    ++s_generation;
     s_enabled.store(enabled, std::memory_order_release);
     return true;
 }
@@ -85,7 +89,7 @@ AlarmReplacementDecision alarm_runtime_replacement_decision(
     return evaluate_alarm_replacement(s_alarm.enabled,
                                       s_alarm.hour,
                                       s_alarm.minute,
-                                      s_alarm.version,
+                                      s_generation,
                                       requested_hour,
                                       requested_minute,
                                       confirmed,

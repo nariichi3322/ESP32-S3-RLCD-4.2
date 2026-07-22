@@ -16,6 +16,7 @@
 #include "network_weather_city_storage.h"
 #include "offline_mode_state.h"
 #include "ui_work_page_catalog.h"
+#include "ui_gallery_rotation_state.h"
 #include "xiaozhi_auto_return_state.h"
 
 #include <esp_log.h>
@@ -30,6 +31,7 @@ using network_config_keys::kWeatherApiKeyKey;
 using network_config_keys::kWifiPassKey;
 using network_config_keys::kWifiSsidKey;
 using network_config_keys::kXiaozhiAutoReturnKey;
+using network_config_keys::kGalleryRotationKey;
 
 namespace {
 constexpr uint8_t work_page_mask_bit(int page)
@@ -58,7 +60,8 @@ struct LoadedSavedConfig {
     uint8_t sound = 0;
     uint8_t page_mask = kPageMaskV5KnownBits;
     uint8_t offline = 0;
-    uint8_t xiaozhi_auto_return = 0;
+    uint8_t xiaozhi_auto_return = kDefaultXiaozhiAutoReturnEnabled ? 1 : 0;
+    uint8_t gallery_rotation = kDefaultGalleryRotationPeriod;
     uint8_t page_order[kWorkPageCount] = {};
     char manual_weather_city[kManualWeatherCityLen] = {};
     bool have_page_order = false;
@@ -119,7 +122,10 @@ LoadedSavedConfig read_saved_config(nvs_handle_t nvs)
     loaded.sound = chime.sound;
     loaded.page_mask = read_saved_page_mask(nvs);
     loaded.offline = read_nvs_u8_or_default(nvs, kOfflineModeKey, 0);
-    loaded.xiaozhi_auto_return = read_nvs_u8_or_default(nvs, kXiaozhiAutoReturnKey, 0);
+    loaded.xiaozhi_auto_return = read_nvs_u8_or_default(
+        nvs, kXiaozhiAutoReturnKey, kDefaultXiaozhiAutoReturnEnabled ? 1 : 0);
+    loaded.gallery_rotation = read_nvs_u8_or_default(
+        nvs, kGalleryRotationKey, kDefaultGalleryRotationPeriod);
     network_weather_city_storage::load_preferred_city(
         nvs, loaded.manual_weather_city, sizeof(loaded.manual_weather_city));
     loaded.have_page_order =
@@ -149,6 +155,7 @@ bool apply_loaded_config(const LoadedSavedConfig &loaded)
     chime_runtime_snapshot_store(chime);
     offline_mode_enabled_store(nvs_u8_to_bool(loaded.offline));
     xiaozhi_auto_return_enabled_store(nvs_u8_to_bool(loaded.xiaozhi_auto_return));
+    gallery_rotation_period_store(loaded.gallery_rotation);
     return apply_loaded_page_config(loaded.page_mask, loaded.page_order, loaded.have_page_order);
 }
 } // namespace

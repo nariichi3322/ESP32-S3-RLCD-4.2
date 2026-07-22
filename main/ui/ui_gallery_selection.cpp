@@ -1,4 +1,4 @@
-// 实现图片时钟图库的每日轮换和自定义资源失败后的内置索引映射。
+// 实现图片时钟内置图库按日、自定义图库按配置时段轮换的索引映射。
 #include "ui_gallery_selection.h"
 
 namespace {
@@ -46,6 +46,17 @@ int positive_mod(int64_t value, int divisor)
     int remainder = static_cast<int>(value % divisor);
     return remainder < 0 ? remainder + divisor : remainder;
 }
+
+constexpr bool valid_time(int hour, int minute)
+{
+    return hour >= 0 && hour < 24 && minute >= 0 && minute < 60;
+}
+
+constexpr bool valid_rotation_minutes(int minutes)
+{
+    return minutes == 30 || minutes == 60 || minutes == 360 ||
+           minutes == 720 || minutes == 1440;
+}
 }
 
 bool gallery_image_selection_for_date(int year,
@@ -56,15 +67,45 @@ bool gallery_image_selection_for_date(int year,
                                       int builtin_image_count,
                                       GalleryImageSelection *selection)
 {
+    return gallery_image_selection_for_time(year,
+                                            month,
+                                            day,
+                                            0,
+                                            0,
+                                            weekday,
+                                            custom_image_count,
+                                            builtin_image_count,
+                                            1440,
+                                            selection);
+}
+
+bool gallery_image_selection_for_time(int year,
+                                      int month,
+                                      int day,
+                                      int hour,
+                                      int minute,
+                                      int weekday,
+                                      int custom_image_count,
+                                      int builtin_image_count,
+                                      int custom_rotation_minutes,
+                                      GalleryImageSelection *selection)
+{
     if (!selection || !valid_date(year, month, day) ||
+        !valid_time(hour, minute) || !valid_rotation_minutes(custom_rotation_minutes) ||
         weekday < 0 || weekday >= kWeekdayCount ||
         custom_image_count < 0 || builtin_image_count <= 0) {
         return false;
     }
     selection->uses_custom_gallery = custom_image_count > 0;
     selection->builtin_index = weekday % builtin_image_count;
-    selection->image_index = selection->uses_custom_gallery
-                                 ? positive_mod(civil_day_number(year, month, day), custom_image_count)
-                                 : selection->builtin_index;
+    if (selection->uses_custom_gallery) {
+        const int slots_per_day = 1440 / custom_rotation_minutes;
+        const int minute_of_day = hour * 60 + minute;
+        const int64_t slot = civil_day_number(year, month, day) * slots_per_day +
+                             minute_of_day / custom_rotation_minutes;
+        selection->image_index = positive_mod(slot, custom_image_count);
+    } else {
+        selection->image_index = selection->builtin_index;
+    }
     return true;
 }

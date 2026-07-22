@@ -62,11 +62,10 @@ TickType_t next_housekeeping_wake_tick(bool low_battery,
     return app_tick_earlier_deadline(now, next_sensor, next_battery);
 }
 
-TickType_t next_battery_wake_after_sample(TickType_t sampled_tick)
+TickType_t next_battery_wake_after_sample(TickType_t sampled_tick,
+                                          bool charging)
 {
-    BatteryRuntimeSnapshot battery;
-    battery_runtime_snapshot_load(&battery);
-    if (battery_charging_requires_fast_sampling(battery.charging)) {
+    if (battery_charging_requires_fast_sampling(charging)) {
         return sampled_tick + kBatteryChargingSampleDelay;
     }
     return next_battery_sample_tick(sampled_tick);
@@ -113,7 +112,10 @@ void housekeeping_task(void *)
     TickType_t next_sensor = next_sensor_sample_tick(start_tick);
     TickType_t next_battery = next_battery_sample_tick(start_tick);
     bool last_time_valid = is_system_time_plausible();
-    if (!battery_low_mode_load() && !local_sensor_sample_available()) {
+    const BatteryRuntimeStatusSnapshot initial_battery_status =
+        battery_runtime_status_load();
+    if (!initial_battery_status.low_battery_mode &&
+        !local_sensor_sample_available()) {
         sample_sensor();
     }
     for (;;) {
@@ -130,25 +132,31 @@ void housekeeping_task(void *)
             next_battery = next_battery_sample_tick(now);
         }
         last_time_valid = time_valid;
+        BatteryRuntimeStatusSnapshot battery_status =
+            battery_runtime_status_load();
         if (app_tick_deadline_reached(now, next_sensor)) {
-            if (!battery_low_mode_load()) {
+            if (!battery_status.low_battery_mode) {
                 sample_sensor();
             }
             next_sensor = next_sensor_sample_tick(xTaskGetTickCount());
         }
         if (app_tick_deadline_reached(now, next_battery)) {
-            bool was_low_battery = battery_low_mode_load();
+            const bool was_low_battery = battery_status.low_battery_mode;
             sample_battery();
             TickType_t after_battery = xTaskGetTickCount();
-            if (was_low_battery && !battery_low_mode_load()) {
+            battery_status = battery_runtime_status_load();
+            if (was_low_battery && !battery_status.low_battery_mode) {
                 next_sensor = next_sensor_sample_tick(after_battery);
             }
-            next_battery = next_battery_wake_after_sample(after_battery);
+            next_battery = next_battery_wake_after_sample(
+                after_battery,
+                battery_status.charging);
         }
-        TickType_t next_wake = next_housekeeping_wake_tick(battery_low_mode_load(),
-                                                           xTaskGetTickCount(),
-                                                           next_sensor,
-                                                           next_battery);
+        TickType_t next_wake = next_housekeeping_wake_tick(
+            battery_status.low_battery_mode,
+            xTaskGetTickCount(),
+            next_sensor,
+            next_battery);
         vTaskDelay(delay_until_housekeeping_wake(next_wake));
     }
 }

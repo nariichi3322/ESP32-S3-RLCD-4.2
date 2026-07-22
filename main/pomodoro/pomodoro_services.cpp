@@ -232,9 +232,7 @@ void pomodoro_get_snapshot(PomodoroSnapshot *out)
 
 bool pomodoro_is_running()
 {
-    PomodoroSnapshot snapshot = {};
-    pomodoro_get_snapshot(&snapshot);
-    return snapshot.state == kPomodoroRunning;
+    return pomodoro_runtime_state_load() == kPomodoroRunning;
 }
 
 bool pomodoro_start(uint32_t duration_seconds)

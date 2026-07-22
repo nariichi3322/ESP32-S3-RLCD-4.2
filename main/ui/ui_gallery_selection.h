@@ -16,3 +16,14 @@ bool gallery_image_selection_for_date(int year,
                                       int custom_image_count,
                                       int builtin_image_count,
                                       GalleryImageSelection *selection);
+
+bool gallery_image_selection_for_time(int year,
+                                      int month,
+                                      int day,
+                                      int hour,
+                                      int minute,
+                                      int weekday,
+                                      int custom_image_count,
+                                      int builtin_image_count,
+                                      int custom_rotation_minutes,
+                                      GalleryImageSelection *selection);

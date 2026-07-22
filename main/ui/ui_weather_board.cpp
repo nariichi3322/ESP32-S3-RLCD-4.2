@@ -9,6 +9,8 @@
 #include "ui_weather_board_text.h"
 #include "weather_state.h"
 
+#include <stdint.h>
+
 namespace {
 
 lv_obj_t *s_city_label;
@@ -35,6 +37,10 @@ struct ForecastCardUi {
 };
 
 ForecastCardUi s_cards[kWeatherForecastDays];
+uint32_t s_last_weather_state_version = UINT32_MAX;
+int64_t s_last_weather_board_minute_key = -1;
+EventBits_t s_last_weather_board_content_state = static_cast<EventBits_t>(~0U);
+WeatherBoardSunSchedule s_weather_board_sun_schedule;
 constexpr const char *kWeatherBoardUnknownIcon = "999";
 constexpr const char *kWeatherBoardWaitingData = "等待数据";
 constexpr const char *kWeatherBoardSyncing = "同步中";
@@ -114,6 +120,8 @@ constexpr size_t kWeatherBoardWindLineSize = 48;
 constexpr size_t kWeatherBoardSunTimeLineSize = 24;
 constexpr size_t kWeatherBoardSunCountdownLineSize = 24;
 constexpr size_t kWeatherBoardAlertLineSize = 160;
+constexpr EventBits_t kWeatherBoardContentStateMask =
+    kWeatherReadyBit | kWifiConnectedBit;
 #define WEATHER_BOARD_FORECAST_CARD_CREATE_FAILED_FORMAT "weather forecast card %d create failed"
 static_assert(array_count(kForecastCardX) == kWeatherForecastDays,
               "weather forecast card positions must match forecast day count");
@@ -139,6 +147,24 @@ static_assert(kWeatherBoardTodayRangeW > 0 && kWeatherBoardTodayRangeH > 0,
               "weather board today range label size must be positive");
 static_assert(kWeatherBoardDetailLineW > 0 && kWeatherBoardDetailLineH > 0,
               "weather board detail separator size must be positive");
+static_assert((kWeatherBoardContentStateMask & kWeatherReadyBit) != 0,
+              "weather board refresh state must include weather readiness");
+
+EventBits_t weather_board_content_state(EventBits_t bits)
+{
+    if ((bits & kWeatherReadyBit) != 0) {
+        return kWeatherReadyBit;
+    }
+    return bits & kWeatherBoardContentStateMask;
+}
+
+void invalidate_weather_board_refresh_cache()
+{
+    s_last_weather_state_version = UINT32_MAX;
+    s_last_weather_board_minute_key = -1;
+    s_last_weather_board_content_state = static_cast<EventBits_t>(~0U);
+    s_weather_board_sun_schedule = {};
+}
 
 void set_weather_label_align(lv_obj_t *label, lv_text_align_t align)
 {
@@ -422,7 +448,8 @@ bool update_weather_detail_panel(const struct tm &local,
                                  const WeatherData &weather,
                                  const WeatherAlertData &alert,
                                  const WeatherForecastData &forecast,
-                                 const WeatherAirData &air)
+                                 const WeatherAirData &air,
+                                 const WeatherBoardSunSchedule &sun_schedule)
 {
     char humi_line[kWeatherBoardHumidityLineSize] = {};
     char air_line[kWeatherBoardAirLineSize] = {};
@@ -437,7 +464,10 @@ bool update_weather_detail_panel(const struct tm &local,
     format_weather_board_wind_line(today, wind_line, sizeof(wind_line));
     format_weather_board_sunrise_line(today, sunrise_line, sizeof(sunrise_line));
     format_weather_board_sunset_line(today, sunset_line, sizeof(sunset_line));
-    format_weather_board_sun_countdown(local, forecast, sun_countdown_line, sizeof(sun_countdown_line));
+    format_weather_board_sun_countdown(local,
+                                       sun_schedule,
+                                       sun_countdown_line,
+                                       sizeof(sun_countdown_line));
     format_weather_board_alert_line(alert, alert_line, sizeof(alert_line));
 
     bool changed = set_label_text_if_changed(s_air_label, air_line);
@@ -448,6 +478,36 @@ bool update_weather_detail_panel(const struct tm &local,
     changed |= set_label_text_if_changed(s_sun_countdown_label, sun_countdown_line);
     changed |= set_label_text_if_changed(s_alert_label, alert_line);
     changed |= set_label_text_if_changed(s_advice_label, weather_board_advice_text(forecast));
+    return changed;
+}
+
+bool update_weather_board_sun_countdown(const struct tm &local)
+{
+    char sun_countdown_line[kWeatherBoardSunCountdownLineSize] = {};
+    format_weather_board_sun_countdown(local,
+                                       s_weather_board_sun_schedule,
+                                       sun_countdown_line,
+                                       sizeof(sun_countdown_line));
+    return set_label_text_if_changed(s_sun_countdown_label, sun_countdown_line);
+}
+
+bool update_weather_board_full_content(const struct tm &local, EventBits_t bits)
+{
+    WeatherData weather = {};
+    WeatherAlertData alert = {};
+    WeatherForecastData forecast = {};
+    WeatherAirData air = {};
+    get_weather_full_snapshot(&weather, &alert, &forecast, &air);
+    s_weather_board_sun_schedule = weather_board_sun_schedule(forecast);
+
+    bool changed = update_current_weather_panel(weather, forecast, bits);
+    changed |= update_forecast_cards(forecast);
+    changed |= update_weather_detail_panel(local,
+                                           weather,
+                                           alert,
+                                           forecast,
+                                           air,
+                                           s_weather_board_sun_schedule);
     return changed;
 }
 
@@ -479,6 +539,7 @@ void build_weather_board_page()
     }
 
     build_weather_detail_panel(screen);
+    invalidate_weather_board_refresh_cache();
 }
 
 bool update_weather_board_page(const struct tm &local)
@@ -488,17 +549,28 @@ bool update_weather_board_page(const struct tm &local)
         return false;
     }
 
-    WeatherData weather = {};
-    WeatherAlertData alert = {};
-    WeatherForecastData forecast = {};
-    WeatherAirData air = {};
-    get_weather_full_snapshot(&weather, &alert, &forecast, &air);
-    EventBits_t bits = app_event_group_get_bits();
+    const uint32_t weather_version = weather_state_version_load();
+    const EventBits_t bits = app_event_group_get_bits();
+    const EventBits_t content_state = weather_board_content_state(bits);
+    const int64_t minute_key = weather_board_minute_key(local);
+    const bool full_refresh_due =
+        weather_version != s_last_weather_state_version ||
+        content_state != s_last_weather_board_content_state;
+    const bool minute_refresh_due =
+        minute_key != s_last_weather_board_minute_key;
+    if (!full_refresh_due && !minute_refresh_due) {
+        return false;
+    }
+
     const WorkPageStatusLabels status = get_work_page_status_labels(kWorkPageWeatherBoard);
     bool changed = update_work_page_status_time(status.time, local);
-    changed |= update_work_page_sensor_summary(status.summary);
-    changed |= update_current_weather_panel(weather, forecast, bits);
-    changed |= update_forecast_cards(forecast);
-    changed |= update_weather_detail_panel(local, weather, alert, forecast, air);
+    if (full_refresh_due) {
+        changed |= update_weather_board_full_content(local, bits);
+    } else {
+        changed |= update_weather_board_sun_countdown(local);
+    }
+    s_last_weather_state_version = weather_version;
+    s_last_weather_board_content_state = content_state;
+    s_last_weather_board_minute_key = minute_key;
     return changed;
 }

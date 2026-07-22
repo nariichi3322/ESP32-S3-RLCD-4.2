@@ -285,7 +285,6 @@ bool update_calendar_page(const struct tm &local)
     }
     const WorkPageStatusLabels status = get_work_page_status_labels(kWorkPageCalendar);
     changed |= update_work_page_status_time(status.time, local);
-    changed |= update_work_page_sensor_summary(status.summary);
     return changed;
 }
 

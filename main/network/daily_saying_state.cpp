@@ -5,18 +5,20 @@
 #include "daily_saying_contract.h"
 #include "scoped_semaphore_lock.h"
 
+#include <atomic>
 #include <string.h>
 
 namespace {
 StaticTaskMutex s_daily_saying_mutex;
 char s_daily_saying[kDailySayingLen] = {};
 time_t s_last_saying_sync_time = 0;
+std::atomic<uint32_t> s_daily_saying_version{0};
 
 void prepare_daily_saying(char (&out)[kDailySayingLen], const char *text)
 {
     const char *source = text ? text : "";
     const size_t length = strnlen(source, sizeof(out) - 1);
-    memcpy(out, source, length);
+    memmove(out, source, length);
     out[length] = '\0';
 }
 
@@ -41,6 +43,26 @@ void load_daily_saying_cache()
     (void)daily_saying_state_publish("", 0);
 }
 
+uint32_t daily_saying_state_version_load()
+{
+    return s_daily_saying_version.load(std::memory_order_acquire);
+}
+
+bool daily_saying_cache_snapshot_load(DailySayingCacheSnapshot *out)
+{
+    if (!out) {
+        return false;
+    }
+    *out = {};
+    ScopedSemaphoreLock lock(s_daily_saying_mutex);
+    if (!lock) {
+        return false;
+    }
+    out->available = s_daily_saying[0] != '\0';
+    out->last_sync_time = s_last_saying_sync_time;
+    return true;
+}
+
 bool get_daily_saying_snapshot(char *out,
                                size_t out_len,
                                time_t *last_sync_time)
@@ -49,38 +71,32 @@ bool get_daily_saying_snapshot(char *out,
         return false;
     }
 
-    char text[kDailySayingLen] = {};
-    time_t synced_at = 0;
-    {
-        ScopedSemaphoreLock lock(s_daily_saying_mutex);
-        if (!lock) {
-            out[0] = '\0';
-            if (last_sync_time) {
-                *last_sync_time = 0;
-            }
-            return false;
+    ScopedSemaphoreLock lock(s_daily_saying_mutex);
+    if (!lock) {
+        out[0] = '\0';
+        if (last_sync_time) {
+            *last_sync_time = 0;
         }
-        memcpy(text, s_daily_saying, sizeof(text));
-        synced_at = s_last_saying_sync_time;
+        return false;
     }
 
-    copy_daily_saying_snapshot(out, out_len, text);
+    copy_daily_saying_snapshot(out, out_len, s_daily_saying);
     if (last_sync_time) {
-        *last_sync_time = synced_at;
+        *last_sync_time = s_last_saying_sync_time;
     }
     return out[0] != '\0';
 }
 
 bool daily_saying_state_publish(const char *text, time_t synced_at)
 {
-    char replacement[kDailySayingLen] = {};
-    prepare_daily_saying(replacement, text);
-
     ScopedSemaphoreLock lock(s_daily_saying_mutex);
     if (!lock) {
         return false;
     }
-    memcpy(s_daily_saying, replacement, sizeof(s_daily_saying));
+    prepare_daily_saying(s_daily_saying, text);
     s_last_saying_sync_time = synced_at;
+    s_daily_saying_version.store(
+        s_daily_saying_version.load(std::memory_order_relaxed) + 1U,
+        std::memory_order_release);
     return true;
 }

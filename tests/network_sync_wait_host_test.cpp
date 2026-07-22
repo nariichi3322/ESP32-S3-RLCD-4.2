@@ -16,6 +16,7 @@ struct WaitCall {
 };
 
 WaitCall s_wait_call;
+EventBits_t s_wait_result = 0;
 
 constexpr EventBits_t kExpectedSyncWakeBits = kProvisioningSyncBit |
                                                kManualNtpSyncBit |
@@ -28,6 +29,7 @@ constexpr EventBits_t kExpectedSyncWakeBits = kProvisioningSyncBit |
 void reset_wait_call()
 {
     s_wait_call = {};
+    s_wait_result = 0;
 }
 
 void assert_wait(EventBits_t bits,
@@ -53,7 +55,7 @@ EventBits_t app_event_group_wait_bits(EventBits_t bits,
     s_wait_call.wait_for_all = wait_for_all;
     s_wait_call.timeout = timeout;
     ++s_wait_call.count;
-    return 0;
+    return s_wait_result;
 }
 
 int main()
@@ -75,6 +77,34 @@ int main()
     reset_wait_call();
     wait_for_ota_network_block_change();
     assert_wait(kNetworkStateChangedBit, pdTRUE, portMAX_DELAY);
+
+    reset_wait_call();
+    s_wait_result = kWifiConnectedBit;
+    assert(wait_for_network_sync_connection(45000) ==
+           NetworkSyncConnectionWaitResult::kConnected);
+    assert_wait(kWifiConnectedBit | kNetworkStateChangedBit,
+                pdFALSE,
+                pdMS_TO_TICKS(45000));
+
+    reset_wait_call();
+    s_wait_result = kNetworkStateChangedBit;
+    assert(wait_for_network_sync_connection(1234) ==
+           NetworkSyncConnectionWaitResult::kRuntimeChanged);
+    assert_wait(kWifiConnectedBit | kNetworkStateChangedBit,
+                pdFALSE,
+                pdMS_TO_TICKS(1234));
+
+    reset_wait_call();
+    s_wait_result = kWifiConnectedBit | kNetworkStateChangedBit;
+    assert(wait_for_network_sync_connection(77) ==
+           NetworkSyncConnectionWaitResult::kRuntimeChanged);
+
+    reset_wait_call();
+    assert(wait_for_network_sync_connection(9) ==
+           NetworkSyncConnectionWaitResult::kTimedOut);
+    assert_wait(kWifiConnectedBit | kNetworkStateChangedBit,
+                pdFALSE,
+                pdMS_TO_TICKS(9));
 
     return 0;
 }

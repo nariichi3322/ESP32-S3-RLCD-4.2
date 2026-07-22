@@ -3,6 +3,8 @@
 
 #include "scoped_semaphore_lock.h"
 
+#include <atomic>
+
 namespace {
 struct LocalSensorSnapshot {
     float temperature = 0.0f;
@@ -15,6 +17,7 @@ struct LocalSensorSnapshot {
 
 StaticTaskMutex s_local_sensor_mutex;
 LocalSensorSnapshot s_local_sensor;
+std::atomic<uint32_t> s_local_sensor_version{0};
 } // namespace
 
 bool init_local_sensor_state()
@@ -37,6 +40,7 @@ bool local_sensor_state_publish_sample(float temperature,
     s_local_sensor.humidity_trend = humidity_trend;
     s_local_sensor.available = true;
     ++s_local_sensor.version;
+    s_local_sensor_version.store(s_local_sensor.version, std::memory_order_release);
     return true;
 }
 
@@ -48,18 +52,7 @@ bool local_sensor_state_publish_unavailable()
     }
     s_local_sensor.available = false;
     ++s_local_sensor.version;
-    return true;
-}
-
-bool local_sensor_state_publish_trends(int temperature_trend,
-                                       int humidity_trend)
-{
-    ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
-    if (!lock) {
-        return false;
-    }
-    s_local_sensor.temperature_trend = temperature_trend;
-    s_local_sensor.humidity_trend = humidity_trend;
+    s_local_sensor_version.store(s_local_sensor.version, std::memory_order_release);
     return true;
 }
 
@@ -89,6 +82,5 @@ bool get_local_sensor_snapshot(float *temperature,
 
 uint32_t local_sensor_state_version()
 {
-    ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
-    return lock ? s_local_sensor.version : 0;
+    return s_local_sensor_version.load(std::memory_order_acquire);
 }

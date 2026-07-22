@@ -3,6 +3,7 @@
 #include "app_metadata.h"
 #include "battery_runtime_state.h"
 #include "daily_saying_contract.h"
+#include "daily_saying_service.h"
 #include "daily_saying_state.h"
 #include "daily_saying_parser.h"
 #include "network_http_client.h"

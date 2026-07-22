@@ -32,6 +32,8 @@ int main()
     assert(available.status_hold_set);
     assert(available.status_until_tick == 200);
     assert(strcmp(available.status, "New version v2") == 0);
+    assert(ota_runtime_state_load() == kOtaAvailable);
+    assert(!ota_runtime_reboot_pending_load());
     assert(g_network_runtime_notification_count == 0);
     ota_runtime_reset_status_if_idle(199, "idle");
     assert(ota_runtime_state_load() == kOtaAvailable);
@@ -46,6 +48,7 @@ int main()
     assert(g_network_runtime_notification_count == 1);
 
     ota_runtime_reboot_pending_store(true);
+    assert(ota_runtime_state_load() == kOtaUpdating);
     assert(ota_runtime_reboot_pending_load());
     ota_runtime_publish_status(kOtaFailed, "failed", -1, 300, true);
     OtaRuntimeSnapshot failed;
@@ -114,6 +117,8 @@ int main()
     assert(final_snapshot.progress == 99);
     assert(final_snapshot.speed_kbps == 199);
     assert(strcmp(final_snapshot.status, "99") == 0);
+    assert(ota_runtime_state_load() == kOtaUpdating);
+    assert(!ota_runtime_reboot_pending_load());
     assert(g_network_runtime_notification_count == 3);
     return 0;
 }

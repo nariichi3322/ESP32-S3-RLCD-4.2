@@ -2,6 +2,7 @@
 #include "ui_status_gif.h"
 
 #include <cstring>
+#include <esp_attr.h>
 
 #include "custom_assets.h"
 #include "status_gif_60.h"
@@ -13,6 +14,9 @@
 namespace {
 static_assert(STATUS_GIF_FRAME_COUNT > 0, "status gif must contain at least one frame");
 int s_last_status_gif_frame = -1;
+EXT_RAM_BSS_ATTR uint8_t s_custom_frame[STATUS_GIF_BYTES_PER_FRAME];
+EXT_RAM_BSS_ATTR uint8_t s_custom_prev_frame[STATUS_GIF_BYTES_PER_FRAME];
+bool s_custom_prev_valid = false;
 
 bool is_status_gif_frame_index(int frame)
 {
@@ -73,21 +77,20 @@ void draw_status_gif_frame(int frame)
         return;
     }
     frame = clamp_status_gif_frame(frame);
-    static uint8_t custom_frame[STATUS_GIF_BYTES_PER_FRAME];
-    static uint8_t custom_prev_frame[STATUS_GIF_BYTES_PER_FRAME];
-    static bool custom_prev_valid = false;
     const uint8_t *pixels = builtin_status_gif_frame_or_null(frame);
     const uint8_t *prev_pixels = builtin_status_gif_frame_or_null(s_last_status_gif_frame);
     bool using_custom = false;
-    if (custom_assets_read_main_gif_frame(frame, custom_frame, sizeof(custom_frame))) {
-        pixels = custom_frame;
+    if (custom_assets_read_main_gif_frame(frame,
+                                          s_custom_frame,
+                                          sizeof(s_custom_frame))) {
+        pixels = s_custom_frame;
         using_custom = true;
-        prev_pixels = custom_prev_valid ? custom_prev_frame : nullptr;
+        prev_pixels = s_custom_prev_valid ? s_custom_prev_frame : nullptr;
     } else {
-        if (custom_prev_valid) {
+        if (s_custom_prev_valid) {
             prev_pixels = nullptr;
         }
-        custom_prev_valid = false;
+        s_custom_prev_valid = false;
     }
     uint32_t bit = 0;
     bool changed = false;
@@ -118,7 +121,9 @@ void draw_status_gif_frame(int frame)
     }
     s_last_status_gif_frame = frame;
     if (using_custom) {
-        memcpy(custom_prev_frame, custom_frame, sizeof(custom_prev_frame));
-        custom_prev_valid = true;
+        memcpy(s_custom_prev_frame,
+               s_custom_frame,
+               sizeof(s_custom_prev_frame));
+        s_custom_prev_valid = true;
     }
 }

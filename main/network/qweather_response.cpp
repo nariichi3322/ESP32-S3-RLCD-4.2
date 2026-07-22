@@ -22,7 +22,9 @@ const char *qweather_stage_text(const char *stage)
 }
 
 QweatherResponseBuffer::QweatherResponseBuffer(const char *stage, size_t buffer_size)
-    : data_(buffer_size, HeapBufferInit::kCString),
+    : data_(buffer_size,
+            HeapBufferInit::kCString,
+            HeapBufferStorage::kPsramPreferred),
       size_(buffer_size)
 {
     if (buffer_size == 0) {

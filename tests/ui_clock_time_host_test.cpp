@@ -24,6 +24,7 @@ int main()
 {
     struct tm midnight = make_time(0, 0, 0, 0);
     ClockUiTimeSnapshot start = clock_ui_time_snapshot(midnight);
+    assert(start.second_key == 0);
     assert(start.minute_key == 0);
     assert(start.date_key == 20260712);
     assert(start.hour_key == 192 * 24);
@@ -32,12 +33,14 @@ int main()
 
     struct tm noon = make_time(12, 0, 0, 3);
     ClockUiTimeSnapshot middle = clock_ui_time_snapshot(noon);
+    assert(middle.second_key == 12 * 60 * 60);
     assert(middle.minute_key == 720);
     assert(middle.day_progress_filled == 30);
     assert(strcmp(middle.weekday, "星期三") == 0);
 
     struct tm day_end = make_time(23, 59, 59, 6);
     ClockUiTimeSnapshot end = clock_ui_time_snapshot(day_end);
+    assert(end.second_key == 24 * 60 * 60 - 1);
     assert(end.minute_key == 1439);
     assert(end.hour_key == 192 * 24 + 23);
     assert(end.day_progress_filled == 59);

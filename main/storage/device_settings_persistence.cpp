@@ -1,4 +1,4 @@
-// 负责声音、工作页和小智自动返回设置的条件写入与 NVS 提交。
+// 负责声音、工作页、小智自动返回和图库周期设置的条件写入与 NVS 提交。
 #include "device_settings_persistence.h"
 
 #include "app_metadata.h"
@@ -8,6 +8,7 @@
 #include "network_config_nvs.h"
 #include "network_page_storage.h"
 #include "ui_work_page_catalog.h"
+#include "ui_gallery_rotation_state.h"
 #include "xiaozhi_auto_return_state.h"
 
 #include <esp_log.h>
@@ -18,16 +19,19 @@ using network_config_nvs::write_changed_nvs_u8;
 using network_page_storage::kPageMaskV5Key;
 using network_page_storage::write_work_page_order_nvs;
 using network_config_keys::kXiaozhiAutoReturnKey;
+using network_config_keys::kGalleryRotationKey;
 
 namespace {
 constexpr const char *kNvsActionSavingHourlyReminder = "saving hourly reminder";
 constexpr const char *kNvsActionSavingPageSettings = "saving page settings";
 constexpr const char *kNvsActionSavingPageOrder = "saving page order";
 constexpr const char *kNvsActionSavingXiaozhiAutoReturn = "saving Xiaozhi auto return";
+constexpr const char *kNvsActionSavingGalleryRotation = "saving gallery rotation";
 #define NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT "nvs save hourly reminder failed: %s"
 #define NVS_SAVE_PAGE_SETTINGS_FAILED_FORMAT "nvs save page settings failed: %s"
 #define NVS_SAVE_PAGE_ORDER_FAILED_FORMAT "nvs save page order failed: %s"
 #define NVS_SAVE_XIAOZHI_AUTO_RETURN_FAILED_FORMAT "nvs save Xiaozhi auto return failed: %s"
+#define NVS_SAVE_GALLERY_ROTATION_FAILED_FORMAT "nvs save gallery rotation failed: %s"
 
 constexpr uint8_t bool_to_nvs_u8(bool value)
 {
@@ -119,6 +123,27 @@ bool save_xiaozhi_auto_return_setting()
     err = commit_nvs_if_changed(nvs.get(), err, changed);
     if (!nvs.close_save_ok(err)) {
         ESP_LOGW(TAG, NVS_SAVE_XIAOZHI_AUTO_RETURN_FAILED_FORMAT, esp_err_to_name(err));
+        return false;
+    }
+    return true;
+}
+
+bool save_gallery_rotation_setting()
+{
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingGalleryRotation);
+    if (err != ESP_OK) {
+        return false;
+    }
+    bool changed = false;
+    err = write_changed_nvs_u8(nvs.get(),
+                               err,
+                               kGalleryRotationKey,
+                               gallery_rotation_period_load(),
+                               &changed);
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
+    if (!nvs.close_save_ok(err)) {
+        ESP_LOGW(TAG, NVS_SAVE_GALLERY_ROTATION_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
     return true;

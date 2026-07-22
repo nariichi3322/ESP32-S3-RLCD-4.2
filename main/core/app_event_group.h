@@ -24,6 +24,9 @@ inline constexpr EventBits_t kNetworkStateChangedBit = 1U << 12;
 // UI tasks only request the transition. The network task starts the setup AP
 // after any in-flight HTTPS window has released Wi-Fi and lwIP resources.
 inline constexpr EventBits_t kSetupPortalStartBit = 1U << 13;
+// The captive portal publishes this edge after the phone has received the
+// provisioning result, or when the portal closes while the network task waits.
+inline constexpr EventBits_t kProvisioningFeedbackBit = 1U << 14;
 
 bool app_event_group_init();
 void app_event_group_release();

@@ -119,6 +119,10 @@ static_assert(should_reconfigure_running_power_save(true, true),
     "setup result AP-only mode failed: %s"
 #define WIFI_SETUP_RESULT_AP_ONLY_READY_LOG \
     "setup portal returned to AP-only mode for result delivery"
+constexpr uint32_t kSetupResultDeliveryRetryMs = 100;
+constexpr unsigned kSetupResultDeliveryAttempts = 3;
+static_assert(kSetupResultDeliveryAttempts > 0,
+              "setup result delivery needs at least one attempt");
 void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
 {
     if (!ip) {
@@ -507,13 +511,24 @@ bool prepare_setup_portal_result_delivery()
                  WIFI_SETUP_RESULT_STA_DISCONNECT_FAILED_FORMAT,
                  esp_err_to_name(disconnect_err));
     }
-    esp_err_t mode_err = esp_wifi_set_mode(WIFI_MODE_AP);
-    s_wifi_stop_requested.store(false, std::memory_order_release);
-    if (mode_err != ESP_OK) {
-        wifi_portal_ap_channel_transition_end();
+    esp_err_t mode_err = ESP_FAIL;
+    for (unsigned attempt = 0;
+         attempt < kSetupResultDeliveryAttempts;
+         ++attempt) {
+        mode_err = esp_wifi_set_mode(WIFI_MODE_AP);
+        if (mode_err == ESP_OK) {
+            break;
+        }
         ESP_LOGW(TAG,
                  WIFI_SETUP_RESULT_AP_ONLY_FAILED_FORMAT,
                  esp_err_to_name(mode_err));
+        if (attempt + 1 < kSetupResultDeliveryAttempts) {
+            vTaskDelay(pdMS_TO_TICKS(kSetupResultDeliveryRetryMs));
+        }
+    }
+    s_wifi_stop_requested.store(false, std::memory_order_release);
+    if (mode_err != ESP_OK) {
+        wifi_portal_ap_channel_transition_end();
         return false;
     }
 

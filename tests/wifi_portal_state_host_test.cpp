@@ -1,11 +1,35 @@
 // 验证配网页会话状态、Wi-Fi 断线原因、AP 名称和本地 IP 的跨任务快照。
 #include "wifi_portal_state.h"
+#include "app_event_group.h"
 
 #include <atomic>
 #include <cassert>
 #include <cstring>
 #include <cstdio>
 #include <thread>
+
+namespace {
+bool s_event_group_ready = true;
+EventBits_t s_event_bits = 0;
+}
+
+bool app_event_group_ready()
+{
+    return s_event_group_ready;
+}
+
+EventBits_t app_event_group_set_bits(EventBits_t bits)
+{
+    s_event_bits |= bits;
+    return s_event_bits;
+}
+
+EventBits_t app_event_group_clear_bits(EventBits_t bits)
+{
+    EventBits_t previous = s_event_bits;
+    s_event_bits &= ~bits;
+    return previous;
+}
 
 int main()
 {
@@ -14,6 +38,8 @@ int main()
     assert(setup_portal_active_load());
     setup_portal_active_store(false);
     assert(!setup_portal_active_load());
+    assert((s_event_bits & kProvisioningFeedbackBit) != 0);
+    s_event_bits = 0;
 
     assert(wifi_last_disconnect_reason() == 0);
     record_wifi_disconnect_reason(8);
@@ -48,8 +74,10 @@ int main()
     assert(!wifi_portal_save_feedback_seen_load());
     wifi_portal_save_feedback_seen_store(true);
     assert(wifi_portal_save_feedback_seen_load());
+    assert((s_event_bits & kProvisioningFeedbackBit) != 0);
     wifi_portal_save_feedback_seen_store(false);
     assert(!wifi_portal_save_feedback_seen_load());
+    assert((s_event_bits & kProvisioningFeedbackBit) == 0);
 
     wifi_portal_session_reset();
     setup_portal_active_store(true);

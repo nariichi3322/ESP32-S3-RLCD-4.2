@@ -61,6 +61,7 @@ target_include_directories(weather_clock_sdl PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}"
     "../main"
     "../main/assets"
+    "../main/ui"
     ${SDL2_INCLUDE_DIRS})
 
 target_compile_options(weather_clock_sdl PRIVATE ${SDL2_CFLAGS_OTHER})

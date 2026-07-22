@@ -3,11 +3,14 @@
 
 #include "scoped_semaphore_lock.h"
 
+#include <atomic>
+
 namespace {
 StaticTaskMutex s_runtime_mutex;
 PomodoroSnapshot s_visible = {kPomodoroIdle, 0, 0, false, 1};
 int64_t s_deadline_us = 0;
 int64_t s_completed_at_us = 0;
+std::atomic<PomodoroState> s_state{kPomodoroIdle};
 
 uint32_t remaining_ms(int64_t now_us)
 {
@@ -21,7 +24,11 @@ uint32_t remaining_ms(int64_t now_us)
 
 bool pomodoro_runtime_state_init()
 {
-    return s_runtime_mutex.init();
+    if (!s_runtime_mutex.init()) {
+        return false;
+    }
+    s_state.store(s_visible.state, std::memory_order_release);
+    return true;
 }
 
 bool pomodoro_runtime_publish(PomodoroState state,
@@ -42,6 +49,7 @@ bool pomodoro_runtime_publish(PomodoroState state,
     ++s_visible.version;
     s_deadline_us = deadline_us;
     s_completed_at_us = completed_at_us;
+    s_state.store(state, std::memory_order_release);
     return true;
 }
 
@@ -72,4 +80,9 @@ bool pomodoro_runtime_set_alerting(bool alerting)
         ++s_visible.version;
     }
     return true;
+}
+
+PomodoroState pomodoro_runtime_state_load()
+{
+    return s_state.load(std::memory_order_acquire);
 }

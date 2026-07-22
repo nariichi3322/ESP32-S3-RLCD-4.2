@@ -3,9 +3,12 @@
 
 #include "scoped_semaphore_lock.h"
 
+#include <atomic>
+
 namespace {
 StaticTaskMutex s_info_page_mutex;
 InfoPageStateSnapshot s_info_page_state;
+std::atomic<bool> s_info_page_requested{false};
 }
 
 bool info_page_state_init()
@@ -28,9 +31,7 @@ void info_page_state_load(InfoPageStateSnapshot *out)
 
 bool info_page_requested()
 {
-    InfoPageStateSnapshot state = {};
-    info_page_state_load(&state);
-    return state.requested;
+    return s_info_page_requested.load(std::memory_order_acquire);
 }
 
 void info_page_request(uint32_t hold_until_tick)
@@ -41,6 +42,7 @@ void info_page_request(uint32_t hold_until_tick)
     }
     s_info_page_state.requested = true;
     s_info_page_state.hold_until_tick = hold_until_tick;
+    s_info_page_requested.store(true, std::memory_order_release);
 }
 
 void info_page_clear()
@@ -50,6 +52,7 @@ void info_page_clear()
         return;
     }
     s_info_page_state = {};
+    s_info_page_requested.store(false, std::memory_order_release);
 }
 
 void info_page_hold_until_store(uint32_t hold_until_tick)

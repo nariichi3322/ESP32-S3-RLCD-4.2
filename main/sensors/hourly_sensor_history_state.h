@@ -11,5 +11,6 @@ bool publish_hourly_sensor_sample(int index,
                                   int64_t last_saved_at,
                                   const HourlySensorSample &sample);
 int64_t hourly_sensor_history_last_saved_at();
+uint32_t hourly_sensor_history_version_load();
 bool hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history,
                                     uint32_t *version);

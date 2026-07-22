@@ -1,14 +1,13 @@
 // 统一构建和刷新非天气时钟工作页顶部状态栏。
 #include "ui_views.h"
 
-#include "alarm_services.h"
 #include "app_constexpr.h"
-#include "chime_runtime_state.h"
 #include "local_sensor_state.h"
 #include "ui_clock_header_objects.h"
 #include "ui_clock_sensor_objects.h"
 #include "ui_draw_cache.h"
 #include "ui_flip_clock.h"
+#include "ui_status_refresh_policy.h"
 #include "ui_text_format.h"
 
 namespace {
@@ -406,14 +405,17 @@ void style_work_page_sensor_summary(lv_obj_t *label)
     lv_obj_set_style_pad_all(label, 0, LV_PART_MAIN);
 }
 
-bool update_work_page_status_icons(int page)
+bool update_work_page_status_icons(int page,
+                                   const UiStatusRefreshSnapshot &status,
+                                   bool low_battery_mode,
+                                   bool setup_active)
 {
     if (!is_shared_work_status_page(page)) {
         return false;
     }
-    bool allow = !battery_low_mode_load() && !setup_portal_active_load();
-    bool chime_visible = allow && chime_runtime_any_enabled();
-    bool wifi_visible = allow && wifi_radio_on_for_status_icon();
+    const bool allow = !low_battery_mode && !setup_active;
+    const bool chime_visible = allow && status.chime_enabled;
+    const bool wifi_visible = allow && status.wifi_radio_on;
     const WorkPageStatusIcons &icons = s_work_status_pages[page].icons;
     lv_obj_t *chime = icons.chime.canvas;
     lv_obj_t *wifi = icons.wifi.canvas;
@@ -421,6 +423,6 @@ bool update_work_page_status_icons(int page)
     bool changed = false;
     changed |= set_obj_visible(chime, chime_visible);
     changed |= set_obj_visible(wifi, wifi_visible);
-    changed |= set_obj_visible(alarm, allow && alarm_is_enabled());
+    changed |= set_obj_visible(alarm, allow && status.alarm_enabled);
     return changed;
 }

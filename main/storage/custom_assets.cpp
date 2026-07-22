@@ -12,6 +12,7 @@
 #include "status_gif_60.h"
 #include "weather_city_contract.h"
 
+#include "esp_attr.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_partition.h"
@@ -25,7 +26,6 @@
 #define CUSTOM_ASSETS_ENTRY_OFFSET_INVALID_LOG_FORMAT "custom asset entry offset invalid type=%u index=%u"
 #define CUSTOM_ASSETS_ENTRY_LENGTH_INVALID_LOG_FORMAT "custom asset entry length invalid type=%u index=%u"
 #define CUSTOM_ASSETS_ENTRY_SHAPE_INVALID_LOG_FORMAT "custom asset entry shape invalid type=%u index=%u size=%ux%u frames=%u row=%u length=%lu"
-#define CUSTOM_ASSETS_ENTRY_CRC_MISMATCH_LOG_FORMAT "custom asset entry crc mismatch type=%u index=%u"
 #define CUSTOM_ASSETS_HEADER_CRC_MISMATCH_LOG_FORMAT "custom assets header crc mismatch"
 #define CUSTOM_ASSETS_PAYLOAD_RANGE_INVALID_LOG_FORMAT "custom assets payload range invalid header=%u total=%lu"
 #define CUSTOM_ASSETS_PAYLOAD_CRC_MISMATCH_LOG_FORMAT "custom assets payload crc mismatch"
@@ -47,12 +47,12 @@
 #define CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT "custom assets diag: ready main_gif=%d gallery=%d weather_city=%d ota_url=%d"
 static const esp_partition_t *s_assets_partition = nullptr;
 static CustomAssetsHeader s_assets_header = {};
-static CustomAssetEntry s_entries[kCustomAssetMaxEntries] = {};
+static EXT_RAM_BSS_ATTR CustomAssetEntry s_entries[kCustomAssetMaxEntries] = {};
 static int s_entry_count = 0;
-static CustomAssetCatalog s_asset_catalog;
+static EXT_RAM_BSS_ATTR CustomAssetCatalog s_asset_catalog;
 static bool s_assets_ready = false;
 static constexpr const char *kCustomAssetsPartitionLabel = "assets";
-static constexpr size_t kCustomAssetCrcChunkSize = 256;
+static constexpr size_t kCustomAssetIoChunkSize = 256;
 static constexpr int kCustomAssetDiagGifFrames[] = {0, 1, 30, 59};
 
 constexpr bool custom_asset_diag_frames_valid()
@@ -113,7 +113,7 @@ static_assert(sizeof(CustomAssetsHeader) +
                       kCustomAssetMaxEntries * sizeof(CustomAssetEntry) <=
                   UINT16_MAX,
               "custom asset header must fit its 16-bit wire size");
-static_assert(kCustomAssetCrcChunkSize > 0, "custom asset CRC chunk size must be positive");
+static_assert(kCustomAssetIoChunkSize > 0, "custom asset I/O chunk size must be positive");
 static bool partition_range_valid(uint32_t offset, size_t length)
 {
     if (!s_assets_partition) {
@@ -143,7 +143,7 @@ static bool partition_crc(uint32_t offset, uint32_t length, uint32_t *crc_out)
     if (!partition_range_valid(offset, length)) {
         return false;
     }
-    uint8_t buffer[kCustomAssetCrcChunkSize];
+    uint8_t buffer[kCustomAssetIoChunkSize];
     uint32_t crc = kCustomAssetCrc32Initial;
     uint32_t remaining = length;
     uint32_t cursor = offset;
@@ -253,19 +253,6 @@ static bool validate_entry_shape(const CustomAssetEntry &entry)
     return valid;
 }
 
-static bool validate_entry_crc(const CustomAssetEntry &entry)
-{
-    uint32_t crc = 0;
-    if (!partition_crc(entry.offset, entry.length, &crc)) {
-        return false;
-    }
-    if (crc != entry.crc32) {
-        ESP_LOGW(TAG, CUSTOM_ASSETS_ENTRY_CRC_MISMATCH_LOG_FORMAT, entry.type, entry.index);
-        return false;
-    }
-    return true;
-}
-
 static bool validate_header_crc()
 {
     CustomAssetsHeader header = s_assets_header;
@@ -332,22 +319,44 @@ static int count_black_bits(const uint8_t *data, size_t len)
     return total;
 }
 
+static bool partition_black_bit_count(uint32_t offset, uint32_t length, int *count_out)
+{
+    if (!count_out || !partition_range_valid(offset, length)) {
+        return false;
+    }
+    uint8_t buffer[kCustomAssetIoChunkSize];
+    uint32_t remaining = length;
+    uint32_t cursor = offset;
+    int total = 0;
+    while (remaining > 0) {
+        size_t chunk = remaining > sizeof(buffer) ? sizeof(buffer) : remaining;
+        if (!read_checked(cursor, buffer, chunk)) {
+            return false;
+        }
+        total += count_black_bits(buffer, chunk);
+        cursor += chunk;
+        remaining -= chunk;
+    }
+    *count_out = total;
+    return true;
+}
+
 static void log_custom_gif_frame_density(int frame)
 {
     const CustomAssetEntry *main_gif_entry = s_asset_catalog.main_gif();
     if (!main_gif_entry || frame < 0 || frame >= STATUS_GIF_FRAME_COUNT) {
         return;
     }
-    uint8_t buffer[STATUS_GIF_BYTES_PER_FRAME];
     uint32_t offset = main_gif_entry->offset + (uint32_t)frame * STATUS_GIF_BYTES_PER_FRAME;
-    if (!read_checked(offset, buffer, sizeof(buffer))) {
+    int black_bits = 0;
+    if (!partition_black_bit_count(offset, STATUS_GIF_BYTES_PER_FRAME, &black_bits)) {
         ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_GIF_FRAME_READ_FAILED_LOG_FORMAT, frame);
         return;
     }
     ESP_LOGI(TAG,
              CUSTOM_ASSETS_DIAG_GIF_FRAME_DENSITY_LOG_FORMAT,
              frame,
-             count_black_bits(buffer, sizeof(buffer)),
+             black_bits,
              STATUS_GIF_WIDTH * STATUS_GIF_HEIGHT);
 }
 
@@ -382,9 +391,9 @@ static bool register_custom_asset_entry(int entry_index)
              (unsigned long)entry.offset,
              (unsigned long)entry.length,
              (unsigned long)entry.crc32);
-    if (!validate_entry_bounds(entry) ||
-        !validate_entry_shape(entry) ||
-        !validate_entry_crc(entry)) {
+    // Header CRC protects entry metadata and payload CRC already covers every
+    // accepted entry byte, so rescanning each entry would only duplicate Flash I/O.
+    if (!validate_entry_bounds(entry) || !validate_entry_shape(entry)) {
         ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_ENTRY_REJECTED_LOG_FORMAT, entry_index);
         return false;
     }

@@ -5,9 +5,11 @@
 #include "app_constexpr.h"
 #include "app_state.h"
 #include "chime_runtime_state.h"
+#include "custom_assets.h"
 #include "manual_weather_city_state.h"
 #include "offline_mode_state.h"
 #include "ui_settings_confirmation_state.h"
+#include "ui_gallery_rotation_state.h"
 #include "ui_text_format.h"
 #include "weather_city_contract.h"
 
@@ -30,7 +32,8 @@ constexpr const char *kSettingsPageSwitchText = "页面开关";
 constexpr const char *kSettingsPageOrderText = "页面顺序";
 constexpr const char *kSettingsAlarmOffText = "闹钟 --:--";
 constexpr const char *kSettingsAlarmOnFormat = "闹钟 %02d:%02d";
-constexpr const char *kSettingsXiaozhiAutoReturnText = "小智AI自动返回";
+constexpr const char *kSettingsXiaozhiAutoReturnText = "小智节能";
+constexpr const char *kSettingsGalleryRotationFormat = "图片切换 %s";
 constexpr const char *kSettingsOfflineFormat = "离线模式 %s";
 constexpr const char *kSettingsOfflineOnText = "开";
 constexpr const char *kSettingsOfflineOffText = "关";
@@ -54,6 +57,7 @@ constexpr const char *kSettingsSecondaryTexts[] = {
     kSettingsAlarmOffText,
     kSettingsAlarmOnFormat,
     kSettingsXiaozhiAutoReturnText,
+    kSettingsGalleryRotationFormat,
     kSettingsOfflineFormat,
     kSettingsOfflineOnText,
     kSettingsOfflineOffText,
@@ -175,6 +179,12 @@ void populate_settings_secondary_items(
         set_secondary_text(secondary_items,
                            kDisplaySettingsXiaozhiAutoReturnItem,
                            kSettingsXiaozhiAutoReturnText);
+        format_secondary_text(
+            secondary_items,
+            kDisplaySettingsGalleryRotationItem,
+            kSettingsGalleryRotationFormat,
+            effective_gallery_rotation_label(gallery_rotation_period_load(),
+                                             custom_assets_gallery_count()));
     } else {
         format_secondary_text(secondary_items,
                               kSystemSettingsOfflineItem,

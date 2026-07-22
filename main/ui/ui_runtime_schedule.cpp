@@ -11,8 +11,8 @@
 #include "ui_info_page_state.h"
 #include "ui_loop_schedule.h"
 #include "ui_settings_activity_state.h"
-#include "ui_visible_data_sync.h"
 #include "ui_views.h"
+#include "ui_work_page_catalog.h"
 #include "ui_xiaozhi_auto_return.h"
 #include "ui_xiaozhi.h"
 #include "xiaozhi_ai.h"
@@ -54,13 +54,15 @@ TickType_t next_minute_delay_ticks(const struct tm &local)
 }
 
 bool low_refresh_work_page_idle(const struct tm &local,
-                                const BatteryRuntimeSnapshot &battery)
+                                const BatteryRuntimeSnapshot &battery,
+                                int active_page,
+                                const UiRuntimeSurfaceSnapshot &surfaces)
 {
-    return work_page_uses_low_refresh_idle(active_work_page_load()) &&
+    return work_page_uses_low_refresh_idle(active_page) &&
            !battery.low_battery_mode &&
            !battery.charging &&
-           !setup_portal_active_load() &&
-           !ui_runtime_auxiliary_page_requested() &&
+           !surfaces.setup_portal_active &&
+           !surfaces.auxiliary_page_requested() &&
            is_tm_plausible(local);
 }
 
@@ -85,31 +87,42 @@ bool ui_runtime_settings_timeout_elapsed(TickType_t last_activity)
     return app_tick_interval_elapsed(now, last_activity, timeout_ticks);
 }
 
-bool ui_runtime_auxiliary_page_requested()
+UiRuntimeSurfaceSnapshot ui_runtime_surface_snapshot_load()
 {
-    return settings_page_requested() ||
-           info_page_requested() ||
-           network_diag_page_requested();
+    return {
+        setup_portal_active_load(),
+        settings_page_requested(),
+        info_page_requested(),
+        network_diag_page_requested(),
+    };
 }
 
 TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
                                             time_t sampled_wall_second,
                                             const BatteryRuntimeSnapshot &battery,
-                                            bool battery_blink_visible)
+                                            bool battery_blink_visible,
+                                            int active_page,
+                                            const UiRuntimeSurfaceSnapshot &surfaces)
 {
     bool low_idle = battery.low_battery_mode &&
                     !battery.charging &&
-                    !ui_runtime_auxiliary_page_requested() &&
+                    !surfaces.auxiliary_page_requested() &&
                     is_tm_plausible(local);
-    bool low_refresh_page_idle = low_refresh_work_page_idle(local, battery);
+    bool low_refresh_page_idle = low_refresh_work_page_idle(local,
+                                                            battery,
+                                                            active_page,
+                                                            surfaces);
     uint32_t delay_candidates[4] = {};
     delay_candidates[0] = (low_idle || low_refresh_page_idle)
                               ? next_minute_delay_ticks(local)
                               : next_second_delay_ticks(sampled_wall_second);
-    if (normal_work_page_active(kWorkPageXiaozhiAI)) {
-        PomodoroSnapshot pomodoro = {};
-        pomodoro_get_snapshot(&pomodoro);
-        if (pomodoro.state == kPomodoroRunning) {
+    if (active_page == kWorkPageXiaozhiAI &&
+        !battery.low_battery_mode &&
+        !surfaces.setup_portal_active &&
+        !surfaces.auxiliary_page_requested()) {
+        if (pomodoro_is_running()) {
+            PomodoroSnapshot pomodoro = {};
+            pomodoro_get_snapshot(&pomodoro);
             uint32_t boundary_ms = pomodoro_next_display_boundary_ms(
                 pomodoro.remaining_ms);
             if (boundary_ms > 0) {
@@ -131,17 +144,19 @@ TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
         sizeof(delay_candidates) / sizeof(delay_candidates[0])));
 }
 
-void ui_runtime_update_xiaozhi_auto_return(TickType_t tick_now,
+void ui_runtime_update_xiaozhi_auto_return(int active_page,
+                                           bool low_battery_mode,
+                                           const UiRuntimeSurfaceSnapshot &surfaces,
+                                           TickType_t tick_now,
                                            TickType_t &last_activity_tick,
                                            uint32_t &last_activity_sequence)
 {
-    int active_page = active_work_page_load();
     if (active_page == kWorkPageXiaozhiAI &&
-        !battery_low_mode_load() &&
-        !setup_portal_active_load() &&
-        !ui_runtime_auxiliary_page_requested()) {
-        XiaozhiAiSnapshot snapshot = {};
-        xiaozhi_ai_get_snapshot(&snapshot);
+        !low_battery_mode &&
+        !surfaces.setup_portal_active &&
+        !surfaces.auxiliary_page_requested()) {
+        const XiaozhiActivitySnapshot snapshot =
+            xiaozhi_ai_activity_snapshot_load();
         bool conversation_active = snapshot.state == kXiaozhiAiListening ||
                                    snapshot.state == kXiaozhiAiSpeaking;
         XiaozhiAutoReturnDecision auto_return = xiaozhi_auto_return_decision(

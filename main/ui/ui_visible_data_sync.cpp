@@ -4,7 +4,6 @@
 #include "app_constexpr.h"
 #include "app_event_group.h"
 #include "app_state.h"
-#include "daily_saying_contract.h"
 #include "daily_saying_state.h"
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"
@@ -89,14 +88,12 @@ bool weather_cache_stale(time_t now_value)
 
 bool saying_cache_stale(time_t now_value)
 {
-    char saying[kDailySayingLen] = {};
-    time_t last_sync_time = 0;
-    bool snapshot_ready = get_daily_saying_snapshot(saying,
-                                                    sizeof(saying),
-                                                    &last_sync_time);
+    DailySayingCacheSnapshot snapshot;
+    const bool snapshot_ready = daily_saying_cache_snapshot_load(&snapshot) &&
+                                snapshot.available;
     return ui_daily_saying_cache_stale(now_value,
                                        snapshot_ready,
-                                       last_sync_time);
+                                       snapshot.last_sync_time);
 }
 
 void request_weather_sync_if_needed(VisibleSyncRetryState<TickType_t> &retry,
@@ -120,17 +117,10 @@ void request_weather_sync_if_needed(VisibleSyncRetryState<TickType_t> &retry,
 }
 } // namespace
 
-bool normal_work_page_active(int page)
-{
-    return active_work_page_load() == page &&
-           !battery_low_mode_load() &&
-           !setup_portal_active_load();
-}
-
-ActiveWorkPageState active_work_page_state(int active_page)
+ActiveWorkPageState active_work_page_state_for_mode(int active_page,
+                                                    bool normal_mode)
 {
     ActiveWorkPageState state = {};
-    bool normal_mode = !battery_low_mode_load() && !setup_portal_active_load();
     state.history = normal_mode && active_page == kWorkPageHistory;
     state.gallery = normal_mode && active_page == kWorkPageGallery;
     state.calendar = normal_mode && active_page == kWorkPageCalendar;
@@ -144,6 +134,13 @@ ActiveWorkPageState active_work_page_state(int active_page)
                                                              state.weather_clock,
                                                              state.weather_board);
     return state;
+}
+
+ActiveWorkPageState active_work_page_state(int active_page)
+{
+    const bool normal_mode = !battery_low_mode_load() &&
+                             !setup_portal_active_load();
+    return active_work_page_state_for_mode(active_page, normal_mode);
 }
 
 void update_visible_weather_sync(const ActiveWorkPageState &state,
@@ -221,7 +218,7 @@ bool update_weather_clock_network_status(EventBits_t bits,
     const bool offline_mode = offline_mode_enabled_load();
     if (bits & kWeatherReadyBit) {
         WeatherData weather = {};
-        get_weather_snapshot(&weather, nullptr);
+        get_weather_snapshot(&weather);
         char city[kWeatherCityTextSize] = {};
         char weather_temp[kWeatherValueTextSize] = {};
         char weather_humi[kWeatherValueTextSize] = {};

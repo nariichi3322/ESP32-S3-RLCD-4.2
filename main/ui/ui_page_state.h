@@ -3,6 +3,8 @@
 
 #include "lvgl.h"
 
+struct UiStatusRefreshSnapshot;
+
 enum class AuxiliaryPage {
     kSystemInfo,
     kNetworkDiagnostics,
@@ -26,6 +28,13 @@ void set_lower_panel_visible(bool visible);
 void clear_lower_panel_object_refs();
 bool set_obj_visible(lv_obj_t *obj, bool visible);
 bool update_low_battery_state();
-void apply_clock_mode_visibility(bool setup_active);
-void update_alert_pill(bool show, int alert_index = 0);
-bool update_top_status_icons(bool alert_visible);
+void apply_clock_mode_visibility(bool setup_active, bool low_battery_mode);
+void update_alert_pill(bool show,
+                       int alert_index,
+                       const UiStatusRefreshSnapshot &status,
+                       bool low_battery_mode,
+                       bool setup_active);
+bool update_top_status_icons(bool alert_visible,
+                             const UiStatusRefreshSnapshot &status,
+                             bool low_battery_mode,
+                             bool setup_active);

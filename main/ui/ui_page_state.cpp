@@ -3,15 +3,14 @@
 
 #include "ui_views.h"
 
-#include "alarm_services.h"
 #include "app_constexpr.h"
 #include "battery_policy.h"
-#include "chime_runtime_state.h"
 #include "ui_clock.h"
 #include "ui_clock_header_objects.h"
 #include "ui_clock_surface_objects.h"
 #include "ui_flip_clock.h"
 #include "ui_setup_status.h"
+#include "ui_status_refresh_policy.h"
 #include "ui_xiaozhi.h"
 #include "weather_state.h"
 
@@ -253,11 +252,11 @@ bool update_low_battery_state()
                                            kLowBatteryExitPercent);
 }
 
-void apply_clock_mode_visibility(bool setup_active)
+void apply_clock_mode_visibility(bool setup_active, bool low_battery_mode)
 {
     const ClockHeaderObjectRefs &header = clock_header_object_refs();
     const ClockSurfaceObjectRefs &surface = clock_surface_object_refs();
-    bool low = battery_low_mode_load();
+    const bool low = low_battery_mode;
     set_obj_visible(surface.second_canvas, !low && !setup_active);
     set_work_page_day_progress_visible(kWorkPageWeatherClock, !low);
     set_obj_visible(surface.second_progress_canvas, !low && !setup_active);
@@ -274,36 +273,43 @@ void apply_clock_mode_visibility(bool setup_active)
     }
 }
 
-void update_alert_pill(bool show, int alert_index)
+void update_alert_pill(bool show,
+                       int alert_index,
+                       const UiStatusRefreshSnapshot &status,
+                       bool low_battery_mode,
+                       bool setup_active)
 {
     const ClockHeaderObjectRefs &header = clock_header_object_refs();
-    WeatherAlertData alert = {};
-    get_weather_snapshot(nullptr, &alert);
+    char title[kWeatherAlertTitleLen] = {};
     bool visible = show &&
-                   !battery_low_mode_load() &&
-                   alert.active &&
-                   alert.count > 0;
+                   !low_battery_mode &&
+                   !setup_active &&
+                   get_weather_alert_title_snapshot(alert_index,
+                                                    title,
+                                                    sizeof(title));
     set_obj_visible(header.alert_pill, visible);
-    update_top_status_icons(visible);
+    update_top_status_icons(visible,
+                            status,
+                            low_battery_mode,
+                            setup_active);
     if (visible) {
-        if (alert_index < 0) {
-            alert_index = 0;
-        }
-        alert_index %= alert.count;
-        set_label_text_if_changed(header.alert_label, alert.titles[alert_index]);
+        set_label_text_if_changed(header.alert_label, title);
     }
 }
 
-bool update_top_status_icons(bool alert_visible)
+bool update_top_status_icons(bool alert_visible,
+                             const UiStatusRefreshSnapshot &status,
+                             bool low_battery_mode,
+                             bool setup_active)
 {
     const ClockHeaderObjectRefs &header = clock_header_object_refs();
-    bool allow = !alert_visible && !battery_low_mode_load() && !setup_portal_active_load();
+    const bool allow = !alert_visible && !low_battery_mode && !setup_active;
     bool changed = false;
     changed |= set_obj_visible(header.chime_status_icon_canvas,
-                               allow && chime_runtime_any_enabled());
+                               allow && status.chime_enabled);
     changed |= set_obj_visible(header.wifi_status_icon_canvas,
-                               allow && wifi_radio_on_for_status_icon());
+                               allow && status.wifi_radio_on);
     changed |= set_obj_visible(header.alarm_status_icon_canvas,
-                               allow && alarm_is_enabled());
+                               allow && status.alarm_enabled);
     return changed;
 }

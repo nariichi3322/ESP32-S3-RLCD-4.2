@@ -6,6 +6,7 @@
 #include "battery_charging_state.h"
 #include "battery_policy.h"
 #include "battery_runtime_state.h"
+#include "network_runtime_events.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
@@ -132,7 +133,7 @@ static time_t last_charge_time_after_unplug(time_t previous)
     return previous;
 }
 
-void release_battery_gauge()
+static void release_battery_gauge()
 {
     if (s_battery_adc_cali_ready && s_battery_adc_cali) {
         esp_err_t err = adc_cali_delete_scheme_curve_fitting(s_battery_adc_cali);
@@ -153,7 +154,7 @@ void release_battery_gauge()
     s_battery_adc_ready = false;
 }
 
-bool init_battery_gauge()
+static bool init_battery_gauge()
 {
     if (s_battery_adc_ready) {
         if (!s_battery_adc) {
@@ -209,19 +210,19 @@ bool init_battery_gauge()
     return true;
 }
 
-int battery_percent_from_voltage(float voltage)
+static int battery_percent_from_voltage(float voltage)
 {
     int percent = (int)(((voltage - kBatteryEmptyVoltage) * kBatteryPercentScale /
                          kBatteryVoltageRange) + kBatteryPercentRoundOffset);
     return clamp_battery_percent(percent);
 }
 
-int battery_adc_raw_to_mv(int raw)
+static int battery_adc_raw_to_mv(int raw)
 {
     return (raw * kBatteryAdcReferenceMv) / kBatteryAdcRawMax;
 }
 
-float battery_voltage_from_adc_mv(int adc_mv)
+static float battery_voltage_from_adc_mv(int adc_mv)
 {
     return adc_mv * kBatteryMillivoltsToVolts * kBatteryVoltageDivider;
 }
@@ -257,23 +258,6 @@ static bool read_battery_reading(BatteryReading *reading)
     ESP_LOGI(TAG, BATTERY_ADC_SAMPLE_LOG_FORMAT, raw, adc_mv, voltage, soc);
     reading->percent = soc;
     reading->voltage = voltage;
-    return true;
-}
-
-bool read_battery_percent(int *percent)
-{
-    if (!percent) {
-        ESP_LOGW(TAG, BATTERY_PERCENT_OUTPUT_NULL_LOG_FORMAT);
-        return false;
-    }
-    BatteryReading reading;
-    if (!read_battery_reading(&reading)) {
-        return false;
-    }
-    *percent = reading.percent;
-    // Preserve the existing public helper behavior for any external caller.
-    battery_runtime_voltage_store(reading.voltage);
-    release_battery_gauge();
     return true;
 }
 
@@ -375,6 +359,9 @@ void sample_battery()
         ++next.version;
     }
     battery_runtime_snapshot_store(next);
+    if (previous.low_battery_mode != next.low_battery_mode) {
+        notify_network_sync_runtime_state_changed();
+    }
     if (state_changed) {
         notify_ui_task();
     }

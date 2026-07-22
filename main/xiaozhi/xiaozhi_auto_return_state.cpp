@@ -4,7 +4,7 @@
 #include <atomic>
 
 namespace {
-std::atomic<bool> s_xiaozhi_auto_return_enabled{false};
+std::atomic<bool> s_xiaozhi_auto_return_enabled{kDefaultXiaozhiAutoReturnEnabled};
 }
 
 bool xiaozhi_auto_return_enabled_load()

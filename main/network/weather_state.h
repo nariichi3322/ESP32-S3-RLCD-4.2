@@ -3,14 +3,28 @@
 
 #include "weather_types.h"
 
+#include <stddef.h>
+#include <stdint.h>
+
+struct WeatherAlertStatusSnapshot {
+    bool active = false;
+    uint8_t count = 0;
+    uint32_t version = 0;
+};
+
 bool init_weather_state();
 void get_weather_full_snapshot(WeatherData *weather,
                                WeatherAlertData *alert,
                                WeatherForecastData *forecast,
                                WeatherAirData *air);
-void get_weather_snapshot(WeatherData *weather, WeatherAlertData *alert);
+void get_weather_snapshot(WeatherData *weather);
 void get_weather_forecast_snapshot(WeatherForecastData *forecast);
 void get_weather_air_snapshot(WeatherAirData *air);
+WeatherAlertStatusSnapshot weather_alert_status_snapshot_load();
+uint32_t weather_state_version_load();
+bool get_weather_alert_title_snapshot(int requested_index,
+                                      char *title,
+                                      size_t title_len);
 time_t get_last_weather_sync_time();
 bool weather_extended_data_ready();
 void clear_weather_ready_event();

@@ -17,3 +17,4 @@ void xiaozhi_snapshot_set_status_preserving_detail(XiaozhiAiState state,
 void xiaozhi_snapshot_set_emotion(const char *emotion);
 void xiaozhi_snapshot_mark_user_activity();
 void xiaozhi_snapshot_get(XiaozhiAiSnapshot *out);
+XiaozhiActivitySnapshot xiaozhi_snapshot_activity_load();

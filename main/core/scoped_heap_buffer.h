@@ -1,9 +1,13 @@
-// 提供负责 malloc/calloc/兼容 heap_caps 分配与 free 的不可复制字节缓冲区所有权。
+// 提供默认堆或 PSRAM 优先分配、兼容 heap_caps 接管与 free 的不可复制字节缓冲区所有权。
 #pragma once
 
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+
+#if defined(ESP_PLATFORM)
+#include "esp_heap_caps.h"
+#endif
 
 enum class HeapBufferInit {
     kUninitialized,
@@ -11,12 +15,18 @@ enum class HeapBufferInit {
     kCString,
 };
 
+enum class HeapBufferStorage {
+    kDefault,
+    kPsramPreferred,
+};
+
 template <typename Byte>
 class ScopedHeapBuffer {
 public:
     explicit ScopedHeapBuffer(size_t size,
-                              HeapBufferInit init = HeapBufferInit::kUninitialized)
-        : data_(allocate(size, init)),
+                              HeapBufferInit init = HeapBufferInit::kUninitialized,
+                              HeapBufferStorage storage = HeapBufferStorage::kDefault)
+        : data_(allocate(size, init, storage)),
           size_(size)
     {
         static_assert(sizeof(Byte) == 1, "ScopedHeapBuffer only owns byte-sized elements");
@@ -84,14 +94,31 @@ public:
     }
 
 private:
-    static Byte *allocate(size_t size, HeapBufferInit init)
+    static Byte *allocate(size_t size,
+                          HeapBufferInit init,
+                          HeapBufferStorage storage)
     {
         if (size == 0) {
             return nullptr;
         }
-        void *memory = init == HeapBufferInit::kZeroed
-                           ? calloc(size, sizeof(Byte))
-                           : malloc(size * sizeof(Byte));
+        void *memory = nullptr;
+#if defined(ESP_PLATFORM)
+        if (storage == HeapBufferStorage::kPsramPreferred) {
+            memory = init == HeapBufferInit::kZeroed
+                         ? heap_caps_calloc(size,
+                                            sizeof(Byte),
+                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
+                         : heap_caps_malloc(size * sizeof(Byte),
+                                            MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+        }
+#else
+        (void)storage;
+#endif
+        if (!memory) {
+            memory = init == HeapBufferInit::kZeroed
+                         ? calloc(size, sizeof(Byte))
+                         : malloc(size * sizeof(Byte));
+        }
         return static_cast<Byte *>(memory);
     }
 

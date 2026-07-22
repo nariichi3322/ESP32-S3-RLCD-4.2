@@ -22,10 +22,13 @@ inline constexpr int kSoundSettingsSecondaryCount =
 
 inline constexpr int kDisplaySettingsPageSwitchItem = 0;
 inline constexpr int kDisplaySettingsOrderItem = 1;
-inline constexpr int kDisplaySettingsAlarmItem = 2;
-inline constexpr int kDisplaySettingsXiaozhiAutoReturnItem = 3;
+inline constexpr int kDisplaySettingsXiaozhiAutoReturnItem = 2;
+inline constexpr int kDisplaySettingsAlarmItem = 3;
+inline constexpr int kDisplaySettingsGalleryRotationItem = 4;
 inline constexpr int kDisplaySettingsSecondaryCount =
-    kDisplaySettingsXiaozhiAutoReturnItem + 1;
+    kDisplaySettingsGalleryRotationItem + 1;
+inline constexpr int kDisplaySettingsGridItemCount =
+    kDisplaySettingsSecondaryCount;
 
 inline constexpr int kSystemSettingsOfflineItem = 0;
 inline constexpr int kSystemSettingsNetworkDiagItem = 1;
@@ -53,11 +56,13 @@ enum SettingsPrimaryMenu {
 
 static_assert(kSettingsPrimarySystem + 1 == kSettingsPrimaryCount,
               "settings primary count must match the final menu id");
-static_assert(kDisplaySettingsAlarmItem + 1 ==
-                  kDisplaySettingsXiaozhiAutoReturnItem,
-              "alarm item must remain immediately above Xiaozhi auto return");
+static_assert(kDisplaySettingsXiaozhiAutoReturnItem + 1 ==
+                  kDisplaySettingsAlarmItem,
+              "Xiaozhi power saving must remain immediately above alarm");
 static_assert(kDisplaySettingsSecondaryCount ==
-                  kDisplaySettingsXiaozhiAutoReturnItem + 1,
-              "display settings count must include Xiaozhi auto return");
+                  kDisplaySettingsGalleryRotationItem + 1,
+              "display settings count must include gallery rotation");
+static_assert(kDisplaySettingsGridItemCount == kDisplaySettingsSecondaryCount,
+              "all display settings items use the compact grid");
 static_assert(kSystemSettingsGridItemCount < kSystemSettingsSecondaryCount,
               "system grid items must leave the OTA item in its long row");

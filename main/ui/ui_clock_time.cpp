@@ -46,6 +46,7 @@ ClockUiTimeSnapshot clock_ui_time_snapshot(const struct tm &local)
     int day_seconds = local.tm_hour * kSecondsPerHour +
                       local.tm_min * kSecondsPerMinute +
                       local.tm_sec;
+    snapshot.second_key = day_seconds;
     snapshot.day_progress_filled =
         (day_seconds * kProgressSegmentCount) / kSecondsPerDay;
     snapshot.weekday = weekday_name_or_placeholder(local.tm_wday);

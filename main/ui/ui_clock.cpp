@@ -3,6 +3,7 @@
 #include "ui_clock_header_objects.h"
 #include "ui_clock_sensor_objects.h"
 #include "ui_clock_surface_objects.h"
+#include "ui_clock_weather_panel_objects.h"
 
 #include "ui_views.h"
 
@@ -50,17 +51,6 @@ lv_color_t *s_time_canvas_buffer;
 lv_color_t *s_second_canvas_buffer;
 lv_color_t *s_status_gif_canvas_buffer;
 lv_color_t *s_second_progress_canvas_buffer;
-struct ClockWeatherPanelObjects {
-    lv_obj_t *city_label = nullptr;
-    lv_obj_t *info_label = nullptr;
-    lv_obj_t *icon_label = nullptr;
-    lv_obj_t *temperature_label = nullptr;
-    lv_obj_t *humidity_label = nullptr;
-};
-ClockWeatherPanelObjects s_weather_panel_objects;
-ClockLocalSensorObjectRefs s_local_sensor_objects;
-ClockHeaderObjectRefs s_header_objects;
-ClockSurfaceObjectRefs s_surface_objects;
 constexpr const char *kClockLogTexts[] = {
     CLOCK_DATE_LABEL_CREATE_FAILED_LOG,
     CLOCK_ALERT_PILL_CREATE_FAILED_LOG,
@@ -405,7 +395,8 @@ void build_clock_header(lv_obj_t *screen)
 
 void build_clock_weather_panel(lv_obj_t *screen)
 {
-    s_weather_panel_objects.city_label =
+    ClockWeatherPanelObjectRefs &objects = mutable_clock_weather_panel_object_refs();
+    objects.city_label =
         make_clock_lower_center_label(screen,
                                       kClockWeatherCityLabelX,
                                       kClockWeatherCityLabelY,
@@ -413,41 +404,41 @@ void build_clock_weather_panel(lv_obj_t *screen)
                                       kClockWeatherCityLabelHeight,
                                       kClockWeatherCityPlaceholder,
                                       kClockComponentWeatherCity);
-    s_weather_panel_objects.icon_label = make_label(screen,
-                                                     kClockWeatherIconLabelX,
-                                                     kClockWeatherIconLabelY,
-                                                     kClockWeatherIconLabelWidth,
-                                                     kClockWeatherIconLabelHeight,
-                                                     "");
-    remember_lower_panel_object(s_weather_panel_objects.icon_label);
-    if (s_weather_panel_objects.icon_label) {
-        lv_obj_set_style_text_font(s_weather_panel_objects.icon_label,
+    objects.icon_label = make_label(screen,
+                                    kClockWeatherIconLabelX,
+                                    kClockWeatherIconLabelY,
+                                    kClockWeatherIconLabelWidth,
+                                    kClockWeatherIconLabelHeight,
+                                    "");
+    remember_lower_panel_object(objects.icon_label);
+    if (objects.icon_label) {
+        lv_obj_set_style_text_font(objects.icon_label,
                                    &qweather_icons_36,
                                    LV_PART_MAIN);
-        lv_obj_set_style_border_width(s_weather_panel_objects.icon_label, 0, LV_PART_MAIN);
-        lv_obj_set_style_pad_all(s_weather_panel_objects.icon_label, 0, LV_PART_MAIN);
-        lv_obj_set_style_text_align(s_weather_panel_objects.icon_label,
+        lv_obj_set_style_border_width(objects.icon_label, 0, LV_PART_MAIN);
+        lv_obj_set_style_pad_all(objects.icon_label, 0, LV_PART_MAIN);
+        lv_obj_set_style_text_align(objects.icon_label,
                                     LV_TEXT_ALIGN_CENTER,
                                     LV_PART_MAIN);
     } else {
         ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, kClockComponentWeatherIcon);
     }
-    s_weather_panel_objects.info_label = make_label(screen,
-                                                     kClockWeatherInfoLabelX,
-                                                     kClockWeatherInfoLabelY,
-                                                     kClockWeatherInfoLabelWidth,
-                                                     kClockWeatherInfoLabelHeight,
-                                                     kClockWeatherInfoWaitingText);
-    remember_lower_panel_object(s_weather_panel_objects.info_label);
-    if (s_weather_panel_objects.info_label) {
-        lv_label_set_long_mode(s_weather_panel_objects.info_label, LV_LABEL_LONG_CLIP);
-        lv_obj_set_style_text_align(s_weather_panel_objects.info_label,
+    objects.info_label = make_label(screen,
+                                    kClockWeatherInfoLabelX,
+                                    kClockWeatherInfoLabelY,
+                                    kClockWeatherInfoLabelWidth,
+                                    kClockWeatherInfoLabelHeight,
+                                    kClockWeatherInfoWaitingText);
+    remember_lower_panel_object(objects.info_label);
+    if (objects.info_label) {
+        lv_label_set_long_mode(objects.info_label, LV_LABEL_LONG_CLIP);
+        lv_obj_set_style_text_align(objects.info_label,
                                     LV_TEXT_ALIGN_CENTER,
                                     LV_PART_MAIN);
     } else {
         ESP_LOGW(TAG, CLOCK_LABEL_CREATE_FAILED_FORMAT, kClockComponentWeatherInfo);
     }
-    s_weather_panel_objects.temperature_label =
+    objects.temperature_label =
         make_clock_lower_center_label(screen,
                                       kClockWeatherMetricLabelX,
                                       kClockWeatherTempLabelY,
@@ -455,7 +446,7 @@ void build_clock_weather_panel(lv_obj_t *screen)
                                       kClockWeatherMetricLabelHeight,
                                       kClockWeatherTempPlaceholder,
                                       kClockComponentWeatherTemp);
-    s_weather_panel_objects.humidity_label =
+    objects.humidity_label =
         make_clock_lower_center_label(screen,
                                       kClockWeatherMetricLabelX,
                                       kClockWeatherHumiLabelY,
@@ -596,72 +587,6 @@ void build_clock_dividers_and_progress(lv_obj_t *screen)
     set_obj_black(objects.panel_separator_b, true);
 }
 } // namespace
-
-bool set_clock_weather_panel_text(const char *city,
-                                  const char *info,
-                                  const char *temperature,
-                                  const char *humidity,
-                                  const char *icon_text)
-{
-    bool changed = set_label_text_if_changed(s_weather_panel_objects.city_label, city);
-    changed |= set_label_text_if_changed(s_weather_panel_objects.info_label, info);
-    changed |= set_label_text_if_changed(s_weather_panel_objects.temperature_label,
-                                         temperature);
-    changed |= set_label_text_if_changed(s_weather_panel_objects.humidity_label,
-                                         humidity);
-    changed |= set_label_text_if_changed(s_weather_panel_objects.icon_label, icon_text);
-    return changed;
-}
-
-void clear_clock_weather_panel_object_refs()
-{
-    s_weather_panel_objects = {};
-}
-
-ClockLocalSensorObjectRefs &mutable_clock_local_sensor_object_refs()
-{
-    return s_local_sensor_objects;
-}
-
-const ClockLocalSensorObjectRefs &clock_local_sensor_object_refs()
-{
-    return s_local_sensor_objects;
-}
-
-void clear_clock_local_sensor_object_refs()
-{
-    s_local_sensor_objects = {};
-}
-
-ClockHeaderObjectRefs &mutable_clock_header_object_refs()
-{
-    return s_header_objects;
-}
-
-const ClockHeaderObjectRefs &clock_header_object_refs()
-{
-    return s_header_objects;
-}
-
-void clear_clock_header_object_refs()
-{
-    s_header_objects = {};
-}
-
-ClockSurfaceObjectRefs &mutable_clock_surface_object_refs()
-{
-    return s_surface_objects;
-}
-
-const ClockSurfaceObjectRefs &clock_surface_object_refs()
-{
-    return s_surface_objects;
-}
-
-void clear_clock_surface_object_refs()
-{
-    s_surface_objects = {};
-}
 
 void build_clock_ui()
 {

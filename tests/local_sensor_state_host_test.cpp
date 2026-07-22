@@ -51,16 +51,6 @@ int main()
                             21.0f, 51.0f, 1, -1));
     assert(local_sensor_state_version() == 1);
 
-    assert(local_sensor_state_publish_trends(-1, 1));
-    assert(local_sensor_state_version() == 1);
-    assert(get_local_sensor_snapshot(&temperature,
-                                     &humidity,
-                                     &temperature_trend,
-                                     &humidity_trend));
-    assert(snapshot_matches(temperature, humidity,
-                            temperature_trend, humidity_trend,
-                            21.0f, 51.0f, -1, 1));
-
     constexpr int kIterations = 10000;
     assert(local_sensor_state_publish_sample(11.0f, 33.0f, 1, -1));
     std::atomic<bool> writer_done{false};
@@ -74,7 +64,11 @@ int main()
         }
         writer_done.store(true, std::memory_order_release);
     });
+    uint32_t observed_version = local_sensor_state_version();
     do {
+        const uint32_t current_version = local_sensor_state_version();
+        assert(current_version >= observed_version);
+        observed_version = current_version;
         assert(get_local_sensor_snapshot(&temperature,
                                          &humidity,
                                          &temperature_trend,
@@ -88,6 +82,7 @@ int main()
         assert(is_a || is_b);
     } while (!writer_done.load(std::memory_order_acquire));
     writer.join();
+    assert(local_sensor_state_version() == static_cast<uint32_t>(kIterations + 2));
 
     const uint32_t version_before_failure = local_sensor_state_version();
     assert(local_sensor_state_publish_unavailable());

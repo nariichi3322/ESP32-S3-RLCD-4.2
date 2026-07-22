@@ -20,6 +20,8 @@
 #include "wifi_portal_state.h"
 #include "wifi_radio_state.h"
 
+struct UiStatusRefreshSnapshot;
+
 inline bool wifi_radio_on_for_status_icon()
 {
     return wifi_radio_on_load();
@@ -46,7 +48,10 @@ bool update_work_page_sensor_summary(lv_obj_t *label);
 bool update_non_clock_work_page_sensor_status(int page);
 bool update_weather_clock_sensor_status();
 void style_work_page_sensor_summary(lv_obj_t *label);
-bool update_work_page_status_icons(int page);
+bool update_work_page_status_icons(int page,
+                                   const UiStatusRefreshSnapshot &status,
+                                   bool low_battery_mode,
+                                   bool setup_active);
 void format_axis_hour(time_t value, char *out, size_t out_len);
 int value_to_plot_y(float value, float min_value, float max_value, int y, int h);
 bool collect_history_window(time_t end_hour, HourlySensorSample *out, int *out_count);
