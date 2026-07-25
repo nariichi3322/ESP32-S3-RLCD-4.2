@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.27",
+  "latest": "v1.5.28",
   "items": [
+    {
+      "version": "v1.5.28",
+      "notes": "v1.5.28：共 6 项更新。\n1. 加固 HTTP、OTA 清单与重定向响应的长度和完整性校验，异常或截断数据会安全拒绝并…\n2. 修复天气城市、实况、预报、预警和每日文字在异常响应下可能混用新旧缓存的问题，并提高公网…\n3. 修复 Wi-Fi 启停失败、启动联网退避、温湿度瞬时读取失败以及小智超长字幕和异常 M…\n4. 将多类低频 UI 状态、页面引用和网络临时缓冲迁入 PSRAM，释放启动动画画布并复用…\n5. 收敛低刷新页面、传感器、电池、充电、NTP、天气与 Wi-Fi 重试的唤醒和通知频率，…\n其余 1 项见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.28/weather_clock_v1.5.28.bin",
+        "sha256": "238c6cafe273375a7adfcc4bc0c72043f78c7e58f30bde9ea68a4313b3fdbeca",
+        "size": 6238544
+      },
+      "merged": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.28/weather_clock_v1.5.28_merged.bin",
+        "sha256": "c361880d913935c02d78f0855df369ca9f2d0da87ae99c478ae48f6c53cfa630",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.27",
       "notes": "v1.5.27：共 19 项更新。\n1. 图片时钟新增自定义图片切换周期，可选择30分钟、1小时、6小时、12小时或24小时，并…\n2. 修复页面顺序保存失败后运行态顺序和重启后顺序不一致，失败时恢复原顺序与原光标。\n3. 修复启动补拉任务排队后关闭对应页面仍可能打开Wi-Fi，执行前会重新核对页面开关。\n4. 修复设置页闹钟时间、状态圆点和文字遮挡；小智节能文字恢复对齐，首次刷写或恢复出厂后默认…\n5. 修复配网成功或失败结果发布前SoftAP状态交接不稳定，增加AP-only恢复与有界重…\n其余 14 项见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.19_merged.bin",
         "sha256": "8fdc4f1a5a19cca4e957c7766e49f2736df83d692024c511cf20ae637ab7f91a",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.18",
-      "notes": "v1.5.18：共 25 项更新。\n1. 将与常驻 LVGL handler task 同生命周期的显示互斥锁改为 FreeRT…\n2. 将小智页面状态快照 mutex 改为 FreeRTOS 静态控制块，消除启动时动态内部…\n3. 将小智页面活动、唤醒和暂停协调 EventGroup 改为 FreeRTOS 静态控制…\n4. 将整机常驻的 LVGL handler task 由动态任务创建改为文件私有静态栈和…\n5. 修复按键 GPIO 初始化失败时 FreeRTOS 任务入口直接返回的未定义行为，并基…\n6. 将应用期唯一的 SHTC3 传感器对象由普通堆 new 改为 I2C 就绪后在对齐静态…\n其余 19 项见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.18.bin",
-        "sha256": "27cb4539b3b2ddad4ec7272aba1a6931d9182e17f0a4f9df698446e2bed6d3da",
-        "size": 6223312
-      },
-      "merged": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.18_merged.bin",
-        "sha256": "72e9d6dc52f3bdbd22ddb160f8076faf3d52a83630f609430db98ade3c89362c",
         "size": 16509951
       }
     }
