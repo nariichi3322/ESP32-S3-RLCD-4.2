@@ -22,3 +22,13 @@ bool ui_status_refresh_due(const UiStatusRefreshSnapshot &current,
            fallback_elapsed ||
            ui_status_refresh_inputs_changed(current, previous);
 }
+
+bool ui_sensor_status_refresh_due(const UiStatusRefreshSnapshot &current,
+                                  const UiStatusRefreshSnapshot &previous,
+                                  bool previous_valid,
+                                  bool force_refresh)
+{
+    return force_refresh ||
+           !previous_valid ||
+           current.sensor_version != previous.sensor_version;
+}

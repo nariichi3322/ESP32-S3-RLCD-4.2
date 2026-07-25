@@ -95,9 +95,8 @@ void run_boot_connectivity_sync()
         vTaskDelay(pdMS_TO_TICKS(kBootScreenOfflineDelayMs));
         return;
     }
-    NetworkCredentialsSnapshot credentials = {};
-    network_credentials_snapshot(&credentials);
-    if (!credentials.wifi_configured) {
+    char wifi_ssid[kNetworkWifiSsidLen] = {};
+    if (!network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid))) {
         char detail[kBootSetupDetailTextSize] = {};
         format_boot_setup_detail(detail, sizeof(detail));
         update_boot_screen(kBootScreenCompletePercent, "Setup mode", detail);
@@ -105,7 +104,7 @@ void run_boot_connectivity_sync()
         return;
     }
 
-    update_boot_screen(18, "Connecting Wi-Fi", credentials.wifi_ssid);
+    update_boot_screen(18, "Connecting Wi-Fi", wifi_ssid);
     NetworkAwakeLockGuard awake_lock;
     BootSyncDeadlineGuard deadline_guard;
     if (!awake_lock.locked()) {
@@ -120,7 +119,10 @@ void run_boot_connectivity_sync()
         update_boot_screen(kBootScreenCompletePercent, "Wi-Fi start failed", kBootDetailStartingClock);
         vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
         awake_lock.release();
-        service_wifi_radio_stop_when_idle();
+        // A running radio can fail while being reconfigured. Register a real
+        // close request after releasing this session's PM lock so that rare
+        // partial-start failures cannot leave Wi-Fi powered indefinitely.
+        request_wifi_radio_stop_when_idle();
         return;
     }
     int remaining_ms = boot_sync_remaining_ms();

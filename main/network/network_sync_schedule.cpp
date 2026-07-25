@@ -7,8 +7,12 @@ namespace {
 constexpr int64_t kMicrosecondsPerMillisecond = 1000;
 constexpr uint32_t kMillisecondsPerSecond = 1000;
 constexpr time_t kSecondsPerMinute = 60;
-constexpr time_t kInvalidTimeNtpRetryDelaySeconds = 15;
-constexpr time_t kValidTimeNtpRetryDelaySeconds = 5 * kSecondsPerMinute;
+constexpr time_t kInvalidTimeNtpRetryBaseDelaySeconds = 15;
+constexpr time_t kInvalidTimeNtpRetryMaximumDelaySeconds = 5 * kSecondsPerMinute;
+constexpr time_t kValidTimeNtpRetryBaseDelaySeconds = 5 * kSecondsPerMinute;
+constexpr time_t kValidTimeNtpRetryMaximumDelaySeconds = 60 * kSecondsPerMinute;
+constexpr time_t kBootHttpsMemoryRetryBaseDelaySeconds = 10;
+constexpr time_t kBootHttpsMemoryRetryMaximumDelaySeconds = kSecondsPerMinute;
 constexpr uint32_t kIdleFallbackWaitMs = 60 * kSecondsPerMinute * kMillisecondsPerSecond;
 constexpr uint32_t kIdleMaximumWaitMs = 24 * 60 * kSecondsPerMinute * kMillisecondsPerSecond;
 constexpr uint32_t kIdleMinimumWaitMs = 1000;
@@ -24,10 +28,20 @@ constexpr uint32_t kStartupNetworkOperationSettleDelayMs = 1000;
 constexpr uint8_t kAutomaticBootHttpsWeatherBit = 1u << 0;
 constexpr uint8_t kAutomaticBootHttpsSayingBit = 1u << 1;
 static_assert(kIdleMinimumWaitMs > 0, "network idle minimum wait must be positive");
-static_assert(kInvalidTimeNtpRetryDelaySeconds > 0,
+static_assert(kInvalidTimeNtpRetryBaseDelaySeconds > 0,
               "invalid-time NTP retry delay must be positive");
-static_assert(kValidTimeNtpRetryDelaySeconds > kInvalidTimeNtpRetryDelaySeconds,
-              "valid-time NTP retry delay must remain longer than recovery retry");
+static_assert(kInvalidTimeNtpRetryMaximumDelaySeconds >=
+                  kInvalidTimeNtpRetryBaseDelaySeconds,
+              "invalid-time NTP retry cap must cover the initial recovery retry");
+static_assert(kValidTimeNtpRetryBaseDelaySeconds ==
+                  kInvalidTimeNtpRetryMaximumDelaySeconds,
+              "valid-time NTP retry must begin at the invalid-time recovery ceiling");
+static_assert(kValidTimeNtpRetryMaximumDelaySeconds >
+                  kValidTimeNtpRetryBaseDelaySeconds,
+              "valid-time NTP retry cap must reduce repeated Wi-Fi wakeups");
+static_assert(kBootHttpsMemoryRetryMaximumDelaySeconds >=
+                  kBootHttpsMemoryRetryBaseDelaySeconds,
+              "boot HTTPS memory retry cap must cover its initial retry");
 static_assert(kIdleFallbackWaitMs >= kIdleMinimumWaitMs,
               "network idle fallback wait must cover the minimum wait");
 static_assert(kIdleMaximumWaitMs >= kIdleFallbackWaitMs,
@@ -92,6 +106,24 @@ uint8_t automatic_boot_https_mask(
     }
     return mask;
 }
+
+time_t capped_exponential_backoff_seconds(time_t base_delay,
+                                          time_t maximum_delay,
+                                          uint32_t consecutive_events)
+{
+    time_t delay = base_delay;
+    uint32_t remaining_backoff_steps =
+        consecutive_events > 0 ? consecutive_events - 1 : 0;
+    while (remaining_backoff_steps > 0 && delay < maximum_delay) {
+        if (delay > maximum_delay / 2) {
+            delay = maximum_delay;
+            break;
+        }
+        delay *= 2;
+        --remaining_backoff_steps;
+    }
+    return delay < maximum_delay ? delay : maximum_delay;
+}
 } // namespace
 
 NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInput &input)
@@ -133,10 +165,28 @@ bool network_sync_availability_changed(const NetworkSyncAvailability &scheduled,
            scheduled.low_battery_mode != current.low_battery_mode;
 }
 
-time_t network_ntp_retry_delay_seconds(bool time_plausible)
+time_t network_ntp_retry_delay_seconds(bool time_plausible,
+                                       uint32_t consecutive_failures)
 {
-    return time_plausible ? kValidTimeNtpRetryDelaySeconds
-                          : kInvalidTimeNtpRetryDelaySeconds;
+    if (time_plausible) {
+        return capped_exponential_backoff_seconds(
+            kValidTimeNtpRetryBaseDelaySeconds,
+            kValidTimeNtpRetryMaximumDelaySeconds,
+            consecutive_failures);
+    }
+    return capped_exponential_backoff_seconds(
+        kInvalidTimeNtpRetryBaseDelaySeconds,
+        kInvalidTimeNtpRetryMaximumDelaySeconds,
+        consecutive_failures);
+}
+
+time_t network_boot_https_memory_retry_delay_seconds(
+    uint32_t consecutive_deferrals)
+{
+    return capped_exponential_backoff_seconds(
+        kBootHttpsMemoryRetryBaseDelaySeconds,
+        kBootHttpsMemoryRetryMaximumDelaySeconds,
+        consecutive_deferrals);
 }
 
 NetworkBootHttpsDeferralResult calculate_network_boot_https_deferral(
@@ -152,6 +202,10 @@ NetworkBootHttpsDeferralResult calculate_network_boot_https_deferral(
 
     result.deferred = true;
     result.retry_at = input.now + input.retry_delay_seconds;
+    if (result.schedule.next_boot_due_at <= input.now ||
+        result.retry_at < result.schedule.next_boot_due_at) {
+        result.schedule.next_boot_due_at = result.retry_at;
+    }
     if ((automatic_mask & kAutomaticBootHttpsWeatherBit) != 0) {
         result.weather_deferred = true;
         result.schedule.weather_due = false;
@@ -171,6 +225,24 @@ bool network_automatic_boot_https_pending(
     const NetworkBootHttpsDeferralInput &input)
 {
     return automatic_boot_https_mask(schedule, input) != 0;
+}
+
+bool network_automatic_boot_refresh_page_disabled(
+    const NetworkSyncSchedule &schedule,
+    const NetworkAutomaticBootPageInput &input)
+{
+    if (input.provisioning_sync_due) {
+        return false;
+    }
+    const bool automatic_weather_lost_page =
+        schedule.boot_weather_ready &&
+        !input.explicit_weather_due &&
+        !input.weather_page_enabled;
+    const bool automatic_saying_lost_page =
+        schedule.boot_saying_ready &&
+        !input.explicit_saying_due &&
+        !input.saying_page_enabled;
+    return automatic_weather_lost_page || automatic_saying_lost_page;
 }
 
 int network_boot_budget_remaining_ms(int64_t deadline_us, int64_t now_us)
@@ -258,6 +330,12 @@ uint32_t network_inter_operation_settle_delay_ms(bool startup_pressure_active)
 bool network_visible_auto_sync_allowed(int64_t uptime_us)
 {
     return uptime_us < 0 || uptime_us >= kStartupVisibleAutoSyncDelayUs;
+}
+
+bool network_request_snapshot_canceled(uint32_t requested_bits,
+                                       uint32_t pending_bits)
+{
+    return (requested_bits & ~pending_bits) != 0;
 }
 
 bool network_startup_followup_https_allowed(bool startup_pressure_active,

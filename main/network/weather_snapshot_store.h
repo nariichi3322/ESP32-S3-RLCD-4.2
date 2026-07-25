@@ -22,6 +22,7 @@ void weather_snapshot_store_commit(WeatherSnapshotStore *store,
                                    const WeatherAlertData &next_alert,
                                    const WeatherForecastData &next_forecast,
                                    const WeatherAirData &next_air,
+                                   bool alert_updated,
                                    bool forecast_ok,
                                    bool air_ok,
                                    time_t synced_at);

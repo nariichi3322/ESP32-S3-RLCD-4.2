@@ -30,10 +30,16 @@ int main()
 {
     static_assert(sizeof(HourlySensorHistoryBlob) > 1024,
                   "host test must cover a large history snapshot");
-    HourlySensorHistoryBlob snapshot = {};
-    uint32_t version = 0;
+    HourlySensorHistoryBlob snapshot = make_history(99);
+    uint32_t version = 99;
     assert(hourly_sensor_history_version_load() == 0);
     assert(!hourly_sensor_history_snapshot(&snapshot, &version));
+    assert(snapshot.magic == kHourlyHistoryMagic);
+    assert(snapshot.count == kHourlyHistoryCount);
+    for (const HourlySensorSample &sample : snapshot.samples) {
+        assert(!sample.valid);
+    }
+    assert(version == 0);
     assert(hourly_sensor_history_last_saved_at() == 0);
 
     assert(init_hourly_sensor_history_state());

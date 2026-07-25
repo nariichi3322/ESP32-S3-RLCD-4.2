@@ -131,6 +131,7 @@ idf_component_register(
         "network/daily_saying_state.cpp"
         "network/daily_saying.cpp"
         "network/network_diagnostics.cpp"
+        "network/network_public_ip_parser.cpp"
         "network/network_diagnostics_state.cpp"
         "network/network_cache_policy.cpp"
         "network/network_boot_sync.cpp"

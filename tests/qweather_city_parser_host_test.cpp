@@ -74,7 +74,7 @@ int main()
                                          sizeof(latitude),
                                          longitude,
                                          sizeof(longitude)));
-    assert(strcmp(city_id, "101020100") == 0);
+    assert(strcmp(city_id, "id-old") == 0);
     assert(strcmp(city_name, "name-old") == 0);
     assert(strcmp(latitude, "lat-old") == 0);
     assert(strcmp(longitude, "lon-old") == 0);
@@ -94,6 +94,22 @@ int main()
                                          0));
     assert(strcmp(city_id, "id-old") == 0);
     assert(strcmp(city_name, "name-old") == 0);
+    cJSON_Delete(location);
+
+    location = parse_json("{\"id\":101010100,\"name\":\"北京\"}");
+    assert(!parse_qweather_city_location(location,
+                                         city_id,
+                                         sizeof(city_id),
+                                         city_name,
+                                         sizeof(city_name),
+                                         latitude,
+                                         sizeof(latitude),
+                                         longitude,
+                                         sizeof(longitude)));
+    assert(strcmp(city_id, "id-old") == 0);
+    assert(strcmp(city_name, "name-old") == 0);
+    assert(strcmp(latitude, "lat-old") == 0);
+    assert(strcmp(longitude, "lon-old") == 0);
     cJSON_Delete(location);
 
     strlcpy(latitude, "lat-old", sizeof(latitude));

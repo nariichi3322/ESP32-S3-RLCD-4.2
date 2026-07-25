@@ -5,11 +5,18 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <time.h>
 
 struct WeatherAlertStatusSnapshot {
     bool active = false;
     uint8_t count = 0;
     uint32_t version = 0;
+};
+
+struct WeatherCacheStatusSnapshot {
+    time_t last_sync_time = 0;
+    uint32_t version = 0;
+    bool extended_data_ready = false;
 };
 
 bool init_weather_state();
@@ -22,11 +29,10 @@ void get_weather_forecast_snapshot(WeatherForecastData *forecast);
 void get_weather_air_snapshot(WeatherAirData *air);
 WeatherAlertStatusSnapshot weather_alert_status_snapshot_load();
 uint32_t weather_state_version_load();
+bool weather_cache_status_snapshot_load(WeatherCacheStatusSnapshot *out);
 bool get_weather_alert_title_snapshot(int requested_index,
                                       char *title,
                                       size_t title_len);
-time_t get_last_weather_sync_time();
-bool weather_extended_data_ready();
 void clear_weather_ready_event();
 void commit_weather_update_snapshot(const WeatherData &next,
                                     const WeatherAlertData &next_alert,
@@ -34,3 +40,9 @@ void commit_weather_update_snapshot(const WeatherData &next,
                                     const WeatherAirData &next_air,
                                     bool forecast_ok,
                                     bool air_ok);
+void commit_weather_resource_deferred_snapshot(
+    const WeatherData &next,
+    const WeatherAlertData &next_alert,
+    const WeatherForecastData &next_forecast,
+    bool alert_updated,
+    bool forecast_ok);

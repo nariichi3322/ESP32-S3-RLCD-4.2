@@ -6,24 +6,82 @@
 #include "network_credentials_state.h"
 #include "qweather_client.h"
 
-#include "app_state.h"
 #include "app_constexpr.h"
+#include "app_metadata.h"
 #include "battery_runtime_state.h"
 #include "manual_weather_city_state.h"
+#include "network_cache_policy.h"
 #include "network_sync_schedule.h"
 #include "network_text.h"
 #include "qweather_location_text.h"
 #include "startup_state.h"
 #include "weather_state.h"
 
-#include "esp_timer.h"
+#include <esp_attr.h>
+#include <esp_log.h>
+#include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
+#include <string.h>
 
 namespace {
 constexpr size_t kQweatherCityIdSize = 24;
 constexpr size_t kWeatherCityNameSize = 32;
+constexpr size_t kWeatherCoordinateTextSize = sizeof(WeatherData{}.lat);
+constexpr int64_t kWeatherIpRetryContextTtlUs = 2LL * 60LL * 1000000LL;
+constexpr int64_t kWeatherCityResolutionCacheTtlUs =
+    24LL * 60LL * 60LL * 1000000LL;
 static_assert(kQweatherCityIdSize > 1, "QWeather city id buffer must fit text and NUL");
 static_assert(kWeatherCityNameSize <= kManualWeatherCityLen,
               "QWeather city name must fit manual weather city storage");
+static_assert(kWeatherCoordinateTextSize == sizeof(WeatherData{}.lon),
+              "weather latitude and longitude buffers must remain aligned");
+static_assert(kWeatherIpRetryContextTtlUs > 0,
+              "weather IP retry context lifetime must be positive");
+static_assert(kWeatherCityResolutionCacheTtlUs > kWeatherIpRetryContextTtlUs,
+              "weather city resolution cache must outlive deferred retry context");
+
+struct WeatherUpdateWorkspace {
+    char manual_city[kManualWeatherCityLen];
+    char location[kWeatherLocationTextSize];
+    char city_id[kQweatherCityIdSize];
+    char ip_city[kWeatherCityNameSize];
+    char lookup_city[kWeatherCityNameSize];
+    WeatherData weather;
+    WeatherAlertData alert;
+    WeatherForecastData forecast;
+    WeatherAirData air;
+};
+
+struct WeatherIpRetryContext {
+    bool valid = false;
+    int64_t expires_at_us = 0;
+    char location[kWeatherLocationTextSize] = {};
+    char ip_city[kWeatherCityNameSize] = {};
+};
+
+struct WeatherCityResolutionCache {
+    bool valid = false;
+    int64_t expires_at_us = 0;
+    char location[kWeatherLocationTextSize] = {};
+    char city_id[kQweatherCityIdSize] = {};
+    char city_name[kWeatherCityNameSize] = {};
+    char lat[kWeatherCoordinateTextSize] = {};
+    char lon[kWeatherCoordinateTextSize] = {};
+};
+
+// perform_weather_update() is owned by the serialized network task. Keeping
+// this batch workspace in PSRAM avoids retaining the complete weather snapshot
+// on that task's stack while later HTTPS requests allocate their TLS buffers.
+EXT_RAM_BSS_ATTR WeatherUpdateWorkspace s_weather_update_workspace;
+EXT_RAM_BSS_ATTR WeatherIpRetryContext s_weather_ip_retry_context;
+EXT_RAM_BSS_ATTR WeatherCityResolutionCache s_weather_city_resolution_cache;
+
+static_assert(sizeof(WeatherUpdateWorkspace) > 1024,
+              "weather update workspace should remain off the network task stack");
+static_assert(sizeof(WeatherCityResolutionCache) < 256,
+              "weather city resolution cache must remain a small PSRAM record");
 
 #define WEATHER_UPDATE_MANUAL_CITY_FORMAT "weather update using manual city: %s"
 #define WEATHER_MANUAL_CITY_LOOKUP_FAILED_FORMAT "manual weather city lookup failed: %s"
@@ -34,6 +92,103 @@ static_assert(kWeatherCityNameSize <= kManualWeatherCityLen,
     "startup weather %s deferred: internal_free=%u internal_largest=%u dma_largest=%u"
 constexpr const char *kWeatherIpLookupUpdateFailedLog = "weather update failed after ip lookup";
 constexpr const char *kWeatherIpGeolocationLookupFailedLog = "ip geolocation lookup failed";
+constexpr const char *kWeatherIpRetryContextReusedLog =
+    "weather update reusing deferred IP location";
+constexpr const char *kWeatherCityResolutionCacheReusedLog =
+    "weather update reusing cached city resolution";
+
+void clear_weather_ip_retry_context()
+{
+    s_weather_ip_retry_context = {};
+}
+
+void store_weather_ip_retry_context(const WeatherUpdateWorkspace &workspace)
+{
+    if (!cstr_nonempty(workspace.location)) {
+        clear_weather_ip_retry_context();
+        return;
+    }
+    WeatherIpRetryContext next = {};
+    next.valid = true;
+    next.expires_at_us = esp_timer_get_time() + kWeatherIpRetryContextTtlUs;
+    strlcpy(next.location, workspace.location, sizeof(next.location));
+    strlcpy(next.ip_city, workspace.ip_city, sizeof(next.ip_city));
+    s_weather_ip_retry_context = next;
+}
+
+bool restore_weather_ip_retry_context(WeatherUpdateWorkspace *workspace)
+{
+    if (!workspace || !s_weather_ip_retry_context.valid) {
+        return false;
+    }
+    if (esp_timer_get_time() >= s_weather_ip_retry_context.expires_at_us) {
+        clear_weather_ip_retry_context();
+        return false;
+    }
+    strlcpy(workspace->location,
+            s_weather_ip_retry_context.location,
+            sizeof(workspace->location));
+    strlcpy(workspace->ip_city,
+            s_weather_ip_retry_context.ip_city,
+            sizeof(workspace->ip_city));
+    ESP_LOGI(TAG, "%s", kWeatherIpRetryContextReusedLog);
+    return true;
+}
+
+void clear_weather_city_resolution_cache()
+{
+    s_weather_city_resolution_cache = {};
+}
+
+void store_weather_city_resolution_cache(const WeatherUpdateWorkspace &workspace)
+{
+    if (!cstr_nonempty(workspace.location) ||
+        !cstr_nonempty(workspace.city_id) ||
+        !cstr_nonempty(workspace.weather.lat) ||
+        !cstr_nonempty(workspace.weather.lon)) {
+        clear_weather_city_resolution_cache();
+        return;
+    }
+    WeatherCityResolutionCache next = {};
+    next.valid = true;
+    next.expires_at_us =
+        esp_timer_get_time() + kWeatherCityResolutionCacheTtlUs;
+    strlcpy(next.location, workspace.location, sizeof(next.location));
+    strlcpy(next.city_id, workspace.city_id, sizeof(next.city_id));
+    strlcpy(next.city_name, workspace.lookup_city, sizeof(next.city_name));
+    strlcpy(next.lat, workspace.weather.lat, sizeof(next.lat));
+    strlcpy(next.lon, workspace.weather.lon, sizeof(next.lon));
+    s_weather_city_resolution_cache = next;
+}
+
+bool restore_weather_city_resolution_cache(WeatherUpdateWorkspace *workspace)
+{
+    if (!workspace ||
+        !network_weather_city_resolution_cache_matches(
+            s_weather_city_resolution_cache.valid,
+            esp_timer_get_time(),
+            s_weather_city_resolution_cache.expires_at_us,
+            s_weather_city_resolution_cache.location,
+            workspace->location,
+            s_weather_city_resolution_cache.city_id)) {
+        clear_weather_city_resolution_cache();
+        return false;
+    }
+    strlcpy(workspace->city_id,
+            s_weather_city_resolution_cache.city_id,
+            sizeof(workspace->city_id));
+    strlcpy(workspace->lookup_city,
+            s_weather_city_resolution_cache.city_name,
+            sizeof(workspace->lookup_city));
+    strlcpy(workspace->weather.lat,
+            s_weather_city_resolution_cache.lat,
+            sizeof(workspace->weather.lat));
+    strlcpy(workspace->weather.lon,
+            s_weather_city_resolution_cache.lon,
+            sizeof(workspace->weather.lon));
+    ESP_LOGI(TAG, "%s", kWeatherCityResolutionCacheReusedLog);
+    return true;
+}
 
 void log_weather_update_warning(const char *message)
 {
@@ -88,51 +243,83 @@ bool lookup_weather_city(const char *location,
                                 sizeof(weather->lon));
 }
 
-WeatherUpdateResult fetch_and_commit_weather(const char *city_id, WeatherData *next)
+WeatherUpdateResult fetch_and_commit_weather(const char *city_id,
+                                             WeatherUpdateWorkspace &workspace)
 {
-    if (!city_id || !next) {
+    if (!city_id) {
         return WeatherUpdateResult::kFailed;
     }
     if (!prepare_weather_followup_request("current")) {
         return WeatherUpdateResult::kResourceDeferred;
     }
-    if (!qweather_fetch_now(city_id, next)) {
+    if (!qweather_fetch_now(city_id, &workspace.weather)) {
         return WeatherUpdateResult::kFailed;
     }
 
-    WeatherAlertData next_alert = {};
-    WeatherForecastData next_forecast = {};
-    WeatherAirData next_air = {};
+    bool alert_updated = false;
+    bool forecast_ok = false;
     if (!prepare_weather_followup_request("alert")) {
+        commit_weather_resource_deferred_snapshot(workspace.weather,
+                                                  workspace.alert,
+                                                  workspace.forecast,
+                                                  alert_updated,
+                                                  forecast_ok);
         return WeatherUpdateResult::kResourceDeferred;
     }
-    (void)qweather_fetch_alert(next->lat, next->lon, &next_alert);
+    alert_updated = qweather_fetch_alert(workspace.weather.lat,
+                                         workspace.weather.lon,
+                                         &workspace.alert);
     if (!prepare_weather_followup_request("forecast")) {
+        commit_weather_resource_deferred_snapshot(workspace.weather,
+                                                  workspace.alert,
+                                                  workspace.forecast,
+                                                  alert_updated,
+                                                  forecast_ok);
         return WeatherUpdateResult::kResourceDeferred;
     }
-    bool forecast_ok = qweather_fetch_daily(city_id, &next_forecast);
+    forecast_ok = qweather_fetch_daily(city_id, &workspace.forecast);
     if (!prepare_weather_followup_request("air")) {
+        commit_weather_resource_deferred_snapshot(workspace.weather,
+                                                  workspace.alert,
+                                                  workspace.forecast,
+                                                  alert_updated,
+                                                  forecast_ok);
         return WeatherUpdateResult::kResourceDeferred;
     }
-    bool air_ok = qweather_fetch_air(city_id, &next_air);
-    commit_weather_update_snapshot(*next, next_alert, next_forecast, next_air, forecast_ok, air_ok);
+    bool air_ok = qweather_fetch_air(city_id, &workspace.air);
+    commit_weather_update_snapshot(workspace.weather,
+                                   workspace.alert,
+                                   workspace.forecast,
+                                   workspace.air,
+                                   forecast_ok,
+                                   air_ok);
     return WeatherUpdateResult::kSuccess;
 }
 
-WeatherUpdateResult update_weather_by_manual_city(const char *manual_city)
+WeatherUpdateResult update_weather_by_manual_city(const char *manual_city,
+                                                  WeatherUpdateWorkspace &workspace)
 {
-    char city_id[kQweatherCityIdSize] = {};
-    char lookup_city[kWeatherCityNameSize] = {};
-    WeatherData next = {};
-
     ESP_LOGI(TAG, WEATHER_UPDATE_MANUAL_CITY_FORMAT, manual_city);
-    bool have_city_id = lookup_weather_city(manual_city, city_id, lookup_city, &next);
+    strlcpy(workspace.location, manual_city, sizeof(workspace.location));
+    bool have_city_id = restore_weather_city_resolution_cache(&workspace);
+    if (!have_city_id) {
+        have_city_id = lookup_weather_city(manual_city,
+                                           workspace.city_id,
+                                           workspace.lookup_city,
+                                           &workspace.weather);
+        if (have_city_id) {
+            store_weather_city_resolution_cache(workspace);
+        }
+    }
     if (!have_city_id) {
         ESP_LOGW(TAG, WEATHER_MANUAL_CITY_LOOKUP_FAILED_FORMAT, manual_city);
         return WeatherUpdateResult::kFailed;
     }
-    copy_first_nonempty_text(next.city, sizeof(next.city), lookup_city, manual_city);
-    WeatherUpdateResult result = fetch_and_commit_weather(city_id, &next);
+    copy_first_nonempty_text(workspace.weather.city,
+                             sizeof(workspace.weather.city),
+                             workspace.lookup_city,
+                             manual_city);
+    WeatherUpdateResult result = fetch_and_commit_weather(workspace.city_id, workspace);
     if (result == WeatherUpdateResult::kSuccess ||
         result == WeatherUpdateResult::kResourceDeferred) {
         return result;
@@ -141,38 +328,61 @@ WeatherUpdateResult update_weather_by_manual_city(const char *manual_city)
     return WeatherUpdateResult::kFailed;
 }
 
-WeatherUpdateResult update_weather_by_ip_location()
+WeatherUpdateResult update_weather_by_ip_location(WeatherUpdateWorkspace &workspace)
 {
-    char location[kWeatherLocationTextSize] = {};
-    char city_id[kQweatherCityIdSize] = {};
-    char ip_city[kWeatherCityNameSize] = {};
-    char lookup_city[kWeatherCityNameSize] = {};
-    WeatherData next = {};
-
-    if (!ip_geolocation_lookup(location, sizeof(location), ip_city, sizeof(ip_city))) {
-        log_weather_update_warning(kWeatherIpGeolocationLookupFailedLog);
-        return WeatherUpdateResult::kFailed;
+    if (!restore_weather_ip_retry_context(&workspace)) {
+        if (!ip_geolocation_lookup(workspace.location,
+                                   sizeof(workspace.location),
+                                   workspace.ip_city,
+                                   sizeof(workspace.ip_city))) {
+            clear_weather_ip_retry_context();
+            log_weather_update_warning(kWeatherIpGeolocationLookupFailedLog);
+            return WeatherUpdateResult::kFailed;
+        }
+        trim_ascii(workspace.location);
+        store_weather_ip_retry_context(workspace);
     }
-    trim_ascii(location);
-    if (!prepare_weather_followup_request("city lookup")) {
-        return WeatherUpdateResult::kResourceDeferred;
-    }
-    bool have_city_id = lookup_weather_city(location, city_id, lookup_city, &next);
-    if (!have_city_id && ip_city[0] != '\0') {
-        ESP_LOGW(TAG, WEATHER_RETRY_IP_CITY_LOOKUP_FORMAT, ip_city);
-        if (!prepare_weather_followup_request("city lookup retry")) {
+    bool have_city_id = restore_weather_city_resolution_cache(&workspace);
+    if (!have_city_id) {
+        if (!prepare_weather_followup_request("city lookup")) {
             return WeatherUpdateResult::kResourceDeferred;
         }
-        have_city_id = lookup_weather_city(ip_city, city_id, lookup_city, &next);
+        have_city_id = lookup_weather_city(workspace.location,
+                                           workspace.city_id,
+                                           workspace.lookup_city,
+                                           &workspace.weather);
+        if (!have_city_id && workspace.ip_city[0] != '\0') {
+            ESP_LOGW(TAG, WEATHER_RETRY_IP_CITY_LOOKUP_FORMAT, workspace.ip_city);
+            if (!prepare_weather_followup_request("city lookup retry")) {
+                return WeatherUpdateResult::kResourceDeferred;
+            }
+            have_city_id = lookup_weather_city(workspace.ip_city,
+                                               workspace.city_id,
+                                               workspace.lookup_city,
+                                               &workspace.weather);
+        }
+        if (have_city_id) {
+            store_weather_city_resolution_cache(workspace);
+        }
     }
-    copy_first_nonempty_text(next.city, sizeof(next.city), ip_city, lookup_city, location);
+    copy_first_nonempty_text(workspace.weather.city,
+                             sizeof(workspace.weather.city),
+                             workspace.ip_city,
+                             workspace.lookup_city,
+                             workspace.location);
     if (!have_city_id) {
-        copy_ip_coordinate_location(location, city_id, sizeof(city_id), &next);
-        ESP_LOGW(TAG, WEATHER_USING_IP_COORDINATES_FORMAT, city_id);
+        copy_ip_coordinate_location(workspace.location,
+                                    workspace.city_id,
+                                    sizeof(workspace.city_id),
+                                    &workspace.weather);
+        ESP_LOGW(TAG, WEATHER_USING_IP_COORDINATES_FORMAT, workspace.city_id);
     }
-    WeatherUpdateResult result = fetch_and_commit_weather(city_id, &next);
-    if (result == WeatherUpdateResult::kSuccess ||
-        result == WeatherUpdateResult::kResourceDeferred) {
+    WeatherUpdateResult result = fetch_and_commit_weather(workspace.city_id, workspace);
+    if (result == WeatherUpdateResult::kResourceDeferred) {
+        return result;
+    }
+    clear_weather_ip_retry_context();
+    if (result == WeatherUpdateResult::kSuccess) {
         return result;
     }
     log_weather_update_warning(kWeatherIpLookupUpdateFailedLog);
@@ -183,16 +393,21 @@ WeatherUpdateResult update_weather_by_ip_location()
 WeatherUpdateResult perform_weather_update()
 {
     if (!network_weather_api_key_configured() || battery_low_mode_load()) {
+        clear_weather_ip_retry_context();
+        clear_weather_city_resolution_cache();
         clear_weather_ready_event();
         return WeatherUpdateResult::kFailed;
     }
 
-    char manual_city[kManualWeatherCityLen] = {};
-    if (manual_weather_city_snapshot(manual_city, sizeof(manual_city))) {
-        trim_ascii(manual_city);
+    WeatherUpdateWorkspace &workspace = s_weather_update_workspace;
+    memset(&workspace, 0, sizeof(workspace));
+    if (manual_weather_city_snapshot(workspace.manual_city,
+                                     sizeof(workspace.manual_city))) {
+        trim_ascii(workspace.manual_city);
     }
-    if (manual_city[0] != '\0') {
-        return update_weather_by_manual_city(manual_city);
+    if (workspace.manual_city[0] != '\0') {
+        clear_weather_ip_retry_context();
+        return update_weather_by_manual_city(workspace.manual_city, workspace);
     }
-    return update_weather_by_ip_location();
+    return update_weather_by_ip_location(workspace);
 }

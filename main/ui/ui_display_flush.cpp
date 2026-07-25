@@ -1,10 +1,18 @@
 // 将 LVGL 像素写入 RLCD，并选择局部或全屏刷新及记录诊断统计。
 #include "ui_display_flush.h"
 
+#include "active_work_page_state.h"
+#include "app_display_config.h"
 #include "app_hardware.h"
 #include "app_constexpr.h"
-#include "app_state.h"
+#include "app_metadata.h"
 #include "ota_runtime_state.h"
+#include "ui_display_diag_policy.h"
+
+#include <esp_attr.h>
+#include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 namespace {
 constexpr uint32_t kDisplayFullReasonSingleWide = 1U << 0;
@@ -22,6 +30,37 @@ struct FlushRange {
     int x1;
     int x2;
 };
+
+struct DisplayFlushRuntimeState {
+    FlushRange ranges[kMaxFlushRanges];
+    int range_count;
+    bool force_full_refresh;
+    uint32_t full_reason_mask;
+    uint32_t partial_cycles;
+    uint32_t partial_ranges;
+    uint32_t full_cycles;
+    uint32_t full_single_wide;
+    uint32_t full_covered_wide;
+    uint32_t full_too_many_ranges;
+    TickType_t last_diag_tick;
+    int last_diag_page;
+    uint32_t initialized_magic;
+};
+
+constexpr uint32_t kDisplayFlushRuntimeInitializedMagic = 0x44535046U;
+EXT_RAM_BSS_ATTR DisplayFlushRuntimeState s_display_flush_runtime;
+
+DisplayFlushRuntimeState &display_flush_runtime()
+{
+    if (s_display_flush_runtime.initialized_magic !=
+        kDisplayFlushRuntimeInitializedMagic) {
+        s_display_flush_runtime = {};
+        s_display_flush_runtime.last_diag_page = -1;
+        s_display_flush_runtime.initialized_magic =
+            kDisplayFlushRuntimeInitializedMagic;
+    }
+    return s_display_flush_runtime;
+}
 
 constexpr bool flush_ranges_touch(const FlushRange &range, int x1, int x2)
 {
@@ -81,6 +120,8 @@ static_assert((kDisplayFullReasonTooManyRanges & kDisplayFullReasonCoveredWide) 
 static_assert(kRlcdBlackThreshold > 0, "RLCD black threshold must be nonzero");
 static_assert(kMaxFlushRanges > 0, "display flush range capacity must be positive");
 static_assert(kFlushRangeMergeGap >= 0, "display flush range merge gap must be non-negative");
+static_assert(sizeof(DisplayFlushRuntimeState) == 112,
+              "display flush runtime state must remain compact");
 static_assert(bridged_flush_ranges_merge_once(),
               "bridging flush ranges must collapse into one covered interval");
 } // namespace
@@ -88,23 +129,12 @@ static_assert(bridged_flush_ranges_merge_once(),
 void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_map)
 {
     DisplayPort &display = app_display();
-    static FlushRange ranges[kMaxFlushRanges];
-    static int range_count = 0;
-    static bool force_full_refresh = false;
-    static uint32_t full_reason_mask = 0;
-    static uint32_t partial_cycles = 0;
-    static uint32_t partial_ranges = 0;
-    static uint32_t full_cycles = 0;
-    static uint32_t full_single_wide = 0;
-    static uint32_t full_covered_wide = 0;
-    static uint32_t full_too_many_ranges = 0;
-    static TickType_t last_diag_tick = 0;
-    static int last_diag_page = -1;
+    DisplayFlushRuntimeState &runtime = display_flush_runtime();
 
     if (ota_runtime_reboot_pending_load()) {
-        range_count = 0;
-        force_full_refresh = false;
-        full_reason_mask = 0;
+        runtime.range_count = 0;
+        runtime.force_full_refresh = false;
+        runtime.full_reason_mask = 0;
         lv_disp_flush_ready(drv);
         return;
     }
@@ -123,11 +153,14 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
             area_x2 = kDisplayWidth - 1;
         }
         if (area_x2 - area_x1 + 1 >= kDisplayPartialMaxWidth) {
-            force_full_refresh = true;
-            full_reason_mask |= kDisplayFullReasonSingleWide;
-        } else if (!add_merged_flush_range(ranges, &range_count, area_x1, area_x2)) {
-            force_full_refresh = true;
-            full_reason_mask |= kDisplayFullReasonTooManyRanges;
+            runtime.force_full_refresh = true;
+            runtime.full_reason_mask |= kDisplayFullReasonSingleWide;
+        } else if (!add_merged_flush_range(runtime.ranges,
+                                           &runtime.range_count,
+                                           area_x1,
+                                           area_x2)) {
+            runtime.force_full_refresh = true;
+            runtime.full_reason_mask |= kDisplayFullReasonTooManyRanges;
         }
     }
 
@@ -145,62 +178,70 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
     }
     if (lv_disp_flush_is_last(drv)) {
         int covered_width = 0;
-        for (int i = 0; i < range_count; ++i) {
-            covered_width += ranges[i].x2 - ranges[i].x1 + 1;
+        for (int i = 0; i < runtime.range_count; ++i) {
+            covered_width += runtime.ranges[i].x2 -
+                             runtime.ranges[i].x1 + 1;
         }
         bool covered_wide = covered_width >= kDisplayPartialMaxWidth;
         if (covered_wide) {
-            full_reason_mask |= kDisplayFullReasonCoveredWide;
+            runtime.full_reason_mask |= kDisplayFullReasonCoveredWide;
         }
-        if (force_full_refresh || covered_wide) {
-            ++full_cycles;
-            if (full_reason_mask & kDisplayFullReasonSingleWide) {
-                ++full_single_wide;
+        if (runtime.force_full_refresh || covered_wide) {
+            ++runtime.full_cycles;
+            if (runtime.full_reason_mask & kDisplayFullReasonSingleWide) {
+                ++runtime.full_single_wide;
             }
-            if (full_reason_mask & kDisplayFullReasonTooManyRanges) {
-                ++full_too_many_ranges;
+            if (runtime.full_reason_mask &
+                kDisplayFullReasonTooManyRanges) {
+                ++runtime.full_too_many_ranges;
             }
-            if (full_reason_mask & kDisplayFullReasonCoveredWide) {
-                ++full_covered_wide;
+            if (runtime.full_reason_mask & kDisplayFullReasonCoveredWide) {
+                ++runtime.full_covered_wide;
             }
             display.RLCD_Display();
-        } else if (range_count > 0) {
-            ++partial_cycles;
-            partial_ranges += range_count;
-            for (int i = 0; i < range_count; ++i) {
-                display.RLCD_DisplayXRange(ranges[i].x1, ranges[i].x2);
+        } else if (runtime.range_count > 0) {
+            ++runtime.partial_cycles;
+            runtime.partial_ranges += runtime.range_count;
+            for (int i = 0; i < runtime.range_count; ++i) {
+                display.RLCD_DisplayXRange(runtime.ranges[i].x1,
+                                           runtime.ranges[i].x2);
             }
         }
         TickType_t now_tick = xTaskGetTickCount();
         int active_page = active_work_page_load();
-        bool page_changed = last_diag_page != active_page;
-        bool diag_due = last_diag_tick == 0 ||
-                        now_tick - last_diag_tick >= pdMS_TO_TICKS(kDisplayFlushDiagIntervalMs) ||
-                        page_changed;
-        OtaRuntimeSnapshot ota;
-        ota_runtime_snapshot_load(&ota);
-        if (diag_due && ota.state != kOtaUpdating && !ota.reboot_pending) {
+        const bool page_changed = runtime.last_diag_page != active_page;
+        const DisplayFlushDiagDecision diag = display_flush_diag_decision(
+            runtime.last_diag_tick == 0,
+            now_tick - runtime.last_diag_tick >=
+                pdMS_TO_TICKS(kDisplayFlushDiagIntervalMs),
+            page_changed,
+            runtime.full_cycles,
+            ota_runtime_state_load() == kOtaUpdating,
+            ota_runtime_reboot_pending_load());
+        if (diag.emit_log) {
             ESP_LOGI(TAG,
                      DISPLAY_FLUSH_DIAG_LOG_FORMAT,
                      active_page,
-                     (unsigned long)partial_cycles,
-                     (unsigned long)partial_ranges,
-                     (unsigned long)full_cycles,
-                     (unsigned long)full_single_wide,
-                     (unsigned long)full_covered_wide,
-                     (unsigned long)full_too_many_ranges);
-            partial_cycles = 0;
-            partial_ranges = 0;
-            full_cycles = 0;
-            full_single_wide = 0;
-            full_covered_wide = 0;
-            full_too_many_ranges = 0;
-            last_diag_tick = now_tick;
-            last_diag_page = active_page;
+                     (unsigned long)runtime.partial_cycles,
+                     (unsigned long)runtime.partial_ranges,
+                     (unsigned long)runtime.full_cycles,
+                     (unsigned long)runtime.full_single_wide,
+                     (unsigned long)runtime.full_covered_wide,
+                     (unsigned long)runtime.full_too_many_ranges);
         }
-        range_count = 0;
-        force_full_refresh = false;
-        full_reason_mask = 0;
+        if (diag.close_window) {
+            runtime.partial_cycles = 0;
+            runtime.partial_ranges = 0;
+            runtime.full_cycles = 0;
+            runtime.full_single_wide = 0;
+            runtime.full_covered_wide = 0;
+            runtime.full_too_many_ranges = 0;
+            runtime.last_diag_tick = now_tick;
+            runtime.last_diag_page = active_page;
+        }
+        runtime.range_count = 0;
+        runtime.force_full_refresh = false;
+        runtime.full_reason_mask = 0;
     }
     lv_disp_flush_ready(drv);
 }

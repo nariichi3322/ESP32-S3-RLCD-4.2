@@ -5,12 +5,14 @@
 #include "daily_saying_contract.h"
 #include "scoped_semaphore_lock.h"
 
+#include <esp_attr.h>
+
 #include <atomic>
 #include <string.h>
 
 namespace {
 StaticTaskMutex s_daily_saying_mutex;
-char s_daily_saying[kDailySayingLen] = {};
+EXT_RAM_BSS_ATTR char s_daily_saying[kDailySayingLen] = {};
 time_t s_last_saying_sync_time = 0;
 std::atomic<uint32_t> s_daily_saying_version{0};
 
@@ -60,6 +62,7 @@ bool daily_saying_cache_snapshot_load(DailySayingCacheSnapshot *out)
     }
     out->available = s_daily_saying[0] != '\0';
     out->last_sync_time = s_last_saying_sync_time;
+    out->version = s_daily_saying_version.load(std::memory_order_acquire);
     return true;
 }
 

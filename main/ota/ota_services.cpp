@@ -28,6 +28,7 @@
 #include "ui_task_notify.h"
 
 #include <esp_app_format.h>
+#include <esp_attr.h>
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_ota_ops.h>
@@ -38,11 +39,13 @@
 #include <freertos/task.h>
 #include <mbedtls/sha256.h>
 
+#include <new>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <strings.h>
+#include <type_traits>
 
 struct OtaCrashBreadcrumb {
     uint32_t magic = 0;
@@ -52,6 +55,76 @@ struct OtaCrashBreadcrumb {
 };
 
 static RTC_DATA_ATTR OtaCrashBreadcrumb s_ota_breadcrumb;
+
+struct OtaManifestStorage {
+    alignas(OtaManifest) uint8_t bytes[sizeof(OtaManifest)];
+};
+
+struct OtaManifestWorkspace {
+    OtaManifestStorage primary;
+    OtaManifestStorage backup;
+};
+
+// OTA check/install requests are serialized by ota_task. Keep both manifests
+// out of its stack while preserving separate primary and backup snapshots.
+EXT_RAM_BSS_ATTR OtaManifestWorkspace s_ota_manifest_workspace;
+
+static_assert(std::is_trivially_default_constructible<OtaManifestWorkspace>::value,
+              "OTA manifest raw workspace must not require static construction");
+static_assert(std::is_trivially_destructible<OtaManifest>::value,
+              "OTA manifest workspace clears storage without destructor side effects");
+static_assert(sizeof(OtaManifestWorkspace) >= sizeof(OtaManifest) * 2,
+              "OTA manifest workspace must hold independent primary and backup objects");
+
+class OtaManifestWorkspaceGuard {
+public:
+    OtaManifestWorkspaceGuard()
+        : primary_(new (s_ota_manifest_workspace.primary.bytes) OtaManifest()),
+          backup_(new (s_ota_manifest_workspace.backup.bytes) OtaManifest())
+    {
+    }
+
+    ~OtaManifestWorkspaceGuard()
+    {
+        clear();
+    }
+
+    OtaManifestWorkspaceGuard(const OtaManifestWorkspaceGuard &) = delete;
+    OtaManifestWorkspaceGuard &operator=(const OtaManifestWorkspaceGuard &) = delete;
+
+    OtaManifest &primary()
+    {
+        return *primary_;
+    }
+
+    OtaManifest &backup()
+    {
+        return *backup_;
+    }
+
+    void clear()
+    {
+        if (!primary_) {
+            return;
+        }
+        primary_->~OtaManifest();
+        backup_->~OtaManifest();
+        volatile uint8_t *bytes =
+            reinterpret_cast<volatile uint8_t *>(&s_ota_manifest_workspace);
+        for (size_t remaining = sizeof(s_ota_manifest_workspace);
+             remaining > 0;
+             --remaining) {
+            *bytes++ = 0;
+        }
+        primary_ = nullptr;
+        backup_ = nullptr;
+    }
+
+private:
+    OtaManifest *primary_;
+    OtaManifest *backup_;
+};
+
 static constexpr uint32_t kOtaBreadcrumbMagic = 0x4f544131;
 static constexpr size_t kOtaDownloadStatusTextLen = 48;
 static constexpr int64_t kOtaUsPerMs = 1000;
@@ -96,7 +169,8 @@ static constexpr const char *kOtaAppMarkedValidLog = "OTA app marked valid";
 #define OTA_APP_VALID_MARK_FAILED_FORMAT "OTA app valid mark failed: %s"
 #define OTA_PREVIOUS_BREADCRUMB_FORMAT "previous OTA breadcrumb: phase=%d total=%d progress=%d%% reset=%d"
 static constexpr const char *kOtaManifestInvalidForInstallLog = "OTA manifest invalid for install";
-#define OTA_DOWNLOAD_START_FORMAT "OTA start: reset=%d battery=%d%% %.3fV rssi=%d size=%d url=%s"
+#define OTA_DOWNLOAD_START_FORMAT \
+    "OTA start: reset=%d battery=%d%% %.3fV rssi=%d size=%d url_len=%u"
 static constexpr const char *kOtaHttpTransactionLockTimeoutLog =
     "OTA download deferred: HTTP transaction is busy";
 #define OTA_BEGIN_FAILED_FORMAT "OTA begin failed: %s"
@@ -231,7 +305,7 @@ static void hold_ota_info_page(uint32_t hold_ms = kOtaFailureHoldMs)
 
 static bool ota_flow_active_at(TickType_t now)
 {
-    OtaRuntimeSnapshot runtime;
+    OtaRuntimeSnapshot runtime = {};
     ota_runtime_snapshot_load(&runtime);
     return ota_flow_active_for_tick(
         runtime.state,
@@ -348,6 +422,54 @@ static void report_ota_download_progress(int total,
     ota_download_progress_mark_status_published(state, now_us, total);
 }
 
+static void log_ota_download_start(const OtaManifest &manifest)
+{
+    wifi_ap_record_t ap_info = {};
+    int rssi = 0;
+    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
+        rssi = ap_info.rssi;
+    }
+    BatteryRuntimeSnapshot battery;
+    battery_runtime_snapshot_load(&battery);
+    ESP_LOGI(TAG,
+             OTA_DOWNLOAD_START_FORMAT,
+             (int)esp_reset_reason(),
+             battery.percent,
+             battery.voltage,
+             rssi,
+             manifest.size,
+             static_cast<unsigned>(strlen(manifest.url)));
+    log_ota_heap("start", 0, 0);
+}
+
+static bool verify_downloaded_ota_sha(const uint8_t *hash,
+                                      const OtaManifest &manifest)
+{
+    char actual_sha[kOtaSha256Len] = {};
+    ota_sha256_to_hex(hash, actual_sha, sizeof(actual_sha));
+    if (strcasecmp(actual_sha, manifest.sha256) == 0) {
+        return true;
+    }
+    ESP_LOGW(TAG, OTA_SHA_MISMATCH_FORMAT, manifest.sha256, actual_sha);
+    ota_set_failed_status(kOtaStatusVerifyFailed);
+    return false;
+}
+
+static bool validate_downloaded_ota_description(
+    const esp_partition_t *update_partition)
+{
+    esp_app_desc_t app_desc = {};
+    esp_err_t err =
+        esp_ota_get_partition_description(update_partition, &app_desc);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, OTA_APP_DESCRIPTION_FAILED_FORMAT, esp_err_to_name(err));
+        ota_set_failed_status(kOtaStatusVerifyFailed);
+        return false;
+    }
+    ESP_LOGI(TAG, OTA_IMAGE_READY_FORMAT, app_desc.version, app_desc.project_name);
+    return true;
+}
+
 static bool stream_ota_image(esp_http_client_handle_t client,
                              esp_ota_handle_t ota_handle,
                              const OtaManifest &manifest,
@@ -429,22 +551,7 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         return false;
     }
 
-    wifi_ap_record_t ap_info = {};
-    int rssi = 0;
-    if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
-        rssi = ap_info.rssi;
-    }
-    BatteryRuntimeSnapshot battery;
-    battery_runtime_snapshot_load(&battery);
-    ESP_LOGI(TAG,
-             OTA_DOWNLOAD_START_FORMAT,
-             (int)esp_reset_reason(),
-             battery.percent,
-             battery.voltage,
-             rssi,
-             manifest.size,
-             manifest.url);
-    log_ota_heap("start", 0, 0);
+    log_ota_download_start(manifest);
 
     NetworkHttpTransactionGuard transaction_lock(
         pdMS_TO_TICKS(kOtaWifiConnectTimeoutMs));
@@ -511,14 +618,11 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         ota_set_failed_status(kOtaStatusDownloadFailed);
         return false;
     }
+    buffer.reset();
 
-    char actual_sha[kOtaSha256Len] = {};
-    ota_sha256_to_hex(hash, actual_sha, sizeof(actual_sha));
     ota_note_phase(4, total, 100);
-    if (strcasecmp(actual_sha, manifest.sha256) != 0) {
-        ESP_LOGW(TAG, OTA_SHA_MISMATCH_FORMAT, manifest.sha256, actual_sha);
+    if (!verify_downloaded_ota_sha(hash, manifest)) {
         esp_ota_abort(ota_handle);
-        ota_set_failed_status(kOtaStatusVerifyFailed);
         return false;
     }
 
@@ -530,14 +634,9 @@ static bool download_and_apply_ota(const OtaManifest &manifest)
         ota_set_failed_status(kOtaStatusUpdateFailed);
         return false;
     }
-    esp_app_desc_t app_desc = {};
-    err = esp_ota_get_partition_description(update_partition, &app_desc);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, OTA_APP_DESCRIPTION_FAILED_FORMAT, esp_err_to_name(err));
-        ota_set_failed_status(kOtaStatusVerifyFailed);
+    if (!validate_downloaded_ota_description(update_partition)) {
         return false;
     }
-    ESP_LOGI(TAG, OTA_IMAGE_READY_FORMAT, app_desc.version, app_desc.project_name);
     wdt.reset();
     ota_note_phase(6, total, 100);
     err = esp_ota_set_boot_partition(update_partition);
@@ -571,12 +670,17 @@ static bool prepare_ota_wifi()
     }
     if (!start_wifi_radio(false)) {
         release_network_awake_lock();
+        // start_wifi_radio() may fail while reconfiguring an already-running
+        // station. Preserve a deferred close request instead of leaving that
+        // radio active after this OTA attempt releases its PM-lock ownership.
+        request_wifi_radio_stop_when_idle();
         ota_set_failed_status(kOtaStatusWifiFailed);
         return false;
     }
     if (!wait_for_wifi_connected(kOtaWifiConnectTimeoutMs)) {
         stop_wifi_radio();
         release_network_awake_lock();
+        service_wifi_radio_stop_when_idle();
         ota_set_failed_status(kOtaStatusWifiFailed);
         return false;
     }
@@ -588,12 +692,14 @@ static void finish_ota_wifi(bool keep_awake_lock = false)
     stop_wifi_radio(true);
     if (!keep_awake_lock) {
         release_network_awake_lock();
+        service_wifi_radio_stop_when_idle();
     }
 }
 
 static void handle_ota_check_request()
 {
-    OtaManifest manifest;
+    OtaManifestWorkspaceGuard manifest_workspace;
+    OtaManifest &manifest = manifest_workspace.primary();
     ota_set_status(kOtaChecking, kOtaStatusCheckingUpdate);
     char manifest_source[kOtaManifestSourceNameLen] = {};
     if (!ota_manifest_fetch(&manifest,
@@ -630,14 +736,15 @@ static void handle_ota_check_request()
 
 static void handle_ota_install_request()
 {
-    OtaManifest manifest;
+    OtaManifestWorkspaceGuard manifest_workspace;
+    OtaManifest &manifest = manifest_workspace.primary();
     ota_manifest_load_cached(&manifest);
     bool ok = false;
     {
         OtaDisplayQuietGuard display_quiet;
         ok = download_and_apply_ota(manifest);
         if (!ok) {
-            OtaManifest backup_manifest;
+            OtaManifest &backup_manifest = manifest_workspace.backup();
             if (ota_manifest_fetch_backup_for_install(
                     manifest,
                     &backup_manifest,
@@ -648,6 +755,7 @@ static void handle_ota_install_request()
                 ok = download_and_apply_ota(backup_manifest);
             }
         }
+        manifest_workspace.clear();
         finish_ota_wifi(ok);
         if (ok) {
             keep_ota_settings_panel_visible();

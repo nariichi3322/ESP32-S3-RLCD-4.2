@@ -1,8 +1,10 @@
 // 初始化硬件、系统服务和常驻任务，是固件应用入口。
-#include "app_state.h"
+#include "app_display_config.h"
 #include "app_event_group.h"
 #include "app_hardware.h"
 #include "app_constexpr.h"
+#include "app_metadata.h"
+#include "lvgl_bsp.h"
 #include "alarm_services.h"
 #include "battery_runtime_state.h"
 #include "pomodoro_services.h"
@@ -31,14 +33,25 @@
 #include "ui_display_flush.h"
 #include "ui_info_page_state.h"
 #include "ui_settings_feedback.h"
+#include "ui_task.h"
 #include "ui_task_notify.h"
-#include "ui_views.h"
 #include "ui_work_page_catalog.h"
 #include "weather_state.h"
 #include "wifi_portal_state.h"
 #include "xiaozhi_ai.h"
 
 #include "i2c_equipment.h"
+
+#include <esp_err.h>
+#include <esp_event.h>
+#include <esp_log.h>
+#include <esp_netif.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include <nvs_flash.h>
+
+#include <stdlib.h>
+#include <time.h>
 
 #define MAIN_INVALID_TASK_CREATE_LOG_FORMAT "%s: invalid task create request"
 #define MAIN_TASK_CREATE_FAILED_LOG_FORMAT "%s task create failed"
@@ -114,6 +127,11 @@ struct AppTaskSpec {
     BaseType_t core_id;
 };
 
+struct AppInitializerSpec {
+    bool (*initialize)();
+    const char *failure_log;
+};
+
 constexpr AppTaskSpec kRegularAppTasks[] = {
     {network_sync_task, kNetworkSyncTaskName, kNetworkSyncTaskStack, kHighServiceTaskPriority, false, kNetworkTaskCore},
     {ota_task, kOtaTaskName, kOtaTaskStack, kHighServiceTaskPriority, false, kNetworkTaskCore},
@@ -122,6 +140,28 @@ constexpr AppTaskSpec kRegularAppTasks[] = {
     {button_task, kButtonTaskName, kButtonTaskStack, kInputTaskPriority, false, kUiTaskCore},
     {alarm_task, kAlarmTaskName, kAlarmTaskStack, kNormalServiceTaskPriority, false, kUiTaskCore},
     {pomodoro_task, kPomodoroTaskName, kPomodoroTaskStack, kNormalServiceTaskPriority, false, kUiTaskCore},
+};
+
+constexpr AppInitializerSpec kCoreRuntimeStateInitializers[] = {
+    {init_weather_state, MAIN_WEATHER_STATE_INIT_FAILED_LOG_FORMAT},
+    {network_credentials_state_init, MAIN_NETWORK_CREDENTIALS_STATE_INIT_FAILED_LOG_FORMAT},
+    {network_diagnostics_state_init, MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT},
+    {ntp_runtime_state_init, MAIN_NTP_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT},
+    {init_hourly_sensor_history_state, MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT},
+    {init_local_sensor_state, MAIN_LOCAL_SENSOR_STATE_INIT_FAILED_LOG_FORMAT},
+    {daily_saying_state_init, MAIN_DAILY_SAYING_STATE_INIT_FAILED_LOG_FORMAT},
+    {init_manual_weather_city_state, MAIN_MANUAL_WEATHER_CITY_STATE_INIT_FAILED_LOG_FORMAT},
+    {wifi_portal_state_init, MAIN_WIFI_PORTAL_STATE_INIT_FAILED_LOG_FORMAT},
+    {battery_runtime_state_init, MAIN_BATTERY_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT},
+    {info_page_state_init, MAIN_INFO_PAGE_STATE_INIT_FAILED_LOG_FORMAT},
+    {settings_feedback_state_init, MAIN_SETTINGS_FEEDBACK_STATE_INIT_FAILED_LOG_FORMAT},
+    {work_page_catalog_init, MAIN_WORK_PAGE_CATALOG_INIT_FAILED_LOG_FORMAT},
+};
+
+constexpr AppInitializerSpec kFeatureRuntimeInitializers[] = {
+    {alarm_services_init, MAIN_ALARM_STATE_INIT_FAILED_LOG_FORMAT},
+    {pomodoro_services_init, MAIN_POMODORO_STATE_INIT_FAILED_LOG_FORMAT},
+    {weather_city_mcp_init, MAIN_WEATHER_CITY_MCP_STATE_INIT_FAILED_LOG_FORMAT},
 };
 
 constexpr bool app_task_specs_valid()
@@ -137,9 +177,42 @@ constexpr bool app_task_specs_valid()
     return true;
 }
 
+template <size_t Count>
+constexpr bool app_initializer_specs_valid(
+    const AppInitializerSpec (&specs)[Count])
+{
+    for (const AppInitializerSpec &spec : specs) {
+        if (!spec.initialize || !spec.failure_log ||
+            spec.failure_log[0] == '\0') {
+            return false;
+        }
+    }
+    return true;
+}
+
+template <size_t Count>
+bool initialize_app_states(const AppInitializerSpec (&specs)[Count])
+{
+    for (const AppInitializerSpec &spec : specs) {
+        if (!spec.initialize()) {
+            ESP_LOGE(TAG, "%s", spec.failure_log);
+            return false;
+        }
+    }
+    return true;
+}
+
 static_assert(array_count(kRegularAppTasks) > 0,
               "regular task table must not be empty");
 static_assert(app_task_specs_valid(), "regular app task specs must be valid");
+static_assert(array_count(kCoreRuntimeStateInitializers) > 0,
+              "core runtime initializer table must not be empty");
+static_assert(array_count(kFeatureRuntimeInitializers) > 0,
+              "feature runtime initializer table must not be empty");
+static_assert(app_initializer_specs_valid(kCoreRuntimeStateInitializers),
+              "core runtime initializer specs must be valid");
+static_assert(app_initializer_specs_valid(kFeatureRuntimeInitializers),
+              "feature runtime initializer specs must be valid");
 
 } // namespace
 
@@ -277,56 +350,7 @@ extern "C" void app_main(void)
     if (!init_network_http_transaction_lock()) {
         return;
     }
-    if (!init_weather_state()) {
-        ESP_LOGE(TAG, MAIN_WEATHER_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!network_credentials_state_init()) {
-        ESP_LOGE(TAG, MAIN_NETWORK_CREDENTIALS_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!network_diagnostics_state_init()) {
-        ESP_LOGE(TAG, MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!ntp_runtime_state_init()) {
-        ESP_LOGE(TAG, MAIN_NTP_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!init_hourly_sensor_history_state()) {
-        ESP_LOGE(TAG, MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!init_local_sensor_state()) {
-        ESP_LOGE(TAG, MAIN_LOCAL_SENSOR_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!daily_saying_state_init()) {
-        ESP_LOGE(TAG, MAIN_DAILY_SAYING_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!init_manual_weather_city_state()) {
-        ESP_LOGE(TAG, MAIN_MANUAL_WEATHER_CITY_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!wifi_portal_state_init()) {
-        ESP_LOGE(TAG, MAIN_WIFI_PORTAL_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!battery_runtime_state_init()) {
-        ESP_LOGE(TAG, MAIN_BATTERY_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!info_page_state_init()) {
-        ESP_LOGE(TAG, MAIN_INFO_PAGE_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!settings_feedback_state_init()) {
-        ESP_LOGE(TAG, MAIN_SETTINGS_FEEDBACK_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!work_page_catalog_init()) {
-        ESP_LOGE(TAG, MAIN_WORK_PAGE_CATALOG_INIT_FAILED_LOG_FORMAT);
+    if (!initialize_app_states(kCoreRuntimeStateInitializers)) {
         return;
     }
     init_power_management();
@@ -347,16 +371,7 @@ extern "C" void app_main(void)
     init_wifi();
     park_unused_audio_peripherals();
     xiaozhi_ai_init();
-    if (!alarm_services_init()) {
-        ESP_LOGE(TAG, MAIN_ALARM_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!pomodoro_services_init()) {
-        ESP_LOGE(TAG, MAIN_POMODORO_STATE_INIT_FAILED_LOG_FORMAT);
-        return;
-    }
-    if (!weather_city_mcp_init()) {
-        ESP_LOGE(TAG, MAIN_WEATHER_CITY_MCP_STATE_INIT_FAILED_LOG_FORMAT);
+    if (!initialize_app_states(kFeatureRuntimeInitializers)) {
         return;
     }
 

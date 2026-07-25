@@ -4,13 +4,25 @@
 #include "ui_clock_sensor_objects.h"
 #include "ui_clock_surface_objects.h"
 #include "ui_clock_weather_panel_objects.h"
-
-#include "ui_views.h"
+#include "ui_clock_weather_text.h"
 
 #include "app_constexpr.h"
+#include "app_metadata.h"
 #include "local_sensor_state.h"
+#include "status_gif_contract.h"
 #include "ui_battery.h"
+#include "ui_bitmap.h"
+#include "ui_canvas_primitives.h"
+#include "ui_fonts.h"
+#include "ui_icons.h"
+#include "ui_page_state.h"
+#include "ui_progress.h"
 #include "ui_setup_status.h"
+#include "ui_status_gif.h"
+#include "ui_widgets.h"
+#include "work_page_ids.h"
+
+#include <esp_log.h>
 
 namespace {
 #define CLOCK_DATE_LABEL_CREATE_FAILED_LOG "clock date label create failed"

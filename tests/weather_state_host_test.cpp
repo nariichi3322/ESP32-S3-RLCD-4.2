@@ -102,11 +102,18 @@ int main()
     assert(alert_status.count == 0);
     assert(alert_status.version == 0);
     assert(weather_state_version_load() == 0);
-    assert(get_last_weather_sync_time() == 0);
-    assert(!weather_extended_data_ready());
+    WeatherCacheStatusSnapshot cache_status = {};
+    assert(!weather_cache_status_snapshot_load(&cache_status));
+    assert(cache_status.last_sync_time == 0);
+    assert(cache_status.version == 0);
+    assert(!cache_status.extended_data_ready);
     assert(init_weather_state());
     assert(init_weather_state());
     assert(g_weather_mutex_create_count.load() == 1);
+    assert(weather_cache_status_snapshot_load(&cache_status));
+    assert(cache_status.last_sync_time == 0);
+    assert(cache_status.version == 0);
+    assert(!cache_status.extended_data_ready);
 
     commit_marker('A');
     assert(g_event_set_count.load() == 0);
@@ -119,13 +126,15 @@ int main()
     g_events_ready.store(true, std::memory_order_release);
     commit_marker('B');
     assert(g_event_set_count.load() == 1);
-    assert(get_last_weather_sync_time() > 0);
-    assert(weather_extended_data_ready());
     alert_status = weather_alert_status_snapshot_load();
     assert(alert_status.active);
     assert(alert_status.count == 1);
     assert(alert_status.version == 2);
     assert(weather_state_version_load() == alert_status.version);
+    assert(weather_cache_status_snapshot_load(&cache_status));
+    assert(cache_status.last_sync_time > 0);
+    assert(cache_status.version == alert_status.version);
+    assert(cache_status.extended_data_ready);
 
     char alert_title[kWeatherAlertTitleLen] = {};
     assert(get_weather_alert_title_snapshot(-1,
@@ -147,7 +156,11 @@ int main()
     g_fail_weather_mutex_take.store(true, std::memory_order_release);
     commit_marker('A');
     assert(g_event_set_count.load() == 1);
-    assert(get_last_weather_sync_time() == 0);
+    cache_status = {1, 1, true};
+    assert(!weather_cache_status_snapshot_load(&cache_status));
+    assert(cache_status.last_sync_time == 0);
+    assert(cache_status.version == 0);
+    assert(!cache_status.extended_data_ready);
     WeatherAlertStatusSnapshot failed_status =
         weather_alert_status_snapshot_load();
     assert(failed_status.version == alert_status.version);
@@ -156,6 +169,12 @@ int main()
                                              alert_title,
                                              sizeof(alert_title)));
     assert(alert_title[0] == '\0');
+    fill_snapshot('Z', &weather, &alert, &forecast, &air);
+    get_weather_full_snapshot(&weather, &alert, &forecast, &air);
+    assert(weather.city[0] == '\0');
+    assert(!alert.active && alert.count == 0);
+    assert(!forecast.ready && forecast.count == 0);
+    assert(!air.ready && air.aqi[0] == '\0');
     g_fail_weather_mutex_take.store(false, std::memory_order_release);
     get_weather_full_snapshot(&weather, &alert, &forecast, &air);
     assert_snapshot_marker('B', weather, alert, forecast, air);

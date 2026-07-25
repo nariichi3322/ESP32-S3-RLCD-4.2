@@ -18,13 +18,18 @@ static_assert(kNetworkDiagBit == (1U << 11));
 static_assert(kNetworkStateChangedBit == (1U << 12));
 static_assert(kSetupPortalStartBit == (1U << 13));
 static_assert(kProvisioningFeedbackBit == (1U << 14));
+static_assert(kVisibleWeatherSyncBit == (1U << 15));
+static_assert(kVisibleSayingSyncBit == (1U << 16));
+static_assert(kNtpSyncCompletedBit == (1U << 17));
 static_assert((kWifiConnectedBit | kTimeSyncedBit | kWeatherReadyBit |
                kProvisioningSyncBit | kManualNtpSyncBit |
                kManualWeatherSyncBit | kOtaCheckBit | kOtaInstallBit |
                kManualSayingSyncBit | kBootSyncDoneBit | kBootAnimDoneBit |
                kNetworkDiagBit | kNetworkStateChangedBit |
-               kSetupPortalStartBit | kProvisioningFeedbackBit) ==
-              ((1U << 15) - 1U));
+               kSetupPortalStartBit | kProvisioningFeedbackBit |
+               kVisibleWeatherSyncBit | kVisibleSayingSyncBit |
+               kNtpSyncCompletedBit) ==
+              ((1U << 18) - 1U));
 
 namespace {
 bool s_create_allowed = true;

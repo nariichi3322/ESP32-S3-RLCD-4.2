@@ -1,13 +1,23 @@
 // 构建启动屏、播放启动动画并在启动完成后切换到首个已启用工作页。
 #include "ui_boot_screen.h"
 
-#include "ui_views.h"
-
+#include "active_work_page_state.h"
 #include "app_constexpr.h"
 #include "app_event_group.h"
+#include "app_metadata.h"
+#include "app_runtime_timing.h"
 #include "boot_anim.h"
+#include "lvgl_bsp.h"
+#include "ui_bitmap.h"
+#include "ui_canvas_primitives.h"
+#include "ui_object_refs.h"
+#include "ui_page_state.h"
+#include "ui_widgets.h"
+#include "ui_work_page_catalog.h"
 
 #include <atomic>
+#include <cstdlib>
+#include <esp_log.h>
 
 namespace {
 constexpr uint32_t kBootAnimLvglLockTimeoutMs = 100;
@@ -56,6 +66,12 @@ static_assert(kBootAnimFinishLvglLockTimeoutMs >= kBootAnimLvglLockTimeoutMs,
 static_assert(kBootScreenLvglLockTimeoutMs >= kBootAnimFinishLvglLockTimeoutMs,
               "boot screen lock timeout must cover boot animation finish lock timeout");
 static_assert(cstr_array_nonempty(kBootTexts), "boot screen text registry must not be empty");
+
+void release_boot_anim_canvas_buffer()
+{
+    std::free(s_boot_anim_canvas_buffer);
+    s_boot_anim_canvas_buffer = nullptr;
+}
 } // namespace
 
 static void draw_boot_anim_frame_index(int frame)
@@ -187,6 +203,7 @@ void finish_boot_screen()
         s_boot_status_label = nullptr;
         s_boot_detail_label = nullptr;
         s_boot_anim_canvas = nullptr;
+        release_boot_anim_canvas_buffer();
         active_work_page_store(first_enabled_work_page());
         show_active_work_page();
         lv_refr_now(nullptr);

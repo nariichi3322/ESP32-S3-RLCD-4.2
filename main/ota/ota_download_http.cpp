@@ -17,14 +17,23 @@ namespace {
 constexpr int kMaxRedirects = 5;
 constexpr int kHttpTxBufferSize = 2048;
 constexpr const char *kHttpClientInitFailedLog = "OTA http client init failed";
+constexpr const char *kRedirectBufferAllocFailedLog =
+    "OTA redirect URL workspace allocation failed";
 constexpr const char *kRedirectLimitReachedLog = "OTA redirect limit reached";
 #define OTA_HTTP_HEADER_FAILED_FORMAT "OTA http header failed: %s"
 #define OTA_HTTP_OPEN_FAILED_FORMAT "OTA http open failed: %s"
-#define OTA_REDIRECT_STATUS_FORMAT "OTA redirect status=%d location=%s"
+#define OTA_REDIRECT_STATUS_FORMAT "OTA redirect status=%d location_len=%u"
 #define OTA_REDIRECT_LOCATION_INVALID_FORMAT "OTA redirect location invalid len=%u"
 #define OTA_HTTP_STATUS_FAILED_FORMAT "OTA http status=%d content_len=%d"
 
 } // namespace
+
+OtaDownloadHttpSession::OtaDownloadHttpSession()
+    : redirect_url_(kRedirectUrlCapacity,
+                    HeapBufferInit::kCString,
+                    HeapBufferStorage::kPsramPreferred)
+{
+}
 
 OtaDownloadHttpSession::~OtaDownloadHttpSession()
 {
@@ -39,10 +48,15 @@ esp_err_t OtaDownloadHttpSession::event_handler(esp_http_client_event_t *event)
     }
     OtaDownloadHttpSession *session =
         static_cast<OtaDownloadHttpSession *>(event->user_data);
-    if (strcasecmp(event->header_key, "Location") == 0) {
-        strlcpy(session->redirect_url_,
-                event->header_value,
-                sizeof(session->redirect_url_));
+    if (strcasecmp(event->header_key, "Location") == 0 &&
+        session->redirect_url_) {
+        session->redirect_location_seen_ = true;
+        if (!ota_download_url_copy_exact(event->header_value,
+                                         session->redirect_url_.data(),
+                                         session->redirect_url_.size())) {
+            session->redirect_location_invalid_ = true;
+            session->redirect_url_.data()[0] = '\0';
+        }
     }
     return ESP_OK;
 }
@@ -53,13 +67,28 @@ bool OtaDownloadHttpSession::open(const char *url)
     if (!url || url[0] == '\0') {
         return false;
     }
-    char current_url[kRedirectUrlCapacity] = {};
-    strlcpy(current_url, url, sizeof(current_url));
+    ScopedHeapBuffer<char> current_url(kRedirectUrlCapacity,
+                                       HeapBufferInit::kCString,
+                                       HeapBufferStorage::kPsramPreferred);
+    if (!redirect_url_ || !current_url) {
+        ESP_LOGW(TAG, "%s", kRedirectBufferAllocFailedLog);
+        return false;
+    }
+    if (!ota_download_url_copy_exact(url,
+                                     current_url.data(),
+                                     current_url.size())) {
+        ESP_LOGW(TAG,
+                 OTA_REDIRECT_LOCATION_INVALID_FORMAT,
+                 static_cast<unsigned>(strlen(url)));
+        return false;
+    }
 
     for (int redirect = 0; redirect <= kMaxRedirects; ++redirect) {
-        redirect_url_[0] = '\0';
+        redirect_url_.data()[0] = '\0';
+        redirect_location_seen_ = false;
+        redirect_location_invalid_ = false;
         esp_http_client_config_t config = {};
-        config.url = current_url;
+        config.url = current_url.data();
         config.timeout_ms = kOtaHttpTimeoutMs;
         config.crt_bundle_attach = esp_crt_bundle_attach;
         config.disable_auto_redirect = true;
@@ -96,24 +125,27 @@ bool OtaDownloadHttpSession::open(const char *url)
         content_length_ = esp_http_client_fetch_headers(client_);
         int status = esp_http_client_get_status_code(client_);
         if (ota_is_http_redirect_status(status)) {
+            const size_t redirect_len = strlen(redirect_url_.data());
             ESP_LOGI(TAG,
                      OTA_REDIRECT_STATUS_FORMAT,
                      status,
-                     redirect_url_[0] ? redirect_url_ : "--");
+                     static_cast<unsigned>(redirect_len));
             esp_http_client_close(client_);
             esp_http_client_cleanup(client_);
             client_ = nullptr;
             opened_ = false;
             content_length_ = 0;
-            size_t redirect_len = strlen(redirect_url_);
-            if (redirect_url_[0] == '\0' ||
-                redirect_len >= sizeof(current_url)) {
+            if (!redirect_location_seen_ ||
+                redirect_location_invalid_ ||
+                redirect_url_.data()[0] == '\0' ||
+                !ota_download_url_copy_exact(redirect_url_.data(),
+                                             current_url.data(),
+                                             current_url.size())) {
                 ESP_LOGW(TAG,
                          OTA_REDIRECT_LOCATION_INVALID_FORMAT,
                          static_cast<unsigned>(redirect_len));
                 return false;
             }
-            strlcpy(current_url, redirect_url_, sizeof(current_url));
             continue;
         }
         if (!ota_is_http_success_status(status)) {
@@ -141,6 +173,10 @@ void OtaDownloadHttpSession::close()
         client_ = nullptr;
     }
     opened_ = false;
+    redirect_location_seen_ = false;
+    redirect_location_invalid_ = false;
     content_length_ = 0;
-    redirect_url_[0] = '\0';
+    if (redirect_url_) {
+        redirect_url_.data()[0] = '\0';
+    }
 }

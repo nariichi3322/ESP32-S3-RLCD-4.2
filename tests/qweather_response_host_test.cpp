@@ -2,6 +2,7 @@
 #include "qweather_response.h"
 
 #include <assert.h>
+#include <stdint.h>
 #include <string.h>
 
 namespace {
@@ -22,6 +23,24 @@ void test_stage_and_response_buffer()
     assert(response.get() != nullptr);
     assert(response.size() == 32);
     assert(response.get()[0] == '\0');
+
+    QweatherResponseBuffer exchange("test", 32, 64);
+    assert(exchange);
+    assert(exchange.request_url() != nullptr);
+    assert(exchange.request_url_size() == 64);
+    assert(exchange.get() == exchange.request_url() + 64);
+    assert(exchange.size() == 32);
+    assert(exchange.request_url()[0] == '\0');
+    assert(exchange.get()[0] == '\0');
+    exchange.request_url()[0] = 'u';
+    exchange.get()[0] = 'r';
+    assert(exchange.request_url()[0] == 'u');
+    assert(exchange.get()[0] == 'r');
+
+    QweatherResponseBuffer overflow("test", SIZE_MAX, 1);
+    assert(!overflow);
+    assert(overflow.request_url() == nullptr);
+    assert(overflow.get() == nullptr);
 }
 
 void test_json_root_rejects_invalid_input()
@@ -85,6 +104,15 @@ void test_failed_and_missing_business_code()
     assert(code == nullptr);
     assert(qweather_success_item(missing_root.get(), nullptr, nullptr) == nullptr);
     assert(qweather_json_string_value(nullptr) == nullptr);
+
+    char numeric_code_json[] = R"({"code":200,"now":{"temp":"26"}})";
+    QweatherJsonRoot numeric_code_root(numeric_code_json);
+    assert(numeric_code_root);
+    code = reinterpret_cast<const cJSON *>(1);
+    assert(qweather_success_item(numeric_code_root.get(), "now", &code) == nullptr);
+    assert(code != nullptr);
+    assert(qweather_json_string_value(code) == nullptr);
+    assert(strcmp(qweather_code_text(code), "missing") == 0);
 }
 
 } // namespace

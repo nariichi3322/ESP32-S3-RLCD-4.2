@@ -3,12 +3,24 @@
 
 #include <stdint.h>
 
+struct LocalSensorStateSnapshot {
+    float temperature = 0.0f;
+    float humidity = 0.0f;
+    int temperature_trend = 0;
+    int humidity_trend = 0;
+    uint32_t version = 0;
+    bool available = false;
+};
+
 bool init_local_sensor_state();
 bool local_sensor_state_publish_sample(float temperature,
                                        float humidity,
                                        int temperature_trend,
-                                       int humidity_trend);
-bool local_sensor_state_publish_unavailable();
+                                       int humidity_trend,
+                                       bool *state_changed = nullptr);
+bool local_sensor_state_publish_unavailable(bool *state_changed = nullptr);
+// 读取失败时返回 false，并把非空输出重置为不可用的安全快照。
+bool local_sensor_state_snapshot_load(LocalSensorStateSnapshot *snapshot);
 bool get_local_sensor_snapshot(float *temperature,
                                float *humidity,
                                int *temperature_trend,

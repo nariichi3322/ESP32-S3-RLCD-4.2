@@ -22,6 +22,8 @@ constexpr EventBits_t kExpectedSyncWakeBits = kProvisioningSyncBit |
                                                kManualNtpSyncBit |
                                                kManualWeatherSyncBit |
                                                kManualSayingSyncBit |
+                                               kVisibleWeatherSyncBit |
+                                               kVisibleSayingSyncBit |
                                                kNetworkDiagBit |
                                                kNetworkStateChangedBit |
                                                kSetupPortalStartBit;

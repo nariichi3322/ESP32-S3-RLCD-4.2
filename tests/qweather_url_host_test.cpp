@@ -6,10 +6,12 @@
 
 int main()
 {
+    static_assert(kQweatherRequestUrlSize == 256,
+                  "QWeather request URL workspace contract changed");
     assert(strcmp(qweather_api_host(), "devapi.qweather.com") == 0);
     assert(strcmp(qweather_geo_api_host(), "geoapi.qweather.com") == 0);
 
-    char url[512] = {};
+    char url[kQweatherRequestUrlSize] = {};
     assert(build_qweather_city_lookup_url(url, sizeof(url), "杭州") == kQweatherUrlOk);
     assert(strcmp(url,
                   "https://geoapi.qweather.com/v2/city/lookup?location=%E6%9D%AD%E5%B7%9E&number=1&range=cn&lang=zh") == 0);
@@ -53,5 +55,21 @@ int main()
     assert(build_qweather_air_url(nullptr, sizeof(url), "101210101") ==
            kQweatherUrlInvalidArgument);
     assert(build_qweather_air_url(url, 0, "101210101") == kQweatherUrlInvalidArgument);
+
+    char max_encoded_location[43] = {};
+    memset(max_encoded_location, '/', sizeof(max_encoded_location) - 1);
+    assert(build_qweather_city_lookup_url(url,
+                                          sizeof(url),
+                                          max_encoded_location) == kQweatherUrlOk);
+    assert(build_qweather_now_url(url,
+                                  sizeof(url),
+                                  max_encoded_location) == kQweatherUrlOk);
+    assert(build_qweather_daily_url(url,
+                                    sizeof(url),
+                                    max_encoded_location,
+                                    7) == kQweatherUrlOk);
+    assert(build_qweather_air_url(url,
+                                  sizeof(url),
+                                  max_encoded_location) == kQweatherUrlOk);
     return 0;
 }

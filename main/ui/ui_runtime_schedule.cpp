@@ -2,7 +2,9 @@
 #include "ui_runtime_schedule.h"
 
 #include "app_constexpr.h"
-#include "app_state.h"
+#include "active_work_page_state.h"
+#include "app_metadata.h"
+#include "app_runtime_timing.h"
 #include "app_tick_time.h"
 #include "battery_runtime_state.h"
 #include "network_diagnostics_state.h"
@@ -11,12 +13,12 @@
 #include "ui_info_page_state.h"
 #include "ui_loop_schedule.h"
 #include "ui_settings_activity_state.h"
-#include "ui_views.h"
 #include "ui_work_page_catalog.h"
 #include "ui_xiaozhi_auto_return.h"
 #include "ui_xiaozhi.h"
 #include "xiaozhi_ai.h"
 #include "xiaozhi_auto_return_state.h"
+#include "wifi_portal_state.h"
 
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -51,19 +53,6 @@ TickType_t next_second_delay_ticks(time_t sampled_wall_second)
 TickType_t next_minute_delay_ticks(const struct tm &local)
 {
     return pdMS_TO_TICKS(ui_next_minute_delay_ms(local.tm_sec));
-}
-
-bool low_refresh_work_page_idle(const struct tm &local,
-                                const BatteryRuntimeSnapshot &battery,
-                                int active_page,
-                                const UiRuntimeSurfaceSnapshot &surfaces)
-{
-    return work_page_uses_low_refresh_idle(active_page) &&
-           !battery.low_battery_mode &&
-           !battery.charging &&
-           !surfaces.setup_portal_active &&
-           !surfaces.auxiliary_page_requested() &&
-           is_tm_plausible(local);
 }
 
 static_assert(sizeof(TickType_t) == sizeof(uint32_t),
@@ -104,18 +93,23 @@ TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
                                             int active_page,
                                             const UiRuntimeSurfaceSnapshot &surfaces)
 {
-    bool low_idle = battery.low_battery_mode &&
-                    !battery.charging &&
-                    !surfaces.auxiliary_page_requested() &&
-                    is_tm_plausible(local);
-    bool low_refresh_page_idle = low_refresh_work_page_idle(local,
-                                                            battery,
-                                                            active_page,
-                                                            surfaces);
+    bool low_idle = ui_low_battery_minute_idle(
+        battery.low_battery_mode,
+        surfaces.auxiliary_page_requested());
+    bool low_refresh_page_idle = ui_low_refresh_page_minute_idle(
+        work_page_uses_low_refresh_idle(active_page),
+        battery.low_battery_mode,
+        surfaces.setup_portal_active,
+        surfaces.auxiliary_page_requested());
+    const bool minute_level_wait = low_idle || low_refresh_page_idle;
+    const TickType_t second_delay_ticks =
+        (!minute_level_wait || battery_blink_visible)
+            ? next_second_delay_ticks(sampled_wall_second)
+            : 0;
     uint32_t delay_candidates[4] = {};
-    delay_candidates[0] = (low_idle || low_refresh_page_idle)
+    delay_candidates[0] = minute_level_wait
                               ? next_minute_delay_ticks(local)
-                              : next_second_delay_ticks(sampled_wall_second);
+                              : second_delay_ticks;
     if (active_page == kWorkPageXiaozhiAI &&
         !battery.low_battery_mode &&
         !surfaces.setup_portal_active &&
@@ -137,7 +131,7 @@ TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
         }
     }
     if (battery_blink_visible) {
-        delay_candidates[3] = next_second_delay_ticks(sampled_wall_second);
+        delay_candidates[3] = second_delay_ticks;
     }
     return static_cast<TickType_t>(ui_shortest_delay_ticks(
         delay_candidates,

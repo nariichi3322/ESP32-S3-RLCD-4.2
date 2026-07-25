@@ -10,7 +10,6 @@
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
-#include "ui_task_notify.h"
 
 #include "esp_err.h"
 #include "esp_log.h"
@@ -31,6 +30,8 @@
 #define BATTERY_CHARGING_STARTED_LOG_FORMAT "battery charging detected voltage=%.3fV soc=%d%%"
 #define BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT "battery charging animation completed voltage=%.3fV soc=%d%%"
 #define BATTERY_CHARGING_STOPPED_LOG_FORMAT "battery charging cleared voltage=%.3fV soc=%d%%"
+#define BATTERY_CHARGING_ADC_RETRY_LOG_FORMAT "battery ADC failed while charging, preserving state for up to %d retries"
+#define BATTERY_CHARGING_ADC_RETRY_EXHAUSTED_LOG_FORMAT "battery ADC charging retry grace exhausted after %d failures"
 
 static adc_oneshot_unit_handle_t s_battery_adc = nullptr;
 static adc_cali_handle_t s_battery_adc_cali = nullptr;
@@ -255,7 +256,7 @@ static bool read_battery_reading(BatteryReading *reading)
 
     float voltage = battery_voltage_from_adc_mv(adc_mv);
     int soc = battery_percent_from_voltage(voltage);
-    ESP_LOGI(TAG, BATTERY_ADC_SAMPLE_LOG_FORMAT, raw, adc_mv, voltage, soc);
+    ESP_LOGD(TAG, BATTERY_ADC_SAMPLE_LOG_FORMAT, raw, adc_mv, voltage, soc);
     reading->percent = soc;
     reading->voltage = voltage;
     return true;
@@ -315,14 +316,16 @@ static bool battery_visible_state_changed(const BatteryRuntimeSnapshot &previous
            previous.low_battery_mode != next.low_battery_mode;
 }
 
-void sample_battery()
+bool sample_battery()
 {
     static BatteryChargingTracker charging_tracker;
+    static int consecutive_read_failures = 0;
     BatteryRuntimeSnapshot previous;
     battery_runtime_snapshot_load(&previous);
     BatteryRuntimeSnapshot next = previous;
     BatteryReading reading;
     if (read_battery_reading(&reading)) {
+        consecutive_read_failures = 0;
         BatteryChargingState previous_state = {
             previous.charging,
             previous.animation_complete,
@@ -348,7 +351,25 @@ void sample_battery()
         }
         release_battery_gauge();
     } else {
-        reset_battery_state_after_sample_failure(charging_tracker, &next);
+        if (consecutive_read_failures <= kBatteryChargingReadFailureGraceSamples) {
+            ++consecutive_read_failures;
+        }
+        if (battery_charging_read_failure_within_grace(previous.charging,
+                                                       consecutive_read_failures)) {
+            if (consecutive_read_failures == 1) {
+                ESP_LOGI(TAG,
+                         BATTERY_CHARGING_ADC_RETRY_LOG_FORMAT,
+                         kBatteryChargingReadFailureGraceSamples);
+            }
+        } else {
+            if (previous.charging) {
+                ESP_LOGW(TAG,
+                         BATTERY_CHARGING_ADC_RETRY_EXHAUSTED_LOG_FORMAT,
+                         consecutive_read_failures);
+            }
+            reset_battery_state_after_sample_failure(charging_tracker, &next);
+            consecutive_read_failures = 0;
+        }
     }
     next.low_battery_mode = battery_low_mode_for_percent(previous.low_battery_mode,
                                                          next.percent,
@@ -362,7 +383,5 @@ void sample_battery()
     if (previous.low_battery_mode != next.low_battery_mode) {
         notify_network_sync_runtime_state_changed();
     }
-    if (state_changed) {
-        notify_ui_task();
-    }
+    return state_changed;
 }

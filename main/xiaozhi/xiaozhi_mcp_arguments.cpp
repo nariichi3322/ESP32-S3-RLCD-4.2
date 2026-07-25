@@ -23,8 +23,11 @@ bool json_integer_in_range(const cJSON *object,
                            int maximum,
                            int *value)
 {
-    const cJSON *item = cJSON_IsObject(object) ? cJSON_GetObjectItem(object, name) : nullptr;
-    if (!cJSON_IsNumber(item) || !std::isfinite(item->valuedouble) ||
+    if (!object || !name || !cJSON_IsObject(object)) {
+        return false;
+    }
+    const cJSON *item = cJSON_GetObjectItem(object, name);
+    if (!item || !cJSON_IsNumber(item) || !std::isfinite(item->valuedouble) ||
         item->valuedouble != static_cast<double>(item->valueint) ||
         item->valueint < minimum || item->valueint > maximum) {
         return false;
@@ -41,8 +44,11 @@ void copy_optional_label(const cJSON *arguments, char *label, size_t label_len)
         return;
     }
     label[0] = '\0';
-    const cJSON *item = cJSON_IsObject(arguments) ? cJSON_GetObjectItem(arguments, "label") : nullptr;
-    if (!cJSON_IsString(item) || !item->valuestring) {
+    if (!arguments || !cJSON_IsObject(arguments)) {
+        return;
+    }
+    const cJSON *item = cJSON_GetObjectItem(arguments, "label");
+    if (!item || !cJSON_IsString(item) || !item->valuestring) {
         return;
     }
     const size_t source_len = std::strlen(item->valuestring);
@@ -100,12 +106,13 @@ bool parse_countdown(const cJSON *arguments, XiaozhiMcpCountdownRequest *request
 
 bool parse_pomodoro(const cJSON *arguments, XiaozhiMcpPomodoroRequest *request)
 {
-    if (!request || !cJSON_IsObject(arguments)) {
+    if (!request || !arguments || !cJSON_IsObject(arguments)) {
         return false;
     }
     const cJSON *action = cJSON_GetObjectItem(arguments, kJsonFieldAction);
     const cJSON *duration = cJSON_GetObjectItem(arguments, kJsonFieldDurationSeconds);
-    if (!cJSON_IsString(action) || (duration && !cJSON_IsNumber(duration))) {
+    if (!action || !cJSON_IsString(action) || !action->valuestring ||
+        (duration && !cJSON_IsNumber(duration))) {
         return false;
     }
 
@@ -139,11 +146,11 @@ bool parse_pomodoro(const cJSON *arguments, XiaozhiMcpPomodoroRequest *request)
 
 bool parse_weather_city(const cJSON *arguments, XiaozhiMcpWeatherCityRequest *request)
 {
-    if (!request || !cJSON_IsObject(arguments)) {
+    if (!request || !arguments || !cJSON_IsObject(arguments)) {
         return false;
     }
     const cJSON *city = cJSON_GetObjectItem(arguments, "city");
-    if (!cJSON_IsString(city) || !city->valuestring || city->valuestring[0] == '\0' ||
+    if (!city || !cJSON_IsString(city) || !city->valuestring || city->valuestring[0] == '\0' ||
         std::strlen(city->valuestring) >= sizeof(request->city)) {
         return false;
     }

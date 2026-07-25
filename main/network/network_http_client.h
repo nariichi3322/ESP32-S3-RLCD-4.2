@@ -10,6 +10,7 @@ struct HttpBuffer {
     char *data;
     size_t len;
     size_t cap;
+    bool truncated;
 };
 
 esp_err_t http_event_handler(esp_http_client_event_t *evt);

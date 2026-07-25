@@ -14,17 +14,13 @@
 
 #include "i2c_equipment.h"
 
-#include "ui_task_notify.h"
-
 #include <esp_attr.h>
-#include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_timer.h>
 #include <nvs.h>
 
 #include <stddef.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <time.h>
 #include <new>
 #include <type_traits>
@@ -43,6 +39,8 @@ constexpr const char *kLegacyHourlyHistoryInvalidLog = "legacy hourly sensor his
 #define HOURLY_SLOT_SAVE_FAILED_LOG_FORMAT "save hourly sensor slot failed: %s"
 #define HOURLY_SNAPSHOT_INVALID_ARG_LOG "hourly sensor snapshot invalid arg"
 constexpr const char *kHourlyLoadBufferAllocFailedLog = "hourly sensor load buffer alloc failed";
+constexpr const char *kLegacyHourlyLoadBufferAllocFailedLog =
+    "legacy hourly sensor load buffer alloc failed";
 constexpr const char *kHourlyStateResetFailedLog = "hourly sensor history state reset failed";
 constexpr const char *kHourlyStatePublishFailedLog = "hourly sensor history state publish failed";
 constexpr const char *kLocalSensorTrendPublishFailedLog = "local sensor trend publish failed";
@@ -91,18 +89,11 @@ static_assert(kSensorHistoryMinutes >= (kSensorTrendWindowHours * kMinutesPerHou
               "sensor trend history must cover the full day-sampling trend window");
 static_assert(std::is_trivially_destructible<HourlySensorHistoryBlob>::value,
               "hourly history staging storage releases raw memory without a destructor call");
+static_assert(std::is_trivially_destructible<LegacyHourlySensorHistoryBlob>::value,
+              "legacy hourly history staging storage releases raw memory without a destructor call");
 bool should_log_nvs_read_error(esp_err_t err)
 {
     return err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND;
-}
-
-HourlySensorHistoryBlob empty_hourly_sensor_history()
-{
-    HourlySensorHistoryBlob history = {};
-    history.magic = kHourlyHistoryMagic;
-    history.version = sensor_history_format::kLegacyHourlyHistoryVersion;
-    history.count = kHourlyHistoryCount;
-    return history;
 }
 
 void store_loaded_hourly_sample(HourlySensorHistoryBlob *history,
@@ -307,21 +298,16 @@ void load_hourly_sensor_history()
         return;
     }
 
-    void *load_memory = heap_caps_calloc(1,
-                                         sizeof(HourlySensorHistoryBlob),
-                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!load_memory) {
-        load_memory = calloc(1, sizeof(HourlySensorHistoryBlob));
-    }
-    ScopedHeapBuffer<uint8_t> load_storage(
-        static_cast<uint8_t *>(load_memory),
-        sizeof(HourlySensorHistoryBlob));
+    ScopedHeapBuffer<uint8_t> load_storage(sizeof(HourlySensorHistoryBlob),
+                                           HeapBufferInit::kUninitialized,
+                                           HeapBufferStorage::kPsramPreferred);
     if (!load_storage) {
         ESP_LOGW(TAG, "%s", kHourlyLoadBufferAllocFailedLog);
         return;
     }
     HourlySensorHistoryBlob *loaded_history =
-        new (load_storage.get()) HourlySensorHistoryBlob(empty_hourly_sensor_history());
+        new (load_storage.get()) HourlySensorHistoryBlob;
+    sensor_history_format::initialize_empty_hourly_history(loaded_history);
     int64_t loaded_last_saved_at = 0;
     HourlySensorHistoryMeta meta = {};
     size_t meta_len = sizeof(meta);
@@ -345,15 +331,25 @@ void load_hourly_sensor_history()
         ESP_LOGW(TAG, HOURLY_META_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
     }
 
-    LegacyHourlySensorHistoryBlob legacy = {};
-    bool legacy_loaded = read_legacy_hourly_sensor_history(nvs.get(), &legacy);
+    ScopedHeapBuffer<uint8_t> legacy_storage(
+        sizeof(LegacyHourlySensorHistoryBlob),
+        HeapBufferInit::kUninitialized,
+        HeapBufferStorage::kPsramPreferred);
+    if (!legacy_storage) {
+        ESP_LOGW(TAG, "%s", kLegacyHourlyLoadBufferAllocFailedLog);
+        nvs.close();
+        return;
+    }
+    LegacyHourlySensorHistoryBlob *legacy =
+        new (legacy_storage.get()) LegacyHourlySensorHistoryBlob;
+    bool legacy_loaded = read_legacy_hourly_sensor_history(nvs.get(), legacy);
     nvs.close();
     if (!legacy_loaded) {
         return;
     }
-    *loaded_history = empty_hourly_sensor_history();
+    sensor_history_format::initialize_empty_hourly_history(loaded_history);
     loaded_last_saved_at = 0;
-    store_legacy_hourly_history_samples(legacy,
+    store_legacy_hourly_history_samples(*legacy,
                                         loaded_history,
                                         &loaded_last_saved_at);
     if (!publish_loaded_hourly_sensor_history(*loaded_history,
@@ -388,17 +384,17 @@ static bool save_hourly_sensor_slot(int index,
     return true;
 }
 
-static void record_hourly_sensor_sample(float temp, float humi)
+static bool record_hourly_sensor_sample(float temp, float humi)
 {
     struct tm local = {};
     if (!is_system_time_plausible(&local)) {
-        return;
+        return false;
     }
     time_t now = mktime(&local);
     time_t hour_start = hour_start_from_time(now);
     bool already_saved = hour_start == hourly_sensor_history_last_saved_at();
     if (hour_start <= 0 || already_saved) {
-        return;
+        return false;
     }
     int index = sensor_history_format::hourly_slot_index_for_time(hour_start);
     HourlySensorSample sample = {};
@@ -407,12 +403,13 @@ static void record_hourly_sensor_sample(float temp, float humi)
     sample.humidity = humi;
     sample.valid = 1;
     if (!save_hourly_sensor_slot(index, hour_start, sample)) {
-        return;
+        return false;
     }
     if (!publish_hourly_sensor_sample(index, hour_start, sample)) {
         ESP_LOGW(TAG, "%s", kHourlyStatePublishFailedLog);
-        return;
+        return false;
     }
+    return true;
 }
 
 bool get_hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history, uint32_t *version)
@@ -447,26 +444,39 @@ void init_shtc3_sensor(I2cMasterBus &i2c)
     }
 }
 
-void sample_sensor()
+bool sample_sensor()
 {
+    static int consecutive_read_failures = 0;
     float temp = 0.0f;
     float humi = 0.0f;
     bool sensor_ok = s_shtc3 && s_shtc3->Shtc3_ReadTempHumi(&temp, &humi) == 0;
+    bool ui_state_changed = false;
     if (sensor_ok) {
+        consecutive_read_failures = 0;
         int temperature_trend = 0;
         int humidity_trend = 0;
         calculate_updated_sensor_trends(temp, humi, &temperature_trend, &humidity_trend);
-        if (!local_sensor_state_publish_sample(temp,
-                                               humi,
-                                               temperature_trend,
-                                               humidity_trend)) {
+        bool state_published =
+            local_sensor_state_publish_sample(temp,
+                                              humi,
+                                              temperature_trend,
+                                              humidity_trend,
+                                              &ui_state_changed);
+        if (!state_published) {
             ESP_LOGW(TAG, "%s", kLocalSensorSamplePublishFailedLog);
         }
-        record_hourly_sensor_sample(temp, humi);
+        ui_state_changed |= record_hourly_sensor_sample(temp, humi);
     } else {
-        if (!local_sensor_state_publish_unavailable()) {
-            ESP_LOGW(TAG, "%s", kLocalSensorUnavailablePublishFailedLog);
+        if (consecutive_read_failures <= kLocalSensorReadFailureGraceSamples) {
+            ++consecutive_read_failures;
+        }
+        if (!local_sensor_read_failure_within_grace(consecutive_read_failures)) {
+            bool state_published =
+                local_sensor_state_publish_unavailable(&ui_state_changed);
+            if (!state_published) {
+                ESP_LOGW(TAG, "%s", kLocalSensorUnavailablePublishFailedLog);
+            }
         }
     }
-    notify_ui_task();
+    return ui_state_changed;
 }

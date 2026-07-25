@@ -4,13 +4,18 @@
 #include "app_constexpr.h"
 #include "sensor_time.h"
 #include "ui_clock_alert_state.h"
+#include "ui_clock_runtime.h"
+#include "ui_clock_time.h"
 #include "ui_draw_cache.h"
 #include "ui_flip_clock.h"
 #include "ui_page_state.h"
-#include "ui_views.h"
+#include "ui_progress.h"
 #include "ui_widgets.h"
+#include "ui_work_pages.h"
+#include "ui_work_status.h"
 #include "ui_xiaozhi.h"
 #include "weather_state.h"
+#include "work_page_ids.h"
 
 namespace {
 constexpr const char *kUiDatePlaceholder = "----/--/-- / 星期-";
@@ -26,6 +31,7 @@ static_assert(cstr_array_nonempty(kUiFormatTexts),
               "UI work-page placeholders must be non-empty");
 
 bool update_visible_work_page_body(const struct tm &local,
+                                   const ClockUiTimeSnapshot &time_snapshot,
                                    const ActiveWorkPageState &state)
 {
     bool changed = false;
@@ -42,7 +48,7 @@ bool update_visible_work_page_body(const struct tm &local,
         changed |= update_weather_board_page(local);
     }
     if (state.flip_clock) {
-        changed |= update_flip_clock_page(local);
+        changed |= update_flip_clock_page(local, time_snapshot);
     }
     if (state.xiaozhi) {
         changed |= update_xiaozhi_page(local);
@@ -106,6 +112,7 @@ bool update_active_work_page_invalid_time_labels(int active_work_page,
                           ? kWorkPageWeatherClock
                           : active_work_page;
     WorkPageStatusLabels labels = get_work_page_status_labels(status_page);
+    invalidate_work_page_status_time_cache(status_page);
     bool changed = set_label_text_if_changed(labels.date, kUiDatePlaceholder);
     changed |= set_label_text_if_changed(labels.time, kUiTimePlaceholder);
     return changed;
@@ -124,9 +131,16 @@ bool update_active_work_page_content(const struct tm &local,
 {
     bool changed = false;
     if (is_tm_plausible(local)) {
-        changed |= update_time_ui(local, state.weather_clock, active_page);
-        changed |= update_visible_work_page_body(local, state);
-        changed |= update_work_page_day_progress(active_page, local);
+        const ClockUiTimeSnapshot time_snapshot = clock_ui_time_snapshot(local);
+        changed |= update_time_ui(local,
+                                  time_snapshot,
+                                  state.weather_clock,
+                                  active_page,
+                                  status.chime_enabled,
+                                  low_battery_mode,
+                                  setup_portal_active);
+        changed |= update_visible_work_page_body(local, time_snapshot, state);
+        changed |= update_work_page_day_progress(active_page, time_snapshot);
         changed |= update_weather_alert_state(local,
                                               state,
                                               status_due,

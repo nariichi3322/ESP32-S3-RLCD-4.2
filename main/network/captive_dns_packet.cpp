@@ -98,7 +98,9 @@ int build_captive_dns_response(const uint8_t *query, int query_len, uint8_t *res
         return 0;
     }
 
-    memcpy(response, query, question_len);
+    if (response != query) {
+        memcpy(response, query, question_len);
+    }
     dns_write_u16(response, kDnsFlagsOffset, kDnsResponseFlagsStandardNoError);
     dns_write_u16(response, kDnsQuestionCountOffset, 1);
     dns_write_u16(response, kDnsAnswerCountOffset, 1);

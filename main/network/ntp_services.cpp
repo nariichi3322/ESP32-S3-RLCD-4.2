@@ -6,7 +6,9 @@
 #include "app_event_group.h"
 #include "app_metadata.h"
 #include "app_time_constants.h"
+#include "housekeeping_schedule_notify.h"
 #include "ntp_runtime_state.h"
+#include "ntp_wait_policy.h"
 #include "rtc_services.h"
 #include "sensor_time.h"
 #include "ui_task_notify.h"
@@ -46,6 +48,7 @@ constexpr size_t min_size(size_t a, size_t b)
 
 constexpr size_t kActiveNtpServerCount = min_size(kNtpServerCount, kConfiguredNtpServerSlots);
 constexpr TickType_t kNtpPollDelay = pdMS_TO_TICKS(kNtpPollDelayMs);
+constexpr TickType_t kNtpMaxFiniteWait = portMAX_DELAY - 1;
 constexpr const char *kNtpTimeSyncedEventUnavailableLog = "skip time synced event bit: app events unavailable";
 
 static_assert(cstr_array_nonempty(kNtpServers), "NTP server names must be non-empty");
@@ -54,6 +57,8 @@ static_assert(kActiveNtpServerCount <= kNtpServerCount, "active NTP server count
 static_assert(kActiveNtpServerCount <= kConfiguredNtpServerSlots, "active NTP server count must fit SNTP slots");
 static_assert(kNtpPollDelayMs > 0, "NTP poll delay must be positive");
 static_assert(kNtpPollDelay > 0, "NTP poll tick delay must be positive");
+static_assert(portMAX_DELAY > 1, "NTP finite wait requires a distinct maximum tick");
+static_assert(kNtpMaxFiniteWait > 0, "NTP finite wait must be positive");
 
 void set_time_synced_event_bit()
 {
@@ -71,8 +76,14 @@ void configure_ntp_servers()
     }
 }
 
+void on_ntp_time_sync(struct timeval *)
+{
+    app_event_group_set_bits(kNtpSyncCompletedBit);
+}
+
 void start_or_restart_ntp()
 {
+    esp_sntp_set_time_sync_notification_cb(on_ntp_time_sync);
     if (!s_ntp_started) {
         esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
         configure_ntp_servers();
@@ -81,6 +92,15 @@ void start_or_restart_ntp()
         return;
     }
     esp_sntp_restart();
+}
+
+void stop_ntp()
+{
+    if (!s_ntp_started) {
+        return;
+    }
+    esp_sntp_stop();
+    s_ntp_started = false;
 }
 
 void log_ntp_synced_time(const struct tm &local)
@@ -102,13 +122,27 @@ bool wait_for_ntp_synced_time(int max_retries, struct tm *synced_time)
     if (!synced_time) {
         return false;
     }
-    for (int retry = 0; retry < max_retries; ++retry) {
-        struct tm local = {};
-        if (ntp_synced_time_available(&local)) {
-            *synced_time = local;
-            return true;
-        }
-        vTaskDelay(kNtpPollDelay);
+    struct tm local = {};
+    if (ntp_synced_time_available(&local)) {
+        *synced_time = local;
+        return true;
+    }
+    const TickType_t total_wait = ntp_total_wait_ticks<TickType_t>(
+        static_cast<unsigned>(max_retries),
+        kNtpPollDelay,
+        kNtpMaxFiniteWait);
+    if (app_event_group_ready()) {
+        app_event_group_wait_bits(kNtpSyncCompletedBit,
+                                  pdTRUE,
+                                  pdFALSE,
+                                  total_wait);
+    } else {
+        vTaskDelay(total_wait);
+    }
+    local = {};
+    if (ntp_synced_time_available(&local)) {
+        *synced_time = local;
+        return true;
     }
     return false;
 }
@@ -125,15 +159,20 @@ bool perform_ntp_sync(int max_retries)
         ESP_LOGW(TAG, NTP_INVALID_RETRY_COUNT_LOG_FORMAT, max_retries);
         return false;
     }
+    app_event_group_clear_bits(kNtpSyncCompletedBit);
     esp_sntp_set_sync_status(SNTP_SYNC_STATUS_RESET);
     start_or_restart_ntp();
 
     struct tm local = {};
-    if (wait_for_ntp_synced_time(max_retries, &local)) {
+    const bool synced = wait_for_ntp_synced_time(max_retries, &local);
+    stop_ntp();
+    app_event_group_clear_bits(kNtpSyncCompletedBit);
+    if (synced) {
         sync_rtc_from_system_time();
         const time_t sync_time = time(nullptr);
         ntp_last_sync_time_store(sync_time);
         alarm_notify_time_changed();
+        notify_housekeeping_schedule_changed();
         set_time_synced_event_bit();
         notify_ui_task();
         log_ntp_synced_time(local);

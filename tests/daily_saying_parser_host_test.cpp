@@ -37,6 +37,9 @@ int main()
     expect_text("{\"content\":\"  山高水长  \"}", "山高水长");
     expect_text("{\"data\":{\"text\":\"一切顺利\"}}", "一切顺利");
     expect_text("{\"content\":\"优先\",\"text\":\"后选\"}", "优先");
+    expect_text("{\"content\":\"   \",\"text\":\"空白后选\"}", "空白后选");
+    expect_text("{\"data\":{\"content\":\"\\t\",\"text\":\"嵌套后选\"}}",
+                "嵌套后选");
     expect_text("\"根字符串\"", "根字符串");
     const std::string deepest_allowed = nested_data_json(9);
     expect_text(deepest_allowed.c_str(), "深层文字");

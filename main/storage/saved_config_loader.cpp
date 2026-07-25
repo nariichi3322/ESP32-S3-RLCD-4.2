@@ -19,7 +19,11 @@
 #include "ui_gallery_rotation_state.h"
 #include "xiaozhi_auto_return_state.h"
 
+#include <esp_attr.h>
 #include <esp_log.h>
+
+#include <stdint.h>
+#include <type_traits>
 
 using network_config_nvs::read_nvs_string;
 using network_config_nvs::read_nvs_u8_or_default;
@@ -48,24 +52,25 @@ constexpr const char *kOfflinePageMaskPersistFailedLog =
     "failed to persist offline-compatible page settings";
 
 struct LoadedSavedConfig {
-    esp_err_t ssid_err = ESP_FAIL;
-    esp_err_t pass_err = ESP_FAIL;
-    esp_err_t key_err = ESP_FAIL;
-    char wifi_ssid[kNetworkWifiSsidLen] = {};
-    char wifi_password[kNetworkWifiPasswordLen] = {};
-    char weather_api_key[kNetworkWeatherApiKeyLen] = {};
-    uint8_t chime = 0;
-    uint8_t all_day = 0;
-    uint8_t volume = chime_settings::kDefaultVolumePercent;
-    uint8_t sound = 0;
-    uint8_t page_mask = kPageMaskV5KnownBits;
-    uint8_t offline = 0;
-    uint8_t xiaozhi_auto_return = kDefaultXiaozhiAutoReturnEnabled ? 1 : 0;
-    uint8_t gallery_rotation = kDefaultGalleryRotationPeriod;
-    uint8_t page_order[kWorkPageCount] = {};
-    char manual_weather_city[kManualWeatherCityLen] = {};
-    bool have_page_order = false;
+    esp_err_t ssid_err;
+    esp_err_t pass_err;
+    esp_err_t key_err;
+    char wifi_ssid[kNetworkWifiSsidLen];
+    char wifi_password[kNetworkWifiPasswordLen];
+    char weather_api_key[kNetworkWeatherApiKeyLen];
+    uint8_t chime;
+    uint8_t all_day;
+    uint8_t volume;
+    uint8_t sound;
+    uint8_t page_mask;
+    uint8_t offline;
+    uint8_t xiaozhi_auto_return;
+    uint8_t gallery_rotation;
+    uint8_t page_order[kWorkPageCount];
+    char manual_weather_city[kManualWeatherCityLen];
+    bool have_page_order;
 };
+EXT_RAM_BSS_ATTR LoadedSavedConfig s_loaded_saved_config_workspace;
 
 static_assert(kWorkPageCount <= 8, "work page enabled mask is stored as uint8_t");
 static_assert((kPageMaskV4KnownBits & work_page_mask_bit(kWorkPageXiaozhiAI)) == 0,
@@ -76,6 +81,10 @@ static_assert((kPageMaskV5KnownBits & kWeatherBoardPageMask) == kWeatherBoardPag
               "weather board page must be covered by the current page mask");
 static_assert((kPageMaskV5KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
               "flip clock page must be covered by the current page mask");
+static_assert(std::is_trivially_default_constructible<LoadedSavedConfig>::value,
+              "saved config workspace must not require static construction");
+static_assert(std::is_trivially_destructible<LoadedSavedConfig>::value,
+              "saved config workspace is cleared without a destructor call");
 
 uint8_t normalize_chime_sound_index(uint8_t sound)
 {
@@ -91,46 +100,79 @@ bool apply_loaded_page_config(uint8_t page_mask,
                               const uint8_t *page_order,
                               bool have_page_order)
 {
-    work_page_enabled_mask_store(normalize_work_page_enabled_mask(page_mask));
+    const uint8_t online_mask = normalize_work_page_enabled_mask(page_mask);
+    work_page_enabled_mask_store(online_mask);
     if (have_page_order && page_order) {
         work_page_order_replace(page_order, kWorkPageCount);
     } else {
         normalize_work_page_order();
     }
-    uint8_t online_mask = work_page_enabled_mask_load();
+    uint8_t runtime_mask = online_mask;
     if (offline_mode_enabled_load()) {
-        work_page_enabled_mask_store(work_page_mask_for_offline_mode(online_mask));
+        runtime_mask = work_page_mask_for_offline_mode(online_mask);
+        if (runtime_mask != online_mask) {
+            work_page_enabled_mask_store(runtime_mask);
+        }
     }
     active_work_page_store(first_enabled_work_page());
-    return online_mask != work_page_enabled_mask_load();
+    return runtime_mask != online_mask;
 }
 
-LoadedSavedConfig read_saved_config(nvs_handle_t nvs)
+void clear_loaded_saved_config(LoadedSavedConfig *loaded)
 {
-    LoadedSavedConfig loaded = {};
-    loaded.ssid_err =
-        read_nvs_string(nvs, kWifiSsidKey, loaded.wifi_ssid, sizeof(loaded.wifi_ssid));
-    loaded.pass_err = read_nvs_string(
-        nvs, kWifiPassKey, loaded.wifi_password, sizeof(loaded.wifi_password));
-    loaded.key_err = read_nvs_string(
-        nvs, kWeatherApiKeyKey, loaded.weather_api_key, sizeof(loaded.weather_api_key));
+    if (!loaded) {
+        return;
+    }
+    volatile uint8_t *bytes =
+        reinterpret_cast<volatile uint8_t *>(loaded);
+    for (size_t remaining = sizeof(*loaded); remaining > 0; --remaining) {
+        *bytes++ = 0;
+    }
+}
+
+void initialize_loaded_saved_config(LoadedSavedConfig *loaded)
+{
+    if (!loaded) {
+        return;
+    }
+    clear_loaded_saved_config(loaded);
+    loaded->ssid_err = ESP_FAIL;
+    loaded->pass_err = ESP_FAIL;
+    loaded->key_err = ESP_FAIL;
+    loaded->volume = chime_settings::kDefaultVolumePercent;
+    loaded->page_mask = kPageMaskV5KnownBits;
+    loaded->xiaozhi_auto_return = kDefaultXiaozhiAutoReturnEnabled ? 1 : 0;
+    loaded->gallery_rotation = kDefaultGalleryRotationPeriod;
+}
+
+void read_saved_config(nvs_handle_t nvs, LoadedSavedConfig *loaded)
+{
+    if (!loaded) {
+        return;
+    }
+    initialize_loaded_saved_config(loaded);
+    loaded->ssid_err =
+        read_nvs_string(nvs, kWifiSsidKey, loaded->wifi_ssid, sizeof(loaded->wifi_ssid));
+    loaded->pass_err = read_nvs_string(
+        nvs, kWifiPassKey, loaded->wifi_password, sizeof(loaded->wifi_password));
+    loaded->key_err = read_nvs_string(
+        nvs, kWeatherApiKeyKey, loaded->weather_api_key, sizeof(loaded->weather_api_key));
     network_chime_storage::StoredChimeSettings chime =
         network_chime_storage::read(nvs, chime_settings::kDefaultVolumePercent);
-    loaded.chime = chime.enabled;
-    loaded.all_day = chime.all_day;
-    loaded.volume = chime.volume;
-    loaded.sound = chime.sound;
-    loaded.page_mask = read_saved_page_mask(nvs);
-    loaded.offline = read_nvs_u8_or_default(nvs, kOfflineModeKey, 0);
-    loaded.xiaozhi_auto_return = read_nvs_u8_or_default(
+    loaded->chime = chime.enabled;
+    loaded->all_day = chime.all_day;
+    loaded->volume = chime.volume;
+    loaded->sound = chime.sound;
+    loaded->page_mask = read_saved_page_mask(nvs);
+    loaded->offline = read_nvs_u8_or_default(nvs, kOfflineModeKey, 0);
+    loaded->xiaozhi_auto_return = read_nvs_u8_or_default(
         nvs, kXiaozhiAutoReturnKey, kDefaultXiaozhiAutoReturnEnabled ? 1 : 0);
-    loaded.gallery_rotation = read_nvs_u8_or_default(
+    loaded->gallery_rotation = read_nvs_u8_or_default(
         nvs, kGalleryRotationKey, kDefaultGalleryRotationPeriod);
     network_weather_city_storage::load_preferred_city(
-        nvs, loaded.manual_weather_city, sizeof(loaded.manual_weather_city));
-    loaded.have_page_order =
-        read_saved_page_order(nvs, loaded.page_order, sizeof(loaded.page_order));
-    return loaded;
+        nvs, loaded->manual_weather_city, sizeof(loaded->manual_weather_city));
+    loaded->have_page_order =
+        read_saved_page_order(nvs, loaded->page_order, sizeof(loaded->page_order));
 }
 
 bool apply_loaded_config(const LoadedSavedConfig &loaded)
@@ -162,14 +204,17 @@ bool apply_loaded_config(const LoadedSavedConfig &loaded)
 
 bool load_saved_config()
 {
+    LoadedSavedConfig &loaded = s_loaded_saved_config_workspace;
     ScopedNvsHandle nvs;
     esp_err_t open_err = nvs.open(NVS_READONLY, kNvsActionLoadingConfig, false);
     if (open_err != ESP_OK) {
+        clear_loaded_saved_config(&loaded);
         return false;
     }
-    LoadedSavedConfig loaded = read_saved_config(nvs.get());
+    read_saved_config(nvs.get(), &loaded);
     nvs.close();
     bool offline_page_mask_changed = apply_loaded_config(loaded);
+    clear_loaded_saved_config(&loaded);
     if (offline_page_mask_changed && !save_work_page_settings()) {
         ESP_LOGW(TAG, "%s", kOfflinePageMaskPersistFailedLog);
     }

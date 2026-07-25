@@ -13,7 +13,7 @@
 #include "network_credentials_state.h"
 #include "network_diagnostics_catalog.h"
 #include "network_diagnostics_state.h"
-#include "network_json_root.h"
+#include "network_public_ip_parser.h"
 #include "ntp_services.h"
 #include "scoped_heap_buffer.h"
 #include "ui_task_notify.h"
@@ -34,10 +34,8 @@ constexpr size_t kNetworkDiagWideProbeBufferSize = 1024;
 constexpr size_t kNetworkDiagLocationTextSize = 32;
 constexpr size_t kNetworkDiagCityTextSize = 32;
 constexpr size_t kNetworkDiagPublicIpTextSize = 48;
-constexpr int kNetworkDiagJsonSearchMaxDepth = 8;
 constexpr int kNetworkDiagNtpMaxRetries = 5;
 constexpr const char *kNetworkDiagPublicIpUrl = "https://uapis.cn/api/v1/network/myip";
-constexpr const char *kNetworkDiagPublicIpJsonKey = "ip";
 constexpr const char *kNetworkDiagQweatherDnsHost = "dev.qweather.com";
 constexpr const char *kNetworkDiagGithubDnsHost = "raw.githubusercontent.com";
 constexpr const char *kNetworkDiagStatusWaiting = "等待";
@@ -67,7 +65,6 @@ constexpr size_t kNetworkDiagIpv4TextMinSize = sizeof("255.255.255.255");
 #define NETWORK_DIAG_LINE_TRUNCATED_FORMAT "network diag line truncated index=%d len=%d"
 constexpr const char *const kNetworkDiagTexts[] = {
     kNetworkDiagPublicIpUrl,
-    kNetworkDiagPublicIpJsonKey,
     kNetworkDiagQweatherDnsHost,
     kNetworkDiagGithubDnsHost,
     kNetworkDiagStatusWaiting,
@@ -137,7 +134,6 @@ static_assert(kNetworkDiagCityTextSize > 1, "network diag city text buffer must 
 static_assert(kNetworkDiagPublicIpTextSize > 1, "network diag public IP text buffer must fit text and NUL");
 static_assert(kNetworkDiagPublicIpTextSize >= kNetworkDiagIpv4TextMinSize,
               "network diag public IP text buffer must fit IPv4 text");
-static_assert(kNetworkDiagJsonSearchMaxDepth > 0, "network diag JSON search depth must be positive");
 static_assert(kNetworkDiagNtpMaxRetries > 0, "network diag NTP retry count must be positive");
 static_assert(array_count(kNetworkDiagTexts) > 0,
               "network diagnostic text guard must cover fixed texts and logs");
@@ -220,79 +216,6 @@ bool http_probe_ok(const char *url, size_t buffer_len = kNetworkDiagDefaultProbe
     return http_get_text(url, response.get(), response.size(), nullptr) == ESP_OK;
 }
 
-bool copy_json_string_value(const cJSON *item, char *out, size_t out_len)
-{
-    if (!cJSON_IsString(item) || !item->valuestring || !app_text::output_buffer_available(out, out_len)) {
-        return false;
-    }
-    strlcpy(out, item->valuestring, out_len);
-    return true;
-}
-
-bool find_json_string_recursive(const cJSON *node,
-                                const char *name,
-                                char *out,
-                                size_t out_len,
-                                int depth = 0)
-{
-    if (!node || !name || !app_text::output_buffer_available(out, out_len)) {
-        return false;
-    }
-    if (depth > kNetworkDiagJsonSearchMaxDepth) {
-        return false;
-    }
-    if (cJSON_IsObject(node)) {
-        const cJSON *item = cJSON_GetObjectItemCaseSensitive(node, name);
-        if (copy_json_string_value(item, out, out_len)) {
-            return true;
-        }
-        cJSON_ArrayForEach(item, node)
-        {
-            if (find_json_string_recursive(item, name, out, out_len, depth + 1)) {
-                return true;
-            }
-        }
-    } else if (cJSON_IsArray(node)) {
-        const cJSON *item = nullptr;
-        cJSON_ArrayForEach(item, node)
-        {
-            if (find_json_string_recursive(item, name, out, out_len, depth + 1)) {
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-bool network_diag_token_space(char ch)
-{
-    return ch == ' ' || ch == '\r' || ch == '\n' || ch == '\t';
-}
-
-bool copy_first_token_if_ip_like(const char *text, char *out, size_t out_len)
-{
-    if (!text || !app_text::output_buffer_available(out, out_len)) {
-        return false;
-    }
-    const char *start = text;
-    while (network_diag_token_space(*start)) {
-        ++start;
-    }
-    if (!*start || !strchr(start, '.')) {
-        return false;
-    }
-    size_t len = 0;
-    while (start[len] && !network_diag_token_space(start[len])) {
-        ++len;
-    }
-    if (len == 0 || len >= out_len) {
-        return false;
-    }
-    memcpy(out, start, len);
-    out[len] = '\0';
-    return true;
-}
-
 bool lookup_public_ip(char *out, size_t out_len)
 {
     if (!app_text::output_buffer_available(out, out_len)) {
@@ -312,13 +235,7 @@ bool lookup_public_ip(char *out, size_t out_len)
                       response.get(),
                       response.size(),
                       nullptr) == ESP_OK) {
-        NetworkJsonRoot root(response.get());
-        if (root) {
-            ok = find_json_string_recursive(root.get(), kNetworkDiagPublicIpJsonKey, out, out_len);
-        }
-        if (!ok) {
-            ok = copy_first_token_if_ip_like(response.get(), out, out_len);
-        }
+        ok = network_public_ip_parse_response(response.get(), out, out_len);
         if (!ok) {
             ESP_LOGW(TAG, "%s", NETWORK_DIAG_PUBLIC_IP_PARSE_FAILED_LOG);
         }

@@ -27,6 +27,14 @@ inline constexpr EventBits_t kSetupPortalStartBit = 1U << 13;
 // The captive portal publishes this edge after the phone has received the
 // provisioning result, or when the portal closes while the network task waits.
 inline constexpr EventBits_t kProvisioningFeedbackBit = 1U << 14;
+// Visible-page requests are cancellable when the user leaves the page. Keep
+// them separate from settings requests so navigation cannot cancel an
+// explicit user action.
+inline constexpr EventBits_t kVisibleWeatherSyncBit = 1U << 15;
+inline constexpr EventBits_t kVisibleSayingSyncBit = 1U << 16;
+// SNTP publishes this edge after applying a network time sample. Only the
+// active NTP wait consumes it; it is not a network-sync request.
+inline constexpr EventBits_t kNtpSyncCompletedBit = 1U << 17;
 
 bool app_event_group_init();
 void app_event_group_release();

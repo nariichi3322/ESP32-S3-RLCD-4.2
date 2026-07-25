@@ -1,13 +1,24 @@
 // 构建温湿时钟的静态控件、数字牌、传感器面板和日期面板。
 #include "ui_flip_clock.h"
 #include "ui_flip_clock_objects.h"
-#include "ui_views.h"
 
 #include "app_constexpr.h"
+#include "app_metadata.h"
+#include "battery_runtime_state.h"
 #include "flip_sensor_icons.h"
 #include "ui_battery.h"
+#include "ui_canvas_primitives.h"
 #include "ui_draw_cache.h"
+#include "ui_fonts.h"
 #include "ui_inverted_clock_card.h"
+#include "ui_page_state.h"
+#include "ui_progress.h"
+#include "ui_widgets.h"
+#include "ui_work_status.h"
+#include "work_page_ids.h"
+
+#include <esp_attr.h>
+#include <esp_log.h>
 
 #define FLIP_CLOCK_TEMP_LABEL_CREATE_FAILED_LOG "flip clock temp label create failed"
 #define FLIP_CLOCK_HUMIDITY_LABEL_CREATE_FAILED_LOG "flip clock humidity label create failed"
@@ -61,12 +72,12 @@ static constexpr int kFlipDateBoldYOffset = 1;
 static constexpr const char *kFlipTempPlaceholder = "--.-C";
 static constexpr const char *kFlipHumiPlaceholder = "--%";
 static constexpr const char *kFlipDayPlaceholder = "--";
-lv_color_t *s_flip_clock_card_canvas_buffer[kCardCount];
+EXT_RAM_BSS_ATTR lv_color_t *s_flip_clock_card_canvas_buffer[kCardCount];
 lv_color_t *s_flip_clock_temp_mood_canvas_buffer;
 lv_color_t *s_flip_clock_humi_mood_canvas_buffer;
 lv_color_t *s_flip_clock_temp_trend_canvas_buffer;
 lv_color_t *s_flip_clock_humi_trend_canvas_buffer;
-FlipClockObjectRefs s_flip_clock_objects;
+EXT_RAM_BSS_ATTR FlipClockObjectRefs s_flip_clock_objects;
 
 static_assert(array_count(kCardX) == kCardCount,
               "flip clock card X table must match card count");

@@ -1,4 +1,4 @@
-// 验证联网凭据在并发读写时始终以同一代完整快照对外提供。
+// 验证联网凭据在并发读写时始终以同一代成对快照对外提供。
 #include "network_credentials_state.h"
 
 #include <assert.h>
@@ -18,16 +18,34 @@ constexpr const char *kApiKeyA = "weather-key-a";
 constexpr const char *kSsidB = "clock-net-b";
 constexpr const char *kPasswordB = "password-b";
 constexpr const char *kApiKeyB = "weather-key-b";
-bool snapshot_matches(const NetworkCredentialsSnapshot &snapshot,
-                      const char *ssid,
-                      const char *password,
-                      const char *api_key)
+constexpr const char *kShortSsid = "n";
+constexpr const char *kShortPassword = "p";
+constexpr const char *kShortApiKey = "k";
+constexpr const char *kMaxSsid = "12345678901234567890123456789012";
+constexpr const char *kMaxPassword =
+    "1234567890123456789012345678901234567890123456789012345678901234";
+bool credentials_match(const char *actual_ssid,
+                       const char *actual_password,
+                       const char *ssid,
+                       const char *password)
 {
-    return snapshot.wifi_configured &&
-           snapshot.weather_api_key_configured &&
-           strcmp(snapshot.wifi_ssid, ssid) == 0 &&
-           strcmp(snapshot.wifi_password, password) == 0 &&
-           strcmp(snapshot.weather_api_key, api_key) == 0;
+    return strcmp(actual_ssid, ssid) == 0 &&
+           strcmp(actual_password, password) == 0 &&
+           actual_ssid[0] != '\0';
+}
+
+void expect_text_with_zero_tail(const char *actual,
+                                size_t capacity,
+                                const char *expected)
+{
+    assert(actual);
+    assert(expected);
+    assert(strcmp(actual, expected) == 0);
+    const size_t text_bytes = strlen(expected) + 1;
+    assert(text_bytes <= capacity);
+    for (size_t i = text_bytes; i < capacity; ++i) {
+        assert(actual[i] == '\0');
+    }
 }
 
 void expect_mutex_released()
@@ -40,36 +58,80 @@ void expect_mutex_released()
 
 int main()
 {
-    NetworkCredentialsSnapshot unavailable = {};
-    memset(&unavailable, 0x7f, sizeof(unavailable));
-    network_credentials_snapshot(&unavailable);
-    assert(unavailable.wifi_ssid[0] == '\0');
-    assert(!unavailable.wifi_configured);
+    char ssid[kNetworkWifiSsidLen] = {};
+    char password[kNetworkWifiPasswordLen] = {};
+    memset(ssid, 0x7f, sizeof(ssid));
+    memset(password, 0x7f, sizeof(password));
+    assert(!network_wifi_credentials_copy(
+        ssid, sizeof(ssid), password, sizeof(password)));
+    assert(ssid[0] == '\0');
+    assert(password[0] == '\0');
     network_credentials_store(kSsidA, kPasswordA, kApiKeyA, true, true);
     assert(!network_all_online_credentials_configured());
 
     assert(network_credentials_state_init());
     assert(network_credentials_state_init());
     network_credentials_clear();
-    NetworkCredentialsSnapshot snapshot = {};
-    network_credentials_snapshot(&snapshot);
-    assert(!snapshot.wifi_configured);
-    assert(!snapshot.weather_api_key_configured);
-    assert(snapshot.wifi_ssid[0] == '\0');
-    assert(snapshot.wifi_password[0] == '\0');
-    assert(snapshot.weather_api_key[0] == '\0');
+    assert(!network_wifi_credentials_copy(
+        ssid, sizeof(ssid), password, sizeof(password)));
+    assert(ssid[0] == '\0');
+    assert(password[0] == '\0');
     assert(!network_all_online_credentials_configured());
 
-    char ssid[kNetworkWifiSsidLen] = {};
     char api_key[kNetworkWeatherApiKeyLen] = {};
     char too_small[4] = {'x', '\0'};
     assert(!network_wifi_ssid_snapshot(too_small, sizeof(too_small)));
     assert(too_small[0] == '\0');
     assert(!network_weather_api_key_snapshot(nullptr, 0));
+    memset(password, 'x', sizeof(password));
+    assert(!network_wifi_credentials_copy(
+        too_small, sizeof(too_small), password, sizeof(password)));
+    assert(too_small[0] == '\0');
+    assert(password[0] == '\0');
+    memset(ssid, 'x', sizeof(ssid));
+    assert(!network_wifi_credentials_copy(
+        ssid, sizeof(ssid), too_small, sizeof(too_small)));
+    assert(ssid[0] == '\0');
+    assert(too_small[0] == '\0');
+    memset(password, 'x', sizeof(password));
+    assert(!network_wifi_credentials_copy(
+        nullptr, 0, password, sizeof(password)));
+    assert(password[0] == '\0');
+    memset(ssid, 'x', sizeof(ssid));
+    assert(!network_wifi_credentials_copy(
+        ssid, sizeof(ssid), nullptr, 0));
+    assert(ssid[0] == '\0');
 
     network_credentials_store(kSsidA, kPasswordA, kApiKeyA, true, true);
-    network_credentials_snapshot(&snapshot);
-    assert(snapshot_matches(snapshot, kSsidA, kPasswordA, kApiKeyA));
+    assert(network_wifi_credentials_copy(
+        ssid, sizeof(ssid), password, sizeof(password)));
+    assert(credentials_match(ssid, password, kSsidA, kPasswordA));
+    char driver_ssid[kNetworkWifiSsidLen - 1] = {};
+    char driver_password[kNetworkWifiPasswordLen - 1] = {};
+    assert(network_wifi_credentials_copy(
+        driver_ssid,
+        sizeof(driver_ssid),
+        driver_password,
+        sizeof(driver_password)));
+    assert(credentials_match(
+        driver_ssid, driver_password, kSsidA, kPasswordA));
+    network_credentials_store(
+        kMaxSsid, kMaxPassword, kApiKeyA, true, true);
+    assert(network_wifi_credentials_copy(
+        ssid, sizeof(ssid), password, sizeof(password)));
+    assert(credentials_match(ssid, password, kMaxSsid, kMaxPassword));
+    assert(network_wifi_credentials_copy(
+        driver_ssid,
+        sizeof(driver_ssid),
+        driver_password,
+        sizeof(driver_password)));
+    assert(memcmp(driver_ssid, kMaxSsid, sizeof(driver_ssid)) == 0);
+    assert(memcmp(driver_password,
+                  kMaxPassword,
+                  sizeof(driver_password)) == 0);
+    assert(memchr(driver_ssid, '\0', sizeof(driver_ssid)) == nullptr);
+    assert(memchr(driver_password, '\0', sizeof(driver_password)) == nullptr);
+    network_credentials_store(kSsidA, kPasswordA, kApiKeyA, true, true);
     assert(network_wifi_ssid_snapshot(ssid, sizeof(ssid)));
     assert(strcmp(ssid, kSsidA) == 0);
     assert(network_weather_api_key_snapshot(api_key, sizeof(api_key)));
@@ -77,13 +139,29 @@ int main()
     assert(network_all_online_credentials_configured());
     expect_mutex_released();
 
+    network_credentials_store(kShortSsid,
+                              kShortPassword,
+                              kShortApiKey,
+                              true,
+                              true);
+    assert(network_wifi_credentials_copy(
+        ssid, sizeof(ssid), password, sizeof(password)));
+    assert(network_weather_api_key_snapshot(api_key, sizeof(api_key)));
+    expect_text_with_zero_tail(ssid, sizeof(ssid), kShortSsid);
+    expect_text_with_zero_tail(password, sizeof(password), kShortPassword);
+    expect_text_with_zero_tail(api_key, sizeof(api_key), kShortApiKey);
+    network_credentials_store(kSsidA, kPasswordA, kApiKeyA, true, true);
+
     const NetworkCredentialsAvailability availability_before_failure =
         network_credentials_availability();
     g_fail_mutex_take.store(true, std::memory_order_release);
     network_credentials_store(kSsidB, kPasswordB, kApiKeyB, true, true);
-    memset(&snapshot, 0x7f, sizeof(snapshot));
-    network_credentials_snapshot(&snapshot);
-    assert(snapshot.wifi_ssid[0] == '\0');
+    memset(ssid, 0x7f, sizeof(ssid));
+    memset(password, 0x7f, sizeof(password));
+    assert(!network_wifi_credentials_copy(
+        ssid, sizeof(ssid), password, sizeof(password)));
+    assert(ssid[0] == '\0');
+    assert(password[0] == '\0');
     memset(ssid, 'x', sizeof(ssid));
     assert(!network_wifi_ssid_snapshot(ssid, sizeof(ssid)));
     assert(ssid[0] == '\0');
@@ -92,8 +170,9 @@ int main()
     assert(network_credentials_availability().weather_api_key_configured ==
            availability_before_failure.weather_api_key_configured);
     g_fail_mutex_take.store(false, std::memory_order_release);
-    network_credentials_snapshot(&snapshot);
-    assert(snapshot_matches(snapshot, kSsidA, kPasswordA, kApiKeyA));
+    assert(network_wifi_credentials_copy(
+        ssid, sizeof(ssid), password, sizeof(password)));
+    assert(credentials_match(ssid, password, kSsidA, kPasswordA));
     expect_mutex_released();
 
     std::atomic<bool> writer_done{false};
@@ -108,9 +187,10 @@ int main()
         writer_done.store(true, std::memory_order_release);
     });
     do {
-        network_credentials_snapshot(&snapshot);
-        assert(snapshot_matches(snapshot, kSsidA, kPasswordA, kApiKeyA) ||
-               snapshot_matches(snapshot, kSsidB, kPasswordB, kApiKeyB));
+        assert(network_wifi_credentials_copy(
+            ssid, sizeof(ssid), password, sizeof(password)));
+        assert(credentials_match(ssid, password, kSsidA, kPasswordA) ||
+               credentials_match(ssid, password, kSsidB, kPasswordB));
     } while (!writer_done.load(std::memory_order_acquire));
     writer.join();
 
@@ -134,9 +214,10 @@ int main()
     availability_writer.join();
 
     network_credentials_store("", "unused", "", true, true);
-    network_credentials_snapshot(&snapshot);
-    assert(!snapshot.wifi_configured);
-    assert(!snapshot.weather_api_key_configured);
+    assert(!network_wifi_credentials_copy(
+        ssid, sizeof(ssid), password, sizeof(password)));
+    assert(ssid[0] == '\0');
+    assert(password[0] == '\0');
     assert(!network_wifi_credentials_configured());
     assert(!network_weather_api_key_configured());
 

@@ -16,9 +16,14 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
+try:
+    from github_firmware_artifacts import normalize_artifact_metadata
+except ModuleNotFoundError:
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from github_firmware_artifacts import normalize_artifact_metadata
+
 
 VERSION_RE = re.compile(r"^v\d+\.\d+\.\d+$")
-SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 GITEE_API_BASE = "https://gitee.com/api/v5"
 
 
@@ -39,18 +44,6 @@ def read_json_object(path: Path, label: str) -> dict[str, object]:
     return value
 
 
-def normalize_metadata(value: object, label: str) -> dict[str, object]:
-    if not isinstance(value, dict):
-        raise ValueError(f"{label} metadata must be an object")
-    sha256 = str(value.get("sha256", "")).lower()
-    size = value.get("size")
-    if not SHA256_RE.fullmatch(sha256):
-        raise ValueError(f"{label} has an invalid SHA256")
-    if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
-        raise ValueError(f"{label} has an invalid size")
-    return {"sha256": sha256, "size": size}
-
-
 def release_snapshot(
     version: str,
     latest: dict[str, object],
@@ -69,9 +62,9 @@ def release_snapshot(
     if len(matches) != 1:
         raise ValueError("source versions manifest must contain one requested version")
     item = matches[0]
-    app = normalize_metadata(item.get("app"), "source app")
-    merged = normalize_metadata(item.get("merged"), "source merged")
-    if app != normalize_metadata(latest, "source latest app"):
+    app = normalize_artifact_metadata(item.get("app"), "source app")
+    merged = normalize_artifact_metadata(item.get("merged"), "source merged")
+    if app != normalize_artifact_metadata(latest, "source latest app"):
         raise ValueError("source latest and versions app metadata disagree")
     return {
         "notes": str(item.get("notes", latest.get("notes", ""))).strip(),

@@ -86,6 +86,25 @@ void test_valid_a_record_response()
                   kExpectedAnswer,
                   sizeof(kExpectedAnswer)) == 0);
 }
+
+void test_in_place_a_record_response()
+{
+    uint8_t expected[kCaptiveDnsPacketSize] = {};
+    int expected_len = build_captive_dns_response(kExampleQuery,
+                                                  sizeof(kExampleQuery),
+                                                  expected,
+                                                  sizeof(expected));
+    assert(expected_len > 0);
+
+    uint8_t packet[kCaptiveDnsPacketSize] = {};
+    memcpy(packet, kExampleQuery, sizeof(kExampleQuery));
+    int packet_len = build_captive_dns_response(packet,
+                                                sizeof(kExampleQuery),
+                                                packet,
+                                                sizeof(packet));
+    assert(packet_len == expected_len);
+    assert(memcmp(packet, expected, expected_len) == 0);
+}
 } // namespace
 
 int main()
@@ -93,5 +112,6 @@ int main()
     test_invalid_arguments();
     test_invalid_queries();
     test_valid_a_record_response();
+    test_in_place_a_record_response();
     return 0;
 }

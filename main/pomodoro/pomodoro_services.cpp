@@ -106,12 +106,11 @@ void play_completion_audio()
     s_stop_alert_requested.store(false);
     set_alerting(true);
     xiaozhi_ai_set_pomodoro_audio_suspended(true);
-    for (uint32_t waited = 0;
-         is_audio_playing() && waited < kAudioReleaseWaitMs && !s_stop_alert_requested.load();
-         waited += kAudioReleasePollMs) {
-        vTaskDelay(pdMS_TO_TICKS(kAudioReleasePollMs));
-    }
-    if (!s_stop_alert_requested.load() && !is_audio_playing()) {
+    const bool audio_idle =
+        wait_for_audio_playback_idle(kAudioReleaseWaitMs,
+                                     kAudioReleasePollMs,
+                                     completion_stop_requested);
+    if (!s_stop_alert_requested.load() && audio_idle) {
         (void)play_chime_sound_repeated_blocking(kCompletionSoundIndex,
                                                  kCompletionSoundRepeats,
                                                  completion_stop_requested);

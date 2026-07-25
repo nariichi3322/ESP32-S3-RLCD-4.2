@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "app_metadata.h"
 #include "app_text_format.h"
+#include "http_response_policy.h"
 #include "http_timeout_policy.h"
 #include "network_boot_sync.h"
 #include "network_gzip.h"
@@ -12,9 +13,13 @@
 #include "scoped_heap_buffer.h"
 #include "scoped_http_client.h"
 
+#include "esp_attr.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "miniz.h"
+
+#include <stdint.h>
+#include <string.h>
 
 namespace {
 constexpr size_t kGzipHeaderProbeSize = 3;
@@ -36,6 +41,45 @@ constexpr const char *kHttpGetInvalidArgLog = "http get invalid arg";
 constexpr const char *kHttpBootBudgetExhaustedLog = "http get skipped: boot sync time budget exhausted";
 constexpr const char *kHttpClientInitFailedLog = "http client init failed";
 constexpr const char *kHttpTransactionLockTimeoutLog = "http transaction deferred: TLS session is busy";
+
+// All HTTPS/WSS activity is serialized by NetworkHttpTransactionGuard. Keep
+// the relatively large ESP-IDF request descriptor out of the network task
+// stack and clear borrowed pointers before releasing that transaction lock.
+EXT_RAM_BSS_ATTR esp_http_client_config_t s_http_text_config_workspace;
+
+class HttpTextConfigWorkspaceGuard {
+public:
+    HttpTextConfigWorkspaceGuard()
+    {
+        clear();
+    }
+
+    ~HttpTextConfigWorkspaceGuard()
+    {
+        clear();
+    }
+
+    HttpTextConfigWorkspaceGuard(const HttpTextConfigWorkspaceGuard &) = delete;
+    HttpTextConfigWorkspaceGuard &operator=(const HttpTextConfigWorkspaceGuard &) = delete;
+
+    esp_http_client_config_t &config()
+    {
+        return s_http_text_config_workspace;
+    }
+
+private:
+    static void clear()
+    {
+        volatile uint8_t *bytes =
+            reinterpret_cast<volatile uint8_t *>(&s_http_text_config_workspace);
+        for (size_t remaining = sizeof(s_http_text_config_workspace);
+             remaining > 0;
+             --remaining) {
+            *bytes++ = 0;
+        }
+    }
+};
+
 static_assert(kGzipHeaderProbeSize >= 3, "gzip header probe must cover magic and compression method");
 static_assert(kHttpStatusOkMin >= 100 && kHttpStatusOkMin < kHttpStatusOkMax,
               "HTTP success lower bound must be a valid status below upper bound");
@@ -51,7 +95,8 @@ static_assert(kHttpPreviewBufferSize == kHttpPreviewMaxChars + kCStringTerminato
 #define HTTP_PARSE_FAILED_FORMAT "%s parse failed len=%u head=%02x %02x %02x %02x body=%s"
 #define HTTP_GET_FAILED_WITH_BODY_FORMAT "http get failed status=%d err=%s body=%s"
 #define HTTP_GET_FAILED_FORMAT "http get failed status=%d err=%s"
-#define HTTP_RESPONSE_TRUNCATED_FORMAT "http response may be truncated status=%d content_len=%lld buffer=%u"
+#define HTTP_RESPONSE_TRUNCATED_FORMAT \
+    "http response truncated status=%d content_len=%lld received=%u buffer=%u overflow=%d"
 #define HTTP_GET_OK_FORMAT "http get ok status=%d len=%u gzip=%d"
 #define HTTP_SET_HEADER_FAILED_FORMAT "http set header failed name=%s err=%s"
 
@@ -65,13 +110,6 @@ bool is_qweather_url(const char *url)
 bool http_status_ok(int status)
 {
     return status >= kHttpStatusOkMin && status < kHttpStatusOkMax;
-}
-
-bool http_response_may_be_truncated(int64_t content_length, size_t received_len, size_t out_len)
-{
-    bool content_length_fills_buffer = content_length >= 0 && (uint64_t)content_length >= out_len;
-    bool received_fills_buffer = received_len + kCStringTerminatorSize >= out_len;
-    return content_length_fills_buffer || received_fills_buffer;
 }
 
 bool compute_http_timeout_ms(int *timeout_ms)
@@ -96,15 +134,6 @@ bool decode_http_body_args_valid(char *out, size_t out_len, const size_t *body_l
 bool http_get_text_args_valid(const char *url, char *out, size_t out_len)
 {
     return cstr_nonempty(url) && app_text::output_buffer_available(out, out_len);
-}
-
-bool http_buffer_can_accept_data(const HttpBuffer *buffer)
-{
-    return buffer &&
-           buffer->data &&
-           buffer->cap > 0 &&
-           buffer->len < buffer->cap &&
-           buffer->len + kCStringTerminatorSize < buffer->cap;
 }
 
 void copy_log_preview(char *out, size_t out_len, const char *text)
@@ -163,10 +192,11 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt)
         return ESP_OK;
     }
     HttpBuffer *buffer = (HttpBuffer *)evt->user_data;
-    if (!http_buffer_can_accept_data(buffer)) {
+    if (!evt->data || evt->data_len <= 0) {
         return ESP_OK;
     }
-    if (!evt->data || evt->data_len <= 0) {
+    if (!buffer->data || buffer->cap == 0 || buffer->len >= buffer->cap) {
+        buffer->truncated = true;
         return ESP_OK;
     }
     size_t room = buffer->cap - buffer->len - kCStringTerminatorSize;
@@ -176,6 +206,9 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt)
         memcpy(buffer->data + buffer->len, evt->data, copy_len);
         buffer->len += copy_len;
         buffer->data[buffer->len] = '\0';
+    }
+    if (copy_len < event_len) {
+        buffer->truncated = true;
     }
     return ESP_OK;
 }
@@ -198,7 +231,9 @@ esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len)
         return ESP_FAIL;
     }
 
-    ScopedHeapBuffer<uint8_t> compressed(*body_len);
+    ScopedHeapBuffer<uint8_t> compressed(*body_len,
+                                         HeapBufferInit::kUninitialized,
+                                         HeapBufferStorage::kPsramPreferred);
     if (!compressed) {
         ESP_LOGW(TAG, HTTP_TEMP_BUFFER_ALLOC_FAILED_FORMAT, (unsigned)*body_len);
         return ESP_ERR_NO_MEM;
@@ -230,11 +265,6 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
         return ESP_ERR_INVALID_ARG;
     }
     out[0] = '\0';
-    HttpBuffer buffer = {out, 0, out_len};
-    esp_http_client_config_t config = {};
-    config.url = url;
-    config.event_handler = http_event_handler;
-    config.user_data = &buffer;
     int timeout_ms = 0;
     if (!compute_http_timeout_ms(&timeout_ms)) {
         return ESP_ERR_TIMEOUT;
@@ -244,6 +274,12 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
         ESP_LOGW(TAG, "%s", kHttpTransactionLockTimeoutLog);
         return ESP_ERR_TIMEOUT;
     }
+    HttpTextConfigWorkspaceGuard config_workspace;
+    esp_http_client_config_t &config = config_workspace.config();
+    HttpBuffer buffer = {out, 0, out_len, false};
+    config.url = url;
+    config.event_handler = http_event_handler;
+    config.user_data = &buffer;
     config.timeout_ms = timeout_ms;
     if (is_qweather_url(url)) {
         config.cert_pem = kQweatherCaDvR36Pem;
@@ -277,11 +313,15 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
         }
         return err == ESP_OK ? ESP_FAIL : err;
     }
-    if (http_response_may_be_truncated(content_length, buffer.len, out_len)) {
+    if (http_response_is_truncated(buffer.truncated, content_length, out_len)) {
         ESP_LOGW(TAG, HTTP_RESPONSE_TRUNCATED_FORMAT,
                  status,
                  (long long)content_length,
-                 (unsigned)out_len);
+                 (unsigned)buffer.len,
+                 (unsigned)out_len,
+                 buffer.truncated);
+        out[0] = '\0';
+        return ESP_ERR_INVALID_SIZE;
     }
     ESP_LOGI(TAG, HTTP_GET_OK_FORMAT,
              status,

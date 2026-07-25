@@ -1,8 +1,9 @@
 // 维护设置页反馈文本和手动网络同步状态，不承担设置页绘制。
 #include "ui_settings_feedback.h"
 
-#include "app_state.h"
 #include "app_event_group.h"
+#include "app_metadata.h"
+#include "app_runtime_timing.h"
 #include "app_tick_time.h"
 #include "network_diagnostics_state.h"
 #include "scoped_semaphore_lock.h"
@@ -11,16 +12,22 @@
 #include "ui_task_notify.h"
 #include "ui_text_format.h"
 
+#include <esp_attr.h>
+#include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include <string.h>
 
 namespace {
 StaticTaskMutex s_settings_feedback_mutex;
-char s_settings_feedback[kSettingsFeedbackTextLen] = {};
+EXT_RAM_BSS_ATTR char s_settings_feedback_text[kSettingsFeedbackTextLen] = {};
 TickType_t s_settings_feedback_until_tick = 0;
 #define SETTINGS_MANUAL_SYNC_TIMEOUT_LOG_FORMAT "settings manual sync timeout: op=%d"
 constexpr const char *kSettingsNtpTimeoutFeedback = "时间同步超时";
 constexpr const char *kSettingsWeatherTimeoutFeedback = "天气同步超时";
 constexpr const char *kSettingsSayingTimeoutFeedback = "一言更新超时";
+static_assert(sizeof(s_settings_feedback_text) == kSettingsFeedbackTextLen,
+              "settings feedback storage must match the public text contract");
 static_assert(kSettingsSyncNone == 0, "settings sync state default must mean idle");
 } // namespace
 
@@ -43,7 +50,9 @@ void set_settings_feedback(const char *text, uint32_t duration_ms)
         if (!lock) {
             return;
         }
-        memcpy(s_settings_feedback, next_feedback, sizeof(s_settings_feedback));
+        memcpy(s_settings_feedback_text,
+               next_feedback,
+               sizeof(s_settings_feedback_text));
         s_settings_feedback_until_tick = until_tick;
     }
     if (settings_page_requested()) {
@@ -58,7 +67,7 @@ void clear_settings_feedback()
     if (!lock) {
         return;
     }
-    s_settings_feedback[0] = '\0';
+    s_settings_feedback_text[0] = '\0';
     s_settings_feedback_until_tick = 0;
 }
 
@@ -75,18 +84,35 @@ bool settings_feedback_copy_active(TickType_t now, char *out, size_t out_len)
         if (!lock) {
             return false;
         }
-        active = s_settings_feedback[0] != '\0' &&
+        active = s_settings_feedback_text[0] != '\0' &&
                  s_settings_feedback_until_tick != 0 &&
                  app_tick_deadline_pending(now, s_settings_feedback_until_tick);
         if (active) {
-            memcpy(snapshot, s_settings_feedback, sizeof(snapshot));
+            memcpy(snapshot, s_settings_feedback_text, sizeof(snapshot));
         } else {
-            s_settings_feedback[0] = '\0';
+            s_settings_feedback_text[0] = '\0';
             s_settings_feedback_until_tick = 0;
         }
     }
     ui_text::copy(out, out_len, snapshot);
     return active;
+}
+
+SettingsUiTimingSnapshot settings_ui_timing_snapshot_load()
+{
+    SettingsUiTimingSnapshot snapshot;
+    {
+        ScopedSemaphoreLock lock(s_settings_feedback_mutex.handle());
+        if (lock) {
+            snapshot.feedback_until_tick = s_settings_feedback_until_tick;
+        }
+    }
+    SettingsSyncStateSnapshot sync_state;
+    settings_sync_state_load(&sync_state);
+    snapshot.sync_deadline_tick = sync_state.deadline_tick;
+    snapshot.sync_busy = sync_state.operation != kSettingsSyncNone ||
+                         network_diag_state_load() == kNetworkDiagRunning;
+    return snapshot;
 }
 
 bool is_settings_sync_busy()

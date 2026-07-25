@@ -1,7 +1,6 @@
 // 集中清理工作页、辅助页对象引用和对应绘制缓存。
 #include "ui_object_refs.h"
 
-#include "app_state.h"
 #include "ui_aux_pages.h"
 #include "ui_battery.h"
 #include "ui_boot_settings.h"

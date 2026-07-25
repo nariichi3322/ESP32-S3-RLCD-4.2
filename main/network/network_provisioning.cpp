@@ -4,6 +4,7 @@
 #include "app_event_group.h"
 #include "app_metadata.h"
 #include "alarm_services.h"
+#include "housekeeping_schedule_notify.h"
 #include "network_config.h"
 #include "network_config_internal.h"
 #include "network_credentials_state.h"
@@ -12,9 +13,11 @@
 #include "rtc_services.h"
 #include "wifi_portal_state.h"
 
+#include <esp_attr.h>
 #include <esp_log.h>
 
 #include <errno.h>
+#include <stdint.h>
 #include <string.h>
 #include <sys/time.h>
 #include <time.h>
@@ -32,6 +35,51 @@ constexpr const char *kConfigEventReasonProvisioningSave = "provisioning save";
 #define PROVISIONING_EMPTY_API_KEY_LOG "provisioning ignored empty api key for online setup"
 #define PROVISIONING_INVALID_WEATHER_CITY_LOG "provisioning ignored invalid weather city"
 #define PROVISIONING_SAVED_FORMAT "provisioning saved ssid=%s pass_len=%u api_key=%s len=%u weather_city=%s city_len=%u"
+
+// Synchronous setup handlers share one HTTP server task, so only one save
+// request can own this workspace at a time.
+EXT_RAM_BSS_ATTR ProvisioningFormFields s_provisioning_form_fields_workspace;
+static_assert(sizeof(s_provisioning_form_fields_workspace) >=
+                  kProvisioningSsidFieldSize +
+                      kProvisioningPasswordFieldSize +
+                      kProvisioningApiKeyFieldSize +
+                      kProvisioningWeatherCityFieldSize,
+              "provisioning form workspace must contain every bounded field");
+
+void clear_provisioning_form_fields_workspace()
+{
+    volatile uint8_t *bytes =
+        reinterpret_cast<volatile uint8_t *>(
+            &s_provisioning_form_fields_workspace);
+    for (size_t remaining = sizeof(s_provisioning_form_fields_workspace);
+         remaining > 0;
+         --remaining) {
+        *bytes++ = 0;
+    }
+}
+
+class ProvisioningFormFieldsWorkspaceGuard {
+public:
+    ProvisioningFormFieldsWorkspaceGuard()
+    {
+        clear_provisioning_form_fields_workspace();
+    }
+
+    ~ProvisioningFormFieldsWorkspaceGuard()
+    {
+        clear_provisioning_form_fields_workspace();
+    }
+
+    ProvisioningFormFieldsWorkspaceGuard(
+        const ProvisioningFormFieldsWorkspaceGuard &) = delete;
+    ProvisioningFormFieldsWorkspaceGuard &operator=(
+        const ProvisioningFormFieldsWorkspaceGuard &) = delete;
+
+    ProvisioningFormFields &fields()
+    {
+        return s_provisioning_form_fields_workspace;
+    }
+};
 } // namespace
 
 bool save_offline_datetime_from_body(const char *body)
@@ -60,6 +108,7 @@ bool save_offline_datetime_from_body(const char *body)
     }
     sync_rtc_from_system_time();
     alarm_notify_time_changed();
+    notify_housekeeping_schedule_changed();
     if (!set_offline_mode_enabled(true)) {
         return false;
     }
@@ -80,7 +129,8 @@ bool save_credentials_from_body(const char *body)
         ESP_LOGW(TAG, "%s", PROVISIONING_EMPTY_BODY_LOG);
         return false;
     }
-    ProvisioningFormFields fields = {};
+    ProvisioningFormFieldsWorkspaceGuard workspace;
+    ProvisioningFormFields &fields = workspace.fields();
     read_provisioning_form_fields(body, &fields);
     if (fields.ssid[0] == '\0') {
         ESP_LOGW(TAG, "%s", PROVISIONING_EMPTY_SSID_LOG);

@@ -1,4 +1,4 @@
-// 声明天气时钟全局状态、常量、数据结构和跨模块共享对象。
+// 保留历史应用常量与契约的聚合兼容入口；生产实现应直接包含真实所有者头。
 #pragma once
 #include <ctype.h>
 #include <stdarg.h>
@@ -31,8 +31,10 @@
 #include "mbedtls/sha256.h"
 
 #include "active_work_page_state.h"
+#include "app_display_config.h"
 #include "app_metadata.h"
 #include "app_network_config.h"
+#include "app_runtime_timing.h"
 #include "app_time_constants.h"
 #include "app_event_group.h"
 #include "work_page_ids.h"
@@ -48,26 +50,7 @@
 #include "ota_flow_policy.h"
 #include "ota_manifest_limits.h"
 #include "sensor_history_types.h"
-#include "status_gif_60.h"
+#include "status_gif_contract.h"
 #include "ui_fonts.h"
 #include "ui_icons.h"
 #include "ui_settings_contract.h"
-
-inline constexpr int kDisplayWidth = 400;
-inline constexpr int kDisplayHeight = 300;
-inline constexpr int kAppMsPerSecond = 1000;
-inline constexpr int kAppSecondsPerMinute = 60;
-inline constexpr int kAppMsPerMinute = kAppSecondsPerMinute * kAppMsPerSecond;
-inline constexpr int kSettingsTimeoutMs = 30 * kAppMsPerSecond;
-inline constexpr int kXiaozhiAutoReturnTimeoutMs = 5 * kAppMsPerMinute;
-inline constexpr int kSettingsManualSyncTimeoutMs = kAppMsPerMinute;
-inline constexpr int kWeatherClockAutoRetryMs = 2 * kAppMsPerMinute;
-inline constexpr int kWeatherClockAutoSyncMaxAttempts = 3;
-inline constexpr int kWeatherClockAutoBackoffMs = 30 * kAppMsPerMinute;
-inline constexpr int kBootAnimRunFrameMs = 50;
-inline constexpr int kHttpBootTimeoutMs = 2500;
-inline constexpr int kDisplayPartialMaxWidth = (kDisplayWidth * 7) / 10;
-inline constexpr int kMaxFlushRanges = 8;
-inline constexpr int kFlushRangeMergeGap = 8;
-inline constexpr int kDisplayFlushDiagIntervalMs = kAppMsPerMinute;
-static_assert(kXiaozhiAutoReturnTimeoutMs > 0, "Xiaozhi auto-return timeout must be positive");

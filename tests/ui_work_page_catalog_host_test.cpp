@@ -113,6 +113,7 @@ int main()
     expect_order_policy_boundaries();
     uint8_t unavailable[kWorkPageCount] = {};
     assert(!work_page_order_copy(unavailable, sizeof(unavailable)));
+    assert(!work_page_order_normalize_and_copy(unavailable, sizeof(unavailable)));
     assert(!swap_work_page_order_entries_preserving_home(0, 1));
     assert(work_page_catalog_init());
     assert(work_page_catalog_init());
@@ -120,12 +121,33 @@ int main()
     expect_default_order();
     work_page_enabled_mask_store(static_cast<uint8_t>((1U << kWorkPageCount) - 1U));
 
-    assert(strcmp(work_page_name(kWorkPageWeatherClock), "天气时钟") == 0);
-    assert(strcmp(work_page_name(kWorkPageHistory), "温湿历史") == 0);
-    assert(strcmp(work_page_name(kWorkPageXiaozhiAI), "小智AI") == 0);
+    const char *const expected_names[kWorkPageCount] = {
+        "天气时钟",
+        "图片时钟",
+        "天气看板",
+        "温湿时钟",
+        "日历",
+        "温湿历史",
+        "小智AI",
+    };
+    const WorkPageDataRequirements expected_data[kWorkPageCount] = {
+        {true, false},
+        {false, true},
+        {true, false},
+        {false, false},
+        {false, false},
+        {false, false},
+        {false, false},
+    };
+    for (int page = 0; page < kWorkPageCount; ++page) {
+        assert(strcmp(work_page_name(page), expected_names[page]) == 0);
+        assert(display_settings_item_work_page(page) == page);
+        const WorkPageDataRequirements actual =
+            work_page_data_requirements(page);
+        assert(actual.weather == expected_data[page].weather);
+        assert(actual.daily_saying == expected_data[page].daily_saying);
+    }
     assert(strcmp(work_page_name(-1), "未知页面") == 0);
-    assert(display_settings_item_work_page(0) == kWorkPageWeatherClock);
-    assert(display_settings_item_work_page(kWorkPageCount - 1) == kWorkPageXiaozhiAI);
     assert(display_settings_item_work_page(-1) == -1);
     assert(display_settings_item_work_page(kWorkPageCount) == -1);
 
@@ -146,8 +168,26 @@ int main()
     assert(work_page_uses_low_refresh_idle(kWorkPageHistory));
     assert(!work_page_uses_low_refresh_idle(kWorkPageXiaozhiAI));
     assert(!work_page_uses_low_refresh_idle(-1));
+    assert(!work_page_data_requirements(-1).weather);
+    assert(!work_page_data_requirements(-1).daily_saying);
 
     const uint8_t all_pages = static_cast<uint8_t>((1U << kWorkPageCount) - 1U);
+    WorkPageDataRequirements enabled_data =
+        enabled_work_page_data_requirements(all_pages);
+    assert(enabled_data.weather);
+    assert(enabled_data.daily_saying);
+    enabled_data = enabled_work_page_data_requirements(
+        page_bit(kWorkPageWeatherBoard));
+    assert(enabled_data.weather);
+    assert(!enabled_data.daily_saying);
+    enabled_data = enabled_work_page_data_requirements(
+        page_bit(kWorkPageGallery));
+    assert(!enabled_data.weather);
+    assert(enabled_data.daily_saying);
+    enabled_data = enabled_work_page_data_requirements(
+        page_bit(kWorkPageCalendar) | 0x80);
+    assert(!enabled_data.weather);
+    assert(!enabled_data.daily_saying);
     assert(normalize_work_page_enabled_mask(all_pages) == all_pages);
     assert(normalize_work_page_enabled_mask(0) == all_pages);
     assert(normalize_work_page_enabled_mask(0x80) == all_pages);
@@ -179,18 +219,15 @@ int main()
         kWorkPageWeatherClock,
     };
     work_page_order_replace(xiaozhi_first, sizeof(xiaozhi_first));
-    normalize_work_page_order();
     uint8_t normalized[kWorkPageCount] = {};
-    assert(work_page_order_copy(normalized, sizeof(normalized)));
+    assert(work_page_order_normalize_and_copy(normalized, sizeof(normalized)));
     assert(normalized[0] == kWorkPageHistory);
     assert(normalized[1] == kWorkPageXiaozhiAI);
     assert(first_enabled_work_page() == kWorkPageHistory);
-    assert(work_page_order_has_valid_home());
 
     work_page_enabled_mask_store(page_bit(kWorkPageXiaozhiAI));
     normalize_work_page_order();
     assert(!work_page_mask_has_valid_home(work_page_enabled_mask_load()));
-    assert(!work_page_order_has_valid_home());
 
     work_page_enabled_mask_store(page_bit(kWorkPageWeatherClock) |
                                  page_bit(kWorkPageCalendar) |

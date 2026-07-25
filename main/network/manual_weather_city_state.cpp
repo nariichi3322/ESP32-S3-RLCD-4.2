@@ -3,11 +3,15 @@
 
 #include "scoped_semaphore_lock.h"
 
+#include <esp_attr.h>
 #include <string.h>
 
 namespace {
 StaticTaskMutex s_manual_weather_city_mutex;
-char s_manual_weather_city[kManualWeatherCityLen] = {};
+EXT_RAM_BSS_ATTR char s_manual_weather_city_text[kManualWeatherCityLen] = {};
+
+static_assert(sizeof(s_manual_weather_city_text) == kManualWeatherCityLen,
+              "manual weather city storage must match the shared contract");
 }
 
 bool init_manual_weather_city_state()
@@ -17,7 +21,7 @@ bool init_manual_weather_city_state()
 
 bool manual_weather_city_snapshot(char *out, size_t out_len)
 {
-    if (!out || out_len < sizeof(s_manual_weather_city)) {
+    if (!out || out_len < sizeof(s_manual_weather_city_text)) {
         if (out && out_len > 0) {
             out[0] = '\0';
         }
@@ -28,8 +32,8 @@ bool manual_weather_city_snapshot(char *out, size_t out_len)
         out[0] = '\0';
         return false;
     }
-    memcpy(out, s_manual_weather_city, sizeof(s_manual_weather_city));
-    return s_manual_weather_city[0] != '\0';
+    memcpy(out, s_manual_weather_city_text, sizeof(s_manual_weather_city_text));
+    return s_manual_weather_city_text[0] != '\0';
 }
 
 void manual_weather_city_store(const char *city)
@@ -40,11 +44,13 @@ void manual_weather_city_store(const char *city)
     if (!lock) {
         return;
     }
-    memcpy(s_manual_weather_city, replacement, sizeof(s_manual_weather_city));
+    memcpy(s_manual_weather_city_text,
+           replacement,
+           sizeof(s_manual_weather_city_text));
 }
 
 bool manual_weather_city_is_configured()
 {
     ScopedSemaphoreLock lock(s_manual_weather_city_mutex);
-    return lock && s_manual_weather_city[0] != '\0';
+    return lock && s_manual_weather_city_text[0] != '\0';
 }

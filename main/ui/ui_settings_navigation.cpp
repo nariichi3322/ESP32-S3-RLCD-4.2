@@ -1,12 +1,14 @@
 // 维护设置页 KEY 导航、返回状态和二次确认清理逻辑。
 #include "ui_settings_navigation.h"
 
+#include "active_work_page_state.h"
 #include "app_tick_time.h"
 #include "device_settings_persistence.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_confirmation_state.h"
 #include "ui_settings_feedback.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
+#include "ui_work_page_catalog.h"
 #include "work_page_ids.h"
 
 #include "freertos/FreeRTOS.h"

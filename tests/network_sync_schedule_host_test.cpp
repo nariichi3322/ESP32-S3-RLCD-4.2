@@ -46,12 +46,37 @@ int main()
     assert(network_weather_request_settle_delay_ms(false) == 120);
     assert(network_inter_operation_settle_delay_ms(true) == 1000);
     assert(network_inter_operation_settle_delay_ms(false) == 250);
-    assert(network_ntp_retry_delay_seconds(false) == 15);
-    assert(network_ntp_retry_delay_seconds(true) == 5 * 60);
+    assert(network_ntp_retry_delay_seconds(false, 0) == 15);
+    assert(network_ntp_retry_delay_seconds(false, 1) == 15);
+    assert(network_ntp_retry_delay_seconds(false, 2) == 30);
+    assert(network_ntp_retry_delay_seconds(false, 3) == 60);
+    assert(network_ntp_retry_delay_seconds(false, 4) == 120);
+    assert(network_ntp_retry_delay_seconds(false, 5) == 240);
+    assert(network_ntp_retry_delay_seconds(false, 6) == 5 * 60);
+    assert(network_ntp_retry_delay_seconds(false, 1000) == 5 * 60);
+    assert(network_ntp_retry_delay_seconds(true, 0) == 5 * 60);
+    assert(network_ntp_retry_delay_seconds(true, 1) == 5 * 60);
+    assert(network_ntp_retry_delay_seconds(true, 2) == 10 * 60);
+    assert(network_ntp_retry_delay_seconds(true, 3) == 20 * 60);
+    assert(network_ntp_retry_delay_seconds(true, 4) == 40 * 60);
+    assert(network_ntp_retry_delay_seconds(true, 5) == 60 * 60);
+    assert(network_ntp_retry_delay_seconds(true, 1000) == 60 * 60);
+    assert(network_boot_https_memory_retry_delay_seconds(0) == 10);
+    assert(network_boot_https_memory_retry_delay_seconds(1) == 10);
+    assert(network_boot_https_memory_retry_delay_seconds(2) == 20);
+    assert(network_boot_https_memory_retry_delay_seconds(3) == 40);
+    assert(network_boot_https_memory_retry_delay_seconds(4) == 60);
+    assert(network_boot_https_memory_retry_delay_seconds(1000) == 60);
     assert(!network_visible_auto_sync_allowed(0));
     assert(!network_visible_auto_sync_allowed(29LL * 1000 * 1000));
     assert(network_visible_auto_sync_allowed(30LL * 1000 * 1000));
     assert(network_visible_auto_sync_allowed(-1));
+    assert(!network_request_snapshot_canceled(0, 0));
+    assert(!network_request_snapshot_canceled(0x03, 0x03));
+    assert(!network_request_snapshot_canceled(0x03, 0x07));
+    assert(network_request_snapshot_canceled(0x01, 0));
+    assert(network_request_snapshot_canceled(0x03, 0x02));
+    assert(network_request_snapshot_canceled(0x1f, 0x0f));
     assert(network_startup_followup_https_allowed(true,
                                                   48 * 1024,
                                                   24 * 1024,
@@ -101,11 +126,23 @@ int main()
     assert(deferral.weather_deferred);
     assert(deferral.saying_deferred);
     assert(deferral.retry_at == kNow + 10);
+    assert(deferral.schedule.next_boot_due_at == kNow + 10);
+    assert(network_idle_wait_ms(kNow,
+                                deferral.schedule.next_boot_due_at,
+                                kNow + 2,
+                                0) == 2000);
     assert(!deferral.schedule.boot_weather_ready);
     assert(!deferral.schedule.boot_saying_ready);
     assert(!deferral.schedule.stagger_boot_saying_after_weather);
     assert(!deferral.schedule.weather_due);
     assert(!deferral.schedule.saying_due);
+
+    boot_https_schedule.next_boot_due_at = kNow + 4;
+    deferral = calculate_network_boot_https_deferral(boot_https_schedule,
+                                                     boot_https_input);
+    assert(deferral.deferred);
+    assert(deferral.schedule.next_boot_due_at == kNow + 4);
+    boot_https_schedule.next_boot_due_at = 0;
 
     boot_https_input.memory_allowed = true;
     deferral = calculate_network_boot_https_deferral(boot_https_schedule,
@@ -142,6 +179,33 @@ int main()
     assert(!deferral.deferred);
     assert(deferral.schedule.weather_due);
     assert(deferral.schedule.saying_due);
+
+    NetworkAutomaticBootPageInput page_input = {};
+    assert(network_automatic_boot_refresh_page_disabled(boot_https_schedule,
+                                                        page_input));
+    page_input.weather_page_enabled = true;
+    assert(network_automatic_boot_refresh_page_disabled(boot_https_schedule,
+                                                        page_input));
+    page_input.saying_page_enabled = true;
+    assert(!network_automatic_boot_refresh_page_disabled(boot_https_schedule,
+                                                         page_input));
+    page_input.weather_page_enabled = false;
+    page_input.explicit_weather_due = true;
+    assert(!network_automatic_boot_refresh_page_disabled(boot_https_schedule,
+                                                         page_input));
+    page_input.explicit_weather_due = false;
+    page_input.saying_page_enabled = false;
+    page_input.explicit_saying_due = true;
+    assert(network_automatic_boot_refresh_page_disabled(boot_https_schedule,
+                                                        page_input));
+    page_input.weather_page_enabled = true;
+    assert(!network_automatic_boot_refresh_page_disabled(boot_https_schedule,
+                                                         page_input));
+    page_input.explicit_saying_due = false;
+    page_input.provisioning_sync_due = true;
+    page_input.weather_page_enabled = false;
+    assert(!network_automatic_boot_refresh_page_disabled(boot_https_schedule,
+                                                         page_input));
 
     assert(network_boot_budget_remaining_ms(0, 1000) == INT32_MAX);
     assert(network_boot_budget_remaining_ms(-1, 1000) == INT32_MAX);

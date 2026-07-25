@@ -27,14 +27,15 @@
 #include "ui_work_page_catalog.h"
 #include "weather_state.h"
 #include "weather_update.h"
+#include "wifi_idle_stop_policy.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_services.h"
 #include "wifi_radio_state.h"
 
 #include <esp_log.h>
 #include <esp_timer.h>
+#include <limits.h>
 
-static constexpr uint32_t kNetworkNoWorkWaitMs = 30000;
 static constexpr uint32_t kNetworkShortRetryWaitMs = 1000;
 static constexpr uint32_t kNetworkWifiConnectTimeoutMs = 45000;
 static constexpr uint32_t kNetworkTaskStartupDelayMs = 2500;
@@ -42,17 +43,12 @@ static constexpr uint32_t kNetworkBootSyncGateWarningMs = 1000;
 static constexpr time_t kBootWeatherRefreshDelaySec = 10;
 static constexpr time_t kBootSayingRefreshDelaySec = 25;
 static constexpr time_t kBootHttpsInterRequestGapSec = 8;
-static constexpr uint32_t kBootHttpsMemoryRetryMs = 10000;
 static_assert(kBootWeatherRefreshDelaySec > 0,
               "boot weather refresh delay must be positive");
 static_assert(kBootSayingRefreshDelaySec > kBootWeatherRefreshDelaySec,
               "boot saying refresh delay must stay after boot weather refresh");
 static_assert(kBootHttpsInterRequestGapSec > 0,
               "boot HTTPS inter-request gap must be positive");
-static_assert(kBootHttpsMemoryRetryMs >= 1000,
-              "boot HTTPS memory retry must avoid a tight loop");
-static_assert(kBootHttpsMemoryRetryMs % 1000 == 0,
-              "boot HTTPS memory retry must convert exactly to seconds");
 static_assert(kNetworkBootSyncGateWarningMs > 0,
               "boot sync gate warning delay must be positive");
 static_assert(kNetworkDiagOtaLine == kNetworkDiagLineCount - 1,
@@ -61,16 +57,15 @@ static constexpr const char *kNetworkDiagIpLocationWifiStartFailed = "IP定位: 
 static constexpr const char *kNetworkDiagIpLocationPowerLockUnavailable = "IP定位: 系统繁忙";
 static constexpr const char *kNetworkDiagIpLocationWifiConnectTimeout = "IP定位: WiFi连接超时";
 static constexpr const char *kNetworkSyncWeatherKeyMissing = "未配置 API Key";
-static constexpr const char *kNetworkSyncLowBatterySkipped = "电量低，已跳过";
 #define NETWORK_BOOT_REFRESH_SCHEDULED_FORMAT "boot network refresh scheduled: weather=%d saying=%d"
 #define NETWORK_BOOT_HTTPS_MEMORY_DEFERRED_FORMAT \
-    "background boot HTTPS deferred: internal_free=%u internal_largest=%u dma_largest=%u"
+    "background boot HTTPS deferred: delay=%llds deferrals=%u internal_free=%u internal_largest=%u dma_largest=%u"
 #define NETWORK_BOOT_SAYING_STAGGERED_FORMAT \
     "boot daily saying deferred %lld seconds after weather"
 #define NETWORK_BOOT_WEATHER_RESOURCE_RETRY_FORMAT \
-    "boot weather resource retry deferred %lld seconds"
+    "boot weather resource retry deferred %lld seconds deferrals=%u"
 #define NETWORK_NTP_RETRY_SCHEDULED_FORMAT \
-    "ntp retry scheduled: delay=%llds time_valid=%d"
+    "ntp retry scheduled: delay=%llds time_valid=%d failures=%u"
 static constexpr const char *kNetworkDiagWifiOnLog = "wifi radio on for network diagnostics";
 #define NETWORK_SYNC_WIFI_ON_FORMAT "wifi radio on for sync: ntp=%d weather=%d saying=%d boot_weather=%d boot_saying=%d"
 static constexpr const char *kNetworkSyncWifiStartFailedLog = "wifi start failed during sync window";
@@ -88,6 +83,10 @@ struct NetworkSyncRuntimeState {
     time_t next_daily_ntp_at = 0;
     time_t boot_weather_due_at = 0;
     time_t boot_saying_due_at = 0;
+    uint8_t ntp_retry_failures = 0;
+    uint8_t boot_https_memory_deferrals = 0;
+    uint8_t boot_weather_resource_deferrals = 0;
+    uint8_t wifi_stop_retry_failures = 0;
     bool boot_ntp_due = false;
     bool daily_ntp_pending = false;
     bool boot_weather_due = false;
@@ -114,50 +113,58 @@ static bool network_sync_start_context_changed(
            setup_portal_start_requested();
 }
 
-static bool enabled_weather_data_page_exists()
+static WorkPageDataRequirements capture_network_refresh_page_availability()
 {
-    return is_work_page_enabled(kWorkPageWeatherClock) ||
-           is_work_page_enabled(kWorkPageWeatherBoard);
+    return enabled_work_page_data_requirements(
+        work_page_enabled_mask_load());
 }
 
-static bool enabled_daily_saying_page_exists()
-{
-    return is_work_page_enabled(kWorkPageGallery);
-}
+static_assert(kWorkPageCount <= 8,
+              "network refresh page snapshot must fit the enabled-page mask");
 
-static void schedule_ntp_retry(time_t *next_ntp_retry_at)
+static void schedule_ntp_retry(time_t *next_ntp_retry_at,
+                               uint8_t *ntp_retry_failures)
 {
-    if (!next_ntp_retry_at) {
+    if (!next_ntp_retry_at || !ntp_retry_failures) {
         return;
     }
+    if (*ntp_retry_failures < UINT8_MAX) {
+        ++(*ntp_retry_failures);
+    }
     const bool time_valid = is_system_time_plausible();
-    const time_t delay_seconds = network_ntp_retry_delay_seconds(time_valid);
+    const time_t delay_seconds = network_ntp_retry_delay_seconds(
+        time_valid,
+        *ntp_retry_failures);
     time(next_ntp_retry_at);
     *next_ntp_retry_at += delay_seconds;
     ESP_LOGI(TAG,
              NETWORK_NTP_RETRY_SCHEDULED_FORMAT,
              static_cast<long long>(delay_seconds),
-             time_valid);
+             time_valid,
+             static_cast<unsigned>(*ntp_retry_failures));
 }
 
 static void update_ntp_retry_deadline(bool retry_required,
-                                      time_t *next_ntp_retry_at)
+                                      time_t *next_ntp_retry_at,
+                                      uint8_t *ntp_retry_failures)
 {
-    if (!next_ntp_retry_at) {
+    if (!next_ntp_retry_at || !ntp_retry_failures) {
         return;
     }
     if (retry_required) {
-        schedule_ntp_retry(next_ntp_retry_at);
+        schedule_ntp_retry(next_ntp_retry_at, ntp_retry_failures);
     } else {
         *next_ntp_retry_at = 0;
+        *ntp_retry_failures = 0;
     }
 }
 
-static bool weather_cache_current_hour(time_t now)
+static bool weather_cache_complete_for_current_hour(time_t now)
 {
-    return network_weather_cache_current_hour(
-        now,
-        get_last_weather_sync_time());
+    WeatherCacheStatusSnapshot snapshot;
+    return weather_cache_status_snapshot_load(&snapshot) &&
+           network_weather_cache_current_hour(now, snapshot.last_sync_time) &&
+           snapshot.extended_data_ready;
 }
 
 static bool saying_cache_current_day(time_t now)
@@ -181,14 +188,31 @@ static void clear_ready_boot_sync_flags(bool weather_ready, bool saying_ready, b
 
 static void cancel_disabled_page_boot_refreshes(NetworkSyncRuntimeState &runtime)
 {
-    if (!enabled_weather_data_page_exists()) {
+    const WorkPageDataRequirements pages =
+        capture_network_refresh_page_availability();
+    if (runtime.boot_weather_due && !pages.weather) {
         runtime.boot_weather_due = false;
         runtime.boot_weather_due_at = 0;
     }
-    if (!enabled_daily_saying_page_exists()) {
+    if (runtime.boot_saying_due && !pages.daily_saying) {
         runtime.boot_saying_due = false;
         runtime.boot_saying_due_at = 0;
     }
+}
+
+static bool automatic_boot_refresh_page_disabled(
+    const NetworkSyncSchedule &schedule,
+    const NetworkSyncRequestSnapshot &requests)
+{
+    NetworkAutomaticBootPageInput input = {};
+    const WorkPageDataRequirements pages =
+        capture_network_refresh_page_availability();
+    input.provisioning_sync_due = requests.provisioning;
+    input.explicit_weather_due = requests.weather_due();
+    input.explicit_saying_due = requests.saying_due();
+    input.weather_page_enabled = pages.weather;
+    input.saying_page_enabled = pages.daily_saying;
+    return network_automatic_boot_refresh_page_disabled(schedule, input);
 }
 
 static void finish_network_radio_session(NetworkAwakeLockGuard &awake_lock,
@@ -209,12 +233,17 @@ static void schedule_background_refresh_after_provisioning(
 {
     time_t now = 0;
     time(&now);
+    const WorkPageDataRequirements pages =
+        capture_network_refresh_page_availability();
     runtime.boot_ntp_due = true;
-    runtime.boot_weather_due = have_weather_key && enabled_weather_data_page_exists();
-    runtime.boot_saying_due = enabled_daily_saying_page_exists();
+    runtime.boot_weather_due = have_weather_key && pages.weather;
+    runtime.boot_saying_due = pages.daily_saying;
     runtime.boot_weather_due_at = now + kBootWeatherRefreshDelaySec;
     runtime.boot_saying_due_at = now + kBootSayingRefreshDelaySec;
     runtime.next_ntp_retry_at = 0;
+    runtime.ntp_retry_failures = 0;
+    runtime.boot_https_memory_deferrals = 0;
+    runtime.boot_weather_resource_deferrals = 0;
     runtime.daily_ntp_pending = false;
     runtime.next_daily_ntp_at = 0;
     ESP_LOGI(TAG,
@@ -248,12 +277,13 @@ static bool defer_automatic_boot_https_for_memory(NetworkSyncSchedule *schedule,
     }
     NetworkBootHttpsDeferralInput input = {};
     input.now = now;
-    input.retry_delay_seconds =
-        static_cast<time_t>(kBootHttpsMemoryRetryMs / 1000);
     input.provisioning_sync_due = requests.provisioning;
-    input.manual_weather_due = requests.manual_weather;
-    input.manual_saying_due = requests.manual_saying;
+    input.manual_weather_due = requests.weather_due();
+    input.manual_saying_due = requests.saying_due();
     if (!network_automatic_boot_https_pending(*schedule, input)) {
+        if (!runtime.boot_weather_due && !runtime.boot_saying_due) {
+            runtime.boot_https_memory_deferrals = 0;
+        }
         return false;
     }
     const NetworkHttpsMemorySnapshot memory = capture_network_https_memory_snapshot();
@@ -263,13 +293,26 @@ static bool defer_automatic_boot_https_for_memory(NetworkSyncSchedule *schedule,
         memory.internal_free,
         memory.internal_largest,
         memory.dma_largest);
+    if (input.memory_allowed) {
+        runtime.boot_https_memory_deferrals = 0;
+        return false;
+    }
+    if (runtime.boot_https_memory_deferrals < UINT8_MAX) {
+        ++runtime.boot_https_memory_deferrals;
+    }
+    input.retry_delay_seconds =
+        network_boot_https_memory_retry_delay_seconds(
+            runtime.boot_https_memory_deferrals);
     NetworkBootHttpsDeferralResult result =
         calculate_network_boot_https_deferral(*schedule, input);
     if (!result.deferred) {
+        runtime.boot_https_memory_deferrals = 0;
         return false;
     }
     ESP_LOGW(TAG,
              NETWORK_BOOT_HTTPS_MEMORY_DEFERRED_FORMAT,
+             static_cast<long long>(input.retry_delay_seconds),
+             static_cast<unsigned>(runtime.boot_https_memory_deferrals),
              static_cast<unsigned>(memory.internal_free),
              static_cast<unsigned>(memory.internal_largest),
              static_cast<unsigned>(memory.dma_largest));
@@ -303,7 +346,8 @@ static void finalize_failed_network_sync_window(const NetworkSyncSchedule &sched
                                                 const NetworkSyncRequestSnapshot &requests,
                                                 bool *boot_weather_due,
                                                 bool *boot_saying_due,
-                                                time_t *next_ntp_retry_at)
+                                                time_t *next_ntp_retry_at,
+                                                uint8_t *ntp_retry_failures)
 {
     clear_ready_boot_sync_flags(schedule.boot_weather_ready,
                                 schedule.boot_saying_ready,
@@ -312,7 +356,8 @@ static void finalize_failed_network_sync_window(const NetworkSyncSchedule &sched
     finish_failed_sync_requests(requests);
     if (schedule.ntp_due) {
         update_ntp_retry_deadline(schedule.ntp_retry_required,
-                                  next_ntp_retry_at);
+                                  next_ntp_retry_at,
+                                  ntp_retry_failures);
     }
 }
 
@@ -325,7 +370,8 @@ static void finalize_failed_network_sync_attempt(
                                         requests,
                                         &runtime.boot_weather_due,
                                         &runtime.boot_saying_due,
-                                        &runtime.next_ntp_retry_at);
+                                        &runtime.next_ntp_retry_at,
+                                        &runtime.ntp_retry_failures);
     stagger_boot_saying_after_weather(schedule,
                                       runtime.boot_saying_due,
                                       &runtime.boot_saying_due_at);
@@ -362,10 +408,12 @@ static void execute_connected_sync_window(const NetworkSyncSchedule &schedule,
             runtime.boot_ntp_due = false;
             runtime.daily_ntp_pending = false;
             runtime.next_ntp_retry_at = 0;
+            runtime.ntp_retry_failures = 0;
             runtime.next_daily_ntp_at = next_local_midnight_time(time(nullptr));
         } else {
             update_ntp_retry_deadline(schedule.ntp_retry_required,
-                                      &runtime.next_ntp_retry_at);
+                                      &runtime.next_ntp_retry_at,
+                                      &runtime.ntp_retry_failures);
         }
         settle_between_network_operations(schedule.weather_due ||
                                           schedule.saying_due);
@@ -383,14 +431,25 @@ static void execute_connected_sync_window(const NetworkSyncSchedule &schedule,
         runtime.boot_weather_due,
         schedule.boot_weather_ready,
         weather_resource_deferred);
-    if (schedule.boot_weather_ready && weather_resource_deferred) {
-        time_t now = 0;
-        time(&now);
-        runtime.boot_weather_due_at =
-            now + static_cast<time_t>(kBootHttpsMemoryRetryMs / 1000);
-        ESP_LOGI(TAG,
-                 NETWORK_BOOT_WEATHER_RESOURCE_RETRY_FORMAT,
-                 static_cast<long long>(kBootHttpsMemoryRetryMs / 1000));
+    if (schedule.boot_weather_ready) {
+        if (weather_resource_deferred) {
+            if (runtime.boot_weather_resource_deferrals < UINT8_MAX) {
+                ++runtime.boot_weather_resource_deferrals;
+            }
+            const time_t retry_delay_seconds =
+                network_boot_https_memory_retry_delay_seconds(
+                    runtime.boot_weather_resource_deferrals);
+            time_t now = 0;
+            time(&now);
+            runtime.boot_weather_due_at = now + retry_delay_seconds;
+            ESP_LOGI(
+                TAG,
+                NETWORK_BOOT_WEATHER_RESOURCE_RETRY_FORMAT,
+                static_cast<long long>(retry_delay_seconds),
+                static_cast<unsigned>(runtime.boot_weather_resource_deferrals));
+        } else {
+            runtime.boot_weather_resource_deferrals = 0;
+        }
     }
     clear_ready_boot_sync_flags(false,
                                 schedule.boot_saying_ready,
@@ -437,6 +496,18 @@ static void wait_for_boot_sync_completion()
                               portMAX_DELAY);
 }
 
+static void wait_for_network_runtime_or_wifi_stop_retry(
+    WifiRadioIdleStopResult wifi_stop_result,
+    uint8_t wifi_stop_retry_failures)
+{
+    if (wifi_stop_result == WifiRadioIdleStopResult::kRetryRequired) {
+        wait_for_network_sync_event(
+            wifi_idle_stop_retry_delay_ms(wifi_stop_retry_failures));
+    } else {
+        wait_for_network_runtime_request();
+    }
+}
+
 void network_sync_task(void *)
 {
     wait_for_boot_sync_completion();
@@ -451,15 +522,17 @@ void network_sync_task(void *)
                                          : next_local_midnight_time(boot_schedule_now);
     const NetworkSyncAvailability initial_runtime =
         capture_network_runtime_availability();
+    const WorkPageDataRequirements initial_pages =
+        capture_network_refresh_page_availability();
     sync_runtime.boot_weather_due = initial_runtime.have_wifi_creds &&
                                     initial_runtime.have_weather_key &&
                                     !initial_runtime.offline_mode &&
                                     !initial_runtime.low_battery_mode &&
-                                    enabled_weather_data_page_exists();
+                                    initial_pages.weather;
     sync_runtime.boot_saying_due = initial_runtime.have_wifi_creds &&
                                    !initial_runtime.offline_mode &&
                                    !initial_runtime.low_battery_mode &&
-                                   enabled_daily_saying_page_exists();
+                                   initial_pages.daily_saying;
     sync_runtime.boot_weather_due_at =
         boot_schedule_now + kBootWeatherRefreshDelaySec;
     sync_runtime.boot_saying_due_at =
@@ -475,6 +548,15 @@ void network_sync_task(void *)
         // Consume only the edge-like state notification before reading the
         // latest runtime state. Sync request bits stay level-triggered.
         app_event_group_clear_bits(kNetworkStateChangedBit);
+        const WifiRadioIdleStopResult wifi_stop_result =
+            service_wifi_radio_stop_when_idle();
+        if (wifi_stop_result == WifiRadioIdleStopResult::kRetryRequired) {
+            if (sync_runtime.wifi_stop_retry_failures < UINT8_MAX) {
+                ++sync_runtime.wifi_stop_retry_failures;
+            }
+        } else {
+            sync_runtime.wifi_stop_retry_failures = 0;
+        }
         NetworkSyncRequestSnapshot requests = snapshot_network_sync_requests();
         const NetworkSyncAvailability runtime =
             capture_network_runtime_availability();
@@ -496,24 +578,35 @@ void network_sync_task(void *)
         if (runtime.offline_mode) {
             sync_runtime.boot_weather_due = false;
             sync_runtime.boot_saying_due = false;
+            sync_runtime.boot_weather_resource_deferrals = 0;
             finish_offline_network_requests(requests);
-            wait_for_network_runtime_request();
+            wait_for_network_runtime_or_wifi_stop_retry(
+                wifi_stop_result,
+                sync_runtime.wifi_stop_retry_failures);
             continue;
         }
         if (!runtime.have_wifi_creds) {
             sync_runtime.boot_weather_due = false;
             sync_runtime.boot_saying_due = false;
+            sync_runtime.boot_weather_resource_deferrals = 0;
             finish_unconfigured_network_requests(requests);
-            wait_for_network_runtime_request();
+            wait_for_network_runtime_or_wifi_stop_retry(
+                wifi_stop_result,
+                sync_runtime.wifi_stop_retry_failures);
             continue;
         }
-        if (requests.manual_weather && !runtime.have_weather_key) {
-            finish_settings_sync_and_clear_bit(kSettingsSyncWeather, kNetworkSyncWeatherKeyMissing, kManualWeatherSyncBit);
-            wait_for_network_sync_event(kNetworkShortRetryWaitMs);
-            continue;
+        if (requests.weather_due() && !runtime.have_weather_key) {
+            if (requests.manual_weather) {
+                finish_settings_sync_and_clear_bit(kSettingsSyncWeather,
+                                                   kNetworkSyncWeatherKeyMissing,
+                                                   kManualWeatherSyncBit);
+            }
+            if (requests.visible_weather) {
+                app_event_group_clear_bits(kVisibleWeatherSyncBit);
+            }
         }
         if (setup_portal_active_load() && requests.none_for_setup_portal()) {
-            wait_for_network_sync_event(kNetworkNoWorkWaitMs);
+            wait_for_network_runtime_request();
             continue;
         }
 
@@ -546,8 +639,7 @@ void network_sync_task(void *)
         // air quality times out. Keep the staggered full refresh scheduled in
         // that partial state so the weather board is ready before first entry.
         if (sync_runtime.boot_weather_due &&
-            weather_cache_current_hour(now) &&
-            weather_extended_data_ready()) {
+            weather_cache_complete_for_current_hour(now)) {
             sync_runtime.boot_weather_due = false;
         }
         if (sync_runtime.boot_saying_due && saying_cache_current_day(now)) {
@@ -556,6 +648,9 @@ void network_sync_task(void *)
         if (runtime.low_battery_mode) {
             sync_runtime.boot_weather_due = false;
             sync_runtime.boot_saying_due = false;
+        }
+        if (!sync_runtime.boot_weather_due) {
+            sync_runtime.boot_weather_resource_deferrals = 0;
         }
         NetworkSyncScheduleInput schedule_input = {};
         schedule_input.now = now;
@@ -566,36 +661,35 @@ void network_sync_task(void *)
         schedule_input.low_battery_mode = runtime.low_battery_mode;
         schedule_input.provisioning_sync_due = requests.provisioning;
         schedule_input.manual_ntp_due = requests.manual_ntp;
-        schedule_input.manual_weather_due = requests.manual_weather;
-        schedule_input.manual_saying_due = requests.manual_saying;
+        schedule_input.manual_weather_due = requests.weather_due();
+        schedule_input.manual_saying_due = requests.saying_due();
         schedule_input.boot_ntp_due = sync_runtime.boot_ntp_due;
         schedule_input.daily_ntp_due = sync_runtime.daily_ntp_pending;
         schedule_input.boot_weather_due = sync_runtime.boot_weather_due;
         schedule_input.boot_saying_due = sync_runtime.boot_saying_due;
         NetworkSyncSchedule schedule = calculate_network_sync_schedule(schedule_input);
-        bool boot_https_memory_deferred = defer_automatic_boot_https_for_memory(
+        defer_automatic_boot_https_for_memory(
             &schedule,
             requests,
             now,
             sync_runtime);
-        if (runtime.low_battery_mode && requests.manual_weather) {
-            finish_settings_sync_and_clear_bit(kSettingsSyncWeather, kNetworkSyncLowBatterySkipped, kManualWeatherSyncBit);
-            wait_for_network_sync_event(kNetworkShortRetryWaitMs);
-            continue;
-        }
-        if (runtime.low_battery_mode && requests.manual_saying) {
-            finish_settings_sync_and_clear_bit(kSettingsSyncSaying, kNetworkSyncLowBatterySkipped, kManualSayingSyncBit);
-            wait_for_network_sync_event(kNetworkShortRetryWaitMs);
-            continue;
+        if (runtime.low_battery_mode) {
+            finish_low_battery_network_requests(requests);
         }
 
         if (!schedule.ntp_due && !schedule.weather_due && !schedule.saying_due) {
-            uint32_t wait_ms = boot_https_memory_deferred
-                                   ? kBootHttpsMemoryRetryMs
-                                   : network_idle_wait_ms(now,
-                                                          schedule.next_boot_due_at,
-                                                          sync_runtime.next_ntp_retry_at,
-                                                          sync_runtime.next_daily_ntp_at);
+            uint32_t wait_ms = network_idle_wait_ms(
+                now,
+                schedule.next_boot_due_at,
+                sync_runtime.next_ntp_retry_at,
+                sync_runtime.next_daily_ntp_at);
+            const uint32_t wifi_stop_retry_wait_ms =
+                wifi_idle_stop_retry_delay_ms(
+                    sync_runtime.wifi_stop_retry_failures);
+            if (wifi_stop_result == WifiRadioIdleStopResult::kRetryRequired &&
+                wait_ms > wifi_stop_retry_wait_ms) {
+                wait_ms = wifi_stop_retry_wait_ms;
+            }
             wait_for_network_sync_event(wait_ms);
             continue;
         }
@@ -604,6 +698,15 @@ void network_sync_task(void *)
             capture_network_runtime_availability();
         if (network_sync_start_context_changed(runtime, current_runtime)) {
             ESP_LOGI(TAG, "%s", kNetworkSyncContextChangedLog);
+            continue;
+        }
+        const EventBits_t current_request_bits = app_event_group_get_bits();
+        if (network_request_snapshot_canceled(
+                network_sync_request_bits(requests),
+                current_request_bits)) {
+            continue;
+        }
+        if (automatic_boot_refresh_page_disabled(schedule, requests)) {
             continue;
         }
 
@@ -641,6 +744,10 @@ void network_sync_task(void *)
             continue;
         }
         if (connection_wait == NetworkSyncConnectionWaitResult::kConnected) {
+            if (automatic_boot_refresh_page_disabled(schedule, requests)) {
+                finish_network_radio_session(awake_lock);
+                continue;
+            }
             if (requests.provisioning) {
                 WifiPortalSaveResult validation_result =
                     validate_saved_provisioning_weather_configuration();

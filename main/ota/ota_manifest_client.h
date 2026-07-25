@@ -35,6 +35,7 @@ bool ota_manifest_fetch(OtaManifest *manifest,
                         char *source_name,
                         size_t source_name_len,
                         OtaManifestFailureCallback failure_callback);
+// backup must not alias current; it is scratch storage and is valid only on success.
 bool ota_manifest_fetch_backup_for_install(const OtaManifest &current,
                                            OtaManifest *backup,
                                            OtaManifestFailureCallback failure_callback);

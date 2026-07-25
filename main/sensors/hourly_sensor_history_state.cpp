@@ -85,6 +85,12 @@ bool hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history,
     }
     ScopedSemaphoreLock lock(s_hourly_history_mutex.handle());
     if (!lock) {
+        if (history) {
+            *history = {};
+        }
+        if (version) {
+            *version = 0;
+        }
         return false;
     }
     if (history) {

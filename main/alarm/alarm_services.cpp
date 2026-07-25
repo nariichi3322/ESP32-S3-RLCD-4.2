@@ -124,14 +124,33 @@ bool alarm_stop_callback()
     return s_stop_requested.load();
 }
 
+void mark_alarm_stop_requested()
+{
+    s_stop_requested.store(true);
+}
+
+void wake_alarm_task()
+{
+    (void)s_alarm_task_target.notify();
+}
+
+void request_alarm_stop()
+{
+    mark_alarm_stop_requested();
+    wake_alarm_task();
+}
+
 bool wait_interruptible(uint32_t delay_ms)
 {
     TickType_t started = xTaskGetTickCount();
     TickType_t duration = pdMS_TO_TICKS(delay_ms);
-    while (xTaskGetTickCount() - started < duration && !s_stop_requested.load()) {
-        TickType_t remaining = duration - (xTaskGetTickCount() - started);
-        TickType_t slice = remaining > pdMS_TO_TICKS(100) ? pdMS_TO_TICKS(100) : remaining;
-        ulTaskNotifyTake(pdTRUE, slice);
+    while (!s_stop_requested.load()) {
+        const TickType_t elapsed = xTaskGetTickCount() - started;
+        if (elapsed >= duration) {
+            break;
+        }
+        const TickType_t remaining = duration - elapsed;
+        ulTaskNotifyTake(pdTRUE, remaining);
     }
     return !s_stop_requested.load();
 }
@@ -139,11 +158,9 @@ bool wait_interruptible(uint32_t delay_ms)
 void wait_for_xiaozhi_audio_release()
 {
     xiaozhi_ai_set_alarm_suspended(true);
-    for (uint32_t waited = 0;
-         is_audio_playing() && waited < kAlarmAudioReleaseWaitMs && !s_stop_requested.load();
-         waited += kAlarmAudioReleasePollMs) {
-        vTaskDelay(pdMS_TO_TICKS(kAlarmAudioReleasePollMs));
-    }
+    (void)wait_for_audio_playback_idle(kAlarmAudioReleaseWaitMs,
+                                       kAlarmAudioReleasePollMs,
+                                       alarm_stop_callback);
 }
 
 void run_alarm_ring()
@@ -249,7 +266,7 @@ bool mcp_set_alarm(const XiaozhiMcpAlarmRequest &request, char *result, size_t r
                  request.hour,
                  request.minute);
     }
-    s_stop_requested.store(true);
+    mark_alarm_stop_requested();
     publish_alarm_state(true, false, request.hour, request.minute);
     s_save_pending.store(true);
     if (result && result_len > 0) {
@@ -263,7 +280,7 @@ bool mcp_disable_alarm(char *result, size_t result_len)
     AlarmSnapshot snapshot = {};
     alarm_get_snapshot(&snapshot);
     clear_pending_alarm_replacement();
-    s_stop_requested.store(true);
+    mark_alarm_stop_requested();
     publish_alarm_state(false, false, snapshot.hour, snapshot.minute);
     s_save_pending.store(true);
     if (result && result_len > 0) {
@@ -290,6 +307,10 @@ void alarm_task(void *)
     for (;;) {
         AlarmSnapshot snapshot = {};
         alarm_get_snapshot(&snapshot);
+        if (!snapshot.enabled) {
+            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+            continue;
+        }
         const int64_t wall_clock_ms = reminder_wall_clock_ms();
         const time_t wall_clock_seconds =
             static_cast<time_t>(wall_clock_ms / 1000);
@@ -301,9 +322,17 @@ void alarm_task(void *)
             local.tm_hour == snapshot.hour && local.tm_min == snapshot.minute) {
             run_alarm_ring();
         }
+        const int current_millisecond = wall_clock_ms >= 0
+                                            ? static_cast<int>(wall_clock_ms % 1000)
+                                            : -1;
         const uint32_t wait_ms = alarm_task_wait_ms(snapshot.enabled,
                                                     time_valid,
-                                                    wall_clock_ms);
+                                                    local.tm_hour,
+                                                    local.tm_min,
+                                                    local.tm_sec,
+                                                    current_millisecond,
+                                                    snapshot.hour,
+                                                    snapshot.minute);
         TickType_t wait_ticks = wait_ms > 0 ? pdMS_TO_TICKS(wait_ms) : portMAX_DELAY;
         if (wait_ms > 0 && wait_ticks == 0) {
             wait_ticks = 1;
@@ -338,7 +367,7 @@ bool alarm_set_once(int hour, int minute)
     }
     clear_pending_alarm_replacement();
     s_save_pending.store(false);
-    s_stop_requested.store(true);
+    mark_alarm_stop_requested();
     publish_alarm_state(true, false, hour, minute);
     ESP_LOGI(TAG, "alarm set %02d:%02d single-use", hour, minute);
     return true;
@@ -349,8 +378,9 @@ bool alarm_disable()
     AlarmSnapshot snapshot = {};
     alarm_get_snapshot(&snapshot);
     clear_pending_alarm_replacement();
-    s_stop_requested.store(true);
+    mark_alarm_stop_requested();
     if (!persist_alarm(false, snapshot.hour, snapshot.minute)) {
+        wake_alarm_task();
         return false;
     }
     s_save_pending.store(false);
@@ -366,8 +396,7 @@ bool alarm_stop_ringing_from_button()
     if (!snapshot.ringing) {
         return false;
     }
-    s_stop_requested.store(true);
-    (void)s_alarm_task_target.notify();
+    request_alarm_stop();
     return true;
 }
 
@@ -379,7 +408,7 @@ void alarm_notify_time_changed()
 bool alarm_clear_saved_state()
 {
     clear_pending_alarm_replacement();
-    s_stop_requested.store(true);
+    mark_alarm_stop_requested();
     s_save_pending.store(false);
     alarm_storage::ClearResult result = alarm_storage::clear();
     if (result.status == alarm_storage::ClearStatus::kAlreadyEmpty) {
@@ -388,10 +417,12 @@ bool alarm_clear_saved_state()
     }
     if (result.status == alarm_storage::ClearStatus::kOpenFailed) {
         ESP_LOGW(TAG, "alarm NVS clear open failed: %s", esp_err_to_name(result.error));
+        wake_alarm_task();
         return false;
     }
     if (result.status != alarm_storage::ClearStatus::kCleared) {
         ESP_LOGW(TAG, "alarm NVS clear failed: %s", esp_err_to_name(result.error));
+        wake_alarm_task();
         return false;
     }
     publish_alarm_state(false, false, 0, 0);

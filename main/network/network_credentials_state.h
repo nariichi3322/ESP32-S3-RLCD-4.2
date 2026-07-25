@@ -1,4 +1,4 @@
-// 声明 Wi-Fi 凭据与天气 API Key 的跨任务完整快照接口。
+// 声明 Wi-Fi 凭据与天气 API Key 的跨任务窄复制接口。
 #pragma once
 
 #include <stddef.h>
@@ -7,21 +7,18 @@ inline constexpr size_t kNetworkWifiSsidLen = 33;
 inline constexpr size_t kNetworkWifiPasswordLen = 65;
 inline constexpr size_t kNetworkWeatherApiKeyLen = 96;
 
-struct NetworkCredentialsSnapshot {
-    char wifi_ssid[kNetworkWifiSsidLen] = {};
-    char wifi_password[kNetworkWifiPasswordLen] = {};
-    char weather_api_key[kNetworkWeatherApiKeyLen] = {};
-    bool wifi_configured = false;
-    bool weather_api_key_configured = false;
-};
-
 struct NetworkCredentialsAvailability {
     bool wifi_configured = false;
     bool weather_api_key_configured = false;
 };
 
 bool network_credentials_state_init();
-void network_credentials_snapshot(NetworkCredentialsSnapshot *out);
+// ESP-IDF STA-sized outputs use all bytes for maximum-length fields and are
+// therefore not NUL-terminated in that one valid boundary case.
+bool network_wifi_credentials_copy(char *ssid,
+                                   size_t ssid_len,
+                                   char *password,
+                                   size_t password_len);
 NetworkCredentialsAvailability network_credentials_availability();
 void network_credentials_store(const char *ssid,
                                const char *password,

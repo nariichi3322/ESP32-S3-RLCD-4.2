@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 
+inline constexpr size_t kQweatherRequestUrlSize = 256;
 inline constexpr size_t kQweatherEncodedLocationSize = 128;
 
 enum QweatherUrlStatus {

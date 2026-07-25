@@ -20,6 +20,23 @@ constexpr const char *kDailyUrlFormat =
     "https://%s/v7/weather/%dd?location=%s&lang=zh&unit=m";
 constexpr const char *kAirUrlFormat =
     "https://%s/v7/air/now?location=%s&lang=zh";
+constexpr size_t kMaximumFormattedIntSize = 12;
+
+static_assert(sizeof(kCityLookupUrlFormat) + kQweatherEncodedLocationSize <=
+                  kQweatherRequestUrlSize,
+              "QWeather city URL workspace must fit the maximum encoded location");
+static_assert(sizeof(kNowUrlFormat) + sizeof(kApiHost) +
+                      kQweatherEncodedLocationSize <=
+                  kQweatherRequestUrlSize,
+              "QWeather current URL workspace must fit the maximum encoded location");
+static_assert(sizeof(kDailyUrlFormat) + sizeof(kApiHost) +
+                      kQweatherEncodedLocationSize + kMaximumFormattedIntSize <=
+                  kQweatherRequestUrlSize,
+              "QWeather daily URL workspace must fit the maximum encoded location");
+static_assert(sizeof(kAirUrlFormat) + sizeof(kApiHost) +
+                      kQweatherEncodedLocationSize <=
+                  kQweatherRequestUrlSize,
+              "QWeather air URL workspace must fit the maximum encoded location");
 
 QweatherUrlStatus format_url(char *out, size_t out_len, const char *format, ...)
 {

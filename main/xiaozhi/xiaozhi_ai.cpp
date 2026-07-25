@@ -431,6 +431,10 @@ void ensure_wake_word_listening()
     }
     if (!xiaozhi_voice_start()) {
         xiaozhi_snapshot_set(kXiaozhiAiError, kErrorStatus, kWakeWordFailureDetail);
+        // The listener owns no audio resources after a failed start. Drop the
+        // realtime network/CPU policy during the bounded retry window instead
+        // of burning full session power while only the error page is visible.
+        (void)xiaozhi_power_session_set_idle(true);
         return;
     }
     s_voice_started = true;

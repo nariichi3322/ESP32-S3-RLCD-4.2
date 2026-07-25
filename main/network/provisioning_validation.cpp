@@ -5,6 +5,7 @@
 #include "manual_weather_city_state.h"
 #include "qweather_client.h"
 
+#include "esp_attr.h"
 #include "esp_log.h"
 
 namespace {
@@ -19,12 +20,19 @@ constexpr const char *kProvisioningWeatherCityValidationFailedLog =
     "provisioning manual weather city validation failed";
 constexpr const char *kProvisioningWeatherCityValidationErrorLog =
     "provisioning manual weather city validation interrupted";
+
+// Validation runs only in the serialized network task. Keep the probe result
+// out of that task's stack while the QWeather HTTPS request owns TLS memory.
+EXT_RAM_BSS_ATTR WeatherData s_provisioning_probe_weather;
+static_assert(sizeof(WeatherData) >= 96,
+              "provisioning weather probe should remain off the network task stack");
 } // namespace
 
 WifiPortalSaveResult validate_saved_provisioning_weather_configuration()
 {
-    WeatherData probe_weather = {};
-    if (!qweather_fetch_now(kProvisioningWeatherApiProbeCityId, &probe_weather)) {
+    s_provisioning_probe_weather = {};
+    if (!qweather_fetch_now(kProvisioningWeatherApiProbeCityId,
+                            &s_provisioning_probe_weather)) {
         ESP_LOGW(TAG, "%s", kProvisioningWeatherApiValidationFailedLog);
         return WifiPortalSaveResult::kWeatherApiFailed;
     }

@@ -11,15 +11,21 @@ class I2cMasterBus;
 
 inline constexpr int kSensorSampleDayMinutes = 1;
 inline constexpr int kSensorSampleNightMinutes = 2;
+inline constexpr int kLocalSensorReadFailureGraceSamples = 1;
 
-void sample_battery();
+constexpr bool local_sensor_read_failure_within_grace(int consecutive_failures)
+{
+    return consecutive_failures > 0 &&
+           consecutive_failures <= kLocalSensorReadFailureGraceSamples;
+}
+
+bool sample_battery();
 bool init_hourly_sensor_history_state();
 void reset_hourly_sensor_history();
 void load_hourly_sensor_history();
 uint32_t get_hourly_sensor_history_version();
 bool get_hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history, uint32_t *version);
 void init_shtc3_sensor(I2cMasterBus &i2c);
-void sample_sensor();
+bool sample_sensor();
 TickType_t next_sensor_sample_tick(TickType_t now);
-TickType_t next_battery_sample_tick(TickType_t now);
 void housekeeping_task(void *);

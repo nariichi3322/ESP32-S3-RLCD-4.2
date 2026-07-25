@@ -10,6 +10,7 @@
 #include "scoped_heap_buffer.h"
 #include "wifi_portal_state.h"
 
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "esp_wifi.h"
 
@@ -77,6 +78,30 @@ static_assert(kPortalRootHtmlSize > kPortalSaveResultHtmlSize,
 static_assert(kPortalRootHtmlSize > kPortalOfflineResultHtmlSize,
               "portal root HTML buffer must exceed offline result buffer");
 static_assert(kPortalSaveExtraTextSize > 1, "portal save extra text buffer must fit text and NUL");
+
+struct PortalPageTextWorkspace {
+    char wifi_ssid[kNetworkWifiSsidLen];
+    char safe_ssid[kPortalEscapedSsidSize];
+    char safe_weather_city[kPortalEscapedCitySize];
+    char safe_extra[kPortalSaveExtraTextSize];
+    char weather_city[kManualWeatherCityLen];
+    char setup_ap_ssid[kWifiSetupApSsidTextLen];
+};
+
+// Synchronous URI handlers share the single HTTP server task, so page rendering
+// can borrow one private workspace without adding allocation failure paths.
+EXT_RAM_BSS_ATTR PortalPageTextWorkspace s_portal_page_text_workspace;
+static_assert(sizeof(s_portal_page_text_workspace.safe_extra) ==
+                  kPortalSaveExtraTextSize,
+              "portal page text workspace must preserve extra-message capacity");
+
+PortalPageTextWorkspace &reset_portal_page_text_workspace()
+{
+    memset(&s_portal_page_text_workspace,
+           0,
+           sizeof(s_portal_page_text_workspace));
+    return s_portal_page_text_workspace;
+}
 
 void set_portal_common_response_headers(httpd_req_t *req)
 {
@@ -282,7 +307,8 @@ void append_wifi_scan_list(char *html, size_t html_len)
             return;
         }
         ScopedHeapBuffer<uint8_t> records_storage(records_bytes,
-                                                  HeapBufferInit::kZeroed);
+                                                  HeapBufferInit::kZeroed,
+                                                  HeapBufferStorage::kPsramPreferred);
         if (!records_storage) {
             append_wifi_scan_message_and_close(html, html_len, kPortalWifiScanNoMemoryMessage);
             return;
@@ -317,16 +343,17 @@ void append_wifi_scan_list(char *html, size_t html_len)
 
 esp_err_t root_get_handler(httpd_req_t *req)
 {
-    char wifi_ssid[kNetworkWifiSsidLen] = {};
-    char safe_ssid[kPortalEscapedSsidSize] = {};
-    char safe_weather_city[kPortalEscapedCitySize] = {};
-    char weather_city[kManualWeatherCityLen] = {};
-    char setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
-    (void)manual_weather_city_snapshot(weather_city, sizeof(weather_city));
-    (void)network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid));
-    (void)wifi_setup_ap_ssid_snapshot(setup_ap_ssid, sizeof(setup_ap_ssid));
-    html_escape(wifi_ssid, safe_ssid, sizeof(safe_ssid));
-    html_escape(weather_city, safe_weather_city, sizeof(safe_weather_city));
+    PortalPageTextWorkspace &text = reset_portal_page_text_workspace();
+    (void)manual_weather_city_snapshot(text.weather_city,
+                                       sizeof(text.weather_city));
+    (void)network_wifi_ssid_snapshot(text.wifi_ssid,
+                                     sizeof(text.wifi_ssid));
+    (void)wifi_setup_ap_ssid_snapshot(text.setup_ap_ssid,
+                                      sizeof(text.setup_ap_ssid));
+    html_escape(text.wifi_ssid, text.safe_ssid, sizeof(text.safe_ssid));
+    html_escape(text.weather_city,
+                text.safe_weather_city,
+                sizeof(text.safe_weather_city));
     const WifiPortalSaveResult save_result = wifi_portal_save_result_load();
     const bool show_feedback = portal_save_result_is_visible(save_result);
     const char *feedback_open = save_result == WifiPortalSaveResult::kValidating
@@ -358,7 +385,7 @@ esp_err_t root_get_handler(httpd_req_t *req)
                 "<body><main class='wrap'><div class='brand'><div><h1>天气时钟</h1><p class='sub'>连接 Wi-Fi 使用联网功能，或设置时间进入离线模式。</p></div><div class='mark'>42</div></div>"
                 "<div class='panel'><div class='pill'>配网热点：%s</div>%s%s%s",
                 kPortalHtmlHeadPrefix,
-                setup_ap_ssid,
+                text.setup_ap_ssid,
                 show_feedback ? feedback_open : "",
                 show_feedback ? portal_save_result_title(save_result) : "",
                 show_feedback ? "</strong>" : "");
@@ -374,8 +401,8 @@ esp_err_t root_get_handler(httpd_req_t *req)
                 "<label for='manual_time'>离线日期和时间（选填）</label><input id='manual_time' name='manual_time' type='datetime-local' placeholder='连接 Wi-Fi 时可留空' aria-describedby='manual-time-hint'>"
                 "<p id='manual-time-hint' class='hint'>连接 Wi-Fi 时可以留空；仅离线使用时填写。</p>"
                 "<div class='actions'><button class='submit' type='submit'>保存并连接</button></div><p id='save-status' class='save-status' role='status' aria-live='polite'>正在保存设置并连接，请稍候…</p></form></div>",
-                safe_ssid,
-                safe_weather_city);
+                text.safe_ssid,
+                text.safe_weather_city);
     append_wifi_scan_list(html.data(), html.size());
     html_append(html.data(), html.size(), "</main></body></html>");
     esp_err_t err = send_portal_html(req, html.data());
@@ -389,17 +416,20 @@ esp_err_t send_save_result_page(httpd_req_t *req,
                                 WifiPortalSaveResult result,
                                 const char *extra_message)
 {
-    char wifi_ssid[kNetworkWifiSsidLen] = {};
-    char safe_ssid[kPortalEscapedSsidSize] = {};
-    char safe_city[kPortalEscapedCitySize] = {};
-    char safe_extra[kPortalSaveExtraTextSize] = {};
-    char weather_city[kManualWeatherCityLen] = {};
+    PortalPageTextWorkspace &text = reset_portal_page_text_workspace();
     const bool have_weather_city = manual_weather_city_snapshot(
-        weather_city, sizeof(weather_city));
-    (void)network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid));
-    html_escape(wifi_ssid, safe_ssid, sizeof(safe_ssid));
-    html_escape(have_weather_city ? weather_city : "自动定位", safe_city, sizeof(safe_city));
-    html_escape(extra_message ? extra_message : "", safe_extra, sizeof(safe_extra));
+        text.weather_city, sizeof(text.weather_city));
+    (void)network_wifi_ssid_snapshot(text.wifi_ssid,
+                                     sizeof(text.wifi_ssid));
+    html_escape(text.wifi_ssid,
+                text.safe_ssid,
+                sizeof(text.safe_ssid));
+    html_escape(have_weather_city ? text.weather_city : "自动定位",
+                text.safe_weather_city,
+                sizeof(text.safe_weather_city));
+    html_escape(extra_message ? extra_message : "",
+                text.safe_extra,
+                sizeof(text.safe_extra));
     ScopedHeapBuffer<char> html(kPortalSaveResultHtmlSize,
                                 HeapBufferInit::kZeroed,
                                 HeapBufferStorage::kPsramPreferred);
@@ -432,11 +462,11 @@ esp_err_t send_save_result_page(httpd_req_t *req,
                 state_text,
                 title,
                 body,
-                safe_extra[0] ? "<div class='note'>" : "",
-                safe_extra,
-                safe_extra[0] ? "</div>" : "",
-                safe_ssid,
-                safe_city,
+                text.safe_extra[0] ? "<div class='note'>" : "",
+                text.safe_extra,
+                text.safe_extra[0] ? "</div>" : "",
+                text.safe_ssid,
+                text.safe_weather_city,
                 disconnect_reason);
     return send_portal_html(req, html.data());
 }

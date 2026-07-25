@@ -1,8 +1,15 @@
 // 绘制反显 DSEG 数字牌，并按变化字形的包围框局部失效刷新。
 #include "ui_inverted_clock_card.h"
 
-#include "ui_views.h"
+#include "app_display_config.h"
+#include "app_metadata.h"
+#include "dseg_digits.h"
+#include "ui_bitmap.h"
+#include "ui_canvas_primitives.h"
+#include "ui_dseg_clock.h"
 #include "ui_dseg_layout.h"
+
+#include <esp_log.h>
 
 #define INVERTED_CLOCK_CARD_CANVAS_CREATE_FAILED_FORMAT "flip clock card %d canvas create failed"
 

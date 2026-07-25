@@ -28,7 +28,7 @@ using sdl_preview_widgets::set_obj_black;
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.5.27";
+static const char *APP_VERSION = "v1.5.28";
 
 static SdlPreviewBackend g_sdl_preview(kDisplayWidth, kDisplayHeight);
 static sdl_preview_progress::Canvas g_work_page_day_progress;

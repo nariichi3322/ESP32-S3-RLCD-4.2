@@ -1,4 +1,4 @@
-// 实现图片时钟内置图库按日、自定义图库按配置时段轮换的索引映射。
+// 实现图片时钟图库索引映射、已绘制来源缓存和自定义图片有限重试。
 #include "ui_gallery_selection.h"
 
 namespace {
@@ -108,4 +108,96 @@ bool gallery_image_selection_for_time(int year,
         selection->image_index = selection->builtin_index;
     }
     return true;
+}
+
+void gallery_image_render_cache_reset(GalleryImageRenderCache *cache)
+{
+    if (!cache) {
+        return;
+    }
+    cache->selected_index = -1;
+    cache->builtin_index = -1;
+    cache->used_custom_image = false;
+}
+
+bool gallery_image_render_cache_matches(const GalleryImageRenderCache &cache,
+                                        const GalleryImageSelection &selection,
+                                        bool used_custom_image)
+{
+    if (used_custom_image) {
+        return selection.uses_custom_gallery &&
+               cache.used_custom_image &&
+               cache.selected_index == selection.image_index;
+    }
+    return !cache.used_custom_image &&
+           cache.builtin_index == selection.builtin_index &&
+           (!selection.uses_custom_gallery ||
+            cache.selected_index == selection.image_index);
+}
+
+void gallery_image_render_cache_record(GalleryImageRenderCache *cache,
+                                       const GalleryImageSelection &selection,
+                                       bool used_custom_image)
+{
+    if (!cache) {
+        return;
+    }
+    cache->selected_index = selection.image_index;
+    cache->builtin_index = selection.builtin_index;
+    cache->used_custom_image =
+        selection.uses_custom_gallery && used_custom_image;
+}
+
+void gallery_custom_image_retry_reset(GalleryCustomImageRetryState *state)
+{
+    if (!state) {
+        return;
+    }
+    state->image_index = -1;
+    state->last_attempt_minute_key = UINT32_MAX;
+    state->attempts = 0;
+}
+
+bool gallery_custom_image_retry_pending(const GalleryCustomImageRetryState &state,
+                                        int image_index)
+{
+    return image_index >= 0 &&
+           state.image_index == image_index &&
+           state.attempts > 0;
+}
+
+bool gallery_custom_image_should_attempt(const GalleryCustomImageRetryState &state,
+                                         int image_index,
+                                         uint32_t minute_key)
+{
+    if (image_index < 0) {
+        return false;
+    }
+    if (state.image_index != image_index || state.attempts == 0) {
+        return true;
+    }
+    return state.attempts < kGalleryCustomImageMaxReadAttempts &&
+           state.last_attempt_minute_key != minute_key;
+}
+
+void gallery_custom_image_record_result(GalleryCustomImageRetryState *state,
+                                        int image_index,
+                                        uint32_t minute_key,
+                                        bool success)
+{
+    if (!state) {
+        return;
+    }
+    if (success || image_index < 0) {
+        gallery_custom_image_retry_reset(state);
+        return;
+    }
+    if (state->image_index != image_index) {
+        state->image_index = image_index;
+        state->attempts = 0;
+    }
+    state->last_attempt_minute_key = minute_key;
+    if (state->attempts < kGalleryCustomImageMaxReadAttempts) {
+        ++state->attempts;
+    }
 }

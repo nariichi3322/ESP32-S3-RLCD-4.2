@@ -8,6 +8,7 @@
 struct DailySayingCacheSnapshot {
     bool available = false;
     time_t last_sync_time = 0;
+    uint32_t version = 0;
 };
 
 bool daily_saying_state_init();

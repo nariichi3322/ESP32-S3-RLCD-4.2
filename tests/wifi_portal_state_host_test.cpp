@@ -39,6 +39,7 @@ int main()
     setup_portal_active_store(false);
     assert(!setup_portal_active_load());
     assert((s_event_bits & kProvisioningFeedbackBit) != 0);
+    assert((s_event_bits & kNetworkStateChangedBit) != 0);
     s_event_bits = 0;
 
     assert(wifi_last_disconnect_reason() == 0);

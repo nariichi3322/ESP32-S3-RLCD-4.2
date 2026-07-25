@@ -4,7 +4,6 @@
 #include "active_work_page_state.h"
 #include "alarm_services.h"
 #include "app_metadata.h"
-#include "audio_services.h"
 #include "battery_runtime_state.h"
 #include "input_button_config.h"
 #include "input_button_wait_policy.h"
@@ -14,20 +13,21 @@
 #include "task_notification_target.h"
 #include "ui_info_page_state.h"
 #include "ui_settings_activity_state.h"
+#include "ui_settings_feedback.h"
 #include "ui_settings_navigation.h"
-#include "ui_views.h"
+#include "ui_task_notify.h"
 #include "ui_work_page_catalog.h"
 #include "wifi_portal_state.h"
-#include "wifi_radio_state.h"
 
 #include "esp_sleep.h"
+#include "esp_log.h"
 #include "freertos/task.h"
 
 #define BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT "button gpio config failed: %s"
 #define BUTTON_ISR_SERVICE_FAILED_LOG_FORMAT "button gpio isr service failed: %s; using polling fallback"
 #define BUTTON_ISR_HANDLER_FAILED_LOG_FORMAT "button gpio %d isr handler failed: %s; using polling fallback"
 #define BUTTON_WAKEUP_FAILED_LOG_FORMAT "button light sleep wakeup failed: %s; using polling fallback"
-#define BUTTON_EDGE_WAKEUP_READY_LOG_FORMAT "button edge wakeup ready for idle work pages"
+#define BUTTON_EDGE_WAKEUP_READY_LOG_FORMAT "button edge wakeup ready"
 #define BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT "switch work page: %d"
 #define BUTTON_SHOW_SETTINGS_LOG_FORMAT "key button clicked, showing settings page"
 
@@ -328,30 +328,9 @@ void button_task(void *)
             key_long_handled = false;
             key_press_stopped_alert = false;
         }
-        const int active_page = active_work_page_load();
-        const BatteryRuntimeStatusSnapshot battery_status =
-            battery_runtime_status_load();
-        const bool low_battery_mode = battery_status.low_battery_mode;
-        const ButtonInteractiveSurfaceSnapshot interactive_surfaces =
-            capture_button_interactive_surfaces();
-        const bool edge_idle = button_idle_work_page_context({
-            battery_status.charging,
-            interactive_surfaces.setup_portal_active,
-            interactive_surfaces.settings_requested,
-            interactive_surfaces.info_requested,
-            interactive_surfaces.network_diag_requested,
-            ota_flow_active(),
-            is_audio_playing(),
-            wifi_radio_on_load(),
-            low_battery_mode,
-            is_work_page_enabled(active_page),
-        });
-        const bool low_refresh_idle = edge_idle &&
-                                      (low_battery_mode ||
-                                       work_page_uses_low_refresh_idle(active_page));
-        const bool press_tracking_active = boot_pressed_since != 0 || key_pressed_since != 0;
+        const bool press_tracking_active =
+            boot_pressed_since != 0 || key_pressed_since != 0;
         if (button_task_can_wait_for_edge(edge_wakeup_ready,
-                                          edge_idle,
                                           boot_pressed,
                                           key_pressed,
                                           press_tracking_active)) {
@@ -359,11 +338,21 @@ void button_task(void *)
             continue;
         }
 
-        int delay_ms = low_refresh_idle ? kButtonLowRefreshIdlePollMs : kButtonIdlePollMs;
+        int delay_ms = kButtonIdlePollMs;
         if (boot_pressed || key_pressed) {
             delay_ms = kButtonPressedPollMs;
-        } else if (interactive_surfaces.any_active()) {
-            delay_ms = kButtonActivePollMs;
+        } else {
+            const int active_page = active_work_page_load();
+            const bool low_battery_mode = battery_low_mode_load();
+            const ButtonInteractiveSurfaceSnapshot interactive_surfaces =
+                capture_button_interactive_surfaces();
+            if (interactive_surfaces.any_active()) {
+                delay_ms = kButtonActivePollMs;
+            } else if (low_battery_mode ||
+                       (is_work_page_enabled(active_page) &&
+                        work_page_uses_low_refresh_idle(active_page))) {
+                delay_ms = kButtonLowRefreshIdlePollMs;
+            }
         }
         vTaskDelay(pdMS_TO_TICKS(delay_ms));
     }

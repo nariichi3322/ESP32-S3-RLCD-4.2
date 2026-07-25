@@ -7,11 +7,13 @@
 #include "ui_clock_weather_panel_objects.h"
 #include "ui_widgets.h"
 
+#include <esp_attr.h>
+
 namespace {
-ClockWeatherPanelObjectRefs s_weather_panel_objects;
-ClockLocalSensorObjectRefs s_local_sensor_objects;
-ClockHeaderObjectRefs s_header_objects;
-ClockSurfaceObjectRefs s_surface_objects;
+EXT_RAM_BSS_ATTR ClockWeatherPanelObjectRefs s_weather_panel_objects;
+EXT_RAM_BSS_ATTR ClockLocalSensorObjectRefs s_local_sensor_objects;
+EXT_RAM_BSS_ATTR ClockHeaderObjectRefs s_header_objects;
+EXT_RAM_BSS_ATTR ClockSurfaceObjectRefs s_surface_objects;
 } // namespace
 
 ClockWeatherPanelObjectRefs &mutable_clock_weather_panel_object_refs()

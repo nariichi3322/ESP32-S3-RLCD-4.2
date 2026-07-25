@@ -1,13 +1,28 @@
 // 构建和刷新温湿历史页面及工作页顶部温湿度摘要。
-#include "ui_views.h"
+#include "ui_work_pages.h"
 
 #include "app_constexpr.h"
+#include "app_metadata.h"
+#include "battery_runtime_state.h"
 #include "sensor_services.h"
 #include "sensor_time.h"
+#include "work_page_ids.h"
 #include "ui_battery.h"
+#include "ui_canvas_primitives.h"
 #include "ui_draw_cache.h"
+#include "ui_fonts.h"
 #include "ui_history_chart.h"
+#include "ui_history_format.h"
 #include "ui_history_window.h"
+#include "ui_page_state.h"
+#include "ui_progress.h"
+#include "ui_widgets.h"
+#include "ui_work_status.h"
+
+#include <esp_attr.h>
+#include <esp_log.h>
+
+#include <string.h>
 
 namespace {
 constexpr int kHoursPerDay = 24;
@@ -40,15 +55,26 @@ constexpr int kHistoryAxisLabelRowGap = 30;
 constexpr const char *kHistoryTimePlaceholder = "--:--";
 constexpr const char *kHistoryTempTitle = "温度";
 constexpr const char *kHistoryHumiTitle = "湿度";
+
+struct HistoryRedrawWorkspace {
+    HourlySensorHistoryBlob history;
+    HourlySensorSample samples[kHistoryWindowHours];
+};
+
+EXT_RAM_BSS_ATTR HistoryRedrawWorkspace s_history_redraw_workspace;
+
+static_assert(sizeof(HistoryRedrawWorkspace) > 1024,
+              "history redraw workspace should remain off the UI stack");
+
 lv_color_t *s_history_chart_canvas_buffer;
 lv_obj_t *s_history_chart_canvas;
 lv_obj_t *s_history_temp_max_label;
 lv_obj_t *s_history_temp_min_label;
 lv_obj_t *s_history_humi_max_label;
 lv_obj_t *s_history_humi_min_label;
-lv_obj_t *s_history_time_labels[kHistoryAxisTickCount];
-lv_obj_t *s_history_temp_axis_labels[kHistoryAxisValueCount];
-lv_obj_t *s_history_humi_axis_labels[kHistoryAxisValueCount];
+EXT_RAM_BSS_ATTR lv_obj_t *s_history_time_labels[kHistoryAxisTickCount];
+EXT_RAM_BSS_ATTR lv_obj_t *s_history_temp_axis_labels[kHistoryAxisValueCount];
+EXT_RAM_BSS_ATTR lv_obj_t *s_history_humi_axis_labels[kHistoryAxisValueCount];
 uint32_t s_last_history_drawn_version = static_cast<uint32_t>(-1);
 int s_last_history_drawn_hour = -1;
 static_assert(kHoursPerDay > 0, "Hours per day must be positive");
@@ -73,7 +99,6 @@ static_assert(array_count(s_history_time_labels) == kHistoryAxisTickCount,
 static_assert(array_count(s_history_temp_axis_labels) == kHistoryAxisValueCount &&
                   array_count(s_history_humi_axis_labels) == kHistoryAxisValueCount,
               "History value label storage must match axis values");
-#define HISTORY_WINDOW_INVALID_ARG_LOG "history window invalid arg"
 #define HISTORY_TEMP_TITLE_CREATE_FAILED_LOG "history temp title create failed"
 #define HISTORY_HUMI_TITLE_CREATE_FAILED_LOG "history humi title create failed"
 #define HISTORY_CHART_CANVAS_CREATE_FAILED_LOG "history chart canvas create failed"
@@ -81,10 +106,6 @@ static_assert(array_count(s_history_temp_axis_labels) == kHistoryAxisValueCount 
 #define HISTORY_TEMP_AXIS_LABEL_CREATE_FAILED_FORMAT "history temp axis label create failed index=%d"
 #define HISTORY_HUMI_AXIS_LABEL_CREATE_FAILED_FORMAT "history humi axis label create failed index=%d"
 
-bool history_window_args_valid(const HourlySensorSample *out, const int *out_count)
-{
-    return out && out_count;
-}
 } // namespace
 
 void invalidate_history_draw_cache()
@@ -140,24 +161,6 @@ static void build_history_value_badges(lv_obj_t *screen)
     }
 }
 
-bool collect_history_window(time_t end_hour,
-                            HourlySensorSample *out,
-                            int *out_count)
-{
-    if (out_count) {
-        *out_count = 0;
-    }
-    if (!history_window_args_valid(out, out_count)) {
-        ESP_LOGW(TAG, "%s", HISTORY_WINDOW_INVALID_ARG_LOG);
-        return false;
-    }
-    HourlySensorHistoryBlob history = {};
-    if (!get_hourly_sensor_history_snapshot(&history, nullptr)) {
-        return false;
-    }
-    return collect_history_window_from_snapshot(end_hour, history, out, out_count);
-}
-
 int history_hour_key(const struct tm &local)
 {
     return local.tm_yday * kHoursPerDay + local.tm_hour;
@@ -188,9 +191,10 @@ void align_history_label_or_log(lv_obj_t *label,
 static __attribute__((noinline)) bool redraw_history_chart(time_t end_hour,
                                                            int hour_key)
 {
-    HourlySensorHistoryBlob history = {};
+    memset(&s_history_redraw_workspace, 0, sizeof(s_history_redraw_workspace));
     uint32_t history_version = 0;
-    if (!get_hourly_sensor_history_snapshot(&history, &history_version)) {
+    if (!get_hourly_sensor_history_snapshot(&s_history_redraw_workspace.history,
+                                            &history_version)) {
         return false;
     }
     if (s_last_history_drawn_version == history_version &&
@@ -202,16 +206,18 @@ static __attribute__((noinline)) bool redraw_history_chart(time_t end_hour,
 
     lv_canvas_fill_bg(s_history_chart_canvas, lv_color_white(), LV_OPA_COVER);
 
-    HourlySensorSample samples[kHistoryWindowHours] = {};
     int sample_count = 0;
-    collect_history_window_from_snapshot(end_hour, history, samples, &sample_count);
+    collect_history_window_from_snapshot(end_hour,
+                                         s_history_redraw_workspace.history,
+                                         s_history_redraw_workspace.samples,
+                                         &sample_count);
     time_t start = end_hour - kHistoryWindowHours * kHistorySecondsPerHour;
     update_history_axis_labels(start, s_history_time_labels);
 
     draw_history_chart_panel(s_history_chart_canvas,
                              kHistoryCanvasW,
                              kHistoryCanvasH,
-                             samples,
+                             s_history_redraw_workspace.samples,
                              sample_count,
                              true,
                              kHistoryPlotX,
@@ -224,7 +230,7 @@ static __attribute__((noinline)) bool redraw_history_chart(time_t end_hour,
     draw_history_chart_panel(s_history_chart_canvas,
                              kHistoryCanvasW,
                              kHistoryCanvasH,
-                             samples,
+                             s_history_redraw_workspace.samples,
                              sample_count,
                              false,
                              kHistoryPlotX,
@@ -244,8 +250,7 @@ bool update_history_page(const struct tm &local)
     if (!s_history_chart_canvas) {
         return false;
     }
-    const WorkPageStatusLabels status = get_work_page_status_labels(kWorkPageHistory);
-    bool changed = update_work_page_status_time(status.time, local);
+    bool changed = update_work_page_status_time(kWorkPageHistory, local);
     const int hour_key = history_hour_key(local);
     if (s_last_history_drawn_version == get_hourly_sensor_history_version() &&
         s_last_history_drawn_hour == hour_key) {

@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <string.h>
 
 int main()
 {
@@ -31,6 +32,23 @@ int main()
     legacy = {};
     legacy.count = kLegacyHourlyHistoryCount - 1;
     assert(!legacy_history_valid(legacy, sizeof(legacy)));
+
+    HourlySensorHistoryBlob initialized = {};
+    memset(&initialized, 0xA5, sizeof(initialized));
+    initialize_empty_hourly_history(&initialized);
+    assert(initialized.magic == kHourlyHistoryMagic);
+    assert(initialized.version == kLegacyHourlyHistoryVersion);
+    assert(initialized.count == kHourlyHistoryCount);
+    for (const HourlySensorSample &sample : initialized.samples) {
+        assert(sample.timestamp == 0);
+        assert(sample.temperature == 0.0f);
+        assert(sample.humidity == 0.0f);
+        assert(sample.valid == 0);
+        for (uint8_t byte : sample.reserved) {
+            assert(byte == 0);
+        }
+    }
+    initialize_empty_hourly_history(nullptr);
 
     static_assert(offsetof(HourlySensorHistoryMeta, magic) == 0,
                   "hourly meta magic must remain first");

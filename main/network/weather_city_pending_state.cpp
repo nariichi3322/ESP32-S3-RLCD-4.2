@@ -3,13 +3,17 @@
 
 #include "scoped_semaphore_lock.h"
 
+#include <esp_attr.h>
 #include <string.h>
 
 namespace {
 StaticTaskMutex s_pending_mutex;
-char s_pending_city[kManualWeatherCityLen] = {};
+EXT_RAM_BSS_ATTR char s_pending_city_text[kManualWeatherCityLen] = {};
 bool s_pending = false;
 uint32_t s_generation = 0;
+
+static_assert(sizeof(s_pending_city_text) == kManualWeatherCityLen,
+              "pending weather city storage must match the shared contract");
 
 uint32_t next_generation(uint32_t current)
 {
@@ -32,7 +36,7 @@ bool weather_city_pending_store(const char *city)
     if (!lock) {
         return false;
     }
-    memcpy(s_pending_city, replacement, sizeof(s_pending_city));
+    memcpy(s_pending_city_text, replacement, sizeof(s_pending_city_text));
     s_generation = next_generation(s_generation);
     s_pending = true;
     return true;
@@ -48,7 +52,7 @@ bool weather_city_pending_snapshot(WeatherCityPendingSnapshot *out)
     if (!lock) {
         return false;
     }
-    memcpy(out->city, s_pending_city, sizeof(out->city));
+    memcpy(out->city, s_pending_city_text, sizeof(out->city));
     out->pending = s_pending;
     out->generation = s_generation;
     return true;
@@ -66,7 +70,7 @@ bool weather_city_pending_clear(uint32_t generation)
     if (!lock || !s_pending || generation != s_generation) {
         return false;
     }
-    memset(s_pending_city, 0, sizeof(s_pending_city));
+    memset(s_pending_city_text, 0, sizeof(s_pending_city_text));
     s_pending = false;
     return true;
 }

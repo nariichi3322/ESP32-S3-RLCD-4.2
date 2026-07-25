@@ -7,9 +7,9 @@
 #include "custom_asset_format.h"
 
 #include "app_metadata.h"
-#include "clock_gallery_images.h"
+#include "clock_gallery_contract.h"
 #include "ota_manifest_limits.h"
-#include "status_gif_60.h"
+#include "status_gif_contract.h"
 #include "weather_city_contract.h"
 
 #include "esp_attr.h"
@@ -52,7 +52,12 @@ static int s_entry_count = 0;
 static EXT_RAM_BSS_ATTR CustomAssetCatalog s_asset_catalog;
 static bool s_assets_ready = false;
 static constexpr const char *kCustomAssetsPartitionLabel = "assets";
-static constexpr size_t kCustomAssetIoChunkSize = 256;
+static constexpr size_t kCustomAssetCrcIoChunkSize = 512;
+static constexpr size_t kCustomAssetDiagnosticIoChunkSize = 256;
+// custom_assets_init() is the only caller of both scan paths, and it runs
+// synchronously before application tasks are created. Reuse one external-RAM
+// buffer so resource validation does not consume the small ESP main-task stack.
+static EXT_RAM_BSS_ATTR uint8_t s_custom_asset_io_workspace[kCustomAssetCrcIoChunkSize] = {};
 static constexpr int kCustomAssetDiagGifFrames[] = {0, 1, 30, 59};
 
 constexpr bool custom_asset_diag_frames_valid()
@@ -113,7 +118,14 @@ static_assert(sizeof(CustomAssetsHeader) +
                       kCustomAssetMaxEntries * sizeof(CustomAssetEntry) <=
                   UINT16_MAX,
               "custom asset header must fit its 16-bit wire size");
-static_assert(kCustomAssetIoChunkSize > 0, "custom asset I/O chunk size must be positive");
+static_assert(kCustomAssetCrcIoChunkSize > 0,
+              "custom asset CRC I/O chunk size must be positive");
+static_assert(kCustomAssetCrcIoChunkSize <= 512,
+              "custom asset CRC I/O chunk must stay within the validated workspace size");
+static_assert(kCustomAssetDiagnosticIoChunkSize > 0,
+              "custom asset diagnostic I/O chunk size must be positive");
+static_assert(kCustomAssetDiagnosticIoChunkSize <= kCustomAssetCrcIoChunkSize,
+              "custom asset diagnostic I/O chunk must fit the shared workspace");
 static bool partition_range_valid(uint32_t offset, size_t length)
 {
     if (!s_assets_partition) {
@@ -143,18 +155,24 @@ static bool partition_crc(uint32_t offset, uint32_t length, uint32_t *crc_out)
     if (!partition_range_valid(offset, length)) {
         return false;
     }
-    uint8_t buffer[kCustomAssetIoChunkSize];
     uint32_t crc = kCustomAssetCrc32Initial;
     uint32_t remaining = length;
     uint32_t cursor = offset;
     while (remaining > 0) {
-        size_t chunk = remaining > sizeof(buffer) ? sizeof(buffer) : remaining;
-        esp_err_t err = esp_partition_read(s_assets_partition, cursor, buffer, chunk);
+        size_t chunk = remaining > kCustomAssetCrcIoChunkSize
+                           ? kCustomAssetCrcIoChunkSize
+                           : remaining;
+        esp_err_t err = esp_partition_read(s_assets_partition,
+                                           cursor,
+                                           s_custom_asset_io_workspace,
+                                           chunk);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, CUSTOM_ASSETS_PARTITION_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
             return false;
         }
-        crc = custom_asset_crc32_update(crc, buffer, chunk);
+        crc = custom_asset_crc32_update(crc,
+                                        s_custom_asset_io_workspace,
+                                        chunk);
         cursor += chunk;
         remaining -= chunk;
     }
@@ -324,16 +342,17 @@ static bool partition_black_bit_count(uint32_t offset, uint32_t length, int *cou
     if (!count_out || !partition_range_valid(offset, length)) {
         return false;
     }
-    uint8_t buffer[kCustomAssetIoChunkSize];
     uint32_t remaining = length;
     uint32_t cursor = offset;
     int total = 0;
     while (remaining > 0) {
-        size_t chunk = remaining > sizeof(buffer) ? sizeof(buffer) : remaining;
-        if (!read_checked(cursor, buffer, chunk)) {
+        size_t chunk = remaining > kCustomAssetDiagnosticIoChunkSize
+                           ? kCustomAssetDiagnosticIoChunkSize
+                           : remaining;
+        if (!read_checked(cursor, s_custom_asset_io_workspace, chunk)) {
             return false;
         }
-        total += count_black_bits(buffer, chunk);
+        total += count_black_bits(s_custom_asset_io_workspace, chunk);
         cursor += chunk;
         remaining -= chunk;
     }
@@ -353,7 +372,7 @@ static void log_custom_gif_frame_density(int frame)
         ESP_LOGW(TAG, CUSTOM_ASSETS_DIAG_GIF_FRAME_READ_FAILED_LOG_FORMAT, frame);
         return;
     }
-    ESP_LOGI(TAG,
+    ESP_LOGD(TAG,
              CUSTOM_ASSETS_DIAG_GIF_FRAME_DENSITY_LOG_FORMAT,
              frame,
              black_bits,
@@ -425,7 +444,8 @@ static void publish_custom_assets_ready_state()
              s_asset_catalog.gallery_count(),
              s_asset_catalog.weather_city() ? 1 : 0,
              s_asset_catalog.ota_manifest_url() ? 1 : 0);
-    if (s_asset_catalog.main_gif()) {
+    if (s_asset_catalog.main_gif() &&
+        esp_log_level_get(TAG) >= ESP_LOG_DEBUG) {
         for (int frame : kCustomAssetDiagGifFrames) {
             log_custom_gif_frame_density(frame);
         }

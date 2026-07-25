@@ -12,5 +12,6 @@ bool publish_hourly_sensor_sample(int index,
                                   const HourlySensorSample &sample);
 int64_t hourly_sensor_history_last_saved_at();
 uint32_t hourly_sensor_history_version_load();
+// 读取失败时返回 false，并把非空历史和版本输出重置为安全默认值。
 bool hourly_sensor_history_snapshot(HourlySensorHistoryBlob *history,
                                     uint32_t *version);

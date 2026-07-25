@@ -1,7 +1,8 @@
 // 组装小智设备信息并执行官方激活 HTTP 请求，不修改会话状态。
 #include "xiaozhi_activation_client.h"
 
-#include "app_state.h"
+#include "app_display_config.h"
+#include "app_metadata.h"
 #include "network_https_resources.h"
 #include "network_task_guards.h"
 #include "scoped_http_client.h"
@@ -12,9 +13,12 @@
 #include <esp_crt_bundle.h>
 #include <esp_flash.h>
 #include <esp_http_client.h>
+#include <esp_log.h>
 #include <esp_mac.h>
 #include <esp_ota_ops.h>
 #include <esp_system.h>
+
+#include <freertos/FreeRTOS.h>
 
 #include <cstdio>
 #include <cstring>

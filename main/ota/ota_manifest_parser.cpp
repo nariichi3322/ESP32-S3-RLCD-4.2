@@ -32,20 +32,20 @@ OtaManifestParseResult ota_parse_manifest_json(const char *json, OtaManifest *ma
         return result;
     }
 
-    result.have_version = json_copy_string(root.get(),
-                                           kVersionField,
-                                           manifest->version,
-                                           sizeof(manifest->version)) &&
+    result.have_version = json_copy_string_exact(root.get(),
+                                                 kVersionField,
+                                                 manifest->version,
+                                                 sizeof(manifest->version)) &&
                           manifest->version[0] != '\0';
-    result.have_url = json_copy_string(root.get(),
-                                       kUrlField,
-                                       manifest->url,
-                                       sizeof(manifest->url)) &&
+    result.have_url = json_copy_string_exact(root.get(),
+                                             kUrlField,
+                                             manifest->url,
+                                             sizeof(manifest->url)) &&
                       manifest->url[0] != '\0';
-    result.have_sha256 = json_copy_string(root.get(),
-                                          kSha256Field,
-                                          manifest->sha256,
-                                          sizeof(manifest->sha256));
+    result.have_sha256 = json_copy_string_exact(root.get(),
+                                                kSha256Field,
+                                                manifest->sha256,
+                                                sizeof(manifest->sha256));
     const cJSON *size = cJSON_GetObjectItem(root.get(), kSizeField);
     if (cJSON_IsNumber(size)) {
         manifest->size = size->valueint;

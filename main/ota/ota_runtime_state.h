@@ -17,8 +17,15 @@ struct OtaRuntimeSnapshot {
     char status[kOtaStatusLen] = {};
 };
 
+struct OtaRuntimeTimingSnapshot {
+    int state = kOtaIdle;
+    TickType_t status_until_tick = 0;
+    bool status_hold_set = false;
+};
+
 bool ota_runtime_state_init();
 void ota_runtime_snapshot_load(OtaRuntimeSnapshot *snapshot);
+void ota_runtime_timing_snapshot_load(OtaRuntimeTimingSnapshot *snapshot);
 int ota_runtime_state_load();
 bool ota_runtime_reboot_pending_load();
 void ota_runtime_publish_status(int state,

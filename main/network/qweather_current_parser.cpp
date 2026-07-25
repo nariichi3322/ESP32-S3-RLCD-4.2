@@ -3,6 +3,8 @@
 
 #include "network_json.h"
 
+#include <string.h>
+
 namespace {
 constexpr const char *kWeatherTextField = "text";
 constexpr const char *kWeatherIconField = "icon";
@@ -13,17 +15,6 @@ constexpr const char *kAirCategoryField = "category";
 constexpr const char *kAirPrimaryField = "primary";
 constexpr const char *kAirPm25Field = "pm2p5";
 
-bool copy_required_air_fields(const cJSON *now, WeatherAirData *air)
-{
-    return json_copy_string(now, kAirAqiField, air->aqi, sizeof(air->aqi)) &&
-           json_copy_string(now, kAirCategoryField, air->category, sizeof(air->category));
-}
-
-void copy_optional_air_fields(const cJSON *now, WeatherAirData *air)
-{
-    json_copy_string(now, kAirPrimaryField, air->primary, sizeof(air->primary));
-    json_copy_string(now, kAirPm25Field, air->pm2p5, sizeof(air->pm2p5));
-}
 } // namespace
 
 bool parse_qweather_current_weather(const cJSON *now, WeatherData *weather)
@@ -31,10 +22,19 @@ bool parse_qweather_current_weather(const cJSON *now, WeatherData *weather)
     if (!cJSON_IsObject(now) || !weather) {
         return false;
     }
-    return json_copy_string(now, kWeatherTextField, weather->text, sizeof(weather->text)) &&
-           json_copy_string(now, kWeatherIconField, weather->icon, sizeof(weather->icon)) &&
-           json_copy_string(now, kWeatherTempField, weather->temp, sizeof(weather->temp)) &&
-           json_copy_string(now, kWeatherHumidityField, weather->humidity, sizeof(weather->humidity));
+    const char *text = network_json_object_string_value(now, kWeatherTextField);
+    const char *icon = network_json_object_string_value(now, kWeatherIconField);
+    const char *temp = network_json_object_string_value(now, kWeatherTempField);
+    const char *humidity =
+        network_json_object_string_value(now, kWeatherHumidityField);
+    if (!text || !icon || !temp || !humidity) {
+        return false;
+    }
+    strlcpy(weather->text, text, sizeof(weather->text));
+    strlcpy(weather->icon, icon, sizeof(weather->icon));
+    strlcpy(weather->temp, temp, sizeof(weather->temp));
+    strlcpy(weather->humidity, humidity, sizeof(weather->humidity));
+    return true;
 }
 
 bool parse_qweather_current_air(const cJSON *now, WeatherAirData *air)
@@ -42,7 +42,18 @@ bool parse_qweather_current_air(const cJSON *now, WeatherAirData *air)
     if (!cJSON_IsObject(now) || !air) {
         return false;
     }
-    bool ok = copy_required_air_fields(now, air);
-    copy_optional_air_fields(now, air);
-    return ok;
+    const char *aqi = network_json_object_string_value(now, kAirAqiField);
+    const char *category =
+        network_json_object_string_value(now, kAirCategoryField);
+    if (!aqi || !category) {
+        return false;
+    }
+    const char *primary =
+        network_json_object_string_value(now, kAirPrimaryField);
+    const char *pm2p5 = network_json_object_string_value(now, kAirPm25Field);
+    strlcpy(air->aqi, aqi, sizeof(air->aqi));
+    strlcpy(air->category, category, sizeof(air->category));
+    strlcpy(air->primary, primary ? primary : "", sizeof(air->primary));
+    strlcpy(air->pm2p5, pm2p5 ? pm2p5 : "", sizeof(air->pm2p5));
+    return true;
 }

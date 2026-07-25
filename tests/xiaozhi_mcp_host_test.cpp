@@ -307,6 +307,18 @@ void test_volume_control()
     payload = response_payload(root.value);
     expect(cJSON_IsObject(cJSON_GetObjectItem(payload, "error")), "out-of-range volume did not fail");
     expect(chime_runtime_volume_percent() == 55, "invalid volume changed device state");
+
+    root = send_request(
+        "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"arguments\":{}},\"id\":51}");
+    payload = response_payload(root.value);
+    expect(cJSON_IsObject(cJSON_GetObjectItem(payload, "error")),
+           "missing tool name did not fail");
+
+    root = send_request(
+        "{\"jsonrpc\":\"2.0\",\"method\":\"tools/call\",\"params\":{\"name\":7,\"arguments\":{}},\"id\":52}");
+    payload = response_payload(root.value);
+    expect(cJSON_IsObject(cJSON_GetObjectItem(payload, "error")),
+           "numeric tool name did not fail");
 }
 
 bool alarm_handler(const XiaozhiMcpAlarmRequest &request, char *result, size_t result_len)

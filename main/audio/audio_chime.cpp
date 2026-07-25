@@ -196,14 +196,15 @@ void hourly_chime_task(void *arg)
     vTaskDelete(nullptr);
 }
 
-bool play_chime_sound_blocking(int source_slot, bool (*stop_requested)())
+bool play_chime_sound_blocking(int source_slot,
+                               AudioStopRequestedCallback stop_requested)
 {
     return play_chime_sound_repeated_blocking(source_slot, 1, stop_requested);
 }
 
 bool play_chime_sound_repeated_blocking(int source_slot,
                                         int repeat_count,
-                                        bool (*stop_requested)())
+                                        AudioStopRequestedCallback stop_requested)
 {
     if (repeat_count <= 0 || !audio_try_mark_playing()) {
         return false;

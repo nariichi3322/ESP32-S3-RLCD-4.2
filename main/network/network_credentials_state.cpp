@@ -1,7 +1,9 @@
-// 集中维护 Wi-Fi 凭据、天气 API Key 及其可用状态的完整快照。
+// 集中维护 Wi-Fi 凭据、天气 API Key 及其可用状态。
 #include "network_credentials_state.h"
 
 #include "scoped_semaphore_lock.h"
+
+#include <esp_attr.h>
 
 #include <atomic>
 #include <stdint.h>
@@ -10,14 +12,23 @@
 namespace {
 constexpr uint8_t kWifiConfiguredMask = 1U << 0;
 constexpr uint8_t kWeatherApiKeyConfiguredMask = 1U << 1;
+struct NetworkCredentialsState {
+    char wifi_ssid[kNetworkWifiSsidLen] = {};
+    char wifi_password[kNetworkWifiPasswordLen] = {};
+    char weather_api_key[kNetworkWeatherApiKeyLen] = {};
+    bool wifi_configured = false;
+    bool weather_api_key_configured = false;
+};
 StaticTaskMutex s_credentials_mutex;
-NetworkCredentialsSnapshot s_credentials;
+EXT_RAM_BSS_ATTR NetworkCredentialsState s_credentials = {};
 std::atomic<uint8_t> s_credentials_availability_mask{0};
 
 static_assert((kWifiConfiguredMask & kWeatherApiKeyConfiguredMask) == 0,
               "credential availability flags must not overlap");
+static_assert(sizeof(NetworkCredentialsState) == 196,
+              "credential state size changed; re-evaluate PSRAM placement");
 
-uint8_t credentials_availability_mask(const NetworkCredentialsSnapshot &credentials)
+uint8_t credentials_availability_mask(const NetworkCredentialsState &credentials)
 {
     uint8_t mask = 0;
     if (credentials.wifi_configured) {
@@ -27,15 +38,6 @@ uint8_t credentials_availability_mask(const NetworkCredentialsSnapshot &credenti
         mask |= kWeatherApiKeyConfiguredMask;
     }
     return mask;
-}
-
-template <size_t N>
-void copy_text(char (&out)[N], const char *value)
-{
-    const char *source = value ? value : "";
-    const size_t length = strnlen(source, N - 1);
-    memcpy(out, source, length);
-    out[length] = '\0';
 }
 
 template <size_t N>
@@ -56,6 +58,25 @@ bool copy_field_snapshot(char *out, size_t out_len, const char (&field)[N], cons
     const bool available = configured && out[0] != '\0';
     return available;
 }
+
+void clear_wifi_credentials_outputs(char *ssid,
+                                    size_t ssid_len,
+                                    char *password,
+                                    size_t password_len)
+{
+    if (ssid && ssid_len > 0) {
+        const size_t clear_len =
+            ssid_len < kNetworkWifiSsidLen ? ssid_len : kNetworkWifiSsidLen;
+        memset(ssid, 0, clear_len);
+    }
+    if (password && password_len > 0) {
+        const size_t clear_len =
+            password_len < kNetworkWifiPasswordLen
+                ? password_len
+                : kNetworkWifiPasswordLen;
+        memset(password, 0, clear_len);
+    }
+}
 } // namespace
 
 bool network_credentials_state_init()
@@ -63,17 +84,31 @@ bool network_credentials_state_init()
     return s_credentials_mutex.init();
 }
 
-void network_credentials_snapshot(NetworkCredentialsSnapshot *out)
+bool network_wifi_credentials_copy(char *ssid,
+                                   size_t ssid_len,
+                                   char *password,
+                                   size_t password_len)
 {
-    if (!out) {
-        return;
+    clear_wifi_credentials_outputs(ssid, ssid_len, password, password_len);
+    if (!ssid || !password ||
+        ssid_len < kNetworkWifiSsidLen - 1 ||
+        password_len < kNetworkWifiPasswordLen - 1) {
+        return false;
     }
-    memset(out, 0, sizeof(*out));
     ScopedSemaphoreLock state_lock(s_credentials_mutex);
     if (!state_lock) {
-        return;
+        return false;
     }
-    memcpy(out, &s_credentials, sizeof(*out));
+    const size_t ssid_copy_len = kNetworkWifiSsidLen - 1;
+    const size_t password_copy_len = kNetworkWifiPasswordLen - 1;
+    memcpy(ssid, s_credentials.wifi_ssid, ssid_copy_len);
+    memcpy(password, s_credentials.wifi_password, password_copy_len);
+    const bool available = s_credentials.wifi_configured && ssid[0] != '\0';
+    if (!available) {
+        clear_wifi_credentials_outputs(
+            ssid, ssid_len, password, password_len);
+    }
+    return available;
 }
 
 NetworkCredentialsAvailability network_credentials_availability()
@@ -93,21 +128,29 @@ void network_credentials_store(const char *ssid,
                                bool wifi_configured,
                                bool weather_api_key_configured)
 {
-    NetworkCredentialsSnapshot replacement;
-    copy_text(replacement.wifi_ssid, ssid);
-    copy_text(replacement.wifi_password, password);
-    copy_text(replacement.weather_api_key, weather_api_key);
-    replacement.wifi_configured = wifi_configured && replacement.wifi_ssid[0] != '\0';
-    replacement.weather_api_key_configured =
-        weather_api_key_configured && replacement.weather_api_key[0] != '\0';
+    const char *ssid_source = ssid ? ssid : "";
+    const char *password_source = password ? password : "";
+    const char *api_key_source = weather_api_key ? weather_api_key : "";
+    const size_t ssid_length =
+        strnlen(ssid_source, kNetworkWifiSsidLen - 1);
+    const size_t password_length =
+        strnlen(password_source, kNetworkWifiPasswordLen - 1);
+    const size_t api_key_length =
+        strnlen(api_key_source, kNetworkWeatherApiKeyLen - 1);
 
     ScopedSemaphoreLock state_lock(s_credentials_mutex);
     if (!state_lock) {
         return;
     }
-    memcpy(&s_credentials, &replacement, sizeof(s_credentials));
+    memset(&s_credentials, 0, sizeof(s_credentials));
+    memcpy(s_credentials.wifi_ssid, ssid_source, ssid_length);
+    memcpy(s_credentials.wifi_password, password_source, password_length);
+    memcpy(s_credentials.weather_api_key, api_key_source, api_key_length);
+    s_credentials.wifi_configured = wifi_configured && ssid_length > 0;
+    s_credentials.weather_api_key_configured =
+        weather_api_key_configured && api_key_length > 0;
     s_credentials_availability_mask.store(
-        credentials_availability_mask(replacement),
+        credentials_availability_mask(s_credentials),
         std::memory_order_release);
 }
 

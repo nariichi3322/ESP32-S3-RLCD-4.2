@@ -1,15 +1,23 @@
 // 刷新温湿时钟的数字牌、日期农历、传感器文本、趋势和舒适度图标。
 #include "ui_flip_clock.h"
 #include "ui_flip_clock_objects.h"
-#include "ui_views.h"
 
 #include "calendar_lunar.h"
 #include "flip_sensor_icons.h"
 #include "local_sensor_state.h"
+#include "ui_bitmap.h"
 #include "ui_clock_time.h"
 #include "ui_flip_sensor_mood.h"
 #include "ui_inverted_clock_card.h"
+#include "ui_icons.h"
+#include "ui_page_state.h"
 #include "ui_text_format.h"
+#include "ui_widgets.h"
+#include "work_page_ids.h"
+
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
 
 namespace {
 
@@ -31,6 +39,8 @@ int s_last_hour = -1;
 int s_last_minute = -1;
 int s_last_second = -1;
 int s_last_sensor_minute = -1;
+uint32_t s_last_sensor_version = 0;
+bool s_sensor_version_valid = false;
 int s_last_temp_mood = -1;
 int s_last_humi_mood = -1;
 int s_last_temp_trend = kTrendDrawCacheInvalid;
@@ -138,25 +148,37 @@ bool update_sensor_text()
         !objects.humidity_bold_label) {
         return false;
     }
+    const uint32_t sensor_version = local_sensor_state_version();
+    if (s_sensor_version_valid && sensor_version == s_last_sensor_version) {
+        return false;
+    }
+    LocalSensorStateSnapshot sensor;
+    if (!local_sensor_state_snapshot_load(&sensor)) {
+        return false;
+    }
     char temp_text[kSensorTextSize] = {};
     char humi_text[kSensorTextSize] = {};
-    float temperature = 0.0f;
-    float humidity = 0.0f;
-    int temperature_trend = 0;
-    int humidity_trend = 0;
-    const bool sensor_ok = get_local_sensor_snapshot(&temperature,
-                                                     &humidity,
-                                                     &temperature_trend,
-                                                     &humidity_trend);
-    if (sensor_ok) {
-        ui_text::format_or_fallback(temp_text, sizeof(temp_text), kTempPlaceholder, kTempFormat, temperature);
-        ui_text::format_or_fallback(humi_text, sizeof(humi_text), kHumiPlaceholder, kHumiFormat, humidity);
+    if (sensor.available) {
+        ui_text::format_or_fallback(temp_text,
+                                    sizeof(temp_text),
+                                    kTempPlaceholder,
+                                    kTempFormat,
+                                    sensor.temperature);
+        ui_text::format_or_fallback(humi_text,
+                                    sizeof(humi_text),
+                                    kHumiPlaceholder,
+                                    kHumiFormat,
+                                    sensor.humidity);
     } else {
         strlcpy(temp_text, kTempPlaceholder, sizeof(temp_text));
         strlcpy(humi_text, kHumiPlaceholder, sizeof(humi_text));
     }
-    const int temp_mood = sensor_ok ? temperature_mood(temperature) : kSensorMoodUnavailable;
-    const int humi_mood = sensor_ok ? humidity_mood(humidity) : kSensorMoodUnavailable;
+    const int temp_mood = sensor.available
+                              ? temperature_mood(sensor.temperature)
+                              : kSensorMoodUnavailable;
+    const int humi_mood = sensor.available
+                              ? humidity_mood(sensor.humidity)
+                              : kSensorMoodUnavailable;
     bool changed = false;
     changed |= set_text_on_labels(temp_text,
                                   objects.sensor_label,
@@ -175,11 +197,13 @@ bool update_sensor_text()
                                 &s_last_humi_mood,
                                 humi_mood_icon_bits(humi_mood));
     changed |= update_inverted_trend_icon(objects.temp_trend_canvas,
-                                          sensor_ok ? temperature_trend : 0,
+                                          sensor.available ? sensor.temperature_trend : 0,
                                           &s_last_temp_trend);
     changed |= update_inverted_trend_icon(objects.humi_trend_canvas,
-                                          sensor_ok ? humidity_trend : 0,
+                                          sensor.available ? sensor.humidity_trend : 0,
                                           &s_last_humi_trend);
+    s_last_sensor_version = sensor.version;
+    s_sensor_version_valid = true;
     return changed;
 }
 
@@ -219,6 +243,8 @@ void reset_refresh_cache()
     s_last_minute = -1;
     s_last_second = -1;
     s_last_sensor_minute = -1;
+    s_last_sensor_version = 0;
+    s_sensor_version_valid = false;
     s_last_temp_mood = -1;
     s_last_humi_mood = -1;
     s_last_temp_trend = kTrendDrawCacheInvalid;
@@ -239,6 +265,8 @@ void invalidate_flip_clock_time_sensor_draw_cache()
     s_last_minute = -1;
     s_last_second = -1;
     s_last_sensor_minute = -1;
+    s_last_sensor_version = 0;
+    s_sensor_version_valid = false;
 }
 
 bool update_flip_clock_sensor_status()
@@ -246,7 +274,8 @@ bool update_flip_clock_sensor_status()
     return update_sensor_text();
 }
 
-bool update_flip_clock_page(const struct tm &local)
+bool update_flip_clock_page(const struct tm &local,
+                            const ClockUiTimeSnapshot &time_snapshot)
 {
     build_flip_clock_page();
     if (!work_page_root(kWorkPageFlipClock)) {
@@ -265,7 +294,6 @@ bool update_flip_clock_page(const struct tm &local)
     s_last_minute = last_values[kMinuteCardIndex];
     s_last_second = last_values[kSecondCardIndex];
 
-    const ClockUiTimeSnapshot time_snapshot = clock_ui_time_snapshot(local);
     if (time_snapshot.date_key != s_last_date_key) {
         s_last_date_key = time_snapshot.date_key;
         changed |= update_date_text(local);

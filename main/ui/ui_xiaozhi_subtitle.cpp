@@ -1,13 +1,16 @@
 // 实现小智回复字幕的 UTF-8 逐字显示与固定区域最新行裁剪。
 #include "ui_xiaozhi_subtitle.h"
 
+#include "xiaozhi_text_utils.h"
+
+#include <esp_attr.h>
 #include <string.h>
 
 namespace {
-char s_target[kXiaozhiSubtitleTextSize] = {};
-char s_visible[kXiaozhiSubtitleTextSize] = {};
-char s_window[kXiaozhiSubtitleTextSize] = {};
-char s_window_source[kXiaozhiSubtitleTextSize] = {};
+EXT_RAM_BSS_ATTR char s_target[kXiaozhiSubtitleTextSize] = {};
+EXT_RAM_BSS_ATTR char s_visible[kXiaozhiSubtitleTextSize] = {};
+EXT_RAM_BSS_ATTR char s_window[kXiaozhiSubtitleTextSize] = {};
+EXT_RAM_BSS_ATTR char s_window_source[kXiaozhiSubtitleTextSize] = {};
 size_t s_visible_bytes = 0;
 size_t s_visible_characters = 0;
 uint32_t s_last_tick = 0;
@@ -66,8 +69,17 @@ const char *xiaozhi_progressive_subtitle(bool speaking, const char *detail)
     }
 
     const uint32_t now = lv_tick_get();
+    bool target_changed = false;
     if (strcmp(s_target, detail) != 0) {
-        strlcpy(s_target, detail, sizeof(s_target));
+        char normalized_detail[kXiaozhiSubtitleTextSize] = {};
+        xiaozhi_protocol::utf8_safe_copy(
+            normalized_detail, sizeof(normalized_detail), detail);
+        if (strcmp(s_target, normalized_detail) != 0) {
+            memcpy(s_target, normalized_detail, sizeof(s_target));
+            target_changed = true;
+        }
+    }
+    if (target_changed) {
         s_visible[0] = '\0';
         s_visible_bytes = 0;
         s_visible_characters = 0;

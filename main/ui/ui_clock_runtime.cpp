@@ -1,11 +1,17 @@
 // 刷新天气时钟运行期时间、日期、秒进度和整点提醒。
-#include "ui_views.h"
+#include "ui_clock_runtime.h"
 
 #include "audio_services.h"
-#include "chime_runtime_state.h"
+#include "status_gif_contract.h"
 #include "ui_clock_surface_objects.h"
 #include "ui_clock_time.h"
+#include "ui_dseg_clock.h"
 #include "ui_draw_cache.h"
+#include "ui_progress.h"
+#include "ui_status_gif.h"
+#include "ui_widgets.h"
+#include "ui_work_status.h"
+#include "work_page_ids.h"
 
 namespace {
 
@@ -95,17 +101,19 @@ void invalidate_clock_second_progress_draw_cache()
 }
 
 bool update_time_ui(const struct tm &local,
+                    const ClockUiTimeSnapshot &time_snapshot,
                     bool clock_page_active,
-                    int active_work_page)
+                    int active_work_page,
+                    bool chime_enabled,
+                    bool low_battery_mode,
+                    bool setup_portal_active)
 {
     bool changed = false;
     static int last_chime_hour_key = -1;
-    ClockUiTimeSnapshot time_snapshot = clock_ui_time_snapshot(local);
     if (!clock_runtime_update_due(time_snapshot, active_work_page)) {
         return false;
     }
     remember_clock_runtime_update(time_snapshot, active_work_page);
-    const bool low_battery_mode = battery_low_mode_load();
     if (clock_page_active) {
         changed |= update_clock_minute_canvas(time_snapshot, local);
     }
@@ -123,12 +131,11 @@ bool update_time_ui(const struct tm &local,
 
     int date_page = (active_work_page == kWorkPageWeatherClock ||
                      low_battery_mode ||
-                     setup_portal_active_load())
+                     setup_portal_active)
                         ? kWorkPageWeatherClock
                         : active_work_page;
     changed |= update_clock_date_label(time_snapshot, local, date_page);
 
-    bool chime_enabled = chime_runtime_any_enabled();
     if (clock_hourly_chime_due(local,
                                time_snapshot,
                                chime_enabled,

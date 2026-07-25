@@ -1,14 +1,14 @@
 // 声明可见页面天气与每日文字缓存的新鲜度纯判断。
 #pragma once
 
+#include <stdint.h>
 #include <time.h>
 
-constexpr bool ui_visible_weather_sync_active(bool normal_work_mode,
-                                              bool weather_clock_visible,
-                                              bool weather_board_visible)
+constexpr bool ui_visible_cache_status_refresh_due(bool cache_valid,
+                                                   uint32_t cached_version,
+                                                   uint32_t current_version)
 {
-    return normal_work_mode &&
-           (weather_clock_visible || weather_board_visible);
+    return !cache_valid || cached_version != current_version;
 }
 
 bool ui_weather_cache_stale(time_t now_value, time_t last_sync_time);

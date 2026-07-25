@@ -9,22 +9,29 @@ int main()
     assert(ui_status_refresh_due(stable, stable, false, false));
     assert(!ui_status_refresh_due(stable, stable, true, false));
     assert(ui_status_refresh_due(stable, stable, true, true));
+    assert(ui_sensor_status_refresh_due(stable, stable, false, false));
+    assert(!ui_sensor_status_refresh_due(stable, stable, true, false));
+    assert(ui_sensor_status_refresh_due(stable, stable, true, true));
 
     UiStatusRefreshSnapshot changed = stable;
     ++changed.sensor_version;
     assert(ui_status_refresh_inputs_changed(changed, stable));
     assert(ui_status_refresh_due(changed, stable, true, false));
+    assert(ui_sensor_status_refresh_due(changed, stable, true, false));
 
     changed = stable;
     changed.chime_enabled = true;
     assert(ui_status_refresh_due(changed, stable, true, false));
+    assert(!ui_sensor_status_refresh_due(changed, stable, true, false));
 
     changed = stable;
     changed.wifi_radio_on = true;
     assert(ui_status_refresh_due(changed, stable, true, false));
+    assert(!ui_sensor_status_refresh_due(changed, stable, true, false));
 
     changed = stable;
     changed.alarm_enabled = true;
     assert(ui_status_refresh_due(changed, stable, true, false));
+    assert(!ui_sensor_status_refresh_due(changed, stable, true, false));
     return 0;
 }

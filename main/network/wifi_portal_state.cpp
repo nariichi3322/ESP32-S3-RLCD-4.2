@@ -5,6 +5,7 @@
 #include "scoped_semaphore_lock.h"
 
 #include <atomic>
+#include <esp_attr.h>
 #include <string.h>
 
 namespace {
@@ -15,8 +16,13 @@ std::atomic<bool> s_save_feedback_seen{false};
 std::atomic<uint8_t> s_setup_ap_client_count{0};
 std::atomic<bool> s_setup_ap_channel_transition_active{false};
 StaticTaskMutex s_portal_text_mutex;
-char s_setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
-char s_station_ip[kWifiStationIpTextLen] = {};
+EXT_RAM_BSS_ATTR char s_setup_ap_ssid[kWifiSetupApSsidTextLen] = {};
+EXT_RAM_BSS_ATTR char s_station_ip[kWifiStationIpTextLen] = {};
+
+static_assert(sizeof(s_setup_ap_ssid) == kWifiSetupApSsidTextLen,
+              "setup AP SSID storage must match the public text contract");
+static_assert(sizeof(s_station_ip) == kWifiStationIpTextLen,
+              "station IP storage must match the public text contract");
 
 template <size_t N>
 bool portal_text_snapshot(const char (&source)[N], char *out, size_t out_len)
@@ -63,7 +69,11 @@ void setup_portal_active_store(bool active)
 {
     s_setup_portal_active.store(active, std::memory_order_release);
     if (!active && app_event_group_ready()) {
-        app_event_group_set_bits(kProvisioningFeedbackBit);
+        // A stopped portal must wake both the result waiter and the network
+        // scheduler. The scheduler can then block indefinitely while the AP is
+        // idle instead of polling only to discover this transition.
+        app_event_group_set_bits(kProvisioningFeedbackBit |
+                                 kNetworkStateChangedBit);
     }
 }
 

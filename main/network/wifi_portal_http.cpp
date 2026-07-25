@@ -20,7 +20,9 @@
 
 #include "display_bsp.h"
 
+#include <esp_attr.h>
 #include <esp_log.h>
+#include <string.h>
 
 namespace {
 httpd_handle_t s_http_server = nullptr;
@@ -30,12 +32,17 @@ constexpr size_t kSetupHttpServerStackSize = 8192;
 constexpr size_t kSetupHttpMaxRequestHeaderLength = 1024;
 constexpr size_t kPortalSubmitSsidFieldSize = 33;
 constexpr size_t kPortalRequestBufferSize = 640;
+// ESP-IDF invokes synchronous URI handlers on the single HTTP server task.
+// Keep their mutually exclusive request staging area off that task's stack.
+EXT_RAM_BSS_ATTR char s_portal_request_buffer[kPortalRequestBufferSize];
 constexpr uint32_t kPortalResponseSettleMs = 750;
 constexpr const char *kPortalHttpStatusBadRequest = "400 Bad Request";
+constexpr const char *kPortalHttpStatusPayloadTooLarge = "413 Payload Too Large";
 constexpr const char *kPortalHttpStatusOk = "200 OK";
 constexpr const char *kPortalHttpStatusConflict = "409 Conflict";
 constexpr const char *kPortalHttpStatusNoContent = "204 No Content";
 constexpr const char *kPortalErrorMissingQuery = "缺少请求参数。";
+constexpr const char *kPortalErrorRequestTooLarge = "提交内容过长，请缩短自定义字段后重试。";
 constexpr const char *kPortalRootUri = "/";
 constexpr const char *kPortalSaveUri = "/save";
 constexpr const char *kPortalStatusUri = "/status";
@@ -85,6 +92,8 @@ static_assert(kSetupHttpMaxRequestHeaderLength <= 2048,
               "setup HTTP request headers must keep bounded parser memory");
 static_assert(kPortalRequestBufferSize > kPortalSubmitSsidFieldSize,
               "portal request buffer must exceed submitted SSID field size");
+static_assert(sizeof(s_portal_request_buffer) == kPortalRequestBufferSize,
+              "portal request workspace must match request buffer capacity");
 static_assert(kPortalResponseSettleMs > 0,
               "portal response settle delay must be positive");
 static_assert(array_count(kPortalHttpRoutes) > 0, "portal HTTP route table must not be empty");
@@ -94,8 +103,8 @@ static_assert(portal_http_routes_valid(), "portal HTTP routes must have URI and 
 #define PORTAL_HTTP_SERVER_START_FAILED_FORMAT "http server start failed: %s"
 #define PORTAL_HTTP_SERVER_STOP_FAILED_FORMAT "http server stop failed: %s"
 #define PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT "http uri register failed: %s"
-#define PORTAL_POST_BODY_TRUNCATED_FORMAT "setup POST body truncated content_len=%d buffer=%u"
-#define PORTAL_POST_BODY_RECEIVE_FAILED_FORMAT "setup POST body receive failed ret=%d received=%d expected=%d"
+#define PORTAL_POST_BODY_TRUNCATED_FORMAT "setup POST body truncated content_len=%u buffer=%u"
+#define PORTAL_POST_BODY_RECEIVE_FAILED_FORMAT "setup POST body receive failed ret=%d received=%d expected=%u"
 #define PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG "setup save skipped initial sync request: app events unavailable"
 
 bool request_provisioning_sync_after_save()
@@ -189,20 +198,29 @@ esp_err_t receive_portal_post_body(httpd_req_t *req, char *body, size_t body_siz
     if (!req || !body || body_size < 2) {
         return ESP_ERR_INVALID_ARG;
     }
+    if (req->content_len >= body_size) {
+        body[0] = '\0';
+        ESP_LOGW(TAG,
+                 PORTAL_POST_BODY_TRUNCATED_FORMAT,
+                 (unsigned)req->content_len,
+                 (unsigned)body_size);
+        return ESP_ERR_INVALID_SIZE;
+    }
     int total = 0;
     const int capacity = (int)body_size - 1;
-    while (total < req->content_len && total < capacity) {
+    while (total < req->content_len) {
         int ret = httpd_req_recv(req, body + total, capacity - total);
         if (ret <= 0) {
-            ESP_LOGW(TAG, PORTAL_POST_BODY_RECEIVE_FAILED_FORMAT, ret, total, req->content_len);
+            ESP_LOGW(TAG,
+                     PORTAL_POST_BODY_RECEIVE_FAILED_FORMAT,
+                     ret,
+                     total,
+                     (unsigned)req->content_len);
             return ESP_FAIL;
         }
         total += ret;
     }
     body[total] = '\0';
-    if (total < req->content_len) {
-        ESP_LOGW(TAG, PORTAL_POST_BODY_TRUNCATED_FORMAT, req->content_len, (unsigned)body_size);
-    }
     return ESP_OK;
 }
 
@@ -229,12 +247,19 @@ void stop_http_server()
 namespace {
 esp_err_t save_post_handler(httpd_req_t *req)
 {
-    char body[kPortalRequestBufferSize] = {};
-    esp_err_t err = receive_portal_post_body(req, body, sizeof(body));
+    memset(s_portal_request_buffer, 0, sizeof(s_portal_request_buffer));
+    esp_err_t err = receive_portal_post_body(req,
+                                             s_portal_request_buffer,
+                                             sizeof(s_portal_request_buffer));
+    if (err == ESP_ERR_INVALID_SIZE) {
+        return send_portal_text_status(req,
+                                       kPortalHttpStatusPayloadTooLarge,
+                                       kPortalErrorRequestTooLarge);
+    }
     if (err != ESP_OK) {
         return err;
     }
-    return handle_setup_save(req, body);
+    return handle_setup_save(req, s_portal_request_buffer);
 }
 
 esp_err_t save_get_handler(httpd_req_t *req)
@@ -242,11 +267,13 @@ esp_err_t save_get_handler(httpd_req_t *req)
     if (!req) {
         return ESP_ERR_INVALID_ARG;
     }
-    char query[kPortalRequestBufferSize] = {};
-    if (httpd_req_get_url_query_str(req, query, sizeof(query)) != ESP_OK) {
+    memset(s_portal_request_buffer, 0, sizeof(s_portal_request_buffer));
+    if (httpd_req_get_url_query_str(req,
+                                    s_portal_request_buffer,
+                                    sizeof(s_portal_request_buffer)) != ESP_OK) {
         return send_portal_text_status(req, kPortalHttpStatusBadRequest, kPortalErrorMissingQuery);
     }
-    return handle_setup_save(req, query);
+    return handle_setup_save(req, s_portal_request_buffer);
 }
 
 esp_err_t portal_status_get_handler(httpd_req_t *req)

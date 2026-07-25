@@ -7,9 +7,10 @@
 #include "network_credentials_state.h"
 #include "ui_page_state.h"
 #include "ui_text_format.h"
-#include "ui_views.h"
+#include "ui_widgets.h"
 #include "wifi_portal_state.h"
 
+#include "esp_attr.h"
 #include "esp_log.h"
 
 namespace {
@@ -20,7 +21,7 @@ constexpr int kSetupStatusLabelX = 26;
 constexpr int kSetupStatusLabelWidth = 348;
 constexpr int kSetupStatusLabelHeight = 18;
 constexpr int kSetupStatusLabelY[] = {194, 212, 230, 248, 266, 284};
-lv_obj_t *s_setup_status_labels[array_count(kSetupStatusLabelY)];
+EXT_RAM_BSS_ATTR lv_obj_t *s_setup_status_labels[array_count(kSetupStatusLabelY)];
 constexpr const char *kSetupStatusInitialText[] = {
     "Setup Mode",
     "AP SSID: --",

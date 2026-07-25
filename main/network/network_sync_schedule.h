@@ -57,16 +57,30 @@ struct NetworkBootHttpsDeferralResult {
     time_t retry_at = 0;
 };
 
+struct NetworkAutomaticBootPageInput {
+    bool provisioning_sync_due = false;
+    bool explicit_weather_due = false;
+    bool explicit_saying_due = false;
+    bool weather_page_enabled = false;
+    bool saying_page_enabled = false;
+};
+
 NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInput &input);
 bool network_sync_availability_changed(const NetworkSyncAvailability &scheduled,
                                        const NetworkSyncAvailability &current);
-time_t network_ntp_retry_delay_seconds(bool time_plausible);
+time_t network_ntp_retry_delay_seconds(bool time_plausible,
+                                       uint32_t consecutive_failures);
+time_t network_boot_https_memory_retry_delay_seconds(
+    uint32_t consecutive_deferrals);
 bool network_automatic_boot_https_pending(
     const NetworkSyncSchedule &schedule,
     const NetworkBootHttpsDeferralInput &input);
 NetworkBootHttpsDeferralResult calculate_network_boot_https_deferral(
     const NetworkSyncSchedule &schedule,
     const NetworkBootHttpsDeferralInput &input);
+bool network_automatic_boot_refresh_page_disabled(
+    const NetworkSyncSchedule &schedule,
+    const NetworkAutomaticBootPageInput &input);
 int network_boot_budget_remaining_ms(int64_t deadline_us, int64_t now_us);
 uint32_t network_idle_wait_ms(time_t now,
                               time_t next_boot_due_at,
@@ -80,6 +94,8 @@ bool network_startup_pressure_window_active(bool startup_screen_active,
 uint32_t network_weather_request_settle_delay_ms(bool startup_pressure_active);
 uint32_t network_inter_operation_settle_delay_ms(bool startup_pressure_active);
 bool network_visible_auto_sync_allowed(int64_t uptime_us);
+bool network_request_snapshot_canceled(uint32_t requested_bits,
+                                       uint32_t pending_bits);
 bool network_startup_followup_https_allowed(bool startup_pressure_active,
                                             size_t internal_free,
                                             size_t internal_largest,

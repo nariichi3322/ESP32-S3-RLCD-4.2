@@ -73,6 +73,21 @@ int main()
     set_tick(500);
     assert(strcmp(xiaozhi_progressive_subtitle(true, "新内容"), "新") == 0);
 
+    char boundary_text[kXiaozhiSubtitleTextSize + 2] = {};
+    memset(boundary_text, 'A', kXiaozhiSubtitleTextSize - 2);
+    memcpy(boundary_text + kXiaozhiSubtitleTextSize - 2, "中", 3);
+    boundary_text[kXiaozhiSubtitleTextSize + 1] = '\0';
+    set_tick(1000);
+    assert(strcmp(xiaozhi_progressive_subtitle(true, boundary_text), "A") == 0);
+    set_tick(20000);
+    const char *boundary_visible =
+        xiaozhi_progressive_subtitle(true, boundary_text);
+    assert(strlen(boundary_visible) == kXiaozhiSubtitleTextSize - 2);
+    for (size_t index = 0; boundary_visible[index] != '\0'; ++index) {
+        assert(boundary_visible[index] == 'A');
+    }
+    assert(xiaozhi_subtitle_next_delay_ms() == 0);
+
     lv_font_t font = {};
     s_measure_calls = 0;
     assert(strcmp(xiaozhi_latest_visible_subtitle("abcdefghij", &font, 4, 20),

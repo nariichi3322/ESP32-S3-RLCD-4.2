@@ -5,7 +5,9 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 #include <time.h>
+#include <type_traits>
 
 namespace sensor_history_format {
 
@@ -40,6 +42,8 @@ static_assert(offsetof(LegacyHourlySensorHistoryBlob, samples) == 8 &&
                   sizeof(LegacyHourlySensorHistoryBlob) ==
                       8 + sizeof(HourlySensorSample) * kLegacyHourlyHistoryCount,
               "legacy hourly history wire layout must remain stable");
+static_assert(std::is_trivially_copyable<HourlySensorHistoryBlob>::value,
+              "hourly history must remain safe for byte-wise initialization");
 
 inline bool hourly_meta_valid(const HourlySensorHistoryMeta &meta, size_t meta_len)
 {
@@ -55,6 +59,17 @@ inline bool legacy_history_valid(const LegacyHourlySensorHistoryBlob &legacy, si
            legacy.magic == kHourlyHistoryMagic &&
            legacy.version == kLegacyHourlyHistoryVersion &&
            legacy.count == kLegacyHourlyHistoryCount;
+}
+
+inline void initialize_empty_hourly_history(HourlySensorHistoryBlob *history)
+{
+    if (!history) {
+        return;
+    }
+    memset(history, 0, sizeof(*history));
+    history->magic = kHourlyHistoryMagic;
+    history->version = kLegacyHourlyHistoryVersion;
+    history->count = kHourlyHistoryCount;
 }
 
 inline bool hourly_index_valid(int index)

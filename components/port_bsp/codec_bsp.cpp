@@ -1,6 +1,7 @@
 // 封装 ES8311/ES7210 音频 codec 和 I2S 播放录音接口。
 #include <stdio.h>
 #include <string.h>
+#include <esp_attr.h>
 #include <esp_log.h>
 #include "codec_bsp.h"
 #include "i2c_bsp.h"
@@ -12,7 +13,7 @@ static constexpr int kCodecTdmChannelCount = 4;
 static constexpr uint32_t kCodecTdmChannelMask = 0x0F;
 static constexpr uint32_t kCodecXiaozhiInputMask = 0x03;
 static constexpr int kCodecTdmMclkMultiple = 256;
-static constexpr size_t kCodecPcmPlaybackSlotBufferSize = 4096;
+static constexpr size_t kCodecPcmPlaybackSlotBufferSize = 2048;
 static constexpr int kCodecPcmPlaybackSampleRateHz = 24000;
 static constexpr int kCodecPcmPlaybackChannelCount = kCodecTdmChannelCount;
 static constexpr int kCodecPcmPlaybackBitsPerSample = 16;
@@ -24,12 +25,17 @@ static_assert(kCodecTdmChannelMask != 0, "Codec TDM channel mask must not be emp
 static_assert(kCodecXiaozhiInputMask != 0, "Xiaozhi input mask must not be empty");
 static_assert(kCodecTdmMclkMultiple > 0, "Codec TDM MCLK multiple must be positive");
 static_assert(kCodecPcmPlaybackSlotBufferSize > 0, "Codec PCM playback buffer size must be positive");
+static_assert(kCodecPcmPlaybackSlotBufferSize % sizeof(int16_t) == 0,
+              "Codec PCM playback buffer must contain whole 16-bit samples");
 static_assert(kCodecPcmPlaybackSampleRateHz > 0, "Codec PCM playback sample rate must be positive");
 static_assert(kCodecPcmPlaybackChannelCount > 0, "Codec PCM playback channel count must be positive");
 static_assert(kCodecPcmPlaybackBitsPerSample > 0, "Codec PCM playback bits per sample must be positive");
 static_assert(kCodecXiaozhiSampleRateHz > 0, "Xiaozhi sample rate must be positive");
 static_assert(kCodecXiaozhiSpeakerVolume >= 0 && kCodecXiaozhiSpeakerVolume <= 100,
               "Xiaozhi speaker volume must be in range");
+
+static EXT_RAM_BSS_ATTR int16_t
+    s_pcm_playback_mono_buffer[kCodecPcmPlaybackSlotBufferSize / sizeof(int16_t)] = {};
 
 extern const uint8_t hourly_chime_pcm_start[] asm("_binary_hourly_chime_pcm_start");
 extern const uint8_t hourly_chime_pcm_end[] asm("_binary_hourly_chime_pcm_end");
@@ -236,7 +242,7 @@ static bool play_pcm_to_slot0(CodecPort *codec,
                               int volume,
                               bool (*stop_requested)() = nullptr)
 {
-    static int16_t mono_buffer[kCodecPcmPlaybackSlotBufferSize / sizeof(int16_t)];
+    auto &mono_buffer = s_pcm_playback_mono_buffer;
     constexpr int kSampleRate = kCodecPcmPlaybackSampleRateHz;
     constexpr int kSourceChannels = kCodecPcmPlaybackChannelCount;
     constexpr int kBytesPerSample = sizeof(int16_t);

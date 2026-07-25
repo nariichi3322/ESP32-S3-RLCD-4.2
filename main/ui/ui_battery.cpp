@@ -6,6 +6,7 @@
 #include "battery_policy.h"
 #include "work_page_ids.h"
 
+#include "esp_attr.h"
 #include "esp_log.h"
 
 namespace {
@@ -41,7 +42,7 @@ constexpr const char *kBatteryLogTexts[] = {
     BATTERY_TIP_CREATE_FAILED_LOG,
     BATTERY_SEGMENT_CREATE_FAILED_FORMAT,
 };
-lv_obj_t *s_battery_segments[kWorkPageCount][kBatterySegmentCount];
+EXT_RAM_BSS_ATTR lv_obj_t *s_battery_segments[kWorkPageCount][kBatterySegmentCount];
 
 static_assert(cstr_array_nonempty(kBatteryLogTexts), "battery log texts must be non-empty");
 static_assert(array_count(s_battery_segments) == kWorkPageCount,

@@ -3,8 +3,11 @@
 
 #include "ui_views.h"
 
-#include "app_constexpr.h"
+#include "active_work_page_state.h"
+#include "app_display_config.h"
+#include "app_metadata.h"
 #include "battery_policy.h"
+#include "battery_runtime_state.h"
 #include "ui_clock.h"
 #include "ui_clock_header_objects.h"
 #include "ui_clock_surface_objects.h"
@@ -13,6 +16,12 @@
 #include "ui_status_refresh_policy.h"
 #include "ui_xiaozhi.h"
 #include "weather_state.h"
+#include "wifi_portal_state.h"
+
+#include <esp_attr.h>
+#include <esp_log.h>
+
+#include <stddef.h>
 
 namespace {
 #define PAGE_ROOT_CREATE_FAILED_LOG "page root create failed"
@@ -24,12 +33,9 @@ constexpr int kPageRootY = 0;
 constexpr int kPageRootW = kDisplayWidth;
 constexpr int kPageRootH = kDisplayHeight;
 constexpr size_t kLowerPanelObjectCapacity = 13;
-struct PageRootList {
-    lv_obj_t *items[kWorkPageCount + kAuxPageRootCount];
-};
-lv_obj_t *s_work_page_roots[kWorkPageCount];
-lv_obj_t *s_auxiliary_page_roots[kAuxPageRootCount];
-lv_obj_t *s_lower_panel_objects[kLowerPanelObjectCapacity];
+EXT_RAM_BSS_ATTR lv_obj_t *s_work_page_roots[kWorkPageCount];
+EXT_RAM_BSS_ATTR lv_obj_t *s_auxiliary_page_roots[kAuxPageRootCount];
+EXT_RAM_BSS_ATTR lv_obj_t *s_lower_panel_objects[kLowerPanelObjectCapacity];
 
 size_t auxiliary_page_index(AuxiliaryPage page)
 {
@@ -39,22 +45,6 @@ size_t auxiliary_page_index(AuxiliaryPage page)
 lv_obj_t *work_page_root_or_fallback(lv_obj_t *root)
 {
     return root ? root : work_page_root(kFallbackWorkPage);
-}
-
-PageRootList current_page_roots()
-{
-    return {{
-        work_page_root(kWorkPageWeatherClock),
-        work_page_root(kWorkPageHistory),
-        work_page_root(kWorkPageGallery),
-        work_page_root(kWorkPageCalendar),
-        work_page_root(kWorkPageWeatherBoard),
-        work_page_root(kWorkPageFlipClock),
-        work_page_root(kWorkPageXiaozhiAI),
-        auxiliary_page_root(AuxiliaryPage::kSystemInfo),
-        auxiliary_page_root(AuxiliaryPage::kNetworkDiagnostics),
-        auxiliary_page_root(AuxiliaryPage::kSettings),
-    }};
 }
 
 lv_obj_t *build_work_page_root(int page)
@@ -177,11 +167,10 @@ void set_page_visible(lv_obj_t *page, bool visible)
 
 void show_page(lv_obj_t *page)
 {
-    PageRootList roots = current_page_roots();
-    constexpr size_t kPageRootCount = array_count(roots.items);
-    static_assert(kPageRootCount == kWorkPageCount + kAuxPageRootCount,
-                  "page root visibility list must cover all work pages and auxiliary pages");
-    for (lv_obj_t *root : roots.items) {
+    for (lv_obj_t *root : s_work_page_roots) {
+        set_page_visible(root, page == root);
+    }
+    for (lv_obj_t *root : s_auxiliary_page_roots) {
         set_page_visible(root, page == root);
     }
 }

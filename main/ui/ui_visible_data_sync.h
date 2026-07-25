@@ -6,6 +6,9 @@
 
 #include <time.h>
 
+struct WeatherCacheStatusSnapshot;
+struct DailySayingCacheSnapshot;
+
 struct ActiveWorkPageState {
     bool history = false;
     bool gallery = false;
@@ -15,6 +18,7 @@ struct ActiveWorkPageState {
     bool xiaozhi = false;
     bool weather_clock = false;
     bool uses_weather_data = false;
+    bool uses_daily_saying = false;
 };
 
 ActiveWorkPageState active_work_page_state(int active_page);
@@ -23,13 +27,11 @@ ActiveWorkPageState active_work_page_state_for_mode(int active_page,
 void update_visible_weather_sync(const ActiveWorkPageState &state,
                                  time_t now,
                                  TickType_t tick_now,
+                                 const WeatherCacheStatusSnapshot *cache_status,
                                  VisibleSyncRetryState<TickType_t> &retry);
 void update_visible_daily_saying_sync(const ActiveWorkPageState &state,
-                                      const struct tm &local,
                                       time_t now,
                                       TickType_t tick_now,
+                                      const DailySayingCacheSnapshot *cache_status,
                                       VisibleSyncRetryState<TickType_t> &retry);
-bool update_weather_clock_network_status(EventBits_t bits,
-                                         time_t now,
-                                         TickType_t tick_now,
-                                         VisibleSyncRetryState<TickType_t> &retry);
+bool update_weather_clock_network_status(EventBits_t bits);

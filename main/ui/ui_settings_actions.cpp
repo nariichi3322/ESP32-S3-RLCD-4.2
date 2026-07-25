@@ -1,9 +1,12 @@
 // 处理设置页网络、声音、显示和系统操作，不承担页面绘制。
-#include "ui_views.h"
+#include "ui_settings_actions.h"
 
+#include "active_work_page_state.h"
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "app_event_group.h"
+#include "app_metadata.h"
+#include "app_runtime_timing.h"
 #include "audio_services.h"
 #include "chime_runtime_state.h"
 #include "chime_settings.h"
@@ -13,6 +16,7 @@
 #include "device_settings_persistence.h"
 #include "network_diagnostics.h"
 #include "network_diagnostics_state.h"
+#include "network_runtime_events.h"
 #include "offline_mode_state.h"
 #include "ota_services.h"
 #include "pomodoro_services.h"
@@ -21,10 +25,14 @@
 #include "ui_gallery_rotation_state.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_confirmation_state.h"
+#include "ui_settings_feedback.h"
+#include "ui_settings_navigation.h"
 #include "ui_text_format.h"
+#include "ui_work_page_catalog.h"
 #include "xiaozhi_auto_return_state.h"
 
 #include <cstdarg>
+#include <esp_log.h>
 
 namespace {
 constexpr uint8_t kAllWorkPageMask = static_cast<uint8_t>((1U << kWorkPageCount) - 1);
@@ -214,9 +222,8 @@ static_assert(cstr_array_nonempty(kSettingsActionTexts), "settings action texts 
 namespace {
 void handle_page_order_settings_action()
 {
-    normalize_work_page_order();
     uint8_t previous_order[kWorkPageCount] = {};
-    if (!work_page_order_copy(previous_order, sizeof(previous_order))) {
+    if (!work_page_order_normalize_and_copy(previous_order, sizeof(previous_order))) {
         set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
         return;
     }
@@ -358,13 +365,17 @@ void handle_display_settings_action(int selected)
         if (!work_page_index_valid(page)) {
             page = kWorkPageWeatherClock;
         }
+        const uint8_t previous_mask = work_page_enabled_mask_load();
+        const bool page_was_enabled =
+            (previous_mask & static_cast<uint8_t>(1U << page)) != 0;
+        const bool page_will_be_enabled = !page_was_enabled;
         if (offline_mode_enabled_load() &&
-            !is_work_page_enabled(page) &&
+            !page_was_enabled &&
             work_page_requires_network(page)) {
             set_settings_feedback(kOfflinePageUnavailableFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        uint8_t next_mask = toggled_work_page_mask(work_page_enabled_mask_load(), page);
+        const uint8_t next_mask = toggled_work_page_mask(previous_mask, page);
         if (next_mask == 0) {
             set_settings_feedback(kLastWorkPageFeedback, kSettingsFeedbackDefaultMs);
             return;
@@ -374,23 +385,23 @@ void handle_display_settings_action(int selected)
             return;
         }
         if (page == kWorkPageXiaozhiAI &&
-            is_work_page_enabled(page) &&
+            page_was_enabled &&
             pomodoro_is_running()) {
             set_settings_feedback(kPomodoroRunningFeedback, kSettingsFeedbackInstructionMs);
             return;
         }
-        uint8_t previous = work_page_enabled_mask_load();
         work_page_enabled_mask_store(next_mask);
         if (!save_work_page_settings()) {
-            work_page_enabled_mask_store(previous);
+            work_page_enabled_mask_store(previous_mask);
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
+        notify_network_sync_runtime_state_changed();
         normalize_work_page_order();
         ensure_active_work_page_enabled();
         set_formatted_settings_feedback(kWorkPageFeedbackFormat,
                                         work_page_name(page),
-                                        is_work_page_enabled(page) ? kWorkPageEnabledSuffix : kWorkPageDisabledSuffix);
+                                        page_will_be_enabled ? kWorkPageEnabledSuffix : kWorkPageDisabledSuffix);
         return;
     }
     if (selected == kDisplaySettingsPageSwitchItem) {
@@ -404,7 +415,6 @@ void handle_display_settings_action(int selected)
     if (selected == kDisplaySettingsOrderItem) {
         navigation.page_toggle_mode = false;
         navigation.page_order_mode = true;
-        normalize_work_page_order();
         navigation.page_order_selection = first_enabled_work_page_order_index();
         settings_navigation_store(navigation);
         set_settings_feedback(kPageOrderInstructionFeedback, kSettingsFeedbackInstructionMs);

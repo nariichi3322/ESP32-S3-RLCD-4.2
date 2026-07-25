@@ -3,6 +3,8 @@
 
 #include "network_json.h"
 
+#include <string.h>
+
 namespace {
 constexpr const char *kCityIdField = "id";
 constexpr const char *kCityNameField = "name";
@@ -20,19 +22,33 @@ bool parse_qweather_city_location(const cJSON *location,
                                   char *lon_out,
                                   size_t lon_len)
 {
-    if (!cJSON_IsObject(location)) {
+    if (!cJSON_IsObject(location) ||
+        !city_id || city_id_len == 0 ||
+        !city_name || city_name_len == 0) {
         return false;
     }
-    bool ok = json_copy_string(location, kCityIdField, city_id, city_id_len) &&
-              json_copy_string(location, kCityNameField, city_name, city_name_len);
-    if (!ok) {
+    const char *next_city_id =
+        network_json_object_string_value(location, kCityIdField);
+    const char *next_city_name =
+        network_json_object_string_value(location, kCityNameField);
+    if (!next_city_id || !next_city_name) {
         return false;
     }
+    strlcpy(city_id, next_city_id, city_id_len);
+    strlcpy(city_name, next_city_name, city_name_len);
     if (lat_out && lat_len > 0) {
-        json_copy_string(location, kCityLatitudeField, lat_out, lat_len);
+        const char *latitude =
+            network_json_object_string_value(location, kCityLatitudeField);
+        if (latitude) {
+            strlcpy(lat_out, latitude, lat_len);
+        }
     }
     if (lon_out && lon_len > 0) {
-        json_copy_string(location, kCityLongitudeField, lon_out, lon_len);
+        const char *longitude =
+            network_json_object_string_value(location, kCityLongitudeField);
+        if (longitude) {
+            strlcpy(lon_out, longitude, lon_len);
+        }
     }
     return true;
 }

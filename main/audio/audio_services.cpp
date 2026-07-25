@@ -47,6 +47,8 @@ constexpr gpio_num_t kAudioDoutGpio = GPIO_NUM_8;
 constexpr gpio_num_t kAudioPaGpio = GPIO_NUM_46;
 constexpr const char *kAudioCodecBoardName = "S3_RLCD_4_2";
 constexpr const char *kXiaozhiAudioStartFailedLog = "xiaozhi audio session start failed";
+constexpr const char *kXiaozhiAudioBusyLog =
+    "xiaozhi audio session busy; another playback still owns the codec";
 constexpr const char *kXiaozhiSpeakerCloseFailedLog = "xiaozhi speaker close failed after retry";
 constexpr const char *kXiaozhiWakeFeedbackWarmupFailedLog = "xiaozhi wake feedback speaker warmup failed";
 constexpr const char *kXiaozhiMicrophoneReadSizeOverflowLog =
@@ -172,6 +174,32 @@ bool is_audio_playing()
     return s_audio_playing_gate.active();
 }
 
+bool wait_for_audio_playback_idle(uint32_t timeout_ms,
+                                  uint32_t poll_interval_ms,
+                                  AudioStopRequestedCallback stop_requested)
+{
+    if (!is_audio_playing()) {
+        return true;
+    }
+    if (timeout_ms == 0 || poll_interval_ms == 0) {
+        return false;
+    }
+    for (uint32_t waited_ms = 0;
+         is_audio_playing() && waited_ms < timeout_ms &&
+             (!stop_requested || !stop_requested());) {
+        const uint32_t remaining_ms = timeout_ms - waited_ms;
+        const uint32_t delay_ms =
+            poll_interval_ms < remaining_ms ? poll_interval_ms : remaining_ms;
+        TickType_t delay_ticks = pdMS_TO_TICKS(delay_ms);
+        if (delay_ticks == 0) {
+            delay_ticks = 1;
+        }
+        vTaskDelay(delay_ticks);
+        waited_ms += delay_ms;
+    }
+    return !is_audio_playing();
+}
+
 bool audio_codec_active()
 {
     return s_audio_codec_present.load(std::memory_order_acquire);
@@ -236,6 +264,7 @@ CodecPort *audio_prepare_codec_for_playback()
 bool start_xiaozhi_audio_session()
 {
     if (!audio_try_mark_playing()) {
+        ESP_LOGW(TAG, "%s", kXiaozhiAudioBusyLog);
         return false;
     }
     s_xiaozhi_audio_session_owned = true;
@@ -279,7 +308,9 @@ void stop_xiaozhi_audio_session()
 
 void set_xiaozhi_audio_high_performance(bool enabled)
 {
-    if (is_audio_playing()) {
+    // The shared playback gate can be owned by a chime, alarm or setup prompt.
+    // Xiaozhi power-state transitions must not change another owner's CPU lock.
+    if (s_xiaozhi_audio_session_owned && is_audio_playing()) {
         set_audio_performance_mode(enabled);
     }
 }

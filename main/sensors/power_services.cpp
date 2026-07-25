@@ -16,10 +16,7 @@
 #define POWER_SETUP_FAILED_LOG_FORMAT "power management setup failed: %s"
 #define POWER_SETUP_OK_LOG_FORMAT "power management: max=%dMHz min=%dMHz light sleep enabled"
 #define POWER_MUTEX_CREATE_FAILED_LOG_FORMAT "pm lock mutex create failed"
-#define POWER_NETWORK_LOCK_CREATE_FAILED_LOG_FORMAT "network pm lock create failed: %s"
-#define POWER_AUDIO_LOCK_CREATE_FAILED_LOG_FORMAT "audio pm lock create failed: %s"
-#define POWER_AUDIO_WAKE_LOCK_CREATE_FAILED_LOG_FORMAT "audio wake pm lock create failed: %s"
-#define POWER_AUDIO_CPU_LOCK_CREATE_FAILED_LOG_FORMAT "audio cpu pm lock create failed: %s"
+#define POWER_PM_LOCK_CREATE_FAILED_LOG_FORMAT "%s pm lock create failed: %s"
 #define POWER_DISABLED_LOG_FORMAT "power management disabled in sdkconfig"
 
 namespace {
@@ -31,19 +28,67 @@ constexpr const char *kNetworkPmLogName = "network";
 constexpr const char *kAudioPmLogName = "audio";
 constexpr const char *kAudioWakePmLogName = "audio_wake";
 constexpr const char *kAudioCpuPmLogName = "audio_cpu";
+constexpr const char *kAudioWakePmCreateLogName = "audio wake";
+constexpr const char *kAudioCpuPmCreateLogName = "audio cpu";
 } // namespace
 
 #if CONFIG_PM_ENABLE
 namespace {
+struct PmLockRuntime {
+    esp_pm_lock_handle_t handle = nullptr;
+    int depth = 0;
+};
+
+struct PmLockDescriptor {
+    esp_pm_lock_type_t type;
+    const char *lock_name;
+    const char *log_name;
+    const char *create_log_name;
+    PmLockRuntime *runtime;
+};
+
 StaticTaskMutex s_pm_lock_mutex;
-esp_pm_lock_handle_t s_network_pm_lock = nullptr;
-esp_pm_lock_handle_t s_audio_pm_lock = nullptr;
-esp_pm_lock_handle_t s_audio_wake_pm_lock = nullptr;
-esp_pm_lock_handle_t s_audio_cpu_pm_lock = nullptr;
-int s_network_pm_lock_depth = 0;
-int s_audio_pm_lock_depth = 0;
-int s_audio_wake_pm_lock_depth = 0;
-int s_audio_cpu_pm_lock_depth = 0;
+PmLockRuntime s_network_pm_lock_runtime;
+PmLockRuntime s_audio_pm_lock_runtime;
+PmLockRuntime s_audio_wake_pm_lock_runtime;
+PmLockRuntime s_audio_cpu_pm_lock_runtime;
+const PmLockDescriptor kNetworkPmLock = {
+    ESP_PM_NO_LIGHT_SLEEP,
+    kNetworkPmLockName,
+    kNetworkPmLogName,
+    kNetworkPmLogName,
+    &s_network_pm_lock_runtime,
+};
+const PmLockDescriptor kAudioPmLock = {
+    ESP_PM_NO_LIGHT_SLEEP,
+    kAudioPmLockName,
+    kAudioPmLogName,
+    kAudioPmLogName,
+    &s_audio_pm_lock_runtime,
+};
+const PmLockDescriptor kAudioWakePmLock = {
+    ESP_PM_APB_FREQ_MAX,
+    kAudioWakePmLockName,
+    kAudioWakePmLogName,
+    kAudioWakePmCreateLogName,
+    &s_audio_wake_pm_lock_runtime,
+};
+const PmLockDescriptor kAudioCpuPmLock = {
+    ESP_PM_CPU_FREQ_MAX,
+    kAudioCpuPmLockName,
+    kAudioCpuPmLogName,
+    kAudioCpuPmCreateLogName,
+    &s_audio_cpu_pm_lock_runtime,
+};
+const PmLockDescriptor *const kPmLockCatalog[] = {
+    &kNetworkPmLock,
+    &kAudioPmLock,
+    &kAudioWakePmLock,
+    &kAudioCpuPmLock,
+};
+static_assert(sizeof(kPmLockCatalog) / sizeof(kPmLockCatalog[0]) == 4,
+              "All PM locks must be registered in the initialization catalog");
+
 constexpr uint32_t kPmLockMutexTimeoutMs = 1000;
 constexpr TickType_t kPmLockMutexTimeout = pdMS_TO_TICKS(kPmLockMutexTimeoutMs);
 static_assert(kPmLockMutexTimeout > 0, "PM lock mutex tick timeout must be positive");
@@ -57,76 +102,106 @@ void log_pm_lock_mutex_failure(const char *name)
     }
 }
 
-bool acquire_pm_lock(esp_pm_lock_handle_t lock, int *depth, const char *name)
+bool create_pm_lock(const PmLockDescriptor &lock)
 {
-    if (!lock || !depth) {
+    PmLockRuntime &runtime = *lock.runtime;
+    esp_err_t err = esp_pm_lock_create(lock.type, 0, lock.lock_name, &runtime.handle);
+    if (err != ESP_OK) {
+        runtime.handle = nullptr;
+        ESP_LOGW(TAG,
+                 POWER_PM_LOCK_CREATE_FAILED_LOG_FORMAT,
+                 lock.create_log_name,
+                 esp_err_to_name(err));
         return false;
     }
-    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
-    if (!state_lock) {
-        log_pm_lock_mutex_failure(name);
-        return false;
-    }
-    if (*depth == 0) {
-        esp_err_t err = esp_pm_lock_acquire(lock);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT, name, esp_err_to_name(err));
-            return false;
-        }
-    }
-    ++(*depth);
     return true;
 }
 
-void release_pm_lock(esp_pm_lock_handle_t lock, int *depth, const char *name)
+bool acquire_pm_lock(const PmLockDescriptor &lock)
 {
-    if (!lock || !depth) {
+    PmLockRuntime &runtime = *lock.runtime;
+    if (!runtime.handle) {
+        return false;
+    }
+    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
+    if (!state_lock) {
+        log_pm_lock_mutex_failure(lock.log_name);
+        return false;
+    }
+    if (runtime.depth == 0) {
+        esp_err_t err = esp_pm_lock_acquire(runtime.handle);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG,
+                     POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT,
+                     lock.log_name,
+                     esp_err_to_name(err));
+            return false;
+        }
+    }
+    ++runtime.depth;
+    return true;
+}
+
+void release_pm_lock(const PmLockDescriptor &lock)
+{
+    PmLockRuntime &runtime = *lock.runtime;
+    if (!runtime.handle) {
         return;
     }
     ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
     if (!state_lock) {
-        log_pm_lock_mutex_failure(name);
+        log_pm_lock_mutex_failure(lock.log_name);
         return;
     }
-    if (*depth <= 0) {
-        ESP_LOGW(TAG, POWER_PM_LOCK_RELEASE_ZERO_LOG_FORMAT, name);
+    if (runtime.depth <= 0) {
+        ESP_LOGW(TAG, POWER_PM_LOCK_RELEASE_ZERO_LOG_FORMAT, lock.log_name);
         return;
     }
-    --(*depth);
-    if (*depth == 0) {
-        esp_err_t err = esp_pm_lock_release(lock);
+    --runtime.depth;
+    if (runtime.depth == 0) {
+        esp_err_t err = esp_pm_lock_release(runtime.handle);
         if (err != ESP_OK) {
-            *depth = 1;
-            ESP_LOGW(TAG, POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT, name, esp_err_to_name(err));
+            runtime.depth = 1;
+            ESP_LOGW(TAG,
+                     POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT,
+                     lock.log_name,
+                     esp_err_to_name(err));
         }
     }
 }
 
-bool set_pm_lock_active(esp_pm_lock_handle_t lock, int *depth, const char *name, bool enabled)
+bool set_pm_lock_active(const PmLockDescriptor &lock, bool enabled)
 {
-    if (!lock || !depth) {
+    PmLockRuntime &runtime = *lock.runtime;
+    if (!runtime.handle) {
         return false;
     }
     ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
     if (!state_lock) {
-        log_pm_lock_mutex_failure(name);
+        log_pm_lock_mutex_failure(lock.log_name);
         return false;
     }
-    bool active = *depth > 0;
+    bool active = runtime.depth > 0;
     if (enabled && !active) {
-        esp_err_t err = esp_pm_lock_acquire(lock);
+        esp_err_t err = esp_pm_lock_acquire(runtime.handle);
         if (err == ESP_OK) {
-            *depth = 1;
+            runtime.depth = 1;
         } else {
-            ESP_LOGW(TAG, POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT, name, esp_err_to_name(err));
+            ESP_LOGW(TAG,
+                     POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT,
+                     lock.log_name,
+                     esp_err_to_name(err));
             return false;
         }
     } else if (!enabled && active) {
-        esp_err_t err = esp_pm_lock_release(lock);
+        esp_err_t err = esp_pm_lock_release(runtime.handle);
         if (err == ESP_OK) {
-            *depth = 0;
+            runtime.depth = 0;
         } else {
-            ESP_LOGW(TAG, POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT, name, esp_err_to_name(err));
+            ESP_LOGW(TAG,
+                     POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT,
+                     lock.log_name,
+                     esp_err_to_name(err));
             return false;
         }
     }
@@ -157,25 +232,8 @@ void init_power_management()
         ESP_LOGI(TAG, POWER_SETUP_OK_LOG_FORMAT,
                  pm_config.max_freq_mhz, pm_config.min_freq_mhz);
     }
-    err = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, kNetworkPmLockName, &s_network_pm_lock);
-    if (err != ESP_OK) {
-        s_network_pm_lock = nullptr;
-        ESP_LOGW(TAG, POWER_NETWORK_LOCK_CREATE_FAILED_LOG_FORMAT, esp_err_to_name(err));
-    }
-    err = esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, kAudioPmLockName, &s_audio_pm_lock);
-    if (err != ESP_OK) {
-        s_audio_pm_lock = nullptr;
-        ESP_LOGW(TAG, POWER_AUDIO_LOCK_CREATE_FAILED_LOG_FORMAT, esp_err_to_name(err));
-    }
-    err = esp_pm_lock_create(ESP_PM_APB_FREQ_MAX, 0, kAudioWakePmLockName, &s_audio_wake_pm_lock);
-    if (err != ESP_OK) {
-        s_audio_wake_pm_lock = nullptr;
-        ESP_LOGW(TAG, POWER_AUDIO_WAKE_LOCK_CREATE_FAILED_LOG_FORMAT, esp_err_to_name(err));
-    }
-    err = esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, kAudioCpuPmLockName, &s_audio_cpu_pm_lock);
-    if (err != ESP_OK) {
-        s_audio_cpu_pm_lock = nullptr;
-        ESP_LOGW(TAG, POWER_AUDIO_CPU_LOCK_CREATE_FAILED_LOG_FORMAT, esp_err_to_name(err));
+    for (const PmLockDescriptor *lock : kPmLockCatalog) {
+        (void)create_pm_lock(*lock);
     }
 #else
     ESP_LOGW(TAG, POWER_DISABLED_LOG_FORMAT);
@@ -185,7 +243,7 @@ void init_power_management()
 bool acquire_network_awake_lock()
 {
 #if CONFIG_PM_ENABLE
-    return acquire_pm_lock(s_network_pm_lock, &s_network_pm_lock_depth, kNetworkPmLogName);
+    return acquire_pm_lock(kNetworkPmLock);
 #else
     return true;
 #endif
@@ -194,7 +252,7 @@ bool acquire_network_awake_lock()
 void release_network_awake_lock()
 {
 #if CONFIG_PM_ENABLE
-    release_pm_lock(s_network_pm_lock, &s_network_pm_lock_depth, kNetworkPmLogName);
+    release_pm_lock(kNetworkPmLock);
 #endif
 }
 
@@ -206,7 +264,7 @@ bool network_awake_lock_active()
         log_pm_lock_mutex_failure(kNetworkPmLogName);
         return true;
     }
-    return s_network_pm_lock_depth > 0;
+    return s_network_pm_lock_runtime.depth > 0;
 #else
     return false;
 #endif
@@ -224,10 +282,10 @@ bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out)
         log_pm_lock_mutex_failure(kNetworkPmLogName);
         return false;
     }
-    out->network = s_network_pm_lock_depth;
-    out->audio = s_audio_pm_lock_depth;
-    out->audio_wake = s_audio_wake_pm_lock_depth;
-    out->audio_cpu = s_audio_cpu_pm_lock_depth;
+    out->network = s_network_pm_lock_runtime.depth;
+    out->audio = s_audio_pm_lock_runtime.depth;
+    out->audio_wake = s_audio_wake_pm_lock_runtime.depth;
+    out->audio_cpu = s_audio_cpu_pm_lock_runtime.depth;
 #endif
     return true;
 }
@@ -235,23 +293,16 @@ bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out)
 bool acquire_audio_awake_lock()
 {
 #if CONFIG_PM_ENABLE
-    if (!acquire_pm_lock(s_audio_pm_lock, &s_audio_pm_lock_depth, kAudioPmLogName)) {
+    if (!acquire_pm_lock(kAudioPmLock)) {
         return false;
     }
-    if (!acquire_pm_lock(s_audio_wake_pm_lock,
-                         &s_audio_wake_pm_lock_depth,
-                         kAudioWakePmLogName)) {
-        release_pm_lock(s_audio_pm_lock, &s_audio_pm_lock_depth, kAudioPmLogName);
+    if (!acquire_pm_lock(kAudioWakePmLock)) {
+        release_pm_lock(kAudioPmLock);
         return false;
     }
-    if (!set_pm_lock_active(s_audio_cpu_pm_lock,
-                            &s_audio_cpu_pm_lock_depth,
-                            kAudioCpuPmLogName,
-                            true)) {
-        release_pm_lock(s_audio_wake_pm_lock,
-                        &s_audio_wake_pm_lock_depth,
-                        kAudioWakePmLogName);
-        release_pm_lock(s_audio_pm_lock, &s_audio_pm_lock_depth, kAudioPmLogName);
+    if (!set_pm_lock_active(kAudioCpuPmLock, true)) {
+        release_pm_lock(kAudioWakePmLock);
+        release_pm_lock(kAudioPmLock);
         return false;
     }
 #endif
@@ -262,18 +313,15 @@ void release_audio_awake_lock()
 {
 #if CONFIG_PM_ENABLE
     set_audio_performance_mode(false);
-    release_pm_lock(s_audio_wake_pm_lock, &s_audio_wake_pm_lock_depth, kAudioWakePmLogName);
-    release_pm_lock(s_audio_pm_lock, &s_audio_pm_lock_depth, kAudioPmLogName);
+    release_pm_lock(kAudioWakePmLock);
+    release_pm_lock(kAudioPmLock);
 #endif
 }
 
 void set_audio_performance_mode(bool enabled)
 {
 #if CONFIG_PM_ENABLE
-    (void)set_pm_lock_active(s_audio_cpu_pm_lock,
-                             &s_audio_cpu_pm_lock_depth,
-                             kAudioCpuPmLogName,
-                             enabled);
+    (void)set_pm_lock_active(kAudioCpuPmLock, enabled);
 #else
     (void)enabled;
 #endif

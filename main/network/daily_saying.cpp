@@ -3,6 +3,7 @@
 #include "app_metadata.h"
 #include "battery_runtime_state.h"
 #include "daily_saying_contract.h"
+#include "daily_saying_retry_policy.h"
 #include "daily_saying_service.h"
 #include "daily_saying_state.h"
 #include "daily_saying_parser.h"
@@ -24,7 +25,6 @@
 namespace {
 constexpr const char *kDailySayingUrl = "https://uapis.cn/api/v1/saying";
 constexpr size_t kDailySayingResponseBufferSize = 768;
-constexpr int kMaxSayingAttempts = 8;
 constexpr uint32_t kDailySayingRetrySettleMs = 120;
 
 static_assert(kDailySayingResponseBufferSize > 0, "daily saying response buffer must be nonzero");
@@ -32,15 +32,20 @@ static_assert(kDailySayingResponseBufferSize >= kDailySayingLen,
               "daily saying response buffer must cover cached saying text");
 static_assert(kDailySayingLen > daily_saying_parser::kMaxChars,
               "daily saying cache must exceed the accepted character limit plus terminator");
-static_assert(kMaxSayingAttempts > 0, "daily saying retry count must be positive");
 static_assert(kDailySayingRetrySettleMs > 0,
               "daily saying retry settle delay must be positive");
 static_assert(cstr_nonempty(kDailySayingUrl), "daily saying URL must be non-empty");
 
 struct DailySayingAttemptStats {
+    int attempts = 0;
     int http_failures = 0;
     int parse_failures = 0;
     int long_responses = 0;
+
+    void record_attempt()
+    {
+        ++attempts;
+    }
 
     void record_http_failure()
     {
@@ -62,39 +67,38 @@ void log_daily_saying_update_failed(const DailySayingAttemptStats &stats)
 {
     ESP_LOGW(TAG,
              DAILY_SAYING_UPDATE_FAILED_LOG_FORMAT,
-             kMaxSayingAttempts,
+             stats.attempts,
              stats.http_failures,
              stats.parse_failures,
              stats.long_responses);
 }
 
-bool parse_daily_saying_attempt(const char *response,
-                                char *out,
-                                size_t out_len,
-                                int attempt,
-                                DailySayingAttemptStats &stats)
+DailySayingAttemptOutcome parse_daily_saying_attempt(
+    const char *response,
+    char *out,
+    size_t out_len,
+    int attempt,
+    DailySayingAttemptStats &stats)
 {
     bool ok = daily_saying_parser::extract(response, out, out_len);
     if (!ok) {
         stats.record_parse_failure();
         ESP_LOGW(TAG, DAILY_SAYING_PARSE_FAILED_LOG_FORMAT);
-        return false;
+        return DailySayingAttemptOutcome::kParseFailure;
     }
     int chars = 0;
     if (daily_saying_parser::within_length(out, &chars)) {
-        return true;
+        return DailySayingAttemptOutcome::kAccepted;
     }
     stats.record_long_response();
     ESP_LOGW(TAG, DAILY_SAYING_TOO_LONG_LOG_FORMAT, chars, attempt);
     out[0] = '\0';
-    return false;
+    return DailySayingAttemptOutcome::kTooLong;
 }
 
-void settle_before_next_daily_saying_attempt(int attempt)
+void settle_before_next_daily_saying_attempt()
 {
-    if (attempt < kMaxSayingAttempts) {
-        vTaskDelay(pdMS_TO_TICKS(kDailySayingRetrySettleMs));
-    }
+    vTaskDelay(pdMS_TO_TICKS(kDailySayingRetrySettleMs));
 }
 } // namespace
 
@@ -111,10 +115,12 @@ bool perform_daily_saying_update()
         return false;
     }
     DailySayingAttemptStats stats;
-    for (int attempt = 1; attempt <= kMaxSayingAttempts; ++attempt) {
+    DailySayingRetryPolicy retry_policy;
+    for (int attempt = 1; attempt <= kDailySayingMaxAttempts; ++attempt) {
         if (setup_portal_start_requested()) {
             break;
         }
+        stats.record_attempt();
         response.clear();
         esp_err_t err = http_get_text(kDailySayingUrl, response.get(), response.size(), nullptr);
         if (setup_portal_start_requested()) {
@@ -123,13 +129,29 @@ bool perform_daily_saying_update()
         if (err != ESP_OK) {
             stats.record_http_failure();
             ESP_LOGW(TAG, DAILY_SAYING_HTTP_FAILED_LOG_FORMAT, esp_err_to_name(err));
-            settle_before_next_daily_saying_attempt(attempt);
+            const DailySayingAttemptOutcome outcome =
+                DailySayingAttemptOutcome::kHttpFailure;
+            retry_policy.record(outcome);
+            if (!retry_policy.should_retry(attempt, outcome)) {
+                break;
+            }
+            settle_before_next_daily_saying_attempt();
             continue;
         }
-        if (parse_daily_saying_attempt(response.get(), next, sizeof(next), attempt, stats)) {
+        const DailySayingAttemptOutcome outcome =
+            parse_daily_saying_attempt(response.get(),
+                                       next,
+                                       sizeof(next),
+                                       attempt,
+                                       stats);
+        retry_policy.record(outcome);
+        if (outcome == DailySayingAttemptOutcome::kAccepted) {
             break;
         }
-        settle_before_next_daily_saying_attempt(attempt);
+        if (!retry_policy.should_retry(attempt, outcome)) {
+            break;
+        }
+        settle_before_next_daily_saying_attempt();
     }
     if (next[0] == '\0') {
         log_daily_saying_update_failed(stats);

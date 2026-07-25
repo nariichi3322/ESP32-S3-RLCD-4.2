@@ -83,9 +83,8 @@ bool save_work_page_settings()
 
 bool save_work_page_order()
 {
-    normalize_work_page_order();
     uint8_t page_order[kWorkPageCount] = {};
-    if (!work_page_order_copy(page_order, sizeof(page_order))) {
+    if (!work_page_order_normalize_and_copy(page_order, sizeof(page_order))) {
         return false;
     }
     ScopedNvsHandle nvs;

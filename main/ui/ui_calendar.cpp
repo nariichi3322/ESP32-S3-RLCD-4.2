@@ -1,11 +1,22 @@
 // 构建和刷新当月日历页面及其农历节日显示。
-#include "ui_views.h"
+#include "ui_work_pages.h"
 
 #include "app_constexpr.h"
+#include "app_metadata.h"
 #include "app_time_constants.h"
+#include "battery_runtime_state.h"
 #include "calendar_lunar.h"
+#include "work_page_ids.h"
 #include "ui_battery.h"
 #include "ui_calendar_layout.h"
+#include "ui_canvas_primitives.h"
+#include "ui_fonts.h"
+#include "ui_page_state.h"
+#include "ui_progress.h"
+#include "ui_widgets.h"
+#include "ui_work_status.h"
+
+#include <esp_log.h>
 
 #define CALENDAR_CANVAS_CREATE_FAILED_LOG "calendar canvas create failed"
 #define CALENDAR_LAYOUT_INVALID_LOG "calendar layout invalid"
@@ -283,8 +294,7 @@ bool update_calendar_page(const struct tm &local)
         draw_calendar_grid(local);
         changed = true;
     }
-    const WorkPageStatusLabels status = get_work_page_status_labels(kWorkPageCalendar);
-    changed |= update_work_page_status_time(status.time, local);
+    changed |= update_work_page_status_time(kWorkPageCalendar, local);
     return changed;
 }
 

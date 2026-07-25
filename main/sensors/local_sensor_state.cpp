@@ -6,17 +6,8 @@
 #include <atomic>
 
 namespace {
-struct LocalSensorSnapshot {
-    float temperature = 0.0f;
-    float humidity = 0.0f;
-    int temperature_trend = 0;
-    int humidity_trend = 0;
-    uint32_t version = 0;
-    bool available = false;
-};
-
 StaticTaskMutex s_local_sensor_mutex;
-LocalSensorSnapshot s_local_sensor;
+LocalSensorStateSnapshot s_local_sensor;
 std::atomic<uint32_t> s_local_sensor_version{0};
 } // namespace
 
@@ -28,31 +19,69 @@ bool init_local_sensor_state()
 bool local_sensor_state_publish_sample(float temperature,
                                        float humidity,
                                        int temperature_trend,
-                                       int humidity_trend)
+                                       int humidity_trend,
+                                       bool *state_changed)
 {
+    if (state_changed) {
+        *state_changed = false;
+    }
     ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
     if (!lock) {
         return false;
     }
+    const bool changed =
+        !s_local_sensor.available ||
+        s_local_sensor.temperature != temperature ||
+        s_local_sensor.humidity != humidity ||
+        s_local_sensor.temperature_trend != temperature_trend ||
+        s_local_sensor.humidity_trend != humidity_trend;
     s_local_sensor.temperature = temperature;
     s_local_sensor.humidity = humidity;
     s_local_sensor.temperature_trend = temperature_trend;
     s_local_sensor.humidity_trend = humidity_trend;
     s_local_sensor.available = true;
-    ++s_local_sensor.version;
-    s_local_sensor_version.store(s_local_sensor.version, std::memory_order_release);
+    if (changed) {
+        ++s_local_sensor.version;
+        s_local_sensor_version.store(s_local_sensor.version, std::memory_order_release);
+        if (state_changed) {
+            *state_changed = true;
+        }
+    }
     return true;
 }
 
-bool local_sensor_state_publish_unavailable()
+bool local_sensor_state_publish_unavailable(bool *state_changed)
 {
+    if (state_changed) {
+        *state_changed = false;
+    }
     ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
     if (!lock) {
         return false;
     }
+    if (!s_local_sensor.available) {
+        return true;
+    }
     s_local_sensor.available = false;
     ++s_local_sensor.version;
     s_local_sensor_version.store(s_local_sensor.version, std::memory_order_release);
+    if (state_changed) {
+        *state_changed = true;
+    }
+    return true;
+}
+
+bool local_sensor_state_snapshot_load(LocalSensorStateSnapshot *snapshot)
+{
+    if (!snapshot) {
+        return false;
+    }
+    ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
+    if (!lock) {
+        *snapshot = {};
+        return false;
+    }
+    *snapshot = s_local_sensor;
     return true;
 }
 

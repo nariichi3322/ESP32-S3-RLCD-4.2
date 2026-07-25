@@ -2,12 +2,12 @@
 #include "weather_city_mcp.h"
 
 #include "app_event_group.h"
-#include "app_state.h"
 #include "network_config.h"
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"
 #include "qweather_client.h"
 #include "ui_task_notify.h"
+#include "weather_city_contract.h"
 #include "weather_city_pending_state.h"
 #include "xiaozhi_mcp.h"
 

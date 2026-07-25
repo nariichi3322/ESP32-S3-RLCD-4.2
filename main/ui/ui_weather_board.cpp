@@ -1,32 +1,73 @@
 // 绘制第五页天气看板，复用 QWeather 缓存并避免秒级刷新。
-#include "ui_views.h"
+#include "ui_work_pages.h"
 
 #include "app_constexpr.h"
+#include "app_display_config.h"
 #include "app_event_group.h"
+#include "app_metadata.h"
 #include "qweather_icons.h"
+#include "work_page_ids.h"
 #include "ui_battery.h"
+#include "ui_fonts.h"
+#include "ui_page_state.h"
+#include "ui_progress.h"
 #include "ui_weather_board_sun.h"
 #include "ui_weather_board_text.h"
+#include "ui_widgets.h"
+#include "ui_work_status.h"
 #include "weather_state.h"
 
+#include <esp_attr.h>
+#include <esp_log.h>
+
 #include <stdint.h>
+#include <string.h>
 
 namespace {
 
-lv_obj_t *s_city_label;
-lv_obj_t *s_current_icon_label;
-lv_obj_t *s_current_temp_label;
-lv_obj_t *s_current_unit_label;
-lv_obj_t *s_current_text_label;
-lv_obj_t *s_today_range_label;
-lv_obj_t *s_air_label;
-lv_obj_t *s_humidity_label;
-lv_obj_t *s_wind_label;
-lv_obj_t *s_sunrise_label;
-lv_obj_t *s_sunset_label;
-lv_obj_t *s_sun_countdown_label;
-lv_obj_t *s_alert_label;
-lv_obj_t *s_advice_label;
+struct WeatherBoardSnapshot {
+    WeatherData weather;
+    WeatherAlertData alert;
+    WeatherForecastData forecast;
+    WeatherAirData air;
+};
+
+EXT_RAM_BSS_ATTR WeatherBoardSnapshot s_weather_board_snapshot;
+
+static_assert(sizeof(WeatherBoardSnapshot) > 1024,
+              "weather-board working snapshot should remain off the UI stack");
+
+struct WeatherBoardRefreshCache {
+    uint32_t last_weather_state_version;
+    int64_t last_minute_key;
+    EventBits_t last_content_state;
+    WeatherBoardSunSchedule sun_schedule;
+};
+
+EXT_RAM_BSS_ATTR WeatherBoardRefreshCache s_weather_board_refresh_cache;
+static_assert(sizeof(WeatherBoardRefreshCache) == 48,
+              "weather-board refresh cache must remain compact");
+
+struct WeatherBoardObjectRefs {
+    lv_obj_t *city_label = nullptr;
+    lv_obj_t *current_icon_label = nullptr;
+    lv_obj_t *current_temp_label = nullptr;
+    lv_obj_t *current_unit_label = nullptr;
+    lv_obj_t *current_text_label = nullptr;
+    lv_obj_t *today_range_label = nullptr;
+    lv_obj_t *air_label = nullptr;
+    lv_obj_t *humidity_label = nullptr;
+    lv_obj_t *wind_label = nullptr;
+    lv_obj_t *sunrise_label = nullptr;
+    lv_obj_t *sunset_label = nullptr;
+    lv_obj_t *sun_countdown_label = nullptr;
+    lv_obj_t *alert_label = nullptr;
+    lv_obj_t *advice_label = nullptr;
+};
+
+EXT_RAM_BSS_ATTR WeatherBoardObjectRefs s_weather_board_objects;
+static_assert(sizeof(WeatherBoardObjectRefs) == 14 * sizeof(lv_obj_t *),
+              "weather-board object references must remain pointer-only");
 
 struct ForecastCardUi {
     lv_obj_t *box = nullptr;
@@ -36,11 +77,7 @@ struct ForecastCardUi {
     lv_obj_t *range = nullptr;
 };
 
-ForecastCardUi s_cards[kWeatherForecastDays];
-uint32_t s_last_weather_state_version = UINT32_MAX;
-int64_t s_last_weather_board_minute_key = -1;
-EventBits_t s_last_weather_board_content_state = static_cast<EventBits_t>(~0U);
-WeatherBoardSunSchedule s_weather_board_sun_schedule;
+EXT_RAM_BSS_ATTR ForecastCardUi s_cards[kWeatherForecastDays];
 constexpr const char *kWeatherBoardUnknownIcon = "999";
 constexpr const char *kWeatherBoardWaitingData = "等待数据";
 constexpr const char *kWeatherBoardSyncing = "同步中";
@@ -120,6 +157,36 @@ constexpr size_t kWeatherBoardWindLineSize = 48;
 constexpr size_t kWeatherBoardSunTimeLineSize = 24;
 constexpr size_t kWeatherBoardSunCountdownLineSize = 24;
 constexpr size_t kWeatherBoardAlertLineSize = 160;
+
+struct WeatherBoardTextWorkspace {
+    char forecast_date_line[kForecastDateLineSize];
+    char forecast_temp_range[kForecastTempRangeSize];
+    char current_temp_line[kCurrentTempLineSize];
+    char today_range_line[kTodayRangeLineSize];
+    char humidity_line[kWeatherBoardHumidityLineSize];
+    char air_line[kWeatherBoardAirLineSize];
+    char wind_line[kWeatherBoardWindLineSize];
+    char sunrise_line[kWeatherBoardSunTimeLineSize];
+    char sunset_line[kWeatherBoardSunTimeLineSize];
+    char sun_countdown_line[kWeatherBoardSunCountdownLineSize];
+    char alert_line[kWeatherBoardAlertLineSize];
+};
+
+EXT_RAM_BSS_ATTR WeatherBoardTextWorkspace s_weather_board_text_workspace;
+constexpr size_t kWeatherBoardTextWorkspaceSize =
+    kForecastDateLineSize +
+    kForecastTempRangeSize +
+    kCurrentTempLineSize +
+    kTodayRangeLineSize +
+    kWeatherBoardHumidityLineSize +
+    kWeatherBoardAirLineSize +
+    kWeatherBoardWindLineSize +
+    (2 * kWeatherBoardSunTimeLineSize) +
+    kWeatherBoardSunCountdownLineSize +
+    kWeatherBoardAlertLineSize;
+static_assert(sizeof(WeatherBoardTextWorkspace) == kWeatherBoardTextWorkspaceSize,
+              "weather-board text workspace must remain compact");
+
 constexpr EventBits_t kWeatherBoardContentStateMask =
     kWeatherReadyBit | kWifiConnectedBit;
 #define WEATHER_BOARD_FORECAST_CARD_CREATE_FAILED_FORMAT "weather forecast card %d create failed"
@@ -160,10 +227,11 @@ EventBits_t weather_board_content_state(EventBits_t bits)
 
 void invalidate_weather_board_refresh_cache()
 {
-    s_last_weather_state_version = UINT32_MAX;
-    s_last_weather_board_minute_key = -1;
-    s_last_weather_board_content_state = static_cast<EventBits_t>(~0U);
-    s_weather_board_sun_schedule = {};
+    s_weather_board_refresh_cache.last_weather_state_version = UINT32_MAX;
+    s_weather_board_refresh_cache.last_minute_key = -1;
+    s_weather_board_refresh_cache.last_content_state =
+        static_cast<EventBits_t>(~0U);
+    s_weather_board_refresh_cache.sun_schedule = {};
 }
 
 void set_weather_label_align(lv_obj_t *label, lv_text_align_t align)
@@ -218,8 +286,8 @@ bool update_forecast_card(ForecastCardUi &card, const WeatherForecastDay *day)
         changed |= set_label_text_if_changed(card.range, kWeatherBoardShortDatePlaceholder);
         return changed;
     }
-    char date_line[kForecastDateLineSize] = {};
-    char temp_range[kForecastTempRangeSize] = {};
+    auto &date_line = s_weather_board_text_workspace.forecast_date_line;
+    auto &temp_range = s_weather_board_text_workspace.forecast_temp_range;
     format_forecast_date_line(*day, date_line, sizeof(date_line));
     format_forecast_temp_range(*day, temp_range, sizeof(temp_range));
     changed |= set_label_text_if_changed(card.date, date_line);
@@ -286,6 +354,7 @@ void build_current_weather_panel(lv_obj_t *screen)
     if (!screen) {
         return;
     }
+    WeatherBoardObjectRefs &objects = s_weather_board_objects;
     lv_obj_t *top_line = make_bar(screen,
                                   kWeatherBoardTopLineX,
                                   kWeatherBoardTopLineY,
@@ -293,51 +362,51 @@ void build_current_weather_panel(lv_obj_t *screen)
                                   kWeatherBoardTopLineH);
     set_obj_black(top_line, true);
 
-    s_city_label = make_label(screen,
-                              kWeatherBoardCurrentCityX,
-                              kWeatherBoardCurrentCityY,
-                              kWeatherBoardCurrentCityW,
-                              kWeatherBoardCurrentCityH,
-                              kWeatherBoardWaitingData);
-    set_weather_label_align(s_city_label, LV_TEXT_ALIGN_LEFT);
+    objects.city_label = make_label(screen,
+                                    kWeatherBoardCurrentCityX,
+                                    kWeatherBoardCurrentCityY,
+                                    kWeatherBoardCurrentCityW,
+                                    kWeatherBoardCurrentCityH,
+                                    kWeatherBoardWaitingData);
+    set_weather_label_align(objects.city_label, LV_TEXT_ALIGN_LEFT);
 
-    s_current_temp_label = make_label_with_font(screen,
-                                                kWeatherBoardCurrentTempX,
-                                                kWeatherBoardCurrentTempY,
-                                                kWeatherBoardCurrentTempW,
-                                                kWeatherBoardCurrentTempH,
-                                                kWeatherBoardDash,
-                                                &lv_font_montserrat_48);
-    set_weather_label_align(s_current_temp_label, LV_TEXT_ALIGN_LEFT);
-    s_current_unit_label = make_label_with_font(screen,
-                                                kWeatherBoardCurrentUnitX,
-                                                kWeatherBoardCurrentUnitY,
-                                                kWeatherBoardCurrentUnitW,
-                                                kWeatherBoardCurrentUnitH,
-                                                kWeatherBoardCurrentUnitText,
-                                                &lv_font_montserrat_24);
-    set_weather_label_align(s_current_unit_label, LV_TEXT_ALIGN_LEFT);
+    objects.current_temp_label = make_label_with_font(screen,
+                                                      kWeatherBoardCurrentTempX,
+                                                      kWeatherBoardCurrentTempY,
+                                                      kWeatherBoardCurrentTempW,
+                                                      kWeatherBoardCurrentTempH,
+                                                      kWeatherBoardDash,
+                                                      &lv_font_montserrat_48);
+    set_weather_label_align(objects.current_temp_label, LV_TEXT_ALIGN_LEFT);
+    objects.current_unit_label = make_label_with_font(screen,
+                                                      kWeatherBoardCurrentUnitX,
+                                                      kWeatherBoardCurrentUnitY,
+                                                      kWeatherBoardCurrentUnitW,
+                                                      kWeatherBoardCurrentUnitH,
+                                                      kWeatherBoardCurrentUnitText,
+                                                      &lv_font_montserrat_24);
+    set_weather_label_align(objects.current_unit_label, LV_TEXT_ALIGN_LEFT);
 
-    s_current_icon_label = make_label(screen,
-                                      kWeatherBoardCurrentIconX,
-                                      kWeatherBoardCurrentIconY,
-                                      kWeatherBoardCurrentIconW,
-                                      kWeatherBoardCurrentIconH,
-                                      weather_icon_text(kWeatherBoardUnknownIcon));
-    set_weather_label_font(s_current_icon_label, &qweather_icons_36);
-    set_weather_label_align(s_current_icon_label, LV_TEXT_ALIGN_CENTER);
-    s_current_text_label = make_label(screen,
-                                      kWeatherBoardCurrentTextX,
-                                      kWeatherBoardCurrentTextY,
-                                      kWeatherBoardCurrentTextW,
-                                      kWeatherBoardCurrentTextH,
-                                      kWeatherBoardDash);
-    s_today_range_label = make_label(screen,
-                                     kWeatherBoardTodayRangeX,
-                                     kWeatherBoardTodayRangeY,
-                                     kWeatherBoardTodayRangeW,
-                                     kWeatherBoardTodayRangeH,
-                                     kWeatherBoardTodayRangePlaceholder);
+    objects.current_icon_label = make_label(screen,
+                                            kWeatherBoardCurrentIconX,
+                                            kWeatherBoardCurrentIconY,
+                                            kWeatherBoardCurrentIconW,
+                                            kWeatherBoardCurrentIconH,
+                                            weather_icon_text(kWeatherBoardUnknownIcon));
+    set_weather_label_font(objects.current_icon_label, &qweather_icons_36);
+    set_weather_label_align(objects.current_icon_label, LV_TEXT_ALIGN_CENTER);
+    objects.current_text_label = make_label(screen,
+                                            kWeatherBoardCurrentTextX,
+                                            kWeatherBoardCurrentTextY,
+                                            kWeatherBoardCurrentTextW,
+                                            kWeatherBoardCurrentTextH,
+                                            kWeatherBoardDash);
+    objects.today_range_label = make_label(screen,
+                                           kWeatherBoardTodayRangeX,
+                                           kWeatherBoardTodayRangeY,
+                                           kWeatherBoardTodayRangeW,
+                                           kWeatherBoardTodayRangeH,
+                                           kWeatherBoardTodayRangePlaceholder);
 }
 
 void build_weather_detail_panel(lv_obj_t *screen)
@@ -345,92 +414,101 @@ void build_weather_detail_panel(lv_obj_t *screen)
     if (!screen) {
         return;
     }
+    WeatherBoardObjectRefs &objects = s_weather_board_objects;
     lv_obj_t *detail_line = make_bar(screen,
                                      kWeatherBoardDetailLineX,
                                      kWeatherBoardDetailLineY,
                                      kWeatherBoardDetailLineW,
                                      kWeatherBoardDetailLineH);
     set_obj_black(detail_line, true);
-    s_air_label = make_label(screen,
-                             kWeatherBoardLeftColumnX,
-                             kWeatherBoardDetailTopY,
-                             kWeatherBoardAirLabelW,
-                             kWeatherBoardDetailLabelH,
-                             kWeatherBoardAirPlaceholder);
-    s_humidity_label = make_label(screen,
-                                  kWeatherBoardMiddleColumnX,
-                                  kWeatherBoardDetailTopY,
-                                  kWeatherBoardHumidityLabelW,
-                                  kWeatherBoardDetailLabelH,
-                                  kWeatherBoardHumidityPlaceholder);
-    s_wind_label = make_label(screen,
-                              kWeatherBoardRightColumnX,
-                              kWeatherBoardDetailTopY,
-                              kWeatherBoardWindLabelW,
-                              kWeatherBoardDetailLabelH,
-                              kWeatherBoardWindPlaceholder);
-    s_sunrise_label = make_label(screen,
-                                 kWeatherBoardLeftColumnX,
-                                 kWeatherBoardDetailBottomY,
-                                 kWeatherBoardSunriseLabelW,
-                                 kWeatherBoardSunLabelH,
-                                 kWeatherBoardSunrisePlaceholder);
-    s_sunset_label = make_label(screen,
-                                kWeatherBoardMiddleColumnX,
-                                kWeatherBoardDetailBottomY,
-                                kWeatherBoardSunsetLabelW,
-                                kWeatherBoardSunLabelH,
-                                kWeatherBoardSunsetPlaceholder);
-    s_sun_countdown_label = make_label(screen,
-                                       kWeatherBoardRightColumnX,
+    objects.air_label = make_label(screen,
+                                   kWeatherBoardLeftColumnX,
+                                   kWeatherBoardDetailTopY,
+                                   kWeatherBoardAirLabelW,
+                                   kWeatherBoardDetailLabelH,
+                                   kWeatherBoardAirPlaceholder);
+    objects.humidity_label = make_label(screen,
+                                        kWeatherBoardMiddleColumnX,
+                                        kWeatherBoardDetailTopY,
+                                        kWeatherBoardHumidityLabelW,
+                                        kWeatherBoardDetailLabelH,
+                                        kWeatherBoardHumidityPlaceholder);
+    objects.wind_label = make_label(screen,
+                                    kWeatherBoardRightColumnX,
+                                    kWeatherBoardDetailTopY,
+                                    kWeatherBoardWindLabelW,
+                                    kWeatherBoardDetailLabelH,
+                                    kWeatherBoardWindPlaceholder);
+    objects.sunrise_label = make_label(screen,
+                                       kWeatherBoardLeftColumnX,
                                        kWeatherBoardDetailBottomY,
-                                       kWeatherBoardSunCountdownLabelW,
+                                       kWeatherBoardSunriseLabelW,
                                        kWeatherBoardSunLabelH,
-                                       kWeatherBoardSunCountdownPlaceholder);
-    s_alert_label = make_label(screen,
-                               kWeatherBoardAlertX,
-                               kWeatherBoardAlertY,
-                               kWeatherBoardAlertW,
-                               kWeatherBoardAlertH,
-                               kWeatherBoardAlertPlaceholder);
-    s_advice_label = make_label(screen,
-                                kWeatherBoardAdviceX,
-                                kWeatherBoardAdviceY,
-                                kWeatherBoardAdviceW,
-                                kWeatherBoardAdviceH,
-                                kWeatherBoardAdvicePlaceholder);
-    set_weather_label_long_mode(s_advice_label, LV_LABEL_LONG_WRAP);
-    set_weather_label_align(s_advice_label, LV_TEXT_ALIGN_LEFT);
+                                       kWeatherBoardSunrisePlaceholder);
+    objects.sunset_label = make_label(screen,
+                                      kWeatherBoardMiddleColumnX,
+                                      kWeatherBoardDetailBottomY,
+                                      kWeatherBoardSunsetLabelW,
+                                      kWeatherBoardSunLabelH,
+                                      kWeatherBoardSunsetPlaceholder);
+    objects.sun_countdown_label = make_label(screen,
+                                             kWeatherBoardRightColumnX,
+                                             kWeatherBoardDetailBottomY,
+                                             kWeatherBoardSunCountdownLabelW,
+                                             kWeatherBoardSunLabelH,
+                                             kWeatherBoardSunCountdownPlaceholder);
+    objects.alert_label = make_label(screen,
+                                     kWeatherBoardAlertX,
+                                     kWeatherBoardAlertY,
+                                     kWeatherBoardAlertW,
+                                     kWeatherBoardAlertH,
+                                     kWeatherBoardAlertPlaceholder);
+    objects.advice_label = make_label(screen,
+                                      kWeatherBoardAdviceX,
+                                      kWeatherBoardAdviceY,
+                                      kWeatherBoardAdviceW,
+                                      kWeatherBoardAdviceH,
+                                      kWeatherBoardAdvicePlaceholder);
+    set_weather_label_long_mode(objects.advice_label, LV_LABEL_LONG_WRAP);
+    set_weather_label_align(objects.advice_label, LV_TEXT_ALIGN_LEFT);
 }
 
 bool update_current_weather_panel(const WeatherData &weather,
                                   const WeatherForecastData &forecast,
                                   EventBits_t bits)
 {
+    WeatherBoardObjectRefs &objects = s_weather_board_objects;
     bool changed = false;
     if ((bits & kWeatherReadyBit) != 0) {
-        char temp_line[kCurrentTempLineSize] = {};
-        char today_range[kTodayRangeLineSize] = {};
+        auto &temp_line = s_weather_board_text_workspace.current_temp_line;
+        auto &today_range = s_weather_board_text_workspace.today_range_line;
         strlcpy(temp_line, text_or_dash(weather.temp), sizeof(temp_line));
-        changed |= set_label_text_if_changed(s_city_label, text_or_dash(weather.city));
-        changed |= set_label_text_if_changed(s_current_temp_label, temp_line);
-        changed |= set_label_text_if_changed(s_current_icon_label, weather_icon_or_default(weather.icon));
-        changed |= set_label_text_if_changed(s_current_text_label, text_or_dash(weather.text));
+        changed |= set_label_text_if_changed(objects.city_label,
+                                             text_or_dash(weather.city));
+        changed |= set_label_text_if_changed(objects.current_temp_label, temp_line);
+        changed |= set_label_text_if_changed(objects.current_icon_label,
+                                             weather_icon_or_default(weather.icon));
+        changed |= set_label_text_if_changed(objects.current_text_label,
+                                             text_or_dash(weather.text));
         if (forecast.ready && forecast.count > 0 && forecast.days[0].valid) {
             format_today_range(forecast.days[0], today_range, sizeof(today_range));
         } else {
             strlcpy(today_range, kWeatherBoardTodayRangePlaceholder, sizeof(today_range));
         }
-        changed |= set_label_text_if_changed(s_today_range_label, today_range);
+        changed |= set_label_text_if_changed(objects.today_range_label, today_range);
         return changed;
     }
 
-    changed |= set_label_text_if_changed(s_city_label, kWeatherBoardDash);
-    changed |= set_label_text_if_changed(s_current_temp_label, kWeatherBoardDash);
-    changed |= set_label_text_if_changed(s_current_icon_label, weather_icon_text(kWeatherBoardUnknownIcon));
-    changed |= set_label_text_if_changed(s_current_text_label,
+    changed |= set_label_text_if_changed(objects.city_label, kWeatherBoardDash);
+    changed |= set_label_text_if_changed(objects.current_temp_label,
+                                         kWeatherBoardDash);
+    changed |= set_label_text_if_changed(
+        objects.current_icon_label,
+        weather_icon_text(kWeatherBoardUnknownIcon));
+    changed |= set_label_text_if_changed(objects.current_text_label,
                                          (bits & kWifiConnectedBit) ? kWeatherBoardSyncing : kWeatherBoardWaitingData);
-    changed |= set_label_text_if_changed(s_today_range_label, kWeatherBoardTodayRangePlaceholder);
+    changed |= set_label_text_if_changed(objects.today_range_label,
+                                         kWeatherBoardTodayRangePlaceholder);
     return changed;
 }
 
@@ -451,13 +529,14 @@ bool update_weather_detail_panel(const struct tm &local,
                                  const WeatherAirData &air,
                                  const WeatherBoardSunSchedule &sun_schedule)
 {
-    char humi_line[kWeatherBoardHumidityLineSize] = {};
-    char air_line[kWeatherBoardAirLineSize] = {};
-    char wind_line[kWeatherBoardWindLineSize] = {};
-    char sunrise_line[kWeatherBoardSunTimeLineSize] = {};
-    char sunset_line[kWeatherBoardSunTimeLineSize] = {};
-    char sun_countdown_line[kWeatherBoardSunCountdownLineSize] = {};
-    char alert_line[kWeatherBoardAlertLineSize] = {};
+    WeatherBoardObjectRefs &objects = s_weather_board_objects;
+    auto &humi_line = s_weather_board_text_workspace.humidity_line;
+    auto &air_line = s_weather_board_text_workspace.air_line;
+    auto &wind_line = s_weather_board_text_workspace.wind_line;
+    auto &sunrise_line = s_weather_board_text_workspace.sunrise_line;
+    auto &sunset_line = s_weather_board_text_workspace.sunset_line;
+    auto &sun_countdown_line = s_weather_board_text_workspace.sun_countdown_line;
+    auto &alert_line = s_weather_board_text_workspace.alert_line;
     const WeatherForecastDay *today = weather_board_forecast_day_or_null(forecast, 0);
     format_weather_board_air_line(air, air_line, sizeof(air_line));
     format_weather_board_humidity_line(weather, today, humi_line, sizeof(humi_line));
@@ -470,35 +549,46 @@ bool update_weather_detail_panel(const struct tm &local,
                                        sizeof(sun_countdown_line));
     format_weather_board_alert_line(alert, alert_line, sizeof(alert_line));
 
-    bool changed = set_label_text_if_changed(s_air_label, air_line);
-    changed |= set_label_text_if_changed(s_humidity_label, humi_line);
-    changed |= set_label_text_if_changed(s_wind_label, wind_line);
-    changed |= set_label_text_if_changed(s_sunrise_label, sunrise_line);
-    changed |= set_label_text_if_changed(s_sunset_label, sunset_line);
-    changed |= set_label_text_if_changed(s_sun_countdown_label, sun_countdown_line);
-    changed |= set_label_text_if_changed(s_alert_label, alert_line);
-    changed |= set_label_text_if_changed(s_advice_label, weather_board_advice_text(forecast));
+    bool changed = set_label_text_if_changed(objects.air_label, air_line);
+    changed |= set_label_text_if_changed(objects.humidity_label, humi_line);
+    changed |= set_label_text_if_changed(objects.wind_label, wind_line);
+    changed |= set_label_text_if_changed(objects.sunrise_label, sunrise_line);
+    changed |= set_label_text_if_changed(objects.sunset_label, sunset_line);
+    changed |= set_label_text_if_changed(objects.sun_countdown_label,
+                                         sun_countdown_line);
+    changed |= set_label_text_if_changed(objects.alert_label, alert_line);
+    changed |= set_label_text_if_changed(objects.advice_label,
+                                         weather_board_advice_text(forecast));
     return changed;
 }
 
 bool update_weather_board_sun_countdown(const struct tm &local)
 {
-    char sun_countdown_line[kWeatherBoardSunCountdownLineSize] = {};
+    WeatherBoardObjectRefs &objects = s_weather_board_objects;
+    auto &sun_countdown_line = s_weather_board_text_workspace.sun_countdown_line;
+    sun_countdown_line[0] = '\0';
     format_weather_board_sun_countdown(local,
-                                       s_weather_board_sun_schedule,
+                                       s_weather_board_refresh_cache.sun_schedule,
                                        sun_countdown_line,
                                        sizeof(sun_countdown_line));
-    return set_label_text_if_changed(s_sun_countdown_label, sun_countdown_line);
+    return set_label_text_if_changed(objects.sun_countdown_label,
+                                     sun_countdown_line);
 }
 
 bool update_weather_board_full_content(const struct tm &local, EventBits_t bits)
 {
-    WeatherData weather = {};
-    WeatherAlertData alert = {};
-    WeatherForecastData forecast = {};
-    WeatherAirData air = {};
-    get_weather_full_snapshot(&weather, &alert, &forecast, &air);
-    s_weather_board_sun_schedule = weather_board_sun_schedule(forecast);
+    memset(&s_weather_board_snapshot, 0, sizeof(s_weather_board_snapshot));
+    memset(&s_weather_board_text_workspace, 0, sizeof(s_weather_board_text_workspace));
+    get_weather_full_snapshot(&s_weather_board_snapshot.weather,
+                              &s_weather_board_snapshot.alert,
+                              &s_weather_board_snapshot.forecast,
+                              &s_weather_board_snapshot.air);
+    const WeatherData &weather = s_weather_board_snapshot.weather;
+    const WeatherAlertData &alert = s_weather_board_snapshot.alert;
+    const WeatherForecastData &forecast = s_weather_board_snapshot.forecast;
+    const WeatherAirData &air = s_weather_board_snapshot.air;
+    s_weather_board_refresh_cache.sun_schedule =
+        weather_board_sun_schedule(forecast);
 
     bool changed = update_current_weather_panel(weather, forecast, bits);
     changed |= update_forecast_cards(forecast);
@@ -507,7 +597,8 @@ bool update_weather_board_full_content(const struct tm &local, EventBits_t bits)
                                            alert,
                                            forecast,
                                            air,
-                                           s_weather_board_sun_schedule);
+                                           s_weather_board_refresh_cache
+                                               .sun_schedule);
     return changed;
 }
 
@@ -554,23 +645,25 @@ bool update_weather_board_page(const struct tm &local)
     const EventBits_t content_state = weather_board_content_state(bits);
     const int64_t minute_key = weather_board_minute_key(local);
     const bool full_refresh_due =
-        weather_version != s_last_weather_state_version ||
-        content_state != s_last_weather_board_content_state;
+        weather_version !=
+            s_weather_board_refresh_cache.last_weather_state_version ||
+        content_state !=
+            s_weather_board_refresh_cache.last_content_state;
     const bool minute_refresh_due =
-        minute_key != s_last_weather_board_minute_key;
+        minute_key != s_weather_board_refresh_cache.last_minute_key;
     if (!full_refresh_due && !minute_refresh_due) {
         return false;
     }
 
-    const WorkPageStatusLabels status = get_work_page_status_labels(kWorkPageWeatherBoard);
-    bool changed = update_work_page_status_time(status.time, local);
+    bool changed = update_work_page_status_time(kWorkPageWeatherBoard, local);
     if (full_refresh_due) {
         changed |= update_weather_board_full_content(local, bits);
     } else {
         changed |= update_weather_board_sun_countdown(local);
     }
-    s_last_weather_state_version = weather_version;
-    s_last_weather_board_content_state = content_state;
-    s_last_weather_board_minute_key = minute_key;
+    s_weather_board_refresh_cache.last_weather_state_version =
+        weather_version;
+    s_weather_board_refresh_cache.last_content_state = content_state;
+    s_weather_board_refresh_cache.last_minute_key = minute_key;
     return changed;
 }

@@ -1,13 +1,15 @@
 // 声明 OTA 固件下载 HTTP 会话、重定向和幂等清理所有权。
 #pragma once
 
+#include "scoped_heap_buffer.h"
+
 #include <esp_http_client.h>
 
 #include <cstddef>
 
 class OtaDownloadHttpSession {
 public:
-    OtaDownloadHttpSession() = default;
+    OtaDownloadHttpSession();
     ~OtaDownloadHttpSession();
 
     OtaDownloadHttpSession(const OtaDownloadHttpSession &) = delete;
@@ -32,6 +34,8 @@ private:
     static constexpr size_t kRedirectUrlCapacity = 1024;
     esp_http_client_handle_t client_ = nullptr;
     bool opened_ = false;
+    bool redirect_location_seen_ = false;
+    bool redirect_location_invalid_ = false;
     int content_length_ = 0;
-    char redirect_url_[kRedirectUrlCapacity] = {};
+    ScopedHeapBuffer<char> redirect_url_;
 };

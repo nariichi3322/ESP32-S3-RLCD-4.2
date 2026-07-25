@@ -24,6 +24,26 @@ bool snapshot_matches(float temperature,
 
 int main()
 {
+    bool sample_changed = true;
+    assert(!local_sensor_state_publish_sample(20.0f, 50.0f, 0, 0, &sample_changed));
+    assert(!sample_changed);
+
+    LocalSensorStateSnapshot snapshot = {
+        99.0f,
+        88.0f,
+        1,
+        -1,
+        42,
+        true,
+    };
+    assert(!local_sensor_state_snapshot_load(&snapshot));
+    assert(snapshot.temperature == 0.0f);
+    assert(snapshot.humidity == 0.0f);
+    assert(snapshot.temperature_trend == 0);
+    assert(snapshot.humidity_trend == 0);
+    assert(snapshot.version == 0);
+    assert(!snapshot.available);
+
     assert(init_local_sensor_state());
     assert(init_local_sensor_state());
 
@@ -40,8 +60,16 @@ int main()
     assert(temperature_trend == 0);
     assert(humidity_trend == 0);
     assert(local_sensor_state_version() == 0);
+    assert(local_sensor_state_snapshot_load(&snapshot));
+    assert(!snapshot.available);
+    assert(snapshot.version == 0);
+    bool unavailable_changed = true;
+    assert(local_sensor_state_publish_unavailable(&unavailable_changed));
+    assert(!unavailable_changed);
+    assert(local_sensor_state_version() == 0);
 
-    assert(local_sensor_state_publish_sample(21.0f, 51.0f, 1, -1));
+    assert(local_sensor_state_publish_sample(21.0f, 51.0f, 1, -1, &sample_changed));
+    assert(sample_changed);
     assert(get_local_sensor_snapshot(&temperature,
                                      &humidity,
                                      &temperature_trend,
@@ -50,13 +78,30 @@ int main()
                             temperature_trend, humidity_trend,
                             21.0f, 51.0f, 1, -1));
     assert(local_sensor_state_version() == 1);
+    assert(local_sensor_state_snapshot_load(&snapshot));
+    assert(snapshot.available);
+    assert(snapshot_matches(snapshot.temperature,
+                            snapshot.humidity,
+                            snapshot.temperature_trend,
+                            snapshot.humidity_trend,
+                            21.0f,
+                            51.0f,
+                            1,
+                            -1));
+    assert(snapshot.version == 1);
+    assert(!local_sensor_state_snapshot_load(nullptr));
+    sample_changed = true;
+    assert(local_sensor_state_publish_sample(21.0f, 51.0f, 1, -1, &sample_changed));
+    assert(!sample_changed);
+    assert(local_sensor_state_version() == 1);
 
     constexpr int kIterations = 10000;
-    assert(local_sensor_state_publish_sample(11.0f, 33.0f, 1, -1));
+    assert(local_sensor_state_publish_sample(11.0f, 33.0f, 1, -1, &sample_changed));
+    assert(sample_changed);
     std::atomic<bool> writer_done{false};
     std::thread writer([&writer_done]() {
         for (int iteration = 0; iteration < kIterations; ++iteration) {
-            const bool use_a = (iteration & 1) == 0;
+            const bool use_a = (iteration & 1) != 0;
             assert(local_sensor_state_publish_sample(use_a ? 11.0f : 22.0f,
                                                      use_a ? 33.0f : 44.0f,
                                                      use_a ? 1 : -1,
@@ -85,7 +130,12 @@ int main()
     assert(local_sensor_state_version() == static_cast<uint32_t>(kIterations + 2));
 
     const uint32_t version_before_failure = local_sensor_state_version();
-    assert(local_sensor_state_publish_unavailable());
+    unavailable_changed = false;
+    assert(local_sensor_state_publish_unavailable(&unavailable_changed));
+    assert(unavailable_changed);
+    assert(local_sensor_state_snapshot_load(&snapshot));
+    assert(!snapshot.available);
+    assert(snapshot.version == version_before_failure + 1);
     assert(!get_local_sensor_snapshot(&temperature,
                                       &humidity,
                                       &temperature_trend,
@@ -97,5 +147,9 @@ int main()
            snapshot_matches(temperature, humidity,
                             temperature_trend, humidity_trend,
                             11.0f, 33.0f, 1, -1));
+    unavailable_changed = true;
+    assert(local_sensor_state_publish_unavailable(&unavailable_changed));
+    assert(!unavailable_changed);
+    assert(local_sensor_state_version() == version_before_failure + 1);
     return 0;
 }

@@ -52,9 +52,9 @@ void xiaozhi_power_session_release()
         s_network_lock_held = false;
     }
     // Other weather or diagnostics work may still own the shared network lock.
-    // Defer radio shutdown until the final owner leaves instead of leaking Wi-Fi.
+    // Try to close immediately; the radio module wakes the serialized network
+    // task only when another owner or a driver error requires deferred cleanup.
     request_wifi_radio_stop_when_idle();
-    service_wifi_radio_stop_when_idle();
 }
 
 bool xiaozhi_power_session_set_idle(bool enabled)

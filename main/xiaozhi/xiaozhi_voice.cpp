@@ -41,6 +41,12 @@ constexpr const char *kProcessedReadSizeOverflowLog =
     "AEC processed read sample count overflow";
 constexpr const char *kCaptureSizeOverflowLog =
     "MR AEC capture size overflow";
+constexpr const char *kVoiceStartStageProcessedStream = "processed-stream";
+constexpr const char *kVoiceStartStageAudioSession = "audio-session";
+constexpr const char *kVoiceStartStageWakePipeline = "wake-pipeline";
+#define XIAOZHI_VOICE_START_FAILED_FORMAT \
+    "listener start failed stage=%s internal_free=%u internal_largest=%u " \
+    "dma_largest=%u psram_free=%u psram_largest=%u"
 #define XIAOZHI_VOICE_TASK_STOP_TIMEOUT_FORMAT "MR AEC task stop timeout: feed_pending=%d detect_pending=%d"
 
 std::atomic<bool> s_running{false};
@@ -82,6 +88,18 @@ void report_voice_runtime_failure()
 {
     s_running.store(false);
     notify_voice_event();
+}
+
+void log_voice_start_failure(const char *stage)
+{
+    ESP_LOGW(kTag,
+             XIAOZHI_VOICE_START_FAILED_FORMAT,
+             stage,
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_DMA)),
+             static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_SPIRAM)));
 }
 
 bool ensure_processed_stream()
@@ -597,16 +615,19 @@ bool xiaozhi_voice_start()
     s_detected.store(false);
     s_streaming.store(false);
     if (!ensure_processed_stream()) {
+        log_voice_start_failure(kVoiceStartStageProcessedStream);
         return false;
     }
     // A fresh listener must own the Codec/I2S session before any AFE worker is
     // created. If another alert is using audio, fail this attempt and let the
     // coordinator retry instead of starting microphone tasks without hardware.
     if (!start_xiaozhi_audio_session()) {
+        log_voice_start_failure(kVoiceStartStageAudioSession);
         xStreamBufferReset(s_processed_stream);
         return false;
     }
     if (!start_pipeline(XiaozhiVoicePipelineMode::kWakeWord)) {
+        log_voice_start_failure(kVoiceStartStageWakePipeline);
         stop_xiaozhi_audio_session();
         xStreamBufferReset(s_processed_stream);
         return false;

@@ -24,10 +24,11 @@ int main()
     assert(synced_at == 0);
     assert(!get_daily_saying_snapshot(nullptr, sizeof(text), &synced_at));
     assert(!get_daily_saying_snapshot(text, 0, &synced_at));
-    DailySayingCacheSnapshot cache = {true, 99};
+    DailySayingCacheSnapshot cache = {true, 99, 99};
     assert(daily_saying_cache_snapshot_load(&cache));
     assert(!cache.available);
     assert(cache.last_sync_time == 0);
+    assert(cache.version == 1);
     assert(!daily_saying_cache_snapshot_load(nullptr));
 
     assert(daily_saying_state_publish("今日宜保持耐心", 1234));
@@ -38,6 +39,7 @@ int main()
     assert(daily_saying_cache_snapshot_load(&cache));
     assert(cache.available);
     assert(cache.last_sync_time == 1234);
+    assert(cache.version == 2);
 
     char short_text[5] = {};
     assert(get_daily_saying_snapshot(short_text, sizeof(short_text), nullptr));
@@ -81,7 +83,9 @@ int main()
         assert(daily_saying_cache_snapshot_load(&cache));
         assert(cache.available);
         assert(cache.last_sync_time == kTimeA || cache.last_sync_time == kTimeB);
+        assert(cache.version >= last_version);
         const uint32_t current_version = daily_saying_state_version_load();
+        assert(cache.version <= current_version);
         assert(current_version >= last_version);
         last_version = current_version;
     } while (!writer_done.load(std::memory_order_acquire));
@@ -95,5 +99,6 @@ int main()
     assert(daily_saying_cache_snapshot_load(&cache));
     assert(!cache.available);
     assert(cache.last_sync_time == 0);
+    assert(cache.version == daily_saying_state_version_load());
     return 0;
 }

@@ -81,8 +81,43 @@ int main()
     assert(capped.count == kWeatherForecastDays);
     cJSON_Delete(seven_days);
 
-    WeatherForecastData empty = {};
+    cJSON *replacement_days = cJSON_Parse(
+        "[{\"fxDate\":\"2026-07-20\",\"textDay\":\"晴\","
+        "\"tempMax\":\"24\",\"tempMin\":\"18\"}]");
+    assert(replacement_days != nullptr);
+    WeatherForecastData replacement = {};
+    replacement.ready = true;
+    replacement.count = 1;
+    strcpy(replacement.days[0].date, "stale-date");
+    strcpy(replacement.advice, "stale-advice");
+    replacement.updated_at = 123;
+    assert(parse_qweather_forecast_days(replacement_days, &replacement));
+    assert(replacement.ready);
+    assert(replacement.count == 1);
+    assert(strcmp(replacement.days[0].date, "2026-07-20") == 0);
+    assert(strcmp(replacement.advice, "天气平稳，适合轻装出行。") == 0);
+    cJSON_Delete(replacement_days);
+
+    WeatherForecastData empty = replacement;
     assert(!parse_qweather_forecast_days(nullptr, &empty));
+    assert(!empty.ready);
+    assert(empty.count == 0);
+    assert(empty.days[0].date[0] == '\0');
+    assert(empty.advice[0] == '\0');
+    assert(empty.updated_at == 0);
+
+    cJSON *object_root = cJSON_Parse(
+        "{\"day\":{\"fxDate\":\"2026-07-21\",\"textDay\":\"晴\"}}");
+    assert(object_root != nullptr);
+    WeatherForecastData malformed = replacement;
+    assert(!parse_qweather_forecast_days(object_root, &malformed));
+    assert(!malformed.ready);
+    assert(malformed.count == 0);
+    assert(malformed.days[0].date[0] == '\0');
+    assert(malformed.advice[0] == '\0');
+    assert(malformed.updated_at == 0);
+    cJSON_Delete(object_root);
+
     cJSON *empty_array = cJSON_Parse("[]");
     assert(empty_array != nullptr);
     assert(!parse_qweather_forecast_days(empty_array, nullptr));

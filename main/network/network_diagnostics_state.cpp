@@ -3,13 +3,16 @@
 
 #include "scoped_semaphore_lock.h"
 
+#include <esp_attr.h>
+
 #include <atomic>
 #include <cstring>
 
 namespace {
 StaticTaskMutex s_network_diag_mutex;
 NetworkDiagState s_network_diag_state = kNetworkDiagIdle;
-char s_network_diag_lines[kNetworkDiagLineCount][kNetworkDiagLineLen] = {};
+EXT_RAM_BSS_ATTR char s_network_diag_lines[kNetworkDiagLineCount]
+                                           [kNetworkDiagLineLen] = {};
 std::atomic<bool> s_network_diag_page_requested{false};
 
 void copy_line(char *out, const char *text)

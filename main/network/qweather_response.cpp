@@ -1,10 +1,12 @@
-// 管理 QWeather 动态响应内存、JSON 根对象和业务成功字段读取。
+// 管理 QWeather 单次请求 URL/响应内存、JSON 根对象和业务成功字段读取。
 #include "qweather_response.h"
 
 #include "app_constexpr.h"
 #include "app_metadata.h"
+#include "network_json.h"
 
 #include <esp_log.h>
+#include <stdint.h>
 #include <string.h>
 
 namespace {
@@ -14,6 +16,15 @@ constexpr const char *kQweatherSuccessCode = "200";
 constexpr const char *kQweatherMissingCodeText = "missing";
 #define QWEATHER_RESPONSE_SIZE_INVALID_FORMAT "qweather %s response size invalid"
 #define QWEATHER_RESPONSE_ALLOC_FAILED_FORMAT "qweather %s response alloc failed"
+
+size_t qweather_exchange_buffer_size(size_t response_size,
+                                     size_t request_url_size)
+{
+    if (response_size == 0 || request_url_size > SIZE_MAX - response_size) {
+        return 0;
+    }
+    return request_url_size + response_size;
+}
 } // namespace
 
 const char *qweather_stage_text(const char *stage)
@@ -22,15 +33,26 @@ const char *qweather_stage_text(const char *stage)
 }
 
 QweatherResponseBuffer::QweatherResponseBuffer(const char *stage, size_t buffer_size)
-    : data_(buffer_size,
-            HeapBufferInit::kCString,
-            HeapBufferStorage::kPsramPreferred),
-      size_(buffer_size)
+    : QweatherResponseBuffer(stage, buffer_size, 0)
 {
-    if (buffer_size == 0) {
+}
+
+QweatherResponseBuffer::QweatherResponseBuffer(const char *stage,
+                                               size_t buffer_size,
+                                               size_t request_url_size)
+    : data_(qweather_exchange_buffer_size(buffer_size, request_url_size),
+            HeapBufferInit::kUninitialized,
+            HeapBufferStorage::kPsramPreferred),
+      size_(buffer_size),
+      request_url_size_(request_url_size)
+{
+    if (qweather_exchange_buffer_size(buffer_size, request_url_size) == 0) {
         ESP_LOGW(TAG, QWEATHER_RESPONSE_SIZE_INVALID_FORMAT, qweather_stage_text(stage));
     } else if (!data_) {
         ESP_LOGW(TAG, QWEATHER_RESPONSE_ALLOC_FAILED_FORMAT, qweather_stage_text(stage));
+    } else {
+        data_.get()[0] = '\0';
+        get()[0] = '\0';
     }
 }
 
@@ -45,7 +67,7 @@ QweatherJsonRoot::~QweatherJsonRoot() = default;
 
 const char *qweather_json_string_value(const cJSON *item)
 {
-    return cJSON_IsString(item) ? item->valuestring : nullptr;
+    return network_json_string_value(item);
 }
 
 bool qweather_code_ok(const cJSON *code)

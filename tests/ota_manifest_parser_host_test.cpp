@@ -4,6 +4,8 @@
 #include <assert.h>
 #include <string.h>
 
+#include <string>
+
 namespace {
 constexpr const char *kValidSha =
     "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
@@ -19,6 +21,41 @@ void expect_missing_field(const char *json,
     assert(result.have_version == have_version);
     assert(result.have_url == have_url);
     assert(result.have_sha256 == have_sha256);
+}
+
+std::string manifest_json(const std::string &version,
+                          const std::string &url,
+                          const std::string &sha256)
+{
+    return "{\"version\":\"" + version +
+           "\",\"url\":\"" + url +
+           "\",\"sha256\":\"" + sha256 + "\"}";
+}
+
+void expect_oversized_field_rejected(const std::string &version,
+                                     const std::string &url,
+                                     const std::string &sha256,
+                                     bool have_version,
+                                     bool have_url,
+                                     bool have_sha256)
+{
+    OtaManifest manifest;
+    const std::string json = manifest_json(version, url, sha256);
+    OtaManifestParseResult result =
+        ota_parse_manifest_json(json.c_str(), &manifest);
+    assert(result.status == kOtaManifestParseMissingRequiredFields);
+    assert(result.have_version == have_version);
+    assert(result.have_url == have_url);
+    assert(result.have_sha256 == have_sha256);
+    if (!have_version) {
+        assert(manifest.version[0] == '\0');
+    }
+    if (!have_url) {
+        assert(manifest.url[0] == '\0');
+    }
+    if (!have_sha256) {
+        assert(manifest.sha256[0] == '\0');
+    }
 }
 } // namespace
 
@@ -98,5 +135,24 @@ int main()
         &manifest);
     assert(result.status == kOtaManifestParseInvalidSha256);
     assert(result.sha256_length == strlen("not-a-valid-sha"));
+
+    expect_oversized_field_rejected(std::string(kOtaVersionLen, '1'),
+                                    "https://example.invalid/a.bin",
+                                    kValidSha,
+                                    false,
+                                    true,
+                                    true);
+    expect_oversized_field_rejected("v1.5.7",
+                                    std::string(kOtaUrlLen, 'u'),
+                                    kValidSha,
+                                    true,
+                                    false,
+                                    true);
+    expect_oversized_field_rejected("v1.5.7",
+                                    "https://example.invalid/a.bin",
+                                    std::string(kOtaSha256Len, 'A'),
+                                    true,
+                                    true,
+                                    false);
     return 0;
 }

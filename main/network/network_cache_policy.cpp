@@ -1,7 +1,9 @@
-// 统一后台同步和可见页面使用的天气/每日文字缓存过期判断。
+// 统一后台同步和可见页面使用的天气、城市解析与每日文字缓存判断。
 #include "network_cache_policy.h"
 
 #include "sensor_time.h"
+
+#include <string.h>
 
 namespace {
 constexpr time_t kSecondsPerMinute = 60;
@@ -70,4 +72,19 @@ bool network_daily_saying_cache_current_day(time_t now, time_t cached_at)
         return network_cache_age_is_fresh(now, cached_at, kSecondsPerDay);
     }
     return local_day_matches(now_local, cached_local);
+}
+
+bool network_weather_city_resolution_cache_matches(
+    bool valid,
+    int64_t now_us,
+    int64_t expires_at_us,
+    const char *cached_location,
+    const char *current_location,
+    const char *city_id)
+{
+    return valid && now_us >= 0 && expires_at_us > now_us &&
+           cached_location && cached_location[0] != '\0' &&
+           current_location && current_location[0] != '\0' &&
+           city_id && city_id[0] != '\0' &&
+           strcmp(cached_location, current_location) == 0;
 }

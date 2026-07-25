@@ -1,27 +1,114 @@
 // 构建并刷新设置页及其菜单交互。
 #include "ui_boot_settings.h"
-#include "ui_views.h"
 
 #include "alarm_services.h"
 #include "app_constexpr.h"
+#include "app_metadata.h"
 #include "app_tick_time.h"
 #include "chime_runtime_state.h"
 
 #include "ota_runtime_state.h"
 #include "ota_services.h"
+#include "ui_page_state.h"
 #include "ui_settings_content.h"
+#include "ui_settings_feedback.h"
 #include "ui_settings_layout.h"
+#include "ui_settings_navigation.h"
 #include "ui_settings_ota_panel.h"
+#include "ui_widgets.h"
+#include "ui_work_page_catalog.h"
 #include "xiaozhi_auto_return_state.h"
+
+#include <esp_attr.h>
+#include <esp_log.h>
+
+#include <string.h>
 
 namespace {
 namespace settings_layout = ui_settings_layout;
 
-lv_obj_t *s_settings_labels[kSettingsLabelCount];
-lv_obj_t *s_settings_switch_dots[kSettingsSecondaryMaxCount];
+EXT_RAM_BSS_ATTR lv_obj_t *s_settings_labels[kSettingsLabelCount];
+EXT_RAM_BSS_ATTR lv_obj_t *s_settings_switch_dots[kSettingsSecondaryMaxCount];
 lv_obj_t *s_settings_feedback_label;
 
-int collect_visible_work_page_order(int *indices, uint8_t *pages, size_t capacity)
+struct SettingsRenderWorkspace {
+    char secondary_items[kSettingsSecondaryMaxCount][kSettingsSecondaryTextSize];
+};
+
+struct SettingsRenderCache {
+    uint32_t magic;
+    lv_obj_t *settings_root;
+    int primary;
+    int selected;
+    int ota_state;
+    int ota_progress;
+    int ota_speed;
+    int page_order_selection;
+    bool focus_secondary;
+    bool page_order_mode;
+    bool page_toggle_mode;
+};
+
+// update_settings_page() is serialized by the UI task. Keep its complete text
+// staging area out of that task's call stack while preserving rebuild-before-use.
+EXT_RAM_BSS_ATTR SettingsRenderWorkspace s_settings_render_workspace;
+// The same UI task owns this low-frequency comparison cache. Keep it outside
+// internal RAM and restore the non-zero sentinels explicitly before first use.
+EXT_RAM_BSS_ATTR SettingsRenderCache s_settings_render_cache;
+constexpr uint32_t kSettingsRenderCacheMagic = 0x53455443U; // "SETC"
+
+static_assert(sizeof(SettingsRenderWorkspace) ==
+                  kSettingsSecondaryMaxCount * kSettingsSecondaryTextSize,
+              "settings render workspace must contain only secondary text storage");
+static_assert(sizeof(SettingsRenderCache) <= 48,
+              "settings render cache must remain a compact UI-only state");
+static_assert(kWorkPageCount <= 8,
+              "settings switch snapshot stores the work-page mask in one byte");
+static_assert(sizeof(SettingsSecondaryStateSnapshot) <= 12,
+              "settings secondary snapshot must remain lightweight");
+
+SettingsSecondaryStateSnapshot settings_secondary_state_snapshot(
+    int primary,
+    const SettingsNavigationSnapshot &navigation)
+{
+    SettingsSecondaryStateSnapshot snapshot = {};
+    if (primary == kSettingsPrimarySound) {
+        const ChimeRuntimeSnapshot chime = chime_runtime_snapshot_load();
+        snapshot.hourly_chime_enabled = chime.hourly_enabled;
+        snapshot.all_day_chime_enabled = chime.all_day;
+        snapshot.volume_percent = chime.volume_percent;
+        snapshot.sound_index = chime.sound_index;
+    } else if (primary == kSettingsPrimaryDisplay) {
+        if (navigation.page_toggle_mode || navigation.page_order_mode) {
+            snapshot.work_page_enabled_mask = work_page_enabled_mask_load();
+        } else if (!navigation.page_order_mode) {
+            AlarmSnapshot alarm = {};
+            alarm_get_snapshot(&alarm);
+            snapshot.alarm_enabled = alarm.enabled;
+            snapshot.alarm_hour = alarm.hour;
+            snapshot.alarm_minute = alarm.minute;
+            snapshot.xiaozhi_auto_return_enabled =
+                xiaozhi_auto_return_enabled_load();
+        }
+    }
+    return snapshot;
+}
+
+bool work_page_enabled_in_switch_snapshot(
+    const SettingsSecondaryStateSnapshot &snapshot,
+    int page)
+{
+    if (page < 0 || page >= kWorkPageCount) {
+        return false;
+    }
+    return (snapshot.work_page_enabled_mask &
+            static_cast<uint8_t>(1U << page)) != 0;
+}
+
+int collect_visible_work_page_order(int *indices,
+                                    uint8_t *pages,
+                                    size_t capacity,
+                                    uint8_t enabled_mask)
 {
     if (!indices || !pages || capacity == 0) {
         return 0;
@@ -32,7 +119,7 @@ int collect_visible_work_page_order(int *indices, uint8_t *pages, size_t capacit
     }
     int count = 0;
     for (int order_index = 0; order_index < kWorkPageCount && (size_t)count < capacity; ++order_index) {
-        if (is_work_page_enabled(order[order_index])) {
+        if ((enabled_mask & static_cast<uint8_t>(1U << order[order_index])) != 0) {
             indices[count] = order_index;
             pages[count] = order[order_index];
             ++count;
@@ -69,6 +156,27 @@ int settings_long_item_y(int primary)
     return primary == kSettingsPrimarySystem
                ? settings_layout::kSettingsSystemLongItemY
                : settings_layout::kSettingsDisplayLongItemY;
+}
+
+void reset_settings_render_cache()
+{
+    SettingsRenderCache &cache = s_settings_render_cache;
+    cache = {};
+    cache.magic = kSettingsRenderCacheMagic;
+    cache.primary = -1;
+    cache.selected = -1;
+    cache.ota_state = -1;
+    cache.ota_progress = -2;
+    cache.ota_speed = -2;
+    cache.page_order_selection = -1;
+}
+
+SettingsRenderCache &settings_render_cache()
+{
+    if (s_settings_render_cache.magic != kSettingsRenderCacheMagic) {
+        reset_settings_render_cache();
+    }
+    return s_settings_render_cache;
 }
 
 static_assert(settings_layout::kSettingsListRowCount == kSettingsSecondaryMaxCount,
@@ -247,42 +355,32 @@ void build_settings_page()
 namespace {
 bool settings_render_selection_changed(int primary,
                                        int selected,
-                                       const SettingsNavigationSnapshot &navigation)
+                                       const SettingsNavigationSnapshot &navigation,
+                                       const OtaRuntimeSnapshot &ota)
 {
-    static lv_obj_t *last_settings_root = nullptr;
-    static int last_primary = -1;
-    static int last_selected = -1;
-    static bool last_focus_secondary = false;
-    static int last_ota_state = -1;
-    static int last_ota_progress = -2;
-    static int last_ota_speed = -2;
-    static bool last_page_order_mode = false;
-    static bool last_page_toggle_mode = false;
-    static int last_page_order_selection = -1;
-    OtaRuntimeSnapshot ota;
-    ota_runtime_snapshot_load(&ota);
+    SettingsRenderCache &cache = settings_render_cache();
     lv_obj_t *settings_root = auxiliary_page_root(AuxiliaryPage::kSettings);
-    bool selection_changed = settings_root != last_settings_root ||
-                             selected != last_selected ||
-                             primary != last_primary ||
-                             navigation.focus_secondary != last_focus_secondary ||
-                             navigation.page_toggle_mode != last_page_toggle_mode ||
-                             navigation.page_order_mode != last_page_order_mode ||
-                             navigation.page_order_selection != last_page_order_selection ||
-                             ota.state != last_ota_state ||
-                             ota.progress != last_ota_progress ||
-                             ota.speed_kbps != last_ota_speed;
+    bool selection_changed = settings_root != cache.settings_root ||
+                             selected != cache.selected ||
+                             primary != cache.primary ||
+                             navigation.focus_secondary != cache.focus_secondary ||
+                             navigation.page_toggle_mode != cache.page_toggle_mode ||
+                             navigation.page_order_mode != cache.page_order_mode ||
+                             navigation.page_order_selection != cache.page_order_selection ||
+                             ota.state != cache.ota_state ||
+                             ota.progress != cache.ota_progress ||
+                             ota.speed_kbps != cache.ota_speed;
     if (selection_changed) {
-        last_settings_root = settings_root;
-        last_selected = selected;
-        last_primary = primary;
-        last_focus_secondary = navigation.focus_secondary;
-        last_page_toggle_mode = navigation.page_toggle_mode;
-        last_page_order_mode = navigation.page_order_mode;
-        last_page_order_selection = navigation.page_order_selection;
-        last_ota_state = ota.state;
-        last_ota_progress = ota.progress;
-        last_ota_speed = ota.speed_kbps;
+        cache.settings_root = settings_root;
+        cache.selected = selected;
+        cache.primary = primary;
+        cache.focus_secondary = navigation.focus_secondary;
+        cache.page_toggle_mode = navigation.page_toggle_mode;
+        cache.page_order_mode = navigation.page_order_mode;
+        cache.page_order_selection = navigation.page_order_selection;
+        cache.ota_state = ota.state;
+        cache.ota_progress = ota.progress;
+        cache.ota_speed = ota.speed_kbps;
     }
     return selection_changed;
 }
@@ -382,21 +480,23 @@ void update_settings_switch_slot(int index,
                                  int primary,
                                  int selected,
                                  bool visible,
-                                 const SettingsNavigationSnapshot &navigation)
+                                 const SettingsNavigationSnapshot &navigation,
+                                 const SettingsSecondaryStateSnapshot &secondary_state)
 {
     bool dot_visible = false;
     bool dot_on = false;
     if (visible && primary == kSettingsPrimarySound) {
         if (index >= kSoundSettingsHourlyItem) {
             dot_visible = true;
-            const ChimeRuntimeSnapshot chime = chime_runtime_snapshot_load();
-            dot_on = index == kSoundSettingsHourlyItem ? chime.hourly_enabled : chime.all_day;
+            dot_on = index == kSoundSettingsHourlyItem
+                         ? secondary_state.hourly_chime_enabled
+                         : secondary_state.all_day_chime_enabled;
         }
     } else if (visible &&
                primary == kSettingsPrimaryDisplay &&
                navigation.page_toggle_mode) {
         dot_visible = true;
-        dot_on = is_work_page_enabled(index);
+        dot_on = work_page_enabled_in_switch_snapshot(secondary_state, index);
     } else if (visible &&
                primary == kSettingsPrimaryDisplay &&
                !navigation.page_toggle_mode &&
@@ -405,8 +505,8 @@ void update_settings_switch_slot(int index,
                 index == kDisplaySettingsXiaozhiAutoReturnItem)) {
         dot_visible = true;
         dot_on = index == kDisplaySettingsAlarmItem
-                     ? alarm_is_enabled()
-                     : xiaozhi_auto_return_enabled_load();
+                     ? secondary_state.alarm_enabled
+                     : secondary_state.xiaozhi_auto_return_enabled;
     }
     if (s_settings_switch_dots[index]) {
         set_obj_visible(s_settings_switch_dots[index], dot_visible);
@@ -423,6 +523,7 @@ bool update_settings_secondary_items(
     int selected,
     bool selection_changed,
     const SettingsNavigationSnapshot &navigation,
+    const SettingsSecondaryStateSnapshot &secondary_state,
     char secondary_items[][kSettingsSecondaryTextSize])
 {
     bool changed = false;
@@ -432,7 +533,8 @@ bool update_settings_secondary_items(
     int visible_order_count = navigation.page_order_mode
                                   ? collect_visible_work_page_order(visible_order_indices,
                                                                     visible_order_pages,
-                                                                    array_count(visible_order_indices))
+                                                                    array_count(visible_order_indices),
+                                                                    secondary_state.work_page_enabled_mask)
                                   : 0;
     for (int i = 0; i < kSettingsSecondaryMaxCount; ++i) {
         int slot = kSettingsPrimaryCount + i;
@@ -488,7 +590,8 @@ bool update_settings_secondary_items(
                 }
             }
         }
-        update_settings_switch_slot(i, primary, selected, visible, navigation);
+        update_settings_switch_slot(
+            i, primary, selected, visible, navigation, secondary_state);
     }
     return changed;
 }
@@ -510,29 +613,38 @@ bool update_settings_feedback_label()
 bool update_settings_page()
 {
     ota_reset_status_if_idle();
-    char secondary_items[kSettingsSecondaryMaxCount][kSettingsSecondaryTextSize] = {};
+    OtaRuntimeSnapshot ota = {};
+    ota_runtime_snapshot_load(&ota);
+    SettingsRenderWorkspace &workspace = s_settings_render_workspace;
+    memset(&workspace, 0, sizeof(workspace));
     SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
     int primary = clamp_settings_primary(navigation.primary_selection);
     int selected = clamp_settings_selection_for_mode(primary,
                                                      navigation.selection,
                                                      navigation.page_toggle_mode);
     if (navigation.page_order_mode) {
-        normalize_work_page_order();
         navigation.page_order_selection =
             valid_enabled_work_page_order_index(navigation.page_order_selection);
     }
+    const SettingsSecondaryStateSnapshot secondary_state =
+        settings_secondary_state_snapshot(primary, navigation);
 
-    populate_settings_secondary_items(primary, secondary_items);
-    bool selection_changed = settings_render_selection_changed(primary, selected, navigation);
+    if (!navigation.page_order_mode && !navigation.page_toggle_mode) {
+        populate_settings_secondary_items(
+            primary, secondary_state, workspace.secondary_items);
+    }
+    bool selection_changed =
+        settings_render_selection_changed(primary, selected, navigation, ota);
     bool changed = selection_changed;
     changed |= update_settings_primary_items(primary, selection_changed);
     changed |= update_settings_secondary_items(primary,
                                                selected,
                                                selection_changed,
                                                navigation,
-                                               secondary_items);
+                                               secondary_state,
+                                               workspace.secondary_items);
     bool ota_panel_visible = primary == kSettingsPrimarySystem && selected == kSystemSettingsOtaItem;
-    changed |= update_settings_ota_panel(ota_panel_visible);
+    changed |= update_settings_ota_panel(ota_panel_visible, ota);
     changed |= update_settings_feedback_label();
     return changed;
 }
@@ -546,4 +658,5 @@ void clear_settings_page_object_refs()
         dot = nullptr;
     }
     s_settings_feedback_label = nullptr;
+    reset_settings_render_cache();
 }

@@ -28,11 +28,9 @@ time_t local_epoch(int year, int month, int day, int hour, int minute, int secon
 
 int main()
 {
-    assert(ui_visible_weather_sync_active(true, true, false));
-    assert(ui_visible_weather_sync_active(true, false, true));
-    assert(!ui_visible_weather_sync_active(true, false, false));
-    assert(!ui_visible_weather_sync_active(false, true, false));
-    assert(!ui_visible_weather_sync_active(false, false, true));
+    assert(ui_visible_cache_status_refresh_due(false, 7, 7));
+    assert(!ui_visible_cache_status_refresh_due(true, 7, 7));
+    assert(ui_visible_cache_status_refresh_due(true, 7, 8));
 
     setenv("TZ", "Asia/Shanghai", 1);
     tzset();

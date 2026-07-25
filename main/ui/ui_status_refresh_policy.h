@@ -18,3 +18,7 @@ bool ui_status_refresh_due(const UiStatusRefreshSnapshot &current,
                            const UiStatusRefreshSnapshot &previous,
                            bool previous_valid,
                            bool fallback_elapsed);
+bool ui_sensor_status_refresh_due(const UiStatusRefreshSnapshot &current,
+                                  const UiStatusRefreshSnapshot &previous,
+                                  bool previous_valid,
+                                  bool force_refresh);

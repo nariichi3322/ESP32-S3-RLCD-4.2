@@ -2,11 +2,15 @@
 #include "ui_xiaozhi.h"
 #include "ui_views.h"
 
+#include "app_metadata.h"
 #include "ui_battery.h"
+#include "ui_fonts.h"
 #include "ui_xiaozhi_face.h"
 #include "ui_xiaozhi_subtitle.h"
 #include "pomodoro_services.h"
 #include "xiaozhi_ai.h"
+
+#include <esp_log.h>
 
 namespace {
 constexpr int kClockCardCount = 3;
@@ -370,7 +374,7 @@ bool update_xiaozhi_page(const struct tm &local)
     const WorkPageStatusLabels status = get_work_page_status_labels(kWorkPageXiaozhiAI);
     changed |= set_obj_visible(status.time, status_time_visible);
     if (status_time_visible) {
-        changed |= update_work_page_status_time(status.time, local);
+        changed |= update_work_page_status_time(kWorkPageXiaozhiAI, local);
     }
     changed |= update_xiaozhi_clock_or_pomodoro(local, pomodoro);
     changed |= update_xiaozhi_face(s_xiaozhi_wave_canvas, snapshot);

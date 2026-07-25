@@ -10,10 +10,19 @@ inline constexpr int kBatteryChargingStopSamples = 5;
 inline constexpr int kBatteryChargingAnimationStopPercent = 96;
 inline constexpr int kBatteryChargingAnimationIdleMs = 10 * 60 * 1000;
 inline constexpr int kBatteryChargingSampleMs = 1000;
+inline constexpr int kBatteryChargingReadFailureGraceSamples = 5;
 
 constexpr bool battery_charging_requires_fast_sampling(bool charging)
 {
     return charging;
+}
+
+constexpr bool battery_charging_read_failure_within_grace(bool charging,
+                                                           int consecutive_failures)
+{
+    return charging &&
+           consecutive_failures > 0 &&
+           consecutive_failures <= kBatteryChargingReadFailureGraceSamples;
 }
 
 static_assert(kLowBatteryEnterPercent >= 0,
@@ -33,3 +42,5 @@ static_assert(kBatteryChargingAnimationIdleMs > 0,
               "charging animation idle timeout must be positive");
 static_assert(kBatteryChargingSampleMs > 0,
               "charging sample interval must be positive");
+static_assert(kBatteryChargingReadFailureGraceSamples > 0,
+              "charging ADC read failure grace must be positive");

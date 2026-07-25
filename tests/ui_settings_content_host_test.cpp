@@ -1,8 +1,6 @@
 // 验证设置页四类二级菜单文案及安全索引边界。
 #include "ui_settings_content.h"
 
-#include "alarm_services.h"
-#include "chime_runtime_state.h"
 #include "manual_weather_city_state.h"
 #include "offline_mode_state.h"
 #include "ui_settings_confirmation_state.h"
@@ -13,7 +11,6 @@
 #include <string.h>
 
 namespace {
-AlarmSnapshot s_alarm = {};
 char s_manual_weather_city[kManualWeatherCityLen] = {};
 int s_custom_gallery_count = 0;
 
@@ -42,13 +39,6 @@ bool manual_weather_city_is_configured()
     return s_manual_weather_city[0] != '\0';
 }
 
-void alarm_get_snapshot(AlarmSnapshot *out)
-{
-    if (out) {
-        *out = s_alarm;
-    }
-}
-
 int custom_assets_gallery_count()
 {
     return s_custom_gallery_count;
@@ -60,7 +50,9 @@ int main()
                   "Xiaozhi power saving must use the left cell of the second row");
     static_assert(kDisplaySettingsAlarmItem == 3,
                   "alarm must use the right cell of the second row");
-    chime_runtime_snapshot_store({false, false, 60, 2});
+    SettingsSecondaryStateSnapshot state = {};
+    state.volume_percent = 60;
+    state.sound_index = 2;
     char items[kSettingsSecondaryMaxCount][kSettingsSecondaryTextSize] = {};
 
     assert(!settings_secondary_index_valid(-1));
@@ -68,7 +60,7 @@ int main()
     assert(settings_secondary_index_valid(kSettingsSecondaryMaxCount - 1));
     assert(!settings_secondary_index_valid(kSettingsSecondaryMaxCount));
 
-    populate_settings_secondary_items(kSettingsPrimaryNetwork, items);
+    populate_settings_secondary_items(kSettingsPrimaryNetwork, state, items);
     expect_text(items, kNetworkSettingsNtpItem, "同步时间");
     expect_text(items, kNetworkSettingsWeatherItem, "同步天气");
     expect_text(items, kNetworkSettingsSayingItem, "更新一言");
@@ -76,18 +68,18 @@ int main()
 
     manual_weather_city_store("杭州");
     memset(items, 0, sizeof(items));
-    populate_settings_secondary_items(kSettingsPrimaryNetwork, items);
+    populate_settings_secondary_items(kSettingsPrimaryNetwork, state, items);
     expect_text(items, kNetworkSettingsWeatherCityItem, "天气城市 杭州");
 
     memset(items, 0, sizeof(items));
-    populate_settings_secondary_items(kSettingsPrimarySound, items);
+    populate_settings_secondary_items(kSettingsPrimarySound, state, items);
     expect_text(items, kSoundSettingsVolumeItem, "音量 60%");
     expect_text(items, kSoundSettingsSoundItem, "声音选择 3");
     expect_text(items, kSoundSettingsHourlyItem, "整点提醒 7:00 - 22:00");
     expect_text(items, kSoundSettingsAllDayItem, "全天提醒 0:00 - 24:00");
 
     memset(items, 0, sizeof(items));
-    populate_settings_secondary_items(kSettingsPrimaryDisplay, items);
+    populate_settings_secondary_items(kSettingsPrimaryDisplay, state, items);
     expect_text(items, kDisplaySettingsPageSwitchItem, "页面开关");
     expect_text(items, kDisplaySettingsOrderItem, "页面顺序");
     expect_text(items, kDisplaySettingsXiaozhiAutoReturnItem, "小智节能");
@@ -96,25 +88,25 @@ int main()
 
     gallery_rotation_period_store(kGalleryRotation30Minutes);
     memset(items, 0, sizeof(items));
-    populate_settings_secondary_items(kSettingsPrimaryDisplay, items);
+    populate_settings_secondary_items(kSettingsPrimaryDisplay, state, items);
     expect_text(items, kDisplaySettingsGalleryRotationItem, "图片切换 24h");
 
     s_custom_gallery_count = 3;
     memset(items, 0, sizeof(items));
-    populate_settings_secondary_items(kSettingsPrimaryDisplay, items);
+    populate_settings_secondary_items(kSettingsPrimaryDisplay, state, items);
     expect_text(items, kDisplaySettingsGalleryRotationItem, "图片切换 30m");
 
-    s_alarm.enabled = true;
-    s_alarm.hour = 6;
-    s_alarm.minute = 30;
+    state.alarm_enabled = true;
+    state.alarm_hour = 6;
+    state.alarm_minute = 30;
     memset(items, 0, sizeof(items));
-    populate_settings_secondary_items(kSettingsPrimaryDisplay, items);
+    populate_settings_secondary_items(kSettingsPrimaryDisplay, state, items);
     expect_text(items, kDisplaySettingsAlarmItem, "闹钟 06:30");
 
     offline_mode_enabled_store(true);
     settings_confirmation_request(SettingsConfirmation::kFactoryReset);
     memset(items, 0, sizeof(items));
-    populate_settings_secondary_items(kSettingsPrimarySystem, items);
+    populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
     expect_text(items, kSystemSettingsOfflineItem, "离线模式 开");
     expect_text(items, kSystemSettingsNetworkDiagItem, "网络检测");
     expect_text(items, kSystemSettingsFactoryResetItem, "确认恢复");

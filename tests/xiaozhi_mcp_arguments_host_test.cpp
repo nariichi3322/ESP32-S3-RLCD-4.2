@@ -148,6 +148,34 @@ void test_weather_city()
     expect(!xiaozhi_mcp_arguments::parse_weather_city(root.get(), &request),
            "oversized weather city accepted");
 }
+
+void test_malformed_argument_roots()
+{
+    int volume = -1;
+    XiaozhiMcpAlarmRequest alarm = {};
+    XiaozhiMcpCountdownRequest countdown = {};
+    XiaozhiMcpPomodoroRequest pomodoro = {};
+    XiaozhiMcpWeatherCityRequest city = {};
+    expect(!xiaozhi_mcp_arguments::parse_volume(nullptr, &volume),
+           "null volume arguments accepted");
+    expect(!xiaozhi_mcp_arguments::parse_alarm(nullptr, &alarm),
+           "null alarm arguments accepted");
+    expect(!xiaozhi_mcp_arguments::parse_countdown(nullptr, &countdown),
+           "null countdown arguments accepted");
+    expect(!xiaozhi_mcp_arguments::parse_pomodoro(nullptr, &pomodoro),
+           "null pomodoro arguments accepted");
+    expect(!xiaozhi_mcp_arguments::parse_weather_city(nullptr, &city),
+           "null weather city arguments accepted");
+
+    XiaozhiJsonOwner root;
+    parse(&root, "[]");
+    expect(!xiaozhi_mcp_arguments::parse_volume(root.get(), &volume),
+           "array volume arguments accepted");
+    expect(!xiaozhi_mcp_arguments::parse_pomodoro(root.get(), &pomodoro),
+           "array pomodoro arguments accepted");
+    expect(!xiaozhi_mcp_arguments::parse_weather_city(root.get(), &city),
+           "array weather city arguments accepted");
+}
 } // namespace
 
 int main()
@@ -157,6 +185,7 @@ int main()
     test_countdown();
     test_pomodoro();
     test_weather_city();
+    test_malformed_argument_roots();
     std::puts("Xiaozhi MCP argument host tests passed");
     return 0;
 }

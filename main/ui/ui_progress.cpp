@@ -7,6 +7,7 @@
 #include "ui_page_state.h"
 #include "work_page_ids.h"
 
+#include <esp_attr.h>
 #include <esp_log.h>
 
 #define UI_PROGRESS_CANVAS_BUILD_INVALID_ARG_LOG "progress canvas build invalid arg"
@@ -24,7 +25,7 @@ constexpr int kProgressCanvasH = kProgressSegmentH;
 constexpr int kWorkPageDayProgressY = 59;
 static_assert(kWorkPageCount > 0, "work page count must be positive");
 
-lv_obj_t *s_work_page_day_progress_canvas[kWorkPageCount] = {};
+EXT_RAM_BSS_ATTR lv_obj_t *s_work_page_day_progress_canvas[kWorkPageCount] = {};
 // All work pages display identical pixels, so one PSRAM buffer is sufficient.
 lv_color_t *s_work_page_day_progress_buffer = nullptr;
 int s_work_page_day_progress_filled = -1;
@@ -150,15 +151,14 @@ void build_work_page_day_progress(lv_obj_t *parent, int page)
     }
 }
 
-bool update_work_page_day_progress(int page, const struct tm &local)
+bool update_work_page_day_progress(int page, const ClockUiTimeSnapshot &time_snapshot)
 {
     if (!valid_work_page(page) || !s_work_page_day_progress_canvas[page]) {
         return false;
     }
     int previous = s_work_page_day_progress_filled;
-    ClockUiTimeSnapshot snapshot = clock_ui_time_snapshot(local);
     update_progress_canvas(s_work_page_day_progress_canvas[page],
-                           snapshot.day_progress_filled,
+                           time_snapshot.day_progress_filled,
                            &s_work_page_day_progress_filled);
     return previous != s_work_page_day_progress_filled;
 }

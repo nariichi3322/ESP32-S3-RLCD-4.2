@@ -1,10 +1,8 @@
 // 生成网络、声音、显示和系统设置的二级菜单动态文案。
 #include "ui_settings_content.h"
 
-#include "alarm_services.h"
 #include "app_constexpr.h"
-#include "app_state.h"
-#include "chime_runtime_state.h"
+#include "app_metadata.h"
 #include "custom_assets.h"
 #include "manual_weather_city_state.h"
 #include "offline_mode_state.h"
@@ -13,7 +11,9 @@
 #include "ui_text_format.h"
 #include "weather_city_contract.h"
 
+#include <esp_log.h>
 #include <stdarg.h>
+#include <stdio.h>
 
 namespace {
 #define SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT "settings secondary text format failed index=%d"
@@ -125,6 +125,7 @@ bool settings_secondary_index_valid(int index)
 
 void populate_settings_secondary_items(
     int primary,
+    const SettingsSecondaryStateSnapshot &state,
     char secondary_items[][kSettingsSecondaryTextSize])
 {
     if (primary == kSettingsPrimaryNetwork) {
@@ -143,17 +144,14 @@ void populate_settings_secondary_items(
                                kSettingsWeatherCityAutoText);
         }
     } else if (primary == kSettingsPrimarySound) {
-        const ChimeRuntimeSnapshot chime = chime_runtime_snapshot_load();
-        const int volume_percent = static_cast<int>(chime.volume_percent);
-        const int sound_index = static_cast<int>(chime.sound_index);
         format_secondary_text(secondary_items,
                               kSoundSettingsVolumeItem,
                               kSettingsSoundVolumeFormat,
-                              volume_percent);
+                              static_cast<int>(state.volume_percent));
         format_secondary_text(secondary_items,
                               kSoundSettingsSoundItem,
                               kSettingsSoundChoiceFormat,
-                              sound_index + 1);
+                              static_cast<int>(state.sound_index) + 1);
         set_secondary_text(secondary_items, kSoundSettingsHourlyItem, kSettingsHourlyText);
         set_secondary_text(secondary_items, kSoundSettingsAllDayItem, kSettingsAllDayText);
     } else if (primary == kSettingsPrimaryDisplay) {
@@ -163,14 +161,12 @@ void populate_settings_secondary_items(
         set_secondary_text(secondary_items,
                            kDisplaySettingsOrderItem,
                            kSettingsPageOrderText);
-        AlarmSnapshot alarm = {};
-        alarm_get_snapshot(&alarm);
-        if (alarm.enabled) {
+        if (state.alarm_enabled) {
             format_secondary_text(secondary_items,
                                   kDisplaySettingsAlarmItem,
                                   kSettingsAlarmOnFormat,
-                                  alarm.hour,
-                                  alarm.minute);
+                                  state.alarm_hour,
+                                  state.alarm_minute);
         } else {
             set_secondary_text(secondary_items,
                                kDisplaySettingsAlarmItem,

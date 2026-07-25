@@ -1,14 +1,26 @@
 // 统一构建和刷新非天气时钟工作页顶部状态栏。
-#include "ui_views.h"
+#include "ui_work_status.h"
 
 #include "app_constexpr.h"
+#include "app_display_config.h"
+#include "app_metadata.h"
 #include "local_sensor_state.h"
+#include "work_page_ids.h"
+#include "ui_bitmap.h"
 #include "ui_clock_header_objects.h"
 #include "ui_clock_sensor_objects.h"
+#include "ui_canvas_primitives.h"
 #include "ui_draw_cache.h"
 #include "ui_flip_clock.h"
+#include "ui_fonts.h"
+#include "ui_icons.h"
+#include "ui_page_state.h"
 #include "ui_status_refresh_policy.h"
 #include "ui_text_format.h"
+#include "ui_widgets.h"
+
+#include <esp_attr.h>
+#include <esp_log.h>
 
 namespace {
 
@@ -30,6 +42,8 @@ static constexpr int kStatusAlarmX = 116;
 static constexpr int kStatusIconY = 15;
 static constexpr int kStatusFirstWorkPage = kWorkPageWeatherClock;
 static constexpr int kTrendDrawCacheInvalid = 99;
+static constexpr int kStatusTimeCacheInvalid = -1;
+static constexpr int kStatusMinutesPerHour = 60;
 
 struct WorkPageStatusIconSlot {
     lv_color_t *buffer;
@@ -45,9 +59,10 @@ struct WorkPageStatusIcons {
 struct WorkPageStatusState {
     WorkPageStatusLabels labels;
     WorkPageStatusIcons icons;
+    int last_time_key;
 };
 
-WorkPageStatusState s_work_status_pages[kWorkPageCount] = {};
+EXT_RAM_BSS_ATTR WorkPageStatusState s_work_status_pages[kWorkPageCount] = {};
 int s_last_temp_trend_drawn = kTrendDrawCacheInvalid;
 int s_last_humi_trend_drawn = kTrendDrawCacheInvalid;
 static constexpr const char *kStatusDatePlaceholder = "----/--/-- / 星期-";
@@ -211,6 +226,16 @@ void invalidate_work_status_draw_cache()
 {
     s_last_temp_trend_drawn = kTrendDrawCacheInvalid;
     s_last_humi_trend_drawn = kTrendDrawCacheInvalid;
+    for (WorkPageStatusState &status : s_work_status_pages) {
+        status.last_time_key = kStatusTimeCacheInvalid;
+    }
+}
+
+void invalidate_work_page_status_time_cache(int page)
+{
+    if (is_shared_work_status_page(page)) {
+        s_work_status_pages[page].last_time_key = kStatusTimeCacheInvalid;
+    }
 }
 
 void clear_work_status_icon_refs()
@@ -226,6 +251,7 @@ void clear_work_status_label_refs()
 {
     for (WorkPageStatusState &status : s_work_status_pages) {
         status.labels = {};
+        status.last_time_key = kStatusTimeCacheInvalid;
     }
 }
 
@@ -240,6 +266,7 @@ void build_work_page_status_bar(lv_obj_t *screen,
     WorkPageStatusState &status = s_work_status_pages[page];
     WorkPageStatusLabels &labels = status.labels;
     labels = {};
+    status.last_time_key = kStatusTimeCacheInvalid;
     if (!screen) {
         return;
     }
@@ -324,9 +351,18 @@ WorkPageStatusLabels get_work_page_status_labels(int page)
     }
 }
 
-bool update_work_page_status_time(lv_obj_t *label, const struct tm &local)
+bool update_work_page_status_time(int page, const struct tm &local)
 {
+    if (!is_shared_work_status_page(page)) {
+        return false;
+    }
+    WorkPageStatusState &status = s_work_status_pages[page];
+    lv_obj_t *label = status.labels.time;
     if (!label) {
+        return false;
+    }
+    const int time_key = local.tm_hour * kStatusMinutesPerHour + local.tm_min;
+    if (status.last_time_key == time_key) {
         return false;
     }
     char text[kStatusTimeTextSize] = {};
@@ -336,7 +372,9 @@ bool update_work_page_status_time(lv_obj_t *label, const struct tm &local)
                                 kStatusTimeFormat,
                                 local.tm_hour,
                                 local.tm_min);
-    return set_label_text_if_changed(label, text);
+    const bool changed = set_label_text_if_changed(label, text);
+    status.last_time_key = time_key;
+    return changed;
 }
 
 bool update_work_page_sensor_summary(lv_obj_t *label)

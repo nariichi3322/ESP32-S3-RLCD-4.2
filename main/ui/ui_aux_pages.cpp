@@ -1,16 +1,23 @@
 // 构建并刷新 System Info 与网络检测两个独立辅助页面。
 #include "ui_aux_pages.h"
 
-#include "ui_views.h"
-
 #include "app_constexpr.h"
+#include "app_metadata.h"
+#include "battery_runtime_state.h"
 #include "network_credentials_state.h"
 #include "network_diagnostics_catalog.h"
 #include "network_diagnostics_state.h"
 #include "ntp_services.h"
 #include "ota_services.h"
+#include "ui_fonts.h"
+#include "ui_page_state.h"
 #include "ui_text_format.h"
+#include "ui_time_format.h"
+#include "ui_widgets.h"
 #include "weather_state.h"
+
+#include <esp_attr.h>
+#include <esp_log.h>
 
 namespace {
 constexpr int kNetworkDiagGridFirstLine = kNetworkDiagIpLocationLine;
@@ -53,9 +60,10 @@ constexpr int kNetworkDiagHintX = 24;
 constexpr int kNetworkDiagHintY = 272;
 constexpr int kNetworkDiagHintW = 352;
 constexpr int kNetworkDiagHintH = 20;
-lv_obj_t *s_network_diag_labels[kNetworkDiagLineCount];
+EXT_RAM_BSS_ATTR lv_obj_t *s_network_diag_labels[kNetworkDiagLineCount];
 lv_obj_t *s_network_diag_summary_label;
 lv_obj_t *s_network_diag_hint_label;
+EXT_RAM_BSS_ATTR NetworkDiagnosticsSnapshot s_network_diag_render_snapshot;
 constexpr const char *kNetworkDiagTitle = "网络检测";
 constexpr const char *kNetworkDiagSummaryReady = "准备检测...";
 constexpr const char *kNetworkDiagSummaryRunning = "检测中...";
@@ -104,7 +112,7 @@ constexpr int kInfoSourceTextX = 0;
 constexpr int kInfoSourceTextW = 400;
 constexpr int kInfoLabelY[] = {70, 104, 138, 172, 206, 276};
 constexpr size_t kInfoLabelCount = array_count(kInfoLabelY);
-lv_obj_t *s_info_labels[kInfoLabelCount];
+EXT_RAM_BSS_ATTR lv_obj_t *s_info_labels[kInfoLabelCount];
 constexpr size_t kInfoNtpLabelIndex = 0;
 constexpr size_t kInfoWifiLabelIndex = 1;
 constexpr size_t kInfoWeatherLabelIndex = 2;
@@ -140,6 +148,10 @@ static_assert(kNetworkDiagHintW > 0 && kNetworkDiagHintH > 0,
               "network diagnostics hint size must be positive");
 static_assert(kNetworkDiagSummaryTextSize > 1,
               "network diagnostics summary buffer must fit text and NUL");
+static_assert(sizeof(NetworkDiagnosticsSnapshot) ==
+                  sizeof(NetworkDiagState) +
+                      kNetworkDiagLineCount * kNetworkDiagLineLen,
+              "network diagnostics render snapshot must contain only state and lines");
 static_assert(kInfoLabelCount == array_count(s_info_labels),
               "System Info labels and row coordinates must stay in sync");
 static_assert(kInfoVersionLabelIndex < kInfoSourceLabelIndex,
@@ -256,7 +268,9 @@ bool update_boot_info_page()
 {
     bool changed = false;
     char wifi_ssid[kNetworkWifiSsidLen] = {};
+    WeatherCacheStatusSnapshot weather_cache = {};
     (void)network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid));
+    (void)weather_cache_status_snapshot_load(&weather_cache);
     changed |= set_info_time_label(kInfoNtpLabelIndex,
                                    kInfoLastNtpFormat,
                                    get_last_ntp_sync_time());
@@ -265,7 +279,7 @@ bool update_boot_info_page()
                                      wifi_ssid[0] ? wifi_ssid : "--");
     changed |= set_info_time_label(kInfoWeatherLabelIndex,
                                    kInfoLastWeatherFormat,
-                                   get_last_weather_sync_time());
+                                   weather_cache.last_sync_time);
     changed |= set_info_battery_label();
     changed |= set_info_version_label();
     changed |= set_info_string_label(kInfoSourceLabelIndex,
@@ -313,7 +327,7 @@ void build_network_diag_page()
 bool update_network_diag_page()
 {
     bool changed = false;
-    NetworkDiagnosticsSnapshot snapshot;
+    NetworkDiagnosticsSnapshot &snapshot = s_network_diag_render_snapshot;
     network_diag_snapshot_load(&snapshot);
     char summary[kNetworkDiagSummaryTextSize] = {};
     if (snapshot.state == kNetworkDiagRunning) {

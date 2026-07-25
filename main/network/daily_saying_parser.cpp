@@ -3,6 +3,7 @@
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
+#include "network_json.h"
 #include "network_json_root.h"
 #include "network_text.h"
 
@@ -69,8 +70,8 @@ bool copy_json_field(const cJSON *obj, char *out, size_t out_len, int depth)
     if (!obj || !app_text::output_buffer_available(out, out_len) || depth > kMaxJsonDepth) {
         return false;
     }
-    if (cJSON_IsString(obj) && obj->valuestring) {
-        return copy_trimmed_text(obj->valuestring, out, out_len);
+    if (const char *value = network_json_string_value(obj)) {
+        return copy_trimmed_text(value, out, out_len);
     }
     if (!cJSON_IsObject(obj)) {
         return false;
@@ -80,8 +81,11 @@ bool copy_json_field(const cJSON *obj, char *out, size_t out_len, int depth)
         if (!item) {
             continue;
         }
-        if (cJSON_IsString(item) && item->valuestring) {
-            return copy_trimmed_text(item->valuestring, out, out_len);
+        if (const char *value = network_json_string_value(item)) {
+            if (copy_trimmed_text(value, out, out_len)) {
+                return true;
+            }
+            continue;
         }
         if (cJSON_IsObject(item) && copy_json_field(item, out, out_len, depth + 1)) {
             return true;

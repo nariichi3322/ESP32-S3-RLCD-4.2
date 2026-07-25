@@ -1,16 +1,23 @@
 // 运行 LVGL UI 主任务并统一调度各页面刷新。
 #include "ui_views.h"
 
+#include "active_work_page_state.h"
+#include "app_metadata.h"
+#include "app_runtime_timing.h"
+
 #include "alarm_services.h"
 #include "app_constexpr.h"
 #include "app_event_group.h"
 #include "app_tick_time.h"
 #include "audio_services.h"
 #include "battery_policy.h"
+#include "battery_runtime_state.h"
 #include "chime_runtime_state.h"
+#include "daily_saying_state.h"
 #include "local_sensor_state.h"
 #include "device_settings_persistence.h"
 #include "input_button_config.h"
+#include "lvgl_bsp.h"
 #include "network_diagnostics_state.h"
 #include "ota_download_policy.h"
 #include "ota_runtime_state.h"
@@ -27,17 +34,21 @@
 #include "ui_setup_status.h"
 #include "ui_status_refresh_policy.h"
 #include "ui_settings_activity_state.h"
+#include "ui_settings_feedback.h"
+#include "ui_visible_cache.h"
 #include "ui_visible_data_sync.h"
 #include "ui_work_page_update.h"
+#include "weather_state.h"
+#include "wifi_radio_state.h"
 #include "xiaozhi_ai.h"
 
+#include <esp_log.h>
 #include <stdint.h>
 
 namespace {
-constexpr int kUiInfoPageFallbackPollMs = 1000;
+constexpr int kUiInfoPageOtaFallbackPollMs = 1000;
 constexpr int kUiNetworkDiagRunningFallbackMs = 1000;
 constexpr int kUiNetworkDiagIdleFallbackMs = 500;
-constexpr int kUiSettingsPollMs = 100;
 constexpr int kUiPostPageSwitchPollMs = 250;
 constexpr int kUiLvglLockTimeoutMs = 80;
 #define UI_SETTINGS_TIMEOUT_RETURN_LOG "settings timeout, returning to clock"
@@ -46,13 +57,12 @@ constexpr const char *kUiLogTexts[] = {
     UI_SETTINGS_TIMEOUT_RETURN_LOG,
 };
 
-static_assert(kUiInfoPageFallbackPollMs > 0,
-              "UI info page fallback poll interval must be positive");
+static_assert(kUiInfoPageOtaFallbackPollMs > 0,
+              "UI info page OTA fallback poll interval must be positive");
 static_assert(kUiNetworkDiagRunningFallbackMs > 0,
               "network diagnostics running fallback interval must be positive");
 static_assert(kUiNetworkDiagIdleFallbackMs > 0,
               "network diagnostics idle fallback interval must be positive");
-static_assert(kUiSettingsPollMs > 0, "settings poll interval must be positive");
 static_assert(kUiPostPageSwitchPollMs > 0, "post page switch poll interval must be positive");
 static_assert(kUiLvglLockTimeoutMs > 0, "UI LVGL lock timeout must be positive");
 static_assert(array_count(kUiLogTexts) > 0, "UI log text registry must not be empty");
@@ -81,6 +91,22 @@ void show_network_diag_aux_page(bool &network_diag_page_visible,
     settings_page_visible = false;
 }
 
+void apply_xiaozhi_page_activation(bool requested_active,
+                                   bool allow_active_retry,
+                                   bool &previous_requested_active,
+                                   bool &previous_valid)
+{
+    if (!ui_xiaozhi_activation_update_due(requested_active,
+                                          previous_requested_active,
+                                          previous_valid,
+                                          allow_active_retry)) {
+        return;
+    }
+    xiaozhi_ai_set_page_active(requested_active);
+    previous_requested_active = requested_active;
+    previous_valid = true;
+}
+
 } // namespace
 
 void ui_task(void *)
@@ -104,6 +130,10 @@ void ui_task(void *)
     uint32_t last_settings_action_seq = settings_activity_action_sequence();
     VisibleSyncRetryState<TickType_t> weather_sync_retry;
     VisibleSyncRetryState<TickType_t> saying_sync_retry;
+    WeatherCacheStatusSnapshot weather_cache_status;
+    bool weather_cache_status_valid = false;
+    DailySayingCacheSnapshot saying_cache_status;
+    bool saying_cache_status_valid = false;
     TickType_t xiaozhi_last_activity_tick = 0;
     uint32_t last_xiaozhi_activity_sequence = 0;
     BatteryRuntimeSnapshot battery;
@@ -111,6 +141,8 @@ void ui_task(void *)
     time_t cached_local_second = 0;
     struct tm cached_local = {};
     bool cached_local_valid = false;
+    bool xiaozhi_activation_requested = false;
+    bool xiaozhi_activation_request_valid = false;
 
     for (;;) {
         time_t now;
@@ -140,10 +172,14 @@ void ui_task(void *)
             ensure_active_work_page_enabled();
         }
         int active_page = active_work_page_load();
-        xiaozhi_ai_set_page_active(active_page == kWorkPageXiaozhiAI &&
-                                   !battery.low_battery_mode &&
-                                   !runtime_surfaces.setup_portal_active &&
-                                   !runtime_surfaces.auxiliary_page_requested());
+        apply_xiaozhi_page_activation(
+            active_page == kWorkPageXiaozhiAI &&
+                !battery.low_battery_mode &&
+                !runtime_surfaces.setup_portal_active &&
+                !runtime_surfaces.auxiliary_page_requested(),
+            true,
+            xiaozhi_activation_requested,
+            xiaozhi_activation_request_valid);
 
         TickType_t tick_now = xTaskGetTickCount();
         if (active_page == kWorkPageXiaozhiAI &&
@@ -153,7 +189,7 @@ void ui_task(void *)
         UiStatusRefreshSnapshot current_status_snapshot = {
             local_sensor_state_version(),
             chime_runtime_any_enabled(),
-            wifi_radio_on_for_status_icon(),
+            wifi_radio_on_load(),
             alarm_is_enabled(),
         };
         bool status_fallback_elapsed = app_tick_interval_elapsed(
@@ -164,6 +200,11 @@ void ui_task(void *)
                                                 last_status_snapshot,
                                                 last_status_snapshot_valid,
                                                 status_fallback_elapsed);
+        bool sensor_status_due = ui_sensor_status_refresh_due(
+            current_status_snapshot,
+            last_status_snapshot,
+            last_status_snapshot_valid,
+            false);
         bool battery_due = battery.version != last_battery_version;
         UiBatteryBlinkState battery_blink = ui_battery_blink_state({
             battery.charging,
@@ -192,9 +233,21 @@ void ui_task(void *)
             bool refresh_now = false;
             bool info_requested = runtime_surfaces.info_requested;
             InfoPageStateSnapshot info_state = {};
+            OtaRuntimeTimingSnapshot info_ota = {};
+            bool info_ota_snapshot_valid = false;
+            bool info_ota_flow_active = false;
             if (info_requested) {
                 info_page_state_load(&info_state);
                 info_requested = info_state.requested;
+                if (info_requested) {
+                    ota_runtime_timing_snapshot_load(&info_ota);
+                    info_ota_snapshot_valid = true;
+                    info_ota_flow_active = ota_flow_active_for_tick(
+                        info_ota.state,
+                        info_ota.status_hold_set,
+                        tick_now,
+                        info_ota.status_until_tick);
+                }
             }
             bool network_diag_requested = runtime_surfaces.network_diag_requested;
             bool settings_requested = runtime_surfaces.settings_requested;
@@ -211,6 +264,7 @@ void ui_task(void *)
                 apply_clock_mode_visibility(false,
                                             battery.low_battery_mode);
                 status_due = true;
+                sensor_status_due = true;
                 battery_due = true;
                 battery_blink_due = true;
                 invalidate_clock_time_draw_cache();
@@ -218,12 +272,15 @@ void ui_task(void *)
             };
             if (info_requested && info_until != 0 &&
                 app_tick_deadline_reached(tick_now, info_until) &&
-                !ota_flow_active()) {
+                !info_ota_flow_active) {
                 info_page_clear();
                 info_requested = false;
                 runtime_surfaces.info_requested = false;
             }
-            if (battery.low_battery_mode && !ota_flow_active() &&
+            if (battery.low_battery_mode &&
+                !(info_ota_snapshot_valid
+                      ? info_ota_flow_active
+                      : ota_flow_active()) &&
                 (info_requested ||
                  network_diag_requested ||
                  settings_requested ||
@@ -257,6 +314,7 @@ void ui_task(void *)
                 alert_visible = false;
                 alert_index = -1;
                 status_due = true;
+                sensor_status_due = true;
                 battery_due = true;
                 battery_blink_due = true;
                 invalidate_clock_time_draw_cache();
@@ -274,17 +332,25 @@ void ui_task(void *)
                     lv_refr_now(nullptr);
                 }
                 Lvgl_unlock();
-                TickType_t info_wait = pdMS_TO_TICKS(
-                    ota_runtime_state_load() == kOtaUpdating
-                        ? kOtaStatusMinIntervalMs
-                        : kUiInfoPageFallbackPollMs);
-                if (info_until != 0 && !ota_flow_active()) {
-                    TickType_t remaining = app_tick_deadline_remaining(xTaskGetTickCount(),
-                                                                       info_until);
-                    if (remaining < info_wait) {
-                        info_wait = remaining;
-                    }
-                }
+                const TickType_t info_wait_now = xTaskGetTickCount();
+                const bool info_ota_active_for_wait =
+                    info_ota_snapshot_valid &&
+                    ota_flow_active_for_tick(info_ota.state,
+                                             info_ota.status_hold_set,
+                                             info_wait_now,
+                                             info_ota.status_until_tick);
+                UiInfoPageWaitInput info_wait_input;
+                info_wait_input.now_tick = info_wait_now;
+                info_wait_input.hold_until_tick = info_until;
+                info_wait_input.ota_flow_active = info_ota_active_for_wait;
+                info_wait_input.ota_updating =
+                    info_ota_snapshot_valid &&
+                    info_ota.state == kOtaUpdating;
+                const TickType_t info_wait = static_cast<TickType_t>(
+                    ui_info_page_wait_ticks(
+                        info_wait_input,
+                        pdMS_TO_TICKS(kUiInfoPageOtaFallbackPollMs),
+                        pdMS_TO_TICKS(kOtaStatusMinIntervalMs)));
                 (void)ulTaskNotifyTake(pdTRUE, info_wait);
                 continue;
             }
@@ -293,7 +359,10 @@ void ui_task(void *)
                 restore_active_work_page_after_aux(true);
             }
 
-            NetworkDiagState network_diag_state = network_diag_state_load();
+            NetworkDiagState network_diag_state = kNetworkDiagIdle;
+            if (network_diag_requested) {
+                network_diag_state = network_diag_state_load();
+            }
             if (network_diag_requested &&
                 network_diag_state == kNetworkDiagDone &&
                 ui_runtime_settings_timeout_elapsed(
@@ -315,10 +384,17 @@ void ui_task(void *)
                     lv_refr_now(nullptr);
                 }
                 Lvgl_unlock();
+                const NetworkDiagState wait_state = network_diag_state_load();
                 TickType_t network_diag_wait = pdMS_TO_TICKS(
-                    network_diag_state_load() == kNetworkDiagRunning
+                    wait_state == kNetworkDiagRunning
                         ? kUiNetworkDiagRunningFallbackMs
                         : kUiNetworkDiagIdleFallbackMs);
+                if (wait_state == kNetworkDiagDone) {
+                    network_diag_wait = static_cast<TickType_t>(
+                        ui_inactivity_wait_ticks(xTaskGetTickCount(),
+                                                 settings_activity_last_tick(),
+                                                 pdMS_TO_TICKS(kSettingsTimeoutMs)));
+                }
                 (void)ulTaskNotifyTake(pdTRUE, network_diag_wait);
                 continue;
             }
@@ -394,10 +470,36 @@ void ui_task(void *)
                     if (update_settings_page() || settings_changed) {
                         lv_refr_now(nullptr);
                     }
+                    const TickType_t settings_wait_now = xTaskGetTickCount();
+                    const SettingsUiTimingSnapshot settings_timing =
+                        settings_ui_timing_snapshot_load();
+                    OtaRuntimeTimingSnapshot ota_timing = {};
+                    ota_runtime_timing_snapshot_load(&ota_timing);
+                    UiSettingsWaitInput wait_input;
+                    wait_input.now_tick = settings_wait_now;
+                    wait_input.last_activity_tick = settings_activity_last_tick();
+                    wait_input.feedback_until_tick =
+                        settings_timing.feedback_until_tick;
+                    wait_input.sync_deadline_tick =
+                        settings_timing.sync_deadline_tick;
+                    wait_input.ota_status_until_tick =
+                        ota_timing.status_until_tick;
+                    wait_input.sync_busy = settings_timing.sync_busy;
+                    wait_input.ota_flow_active = ota_flow_active_for_tick(
+                        ota_timing.state,
+                        ota_timing.status_hold_set,
+                        settings_wait_now,
+                        ota_timing.status_until_tick);
+                    wait_input.ota_updating = ota_timing.state == kOtaUpdating;
+                    wait_input.ota_status_hold_set =
+                        ota_timing.status_hold_set;
+                    const TickType_t settings_wait =
+                        static_cast<TickType_t>(ui_settings_wait_ticks(
+                            wait_input,
+                            pdMS_TO_TICKS(kSettingsTimeoutMs),
+                            pdMS_TO_TICKS(kOtaStatusMinIntervalMs)));
                     Lvgl_unlock();
-                    vTaskDelay(pdMS_TO_TICKS(ota_runtime_state_load() == kOtaUpdating
-                                                 ? kOtaStatusMinIntervalMs
-                                                 : kUiSettingsPollMs));
+                    (void)ulTaskNotifyTake(pdTRUE, settings_wait);
                     continue;
                 }
             }
@@ -411,8 +513,6 @@ void ui_task(void *)
                 if (active_page != kWorkPageWeatherClock) {
                     active_work_page_store(kWorkPageWeatherClock);
                 }
-            } else {
-                ensure_active_work_page_enabled();
             }
             active_page = active_work_page_load();
             ui_runtime_update_xiaozhi_auto_return(
@@ -426,8 +526,16 @@ void ui_task(void *)
             if (visible_work_page != active_page) {
                 show_active_work_page();
                 visible_work_page = active_page;
-                xiaozhi_ai_set_page_active(visible_work_page == kWorkPageXiaozhiAI);
+                apply_xiaozhi_page_activation(
+                    visible_work_page == kWorkPageXiaozhiAI &&
+                        !battery.low_battery_mode &&
+                        !runtime_surfaces.setup_portal_active &&
+                        !runtime_surfaces.auxiliary_page_requested(),
+                    false,
+                    xiaozhi_activation_requested,
+                    xiaozhi_activation_request_valid);
                 status_due = true;
+                sensor_status_due = true;
                 battery_due = true;
                 battery_blink_due = true;
                 invalidate_history_draw_cache();
@@ -441,15 +549,47 @@ void ui_task(void *)
             const ActiveWorkPageState active_pages = active_work_page_state_for_mode(
                 active_page,
                 normal_mode_for_frame);
+            const WeatherCacheStatusSnapshot *visible_weather_cache = nullptr;
+            const DailySayingCacheSnapshot *visible_saying_cache = nullptr;
             if (!setup_active_for_frame) {
+                if (active_pages.uses_weather_data) {
+                    const uint32_t weather_version = weather_state_version_load();
+                    if (ui_visible_cache_status_refresh_due(
+                            weather_cache_status_valid,
+                            weather_cache_status.version,
+                            weather_version)) {
+                        weather_cache_status_valid =
+                            weather_cache_status_snapshot_load(
+                                &weather_cache_status);
+                    }
+                    if (weather_cache_status_valid) {
+                        visible_weather_cache = &weather_cache_status;
+                    }
+                }
+                if (active_pages.uses_daily_saying) {
+                    const uint32_t saying_version =
+                        daily_saying_state_version_load();
+                    if (ui_visible_cache_status_refresh_due(
+                            saying_cache_status_valid,
+                            saying_cache_status.version,
+                            saying_version)) {
+                        saying_cache_status_valid =
+                            daily_saying_cache_snapshot_load(
+                                &saying_cache_status);
+                    }
+                    if (saying_cache_status_valid) {
+                        visible_saying_cache = &saying_cache_status;
+                    }
+                }
                 update_visible_weather_sync(active_pages,
                                             now,
                                             tick_now,
+                                            visible_weather_cache,
                                             weather_sync_retry);
                 update_visible_daily_saying_sync(active_pages,
-                                                 local,
                                                  now,
                                                  tick_now,
+                                                 visible_saying_cache,
                                                  saying_sync_retry);
 
                 refresh_now |= update_active_work_page_content(local,
@@ -471,7 +611,6 @@ void ui_task(void *)
             }
 
             if (status_due || battery_due || battery_blink_due || setup_due || mode_due) {
-                EventBits_t bits = app_event_group_get_bits();
                 bool setup_active = runtime_surfaces.setup_portal_active;
                 bool content_changed = false;
                 if (setup_active != setup_panel_visible || mode_due) {
@@ -480,6 +619,7 @@ void ui_task(void *)
                     setup_panel_visible = setup_active;
                     low_mode_visible = battery.low_battery_mode;
                     status_due = true;
+                    sensor_status_due = true;
                     invalidate_clock_time_draw_cache();
                     invalidate_clock_second_progress_draw_cache();
                     update_alert_pill(false,
@@ -495,10 +635,8 @@ void ui_task(void *)
                     content_changed |= update_setup_status_panel();
                 }
                 if (!setup_active && !battery.low_battery_mode && active_pages.weather_clock) {
-                    content_changed |= update_weather_clock_network_status(bits,
-                                                                            now,
-                                                                            tick_now,
-                                                                            weather_sync_retry);
+                    content_changed |= update_weather_clock_network_status(
+                        app_event_group_get_bits());
                 }
                 if (battery_due || battery_blink_due) {
                     update_work_page_battery_icon(active_page,
@@ -511,12 +649,14 @@ void ui_task(void *)
                     content_changed = true;
                 }
                 if (status_due) {
-                    if (active_pages.weather_clock) {
-                        if (!setup_active && !battery.low_battery_mode) {
-                            content_changed |= update_weather_clock_sensor_status();
+                    if (sensor_status_due) {
+                        if (active_pages.weather_clock) {
+                            if (!setup_active && !battery.low_battery_mode) {
+                                content_changed |= update_weather_clock_sensor_status();
+                            }
+                        } else {
+                            content_changed |= update_non_clock_work_page_sensor_status(active_page);
                         }
-                    } else {
-                        content_changed |= update_non_clock_work_page_sensor_status(active_page);
                     }
                     if (active_pages.weather_clock) {
                         content_changed |= update_top_status_icons(

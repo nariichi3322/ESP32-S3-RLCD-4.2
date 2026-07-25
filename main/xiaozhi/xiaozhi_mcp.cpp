@@ -214,9 +214,15 @@ cJSON *create_tool_call_result(const cJSON *params,
                                int *error_code,
                                const char **error_message)
 {
-    const cJSON *name = cJSON_IsObject(params) ? cJSON_GetObjectItem(params, "name") : nullptr;
-    const cJSON *arguments = cJSON_IsObject(params) ? cJSON_GetObjectItem(params, "arguments") : nullptr;
-    if (!cJSON_IsString(name) || (arguments && !cJSON_IsObject(arguments))) {
+    if (!error_code || !error_message) {
+        return nullptr;
+    }
+    const bool params_are_object = params && cJSON_IsObject(params);
+    const cJSON *name = params_are_object ? cJSON_GetObjectItem(params, "name") : nullptr;
+    const cJSON *arguments =
+        params_are_object ? cJSON_GetObjectItem(params, "arguments") : nullptr;
+    if (!name || !cJSON_IsString(name) || !name->valuestring ||
+        (arguments && !cJSON_IsObject(arguments))) {
         *error_code = kJsonRpcInvalidParams;
         *error_message = "Invalid tool parameters";
         return nullptr;

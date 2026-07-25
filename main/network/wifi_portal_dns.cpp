@@ -7,6 +7,7 @@
 #include "app_network_config.h"
 #include "captive_dns_packet.h"
 
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -19,14 +20,15 @@
 
 namespace {
 AtomicTaskLifecycleGate s_captive_dns_task;
-constexpr size_t kCaptivePortalUriSize = 64;
-char s_captive_portal_uri[kCaptivePortalUriSize] = {};
+EXT_RAM_BSS_ATTR uint8_t s_captive_dns_packet[kCaptiveDnsPacketSize];
+constexpr size_t kCaptivePortalUriSize = cstr_length(kSetupPortalUrl) + 1;
+EXT_RAM_BSS_ATTR char s_captive_portal_uri[kCaptivePortalUriSize] = {};
 constexpr uint16_t kCaptiveDnsPort = 53;
 constexpr int kCaptiveDnsSocketTimeoutSec = 1;
 constexpr int kCaptiveDnsStopWaitAttempts = 15;
 constexpr uint32_t kCaptiveDnsStopWaitDelayMs = 100;
 constexpr TickType_t kCaptiveDnsStopWaitDelay = pdMS_TO_TICKS(kCaptiveDnsStopWaitDelayMs);
-constexpr uint32_t kCaptiveDnsTaskStack = 3072;
+constexpr uint32_t kCaptiveDnsTaskStack = 2560;
 constexpr UBaseType_t kCaptiveDnsTaskPriority = 3;
 constexpr BaseType_t kCaptiveDnsTaskCore = 0;
 constexpr const char *kCaptiveDnsTaskName = "captive_dns";
@@ -55,8 +57,12 @@ static_assert(kCaptiveDnsStopWaitDelay > 0, "captive DNS stop wait delay must be
 static_assert(kCaptiveDnsTaskStack > 0, "captive DNS task stack must be positive");
 static_assert(kCaptiveDnsTaskPriority > tskIDLE_PRIORITY, "captive DNS task priority must exceed idle");
 static_assert(kCaptiveDnsTaskCore >= 0, "captive DNS task core must be non-negative");
-static_assert(kCaptivePortalUriSize > cstr_length(kSetupPortalUrl),
-              "mutable captive portal URI must fit setup portal URL and NUL");
+static_assert(sizeof(s_captive_portal_uri) ==
+                  cstr_length(kSetupPortalUrl) + 1,
+              "captive portal URI storage must exactly fit URL and NUL");
+static_assert(sizeof(s_captive_dns_packet) ==
+                  static_cast<size_t>(kCaptiveDnsPacketSize),
+              "captive DNS packet workspace must match packet capacity");
 class ScopedSocketDescriptor {
 public:
     explicit ScopedSocketDescriptor(int descriptor)
@@ -114,17 +120,30 @@ bool run_captive_dns_server()
 
     ESP_LOGI(TAG, CAPTIVE_DNS_STARTED_LOG);
     while (!s_captive_dns_task.stop_requested()) {
-        uint8_t query[kCaptiveDnsPacketSize] = {};
+        memset(s_captive_dns_packet, 0, sizeof(s_captive_dns_packet));
         sockaddr_in from = {};
         socklen_t from_len = sizeof(from);
-        int len = recvfrom(sock.get(), query, sizeof(query), 0, (sockaddr *)&from, &from_len);
+        int len = recvfrom(sock.get(),
+                           s_captive_dns_packet,
+                           sizeof(s_captive_dns_packet),
+                           0,
+                           (sockaddr *)&from,
+                           &from_len);
         if (len <= 0) {
             continue;
         }
-        uint8_t response[kCaptiveDnsPacketSize] = {};
-        int response_len = build_captive_dns_response(query, len, response, sizeof(response));
+        int response_len =
+            build_captive_dns_response(s_captive_dns_packet,
+                                       len,
+                                       s_captive_dns_packet,
+                                       sizeof(s_captive_dns_packet));
         if (response_len > 0) {
-            sendto(sock.get(), response, response_len, 0, (sockaddr *)&from, from_len);
+            sendto(sock.get(),
+                   s_captive_dns_packet,
+                   response_len,
+                   0,
+                   (sockaddr *)&from,
+                   from_len);
         }
     }
 

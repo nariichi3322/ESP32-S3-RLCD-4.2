@@ -128,7 +128,7 @@ void build_settings_ota_panel(lv_obj_t *screen, int panel_x, int panel_width)
                                                     "settings ota hint label create failed");
 }
 
-bool update_settings_ota_panel(bool visible)
+bool update_settings_ota_panel(bool visible, const OtaRuntimeSnapshot &ota)
 {
     if (!s_settings_ota_status_label) {
         return false;
@@ -138,8 +138,6 @@ bool update_settings_ota_panel(bool visible)
     char ota_line[kSettingsOtaLineTextSize] = "";
     char ota_hint[kSettingsOtaHintTextSize] = "";
     bool progress_visible = false;
-    OtaRuntimeSnapshot ota;
-    ota_runtime_snapshot_load(&ota);
     int progress = ota.progress;
     if (visible) {
         if (ota.state == kOtaUpdating && progress >= 0) {

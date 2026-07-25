@@ -65,6 +65,16 @@ public:
     }
 
     bool requested() const { return requested_; }
+    bool idle() const
+    {
+        return !requested_ &&
+               request_tick_ == 0 &&
+               attempts_ == 0 &&
+               !backoff_active_ &&
+               backoff_started_tick_ == 0 &&
+               backoff_duration_ticks_ == 0 &&
+               backoff_until_tick_ == 0;
+    }
     Tick request_tick() const { return request_tick_; }
     int attempts() const { return attempts_; }
     Tick backoff_until_tick() const { return backoff_until_tick_; }

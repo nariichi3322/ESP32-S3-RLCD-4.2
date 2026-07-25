@@ -60,8 +60,19 @@ constexpr bool should_reconfigure_running_power_save(bool enable_setup_portal,
     return enable_setup_portal || !xiaozhi_keepalive_active;
 }
 
+constexpr bool station_config_failure_blocks_start(bool enable_setup_portal)
+{
+    return !enable_setup_portal;
+}
+
 static_assert(kSetupApChannel > 0, "setup AP channel must be positive");
 static_assert(kSetupApMaxConnections > 0, "setup AP max connections must be positive");
+static_assert(sizeof(static_cast<wifi_sta_config_t *>(nullptr)->ssid) + 1 ==
+                  kNetworkWifiSsidLen,
+              "credential SSID capacity must match ESP-IDF STA storage");
+static_assert(sizeof(static_cast<wifi_sta_config_t *>(nullptr)->password) + 1 ==
+                  kNetworkWifiPasswordLen,
+              "credential password capacity must match ESP-IDF STA storage");
 static_assert(cstr_length(kSetupApSsidFallback) < kWifiSetupApSsidTextLen,
               "setup AP SSID fallback must fit portal state buffer");
 static_assert(!should_reconnect_running_station(false, true),
@@ -76,6 +87,30 @@ static_assert(should_reconfigure_running_power_save(false, false),
               "ordinary running Wi-Fi may restore modem power save");
 static_assert(should_reconfigure_running_power_save(true, true),
               "setup mode must retain its own Wi-Fi power policy");
+static_assert(station_config_failure_blocks_start(false),
+              "ordinary STA start must fail when station config cannot be applied");
+static_assert(!station_config_failure_blocks_start(true),
+              "setup AP must remain available when station config cannot be applied");
+
+void clear_wifi_stop_when_idle_request()
+{
+    s_wifi_stop_when_idle_requested.store(false, std::memory_order_release);
+}
+
+void notify_wifi_stop_retry_if_pending()
+{
+    if (s_wifi_stop_when_idle_requested.load(std::memory_order_acquire) &&
+        app_event_group_ready()) {
+        app_event_group_set_bits(kNetworkStateChangedBit);
+    }
+}
+
+enum class WifiRadioStopAttempt {
+    kNormal,
+    kForced,
+    kIdleRetry,
+};
+
 #define WIFI_START_SKIPPED_OFFLINE_LOG "wifi start skipped in offline mode"
 #define WIFI_STA_ONLY_MODE_FAILED_FORMAT "wifi sta-only mode failed: %s"
 #define WIFI_POWER_SAVE_SETUP_FAILED_FORMAT "wifi power save setup failed: %s"
@@ -93,6 +128,9 @@ static_assert(should_reconfigure_running_power_save(true, true),
 #define WIFI_STOP_FAILED_FORMAT "wifi stop failed: %s"
 #define WIFI_RADIO_OFF_LOG "wifi radio off"
 #define WIFI_STA_CONFIG_FAILED_FORMAT "wifi sta config failed: %s"
+#define WIFI_STA_CONFIG_PORTAL_FALLBACK_LOG \
+    "wifi sta config unavailable; setup portal remains active"
+#define WIFI_STA_DISCONNECT_FAILED_FORMAT "wifi station disconnect failed: %s"
 #define WIFI_CONNECT_START_FAILED_FORMAT "wifi connect failed to start: %s"
 #define WIFI_DISCONNECTED_FORMAT "wifi disconnected, reason=%d"
 #define WIFI_RECONNECT_START_FAILED_FORMAT "wifi reconnect failed to start: %s"
@@ -250,6 +288,19 @@ bool start_station_connection(StationConnectAttempt attempt)
     return false;
 }
 
+bool disconnect_station_and_clear_state()
+{
+    const esp_err_t err = esp_wifi_disconnect();
+    if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_CONNECT) {
+        ESP_LOGW(TAG, WIFI_STA_DISCONNECT_FAILED_FORMAT, esp_err_to_name(err));
+        return false;
+    }
+    // The disconnect event is asynchronous. Clear the previous IP state now so
+    // a connection wait cannot mistake the old AP for the newly saved one.
+    clear_sta_connection_state();
+    return true;
+}
+
 bool register_wifi_event_handlers()
 {
     esp_err_t err = esp_event_handler_instance_register(WIFI_EVENT,
@@ -292,21 +343,16 @@ bool configure_initial_wifi_mode()
 
 bool apply_station_config(bool reconnect)
 {
-    NetworkCredentialsSnapshot credentials = {};
-    network_credentials_snapshot(&credentials);
-    if (!credentials.wifi_configured) {
+    wifi_config_t sta_config = {};
+    if (!network_wifi_credentials_copy(
+            reinterpret_cast<char *>(sta_config.sta.ssid),
+            sizeof(sta_config.sta.ssid),
+            reinterpret_cast<char *>(sta_config.sta.password),
+            sizeof(sta_config.sta.password))) {
         return false;
     }
-    wifi_config_t sta_config = {};
-    strlcpy((char *)sta_config.sta.ssid,
-            credentials.wifi_ssid,
-            sizeof(sta_config.sta.ssid));
-    strlcpy((char *)sta_config.sta.password,
-            credentials.wifi_password,
-            sizeof(sta_config.sta.password));
-    sta_config.sta.threshold.authmode = credentials.wifi_password[0]
-                                             ? WIFI_AUTH_WPA2_PSK
-                                             : WIFI_AUTH_OPEN;
+    sta_config.sta.threshold.authmode =
+        sta_config.sta.password[0] ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
     sta_config.sta.sae_pwe_h2e = WPA3_SAE_PWE_BOTH;
     esp_err_t err = esp_wifi_set_config(WIFI_IF_STA, &sta_config);
     if (err != ESP_OK) {
@@ -314,7 +360,9 @@ bool apply_station_config(bool reconnect)
         return false;
     }
     if (reconnect) {
-        esp_wifi_disconnect();
+        if (!disconnect_station_and_clear_state()) {
+            return false;
+        }
         if (!start_station_connection(StationConnectAttempt::Start)) {
             return false;
         }
@@ -397,8 +445,9 @@ static bool configure_running_wifi_radio(bool enable_setup_portal,
             return false;
         }
         if (!network_wifi_credentials_configured()) {
-            (void)esp_wifi_disconnect();
-            clear_sta_connection_state();
+            // Keep the setup portal available even if the driver rejects this
+            // best-effort disconnect, but do not publish a false offline state.
+            (void)disconnect_station_and_clear_state();
         }
         if (!setup_portal_active_load()) {
             if (!start_http_server()) {
@@ -413,7 +462,12 @@ static bool configure_running_wifi_radio(bool enable_setup_portal,
     if (network_wifi_credentials_configured() &&
         should_reconnect_running_station(enable_setup_portal,
                                          station_connected)) {
-        (void)apply_station_config(true);
+        if (!apply_station_config(true)) {
+            if (station_config_failure_blocks_start(enable_setup_portal)) {
+                return false;
+            }
+            ESP_LOGW(TAG, "%s", WIFI_STA_CONFIG_PORTAL_FALLBACK_LOG);
+        }
     }
     if (entering_setup_portal) {
         request_setup_prompt_once();
@@ -436,7 +490,12 @@ static bool start_stopped_wifi_radio(bool enable_setup_portal,
         }
     }
     if (network_wifi_credentials_configured()) {
-        (void)apply_station_config(false);
+        if (!apply_station_config(false)) {
+            if (station_config_failure_blocks_start(enable_setup_portal)) {
+                return false;
+            }
+            ESP_LOGW(TAG, "%s", WIFI_STA_CONFIG_PORTAL_FALLBACK_LOG);
+        }
     }
     err = esp_wifi_start();
     if (err != ESP_OK) {
@@ -446,9 +505,11 @@ static bool start_stopped_wifi_radio(bool enable_setup_portal,
     configure_wifi_power_save(enable_setup_portal);
     if (enable_setup_portal) {
         if (!start_http_server()) {
-            s_wifi_stop_requested.store(true, std::memory_order_release);
-            (void)esp_wifi_disconnect();
-            (void)esp_wifi_stop();
+            // The driver is already running even though the portal could not
+            // start. Publish that ownership before using the common forced-stop
+            // path so a stop failure remains observable and retryable.
+            wifi_radio_on_store(true);
+            stop_wifi_radio(true);
             return false;
         }
         if (entering_setup_portal) {
@@ -538,25 +599,29 @@ bool prepare_setup_portal_result_delivery()
     return true;
 }
 
-void stop_wifi_radio(bool force_setup_portal)
+static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt)
 {
+    const bool force_setup_portal = attempt == WifiRadioStopAttempt::kForced;
+    const bool explicit_stop_requested =
+        attempt != WifiRadioStopAttempt::kNormal;
     if (!wifi_radio_on_load()) {
-        return;
+        clear_wifi_stop_when_idle_request();
+        return true;
     }
     int ota_state = ota_runtime_state_load();
     if ((ota_state == kOtaChecking || ota_state == kOtaUpdating) && !force_setup_portal) {
         ESP_LOGI(TAG, WIFI_STOP_SKIPPED_OTA_LOG);
-        return;
+        return false;
     }
     if (xiaozhi_ai_network_keepalive_active() && !force_setup_portal) {
         ESP_LOGI(TAG, WIFI_STOP_SKIPPED_XIAOZHI_LOG);
-        return;
+        return false;
     }
     if (setup_portal_active_load() && !force_setup_portal) {
-        return;
+        return false;
     }
-    if (!network_wifi_credentials_configured() && !force_setup_portal) {
-        return;
+    if (!network_wifi_credentials_configured() && !explicit_stop_requested) {
+        return false;
     }
     stop_http_server();
     s_wifi_stop_requested.store(true, std::memory_order_release);
@@ -574,49 +639,68 @@ void stop_wifi_radio(bool force_setup_portal)
     if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
         ESP_LOGW(TAG, WIFI_STOP_FAILED_FORMAT, esp_err_to_name(err));
         s_wifi_stop_requested.store(false, std::memory_order_release);
+        s_wifi_stop_when_idle_requested.store(true,
+                                              std::memory_order_release);
+        if (attempt != WifiRadioStopAttempt::kIdleRetry) {
+            notify_wifi_stop_retry_if_pending();
+        }
+        return false;
     } else {
         wifi_radio_on_store(false);
+        clear_wifi_stop_when_idle_request();
         s_wifi_stop_requested.store(false, std::memory_order_release);
         clear_sta_connection_state();
         notify_ui_task();
         ESP_LOGI(TAG, WIFI_RADIO_OFF_LOG);
+        return true;
     }
+}
+
+void stop_wifi_radio(bool force_setup_portal)
+{
+    (void)stop_wifi_radio_internal(force_setup_portal
+                                       ? WifiRadioStopAttempt::kForced
+                                       : WifiRadioStopAttempt::kNormal);
 }
 
 void request_wifi_radio_stop_when_idle()
 {
     s_wifi_stop_when_idle_requested.store(true, std::memory_order_release);
+    service_wifi_radio_stop_when_idle();
+    // A shared network owner or a transient driver error blocked the immediate
+    // close. Wake the network task so it can classify the retained request;
+    // protected owners wait for state changes, while driver failures use the
+    // bounded retry schedule maintained by the network task.
+    notify_wifi_stop_retry_if_pending();
 }
 
-void service_wifi_radio_stop_when_idle()
+WifiRadioIdleStopResult service_wifi_radio_stop_when_idle()
 {
     const bool requested = s_wifi_stop_when_idle_requested.load(std::memory_order_acquire);
     if (!requested) {
-        return;
+        return WifiRadioIdleStopResult::kNoRequest;
     }
     if (!wifi_radio_on_load()) {
-        s_wifi_stop_when_idle_requested.store(false, std::memory_order_release);
-        return;
+        clear_wifi_stop_when_idle_request();
+        return WifiRadioIdleStopResult::kStopped;
     }
     WifiIdleStopPolicyInput policy = {};
     policy.requested = requested;
-    policy.radio_on = wifi_radio_on_load();
+    policy.radio_on = true;
     policy.setup_portal_active = setup_portal_active_load();
     int ota_state = ota_runtime_state_load();
     policy.ota_active = ota_state == kOtaChecking || ota_state == kOtaUpdating;
     policy.xiaozhi_keepalive_active = xiaozhi_ai_network_keepalive_active();
     policy.network_lock_active = network_awake_lock_active();
     if (!wifi_idle_stop_allowed(policy)) {
-        return;
+        return WifiRadioIdleStopResult::kDeferred;
     }
 
-    s_wifi_stop_when_idle_requested.store(false, std::memory_order_release);
-    stop_wifi_radio();
-    if (wifi_radio_on_load()) {
-        // 关闭失败或运行状态在检查后发生变化时保留请求，交给下一次
-        // 联网任务收尾重试，不在当前任务内循环抢占网络资源。
-        s_wifi_stop_when_idle_requested.store(true, std::memory_order_release);
-    }
+    // stop_wifi_radio() 只在射频已经关闭或成功关闭时结算请求；失败、
+    // 保护状态或所有权变化会让请求保持置位，交给下一次收尾重试。
+    return stop_wifi_radio_internal(WifiRadioStopAttempt::kIdleRetry)
+               ? WifiRadioIdleStopResult::kStopped
+               : WifiRadioIdleStopResult::kRetryRequired;
 }
 
 void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, void *event_data)

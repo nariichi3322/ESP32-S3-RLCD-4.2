@@ -1,7 +1,8 @@
 // 直接验证设置页反馈和手动同步超时收尾的生产实现。
 #include "ui_settings_feedback.h"
 #include "app_event_group.h"
-#include "app_state.h"
+#include "app_metadata.h"
+#include "app_runtime_timing.h"
 #include "network_diagnostics_state.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_sync_state.h"
@@ -110,6 +111,10 @@ int main()
 
     reset_state();
     set_settings_feedback("测试", 2500);
+    SettingsUiTimingSnapshot timing = settings_ui_timing_snapshot_load();
+    assert(timing.feedback_until_tick == 2600);
+    assert(timing.sync_deadline_tick == 0);
+    assert(!timing.sync_busy);
     expect_active_feedback(2599, "测试");
     char expired_feedback[kSettingsFeedbackTextLen] = {};
     assert(!settings_feedback_copy_active(2600, expired_feedback, sizeof(expired_feedback)));
@@ -119,6 +124,10 @@ int main()
 
     reset_state();
     begin_settings_sync(kSettingsSyncWeather, "同步中");
+    timing = settings_ui_timing_snapshot_load();
+    assert(timing.feedback_until_tick == 100 + kSettingsManualSyncTimeoutMs);
+    assert(timing.sync_deadline_tick == 100 + kSettingsManualSyncTimeoutMs);
+    assert(timing.sync_busy);
     assert(sync_state().operation == kSettingsSyncWeather);
     assert(sync_state().deadline_tick == 100 + kSettingsManualSyncTimeoutMs);
     expect_active_feedback(100, "同步中");

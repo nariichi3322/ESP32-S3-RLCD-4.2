@@ -32,5 +32,14 @@ int main()
 
     input.radio_on = false;
     assert(!wifi_idle_stop_allowed(input));
+
+    assert(wifi_idle_stop_retry_delay_ms(0) == 0);
+    assert(wifi_idle_stop_retry_delay_ms(1) == 1000);
+    assert(wifi_idle_stop_retry_delay_ms(2) == 2000);
+    assert(wifi_idle_stop_retry_delay_ms(3) == 4000);
+    assert(wifi_idle_stop_retry_delay_ms(6) == 32000);
+    assert(wifi_idle_stop_retry_delay_ms(7) == 60000);
+    assert(wifi_idle_stop_retry_delay_ms(32) == 60000);
+    assert(wifi_idle_stop_retry_delay_ms(UINT8_MAX) == 60000);
     return 0;
 }

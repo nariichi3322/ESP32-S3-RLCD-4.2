@@ -1,4 +1,4 @@
-// 声明 QWeather 响应缓冲、JSON 根对象和业务成功字段读取接口。
+// 声明 QWeather 单次请求 URL/响应缓冲、JSON 根对象和业务成功字段读取接口。
 #pragma once
 
 #include "cJSON.h"
@@ -12,6 +12,9 @@ const char *qweather_stage_text(const char *stage);
 class QweatherResponseBuffer {
 public:
     QweatherResponseBuffer(const char *stage, size_t buffer_size);
+    QweatherResponseBuffer(const char *stage,
+                           size_t buffer_size,
+                           size_t request_url_size);
     ~QweatherResponseBuffer();
 
     QweatherResponseBuffer(const QweatherResponseBuffer &) = delete;
@@ -19,12 +22,22 @@ public:
 
     char *get() const
     {
-        return data_.get();
+        return data_ ? data_.get() + request_url_size_ : nullptr;
     }
 
     size_t size() const
     {
         return size_;
+    }
+
+    char *request_url() const
+    {
+        return data_ && request_url_size_ > 0 ? data_.get() : nullptr;
+    }
+
+    size_t request_url_size() const
+    {
+        return request_url_size_;
     }
 
     explicit operator bool() const
@@ -35,6 +48,7 @@ public:
 private:
     ScopedHeapBuffer<char> data_;
     size_t size_ = 0;
+    size_t request_url_size_ = 0;
 };
 
 class QweatherJsonRoot {

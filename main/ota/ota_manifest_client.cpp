@@ -10,6 +10,7 @@
 #include "ota_validation.h"
 #include "scoped_heap_buffer.h"
 
+#include <esp_attr.h>
 #include "esp_err.h"
 #include "esp_log.h"
 
@@ -25,7 +26,7 @@ constexpr OtaManifestSource kBuiltInManifestSources[] = {
     {kManifestSourceGithub, kOtaManifestUrl},
     {kManifestSourceGitee, kOtaBackupManifestUrl},
 };
-OtaManifest s_cached_manifest;
+EXT_RAM_BSS_ATTR OtaManifest s_cached_manifest;
 constexpr const char *kManifestParseInvalidArgLog = "OTA manifest parse invalid arg";
 constexpr const char *kManifestJsonParseFailedLog = "OTA manifest JSON parse failed";
 #define MANIFEST_MISSING_REQUIRED_FIELDS_FORMAT "OTA manifest missing required fields version=%d url=%d sha=%d"
@@ -89,9 +90,10 @@ bool parse_manifest_with_log(const char *json, OtaManifest *manifest)
 
 bool fetch_manifest_from_source(const OtaManifestSource &source,
                                 OtaManifest *manifest,
+                                ScopedHeapBuffer<char> &response,
                                 OtaManifestFailureCallback failure_callback)
 {
-    if (!manifest) {
+    if (!manifest || !response || response.size() <= 1) {
         notify_manifest_failure(failure_callback);
         return false;
     }
@@ -101,13 +103,7 @@ bool fetch_manifest_from_source(const OtaManifestSource &source,
                  ota_manifest_source_name_or_unknown(source.name));
         return false;
     }
-    ScopedHeapBuffer<char> response(kManifestResponseBufferSize,
-                                    HeapBufferInit::kCString);
-    if (!response) {
-        ESP_LOGW(TAG, "%s", kManifestResponseAllocFailedLog);
-        notify_manifest_failure(failure_callback);
-        return false;
-    }
+    response.data()[0] = '\0';
     esp_err_t err = http_get_text(source.url, response.data(), response.size());
     if (err != ESP_OK) {
         ESP_LOGW(TAG,
@@ -162,16 +158,34 @@ bool ota_manifest_fetch(OtaManifest *manifest,
                         size_t source_name_len,
                         OtaManifestFailureCallback failure_callback)
 {
+    if (!manifest) {
+        notify_manifest_failure(failure_callback);
+        return false;
+    }
+    ScopedHeapBuffer<char> response(kManifestResponseBufferSize,
+                                    HeapBufferInit::kCString,
+                                    HeapBufferStorage::kPsramPreferred);
+    if (!response) {
+        ESP_LOGW(TAG, "%s", kManifestResponseAllocFailedLog);
+        notify_manifest_failure(failure_callback);
+        return false;
+    }
     char custom_url[kOtaUrlLen] = {};
     if (custom_assets_read_ota_manifest_url(custom_url, sizeof(custom_url))) {
         OtaManifestSource custom_source = {kManifestSourceCustom, custom_url};
-        if (fetch_manifest_from_source(custom_source, manifest, failure_callback)) {
+        if (fetch_manifest_from_source(custom_source,
+                                       manifest,
+                                       response,
+                                       failure_callback)) {
             store_manifest_source_name(source_name, source_name_len, custom_source.name);
             return true;
         }
     }
     for (const OtaManifestSource &source : kBuiltInManifestSources) {
-        if (fetch_manifest_from_source(source, manifest, failure_callback)) {
+        if (fetch_manifest_from_source(source,
+                                       manifest,
+                                       response,
+                                       failure_callback)) {
             store_manifest_source_name(source_name, source_name_len, source.name);
             return true;
         }
@@ -184,31 +198,40 @@ bool ota_manifest_fetch_backup_for_install(const OtaManifest &current,
                                            OtaManifest *backup,
                                            OtaManifestFailureCallback failure_callback)
 {
-    if (!backup || current.version[0] == '\0' ||
+    if (!backup || backup == &current || current.version[0] == '\0' ||
         !ota_valid_sha256_string(current.sha256)) {
         return false;
     }
+    ScopedHeapBuffer<char> response(kManifestResponseBufferSize,
+                                    HeapBufferInit::kCString,
+                                    HeapBufferStorage::kPsramPreferred);
+    if (!response) {
+        ESP_LOGW(TAG, "%s", kManifestResponseAllocFailedLog);
+        notify_manifest_failure(failure_callback);
+        return false;
+    }
     for (const OtaManifestSource &backup_source : kBuiltInManifestSources) {
-        OtaManifest candidate;
-        if (!fetch_manifest_from_source(backup_source, &candidate, failure_callback)) {
+        if (!fetch_manifest_from_source(backup_source,
+                                        backup,
+                                        response,
+                                        failure_callback)) {
             continue;
         }
-        if (strcmp(candidate.url, current.url) == 0) {
+        if (strcmp(backup->url, current.url) == 0) {
             continue;
         }
         if (!ota_backup_manifest_metadata_matches(current.version,
                                                   current.sha256,
                                                   current.size,
-                                                  candidate.version,
-                                                  candidate.sha256,
-                                                  candidate.size)) {
+                                                  backup->version,
+                                                  backup->sha256,
+                                                  backup->size)) {
             ESP_LOGW(TAG,
                      BACKUP_MANIFEST_MISMATCH_FORMAT,
                      current.version,
-                     candidate.version);
+                     backup->version);
             continue;
         }
-        *backup = candidate;
         return true;
     }
     return false;

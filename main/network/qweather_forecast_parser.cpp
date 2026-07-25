@@ -100,7 +100,11 @@ const char *weather_advice_for_day(const WeatherForecastDay &today)
 
 bool parse_qweather_forecast_days(const cJSON *daily, WeatherForecastData *forecast)
 {
-    if (!daily || !forecast) {
+    if (!forecast) {
+        return false;
+    }
+    *forecast = WeatherForecastData{};
+    if (!cJSON_IsArray(daily)) {
         return false;
     }
     int count = weather_forecast_parse_count(daily);
