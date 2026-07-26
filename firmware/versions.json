@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.28",
+  "latest": "v1.5.29",
   "items": [
+    {
+      "version": "v1.5.29",
+      "notes": "v1.5.29：共 10 项更新。\n1. 从旧版本升级后必须重新进入配网页补填“和风天气 API Host”；该字段在联网模式下…\n2. 将城市查询、实时天气、预警、逐日预报和空气质量全部切换到账号专属 API Host，并…\n3. 修复页面开关、页面排序、系统辅助页、网络检测及检查更新在快速按键或超时临界点可能使用过…\n4. 修复配网门户启停、主动断网、普通同步、网络检测和 OTA 异常收尾时可能遗留 Wi-F…\n5. 修复启动任务临时内存紧张时常驻服务可能漏建、启动页可能提前结束，以及单次闹钟自动关闭写…\n其余 5 项见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.29/weather_clock_v1.5.29.bin",
+        "sha256": "d82b7c66531e1354560d5e4e92266b6b93c2f0b06e43bfdf432c9252f4be2baa",
+        "size": 6246496
+      },
+      "merged": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.29/weather_clock_v1.5.29_merged.bin",
+        "sha256": "70a8bf33df19f118fa57481feaae96af1a04b1ffbf0a25856c58ece63263cdf8",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.28",
       "notes": "v1.5.28：共 6 项更新。\n1. 加固 HTTP、OTA 清单与重定向响应的长度和完整性校验，异常或截断数据会安全拒绝并…\n2. 修复天气城市、实况、预报、预警和每日文字在异常响应下可能混用新旧缓存的问题，并提高公网…\n3. 修复 Wi-Fi 启停失败、启动联网退避、温湿度瞬时读取失败以及小智超长字幕和异常 M…\n4. 将多类低频 UI 状态、页面引用和网络临时缓冲迁入 PSRAM，释放启动动画画布并复用…\n5. 收敛低刷新页面、传感器、电池、充电、NTP、天气与 Wi-Fi 重试的唤醒和通知频率，…\n其余 1 项见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.20_merged.bin",
         "sha256": "68330904dc76b265b3602aed90ef6ae619971b780fdf4e4afc3f99600e3eeb4b",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.19",
-      "notes": "v1.5.19：共 9 项更新。\n1. 修复 RTC 完全丢时后，设置页手动 NTP 被启动/每日同步旧退避截止时间阻塞的问题…\n2. RTC 时间不可信时，自动 NTP 失败重试缩短为约 15 秒；同步成功立即刷新日期、…\n3. 温湿时钟秒牌改为按变化数字的实际字形范围局部刷新，普通秒跳由完整 112px 卡片收敛…\n4. 天气、网络凭据、网络检测、每日文字、温湿度小时历史和 OTA 运行态统一使用启动期静态…\n5. 新增公共作用域 semaphore 锁，消除天气、历史、OTA 和每日文字模块的重复锁…\n其余 4 项见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.19.bin",
-        "sha256": "c756e8a41fa07d23799de744afe487c6ae78ae09bda30c94c72b3e202ca2c140",
-        "size": 6227120
-      },
-      "merged": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.19_merged.bin",
-        "sha256": "8fdc4f1a5a19cca4e957c7766e49f2736df83d692024c511cf20ae637ab7f91a",
         "size": 16509951
       }
     }
