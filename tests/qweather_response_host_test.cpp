@@ -76,6 +76,7 @@ void test_success_object_and_array()
     const cJSON *daily = qweather_success_array(root.get(), "daily", nullptr);
     assert(daily != nullptr);
     assert(cJSON_GetArraySize(daily) == 1);
+    assert(qweather_alert_success_array(root.get(), "daily", nullptr) == daily);
 
     assert(qweather_success_array(root.get(), "now", nullptr) == nullptr);
     assert(qweather_success_object(root.get(), "daily", nullptr) == nullptr);
@@ -115,6 +116,47 @@ void test_failed_and_missing_business_code()
     assert(strcmp(qweather_code_text(code), "missing") == 0);
 }
 
+void test_alert_v2_response()
+{
+    const cJSON *code = reinterpret_cast<const cJSON *>(1);
+    NetworkJsonRoot empty(
+        R"({"metadata":{"tag":"abc","zeroResult":true},"alerts":[]})");
+    const cJSON *alerts =
+        qweather_alert_success_array(empty.get(), "alerts", &code);
+    assert(cJSON_IsArray(alerts));
+    assert(cJSON_GetArraySize(alerts) == 0);
+    assert(code == nullptr);
+
+    NetworkJsonRoot active(
+        R"({"metadata":{"zeroResult":false},"alerts":[{"headline":"大风预警"}]})");
+    alerts = qweather_alert_success_array(active.get(), "alerts", nullptr);
+    assert(cJSON_IsArray(alerts));
+    assert(cJSON_GetArraySize(alerts) == 1);
+
+    NetworkJsonRoot missing_metadata(R"({"alerts":[]})");
+    assert(qweather_alert_success_array(
+               missing_metadata.get(), "alerts", nullptr) == nullptr);
+    NetworkJsonRoot missing_zero_result(
+        R"({"metadata":{},"alerts":[]})");
+    assert(qweather_alert_success_array(
+               missing_zero_result.get(), "alerts", nullptr) == nullptr);
+    NetworkJsonRoot invalid_zero_result(
+        R"({"metadata":{"zeroResult":"true"},"alerts":[]})");
+    assert(qweather_alert_success_array(
+               invalid_zero_result.get(), "alerts", nullptr) == nullptr);
+    NetworkJsonRoot invalid_array(
+        R"({"metadata":{"zeroResult":true},"alerts":{}})");
+    assert(qweather_alert_success_array(
+               invalid_array.get(), "alerts", nullptr) == nullptr);
+
+    NetworkJsonRoot v1_error_with_v2_shape(
+        R"({"code":"401","metadata":{"zeroResult":true},"alerts":[]})");
+    code = nullptr;
+    assert(qweather_alert_success_array(
+               v1_error_with_v2_shape.get(), "alerts", &code) == nullptr);
+    assert(strcmp(qweather_code_text(code), "401") == 0);
+}
+
 } // namespace
 
 int main()
@@ -124,5 +166,6 @@ int main()
     test_json_root_accepts_read_only_text();
     test_success_object_and_array();
     test_failed_and_missing_business_code();
+    test_alert_v2_response();
     return 0;
 }

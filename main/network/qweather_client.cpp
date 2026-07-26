@@ -268,7 +268,7 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
     }
     const cJSON *code = nullptr;
     const cJSON *alerts =
-        qweather_success_array(root.get(), kQweatherAlertJsonAlertsField, &code);
+        qweather_alert_success_array(root.get(), kQweatherAlertJsonAlertsField, &code);
     if (!alerts) {
         ESP_LOGW(TAG, QWEATHER_ALERT_FAILED_FORMAT, qweather_code_text(code));
         return false;

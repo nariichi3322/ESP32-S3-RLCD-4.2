@@ -12,6 +12,8 @@
 namespace {
 constexpr const char *kQweatherDefaultStage = "request";
 constexpr const char *kQweatherJsonCodeField = "code";
+constexpr const char *kQweatherJsonMetadataField = "metadata";
+constexpr const char *kQweatherJsonZeroResultField = "zeroResult";
 constexpr const char *kQweatherSuccessCode = "200";
 constexpr const char *kQweatherMissingCodeText = "missing";
 #define QWEATHER_RESPONSE_SIZE_INVALID_FORMAT "qweather %s response size invalid"
@@ -102,4 +104,29 @@ const cJSON *qweather_success_array(const cJSON *root, const char *field, const 
 {
     const cJSON *item = qweather_success_item(root, field, code_out);
     return cJSON_IsArray(item) ? item : nullptr;
+}
+
+const cJSON *qweather_alert_success_array(const cJSON *root,
+                                         const char *field,
+                                         const cJSON **code_out)
+{
+    const cJSON *code =
+        cJSON_IsObject(root) ? cJSON_GetObjectItem(root, kQweatherJsonCodeField) : nullptr;
+    if (code_out) {
+        *code_out = code;
+    }
+    if (code) {
+        return qweather_success_array(root, field, nullptr);
+    }
+    const cJSON *metadata =
+        cJSON_IsObject(root) ? cJSON_GetObjectItem(root, kQweatherJsonMetadataField) : nullptr;
+    const cJSON *zero_result =
+        cJSON_IsObject(metadata)
+            ? cJSON_GetObjectItem(metadata, kQweatherJsonZeroResultField)
+            : nullptr;
+    const cJSON *alerts =
+        cJSON_IsObject(root) && field ? cJSON_GetObjectItem(root, field) : nullptr;
+    return cJSON_IsBool(zero_result) && cJSON_IsArray(alerts)
+               ? alerts
+               : nullptr;
 }

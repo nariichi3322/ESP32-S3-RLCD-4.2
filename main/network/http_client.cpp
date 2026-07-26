@@ -5,6 +5,7 @@
 #include "app_metadata.h"
 #include "app_text_format.h"
 #include "http_response_policy.h"
+#include "http_tls_retry_policy.h"
 #include "http_timeout_policy.h"
 #include "network_boot_sync.h"
 #include "network_gzip.h"
@@ -16,6 +17,8 @@
 #include "esp_attr.h"
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "miniz.h"
 
 #include <stdint.h>
@@ -40,6 +43,9 @@ constexpr const char *kHttpGetInvalidArgLog = "http get invalid arg";
 constexpr const char *kHttpBootBudgetExhaustedLog = "http get skipped: boot sync time budget exhausted";
 constexpr const char *kHttpClientInitFailedLog = "http client init failed";
 constexpr const char *kHttpTransactionLockTimeoutLog = "http transaction deferred: TLS session is busy";
+constexpr const char *kHttpQweatherTlsFallbackLog =
+    "qweather TLS bundle connection failed, retrying with legacy CA";
+constexpr TickType_t kHttpTlsFallbackDelay = pdMS_TO_TICKS(350);
 
 // All HTTPS/WSS activity is serialized by NetworkHttpTransactionGuard. Keep
 // the relatively large ESP-IDF request descriptor out of the network task
@@ -278,27 +284,45 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
     config.event_handler = http_event_handler;
     config.user_data = &buffer;
     config.timeout_ms = timeout_ms;
-    if (is_qweather_url(url)) {
-        config.cert_pem = kQweatherCaDvR36Pem;
-    } else {
-        config.crt_bundle_attach = esp_crt_bundle_attach;
-    }
+    const bool qweather_url = is_qweather_url(url);
+    const size_t attempt_count = http_tls_attempt_count(qweather_url);
     esp_err_t err = ESP_FAIL;
     int status = 0;
     int64_t content_length = 0;
-    {
-    ScopedHttpClient client(&config);
-        if (!client) {
-            ESP_LOGW(TAG, "%s", kHttpClientInitFailedLog);
-            return ESP_FAIL;
+    for (size_t attempt = 0; attempt < attempt_count; ++attempt) {
+        buffer.len = 0;
+        buffer.truncated = false;
+        out[0] = '\0';
+        config.cert_pem = nullptr;
+        config.crt_bundle_attach = nullptr;
+        if (http_tls_trust_mode(qweather_url, attempt) ==
+            HttpTlsTrustMode::kQweatherLegacyCa) {
+            config.cert_pem = kQweatherCaDvR36Pem;
+        } else {
+            config.crt_bundle_attach = esp_crt_bundle_attach;
         }
-        esp_err_t header_err = configure_http_request_headers(client.get(), api_key);
-        if (header_err != ESP_OK) {
-            return header_err;
+        {
+            ScopedHttpClient client(&config);
+            if (!client) {
+                ESP_LOGW(TAG, "%s", kHttpClientInitFailedLog);
+                return ESP_FAIL;
+            }
+            esp_err_t header_err = configure_http_request_headers(client.get(), api_key);
+            if (header_err != ESP_OK) {
+                return header_err;
+            }
+            err = esp_http_client_perform(client.get());
+            status = esp_http_client_get_status_code(client.get());
+            content_length = esp_http_client_get_content_length(client.get());
         }
-        err = esp_http_client_perform(client.get());
-        status = esp_http_client_get_status_code(client.get());
-        content_length = esp_http_client_get_content_length(client.get());
+        if (err == ESP_OK || !http_tls_should_retry(
+                                 qweather_url,
+                                 attempt,
+                                 err == ESP_ERR_HTTP_CONNECT)) {
+            break;
+        }
+        ESP_LOGW(TAG, "%s", kHttpQweatherTlsFallbackLog);
+        vTaskDelay(kHttpTlsFallbackDelay);
     }
     if (err != ESP_OK || !http_status_ok(status)) {
         if (buffer.len > 0) {

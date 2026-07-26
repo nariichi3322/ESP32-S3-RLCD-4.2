@@ -79,3 +79,6 @@ const char *qweather_code_text(const cJSON *code);
 const cJSON *qweather_success_item(const cJSON *root, const char *field, const cJSON **code_out);
 const cJSON *qweather_success_object(const cJSON *root, const char *field, const cJSON **code_out);
 const cJSON *qweather_success_array(const cJSON *root, const char *field, const cJSON **code_out);
+const cJSON *qweather_alert_success_array(const cJSON *root,
+                                         const char *field,
+                                         const cJSON **code_out);
