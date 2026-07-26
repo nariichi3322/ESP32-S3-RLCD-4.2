@@ -2,7 +2,6 @@
 #include "wifi_portal_http.h"
 
 #include "network_provisioning.h"
-#include "wifi_radio_services.h"
 
 #include "app_constexpr.h"
 #include "app_event_group.h"
@@ -10,6 +9,7 @@
 #include "network_diagnostics_state.h"
 #include "network_form.h"
 #include "network_text.h"
+#include "setup_portal_control.h"
 #include "wifi_portal_dns.h"
 #include "wifi_portal_pages.h"
 #include "wifi_portal_state.h"
@@ -26,12 +26,13 @@
 
 namespace {
 httpd_handle_t s_http_server = nullptr;
+bool s_http_routes_ready = false;
 bool s_display_dma_guard_active = false;
 constexpr uint16_t kSetupHttpServerPort = 80;
 constexpr size_t kSetupHttpServerStackSize = 8192;
 constexpr size_t kSetupHttpMaxRequestHeaderLength = 1024;
 constexpr size_t kPortalSubmitSsidFieldSize = 33;
-constexpr size_t kPortalRequestBufferSize = 640;
+constexpr size_t kPortalRequestBufferSize = 1024;
 // ESP-IDF invokes synchronous URI handlers on the single HTTP server task.
 // Keep their mutually exclusive request staging area off that task's stack.
 EXT_RAM_BSS_ATTR char s_portal_request_buffer[kPortalRequestBufferSize];
@@ -106,6 +107,7 @@ static_assert(portal_http_routes_valid(), "portal HTTP routes must have URI and 
 #define PORTAL_POST_BODY_TRUNCATED_FORMAT "setup POST body truncated content_len=%u buffer=%u"
 #define PORTAL_POST_BODY_RECEIVE_FAILED_FORMAT "setup POST body receive failed ret=%d received=%d expected=%u"
 #define PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG "setup save skipped initial sync request: app events unavailable"
+#define PORTAL_OFFLINE_STOP_REQUEST_UNAVAILABLE_LOG "offline setup could not queue portal stop"
 
 bool request_provisioning_sync_after_save()
 {
@@ -138,6 +140,7 @@ void release_portal_display_dma_guard()
 bool stop_http_server_handle()
 {
     if (!s_http_server) {
+        s_http_routes_ready = false;
         release_portal_display_dma_guard();
         return true;
     }
@@ -147,6 +150,7 @@ bool stop_http_server_handle()
         return false;
     }
     s_http_server = nullptr;
+    s_http_routes_ready = false;
     release_portal_display_dma_guard();
     return true;
 }
@@ -168,7 +172,12 @@ esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
             settings_page_clear();
             network_diag_page_clear();
             info_page_clear();
-            stop_wifi_radio(true);
+            if (err == ESP_OK) {
+                vTaskDelay(pdMS_TO_TICKS(kPortalResponseSettleMs));
+            }
+            if (!request_setup_portal_stop()) {
+                ESP_LOGW(TAG, "%s", PORTAL_OFFLINE_STOP_REQUEST_UNAVAILABLE_LOG);
+            }
             notify_ui_task();
         }
         return err;
@@ -237,11 +246,15 @@ esp_err_t register_http_handler(httpd_handle_t server,
 }
 } // namespace
 
-void stop_http_server()
+bool stop_http_server()
 {
-    (void)stop_http_server_handle();
+    const bool http_stopped = stop_http_server_handle();
     stop_captive_dns_server();
+    if (!http_stopped) {
+        return false;
+    }
     setup_portal_active_store(false);
+    return true;
 }
 
 namespace {
@@ -306,7 +319,9 @@ esp_err_t captive_portal_handler(httpd_req_t *req)
 
 bool start_http_server()
 {
-    if (s_http_server && !setup_portal_active_load() && !stop_http_server_handle()) {
+    if (s_http_server &&
+        (!s_http_routes_ready || !setup_portal_active_load()) &&
+        !stop_http_server_handle()) {
         return false;
     }
     if (s_http_server) {
@@ -329,10 +344,12 @@ bool start_http_server()
     esp_err_t err = httpd_start(&s_http_server, &config);
     if (err != ESP_OK) {
         s_http_server = nullptr;
+        s_http_routes_ready = false;
         setup_portal_active_store(false);
         ESP_LOGW(TAG, PORTAL_HTTP_SERVER_START_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
+    acquire_portal_display_dma_guard();
 
     for (const PortalHttpRoute &route : kPortalHttpRoutes) {
         if (err != ESP_OK) {
@@ -342,14 +359,17 @@ bool start_http_server()
     }
     if (err != ESP_OK) {
         ESP_LOGW(TAG, PORTAL_HTTP_URI_REGISTER_FAILED_FORMAT, esp_err_to_name(err));
-        (void)stop_http_server_handle();
-        setup_portal_active_store(false);
+        const bool stopped = stop_http_server_handle();
+        setup_portal_active_store(!stopped);
+        if (!stopped) {
+            (void)request_setup_portal_stop();
+        }
         return false;
     }
+    s_http_routes_ready = true;
     if (!start_captive_dns_server()) {
         ESP_LOGW(TAG, SETUP_PORTAL_WITHOUT_CAPTIVE_DNS_LOG);
     }
-    acquire_portal_display_dma_guard();
     setup_portal_active_store(true);
     return true;
 }

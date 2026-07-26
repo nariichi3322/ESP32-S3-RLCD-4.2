@@ -46,6 +46,13 @@ int main()
 
     assert(ui_pomodoro_boundary_delay_ms(0) == 0);
     assert(ui_pomodoro_boundary_delay_ms(995) == 1000);
+    assert(ui_lvgl_lock_retry_delay_ms(0) == 0);
+    assert(ui_lvgl_lock_retry_delay_ms(1) == 100);
+    assert(ui_lvgl_lock_retry_delay_ms(2) == 200);
+    assert(ui_lvgl_lock_retry_delay_ms(3) == 400);
+    assert(ui_lvgl_lock_retry_delay_ms(4) == 800);
+    assert(ui_lvgl_lock_retry_delay_ms(5) == 1000);
+    assert(ui_lvgl_lock_retry_delay_ms(255) == 1000);
     assert(ui_nonzero_delay_ticks(0) == 1);
     assert(ui_nonzero_delay_ticks(25) == 25);
 

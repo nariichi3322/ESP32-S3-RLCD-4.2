@@ -31,11 +31,12 @@ inline const char *ota_manifest_source_name_or_unknown(const char *name)
 
 void ota_manifest_load_cached(OtaManifest *manifest);
 void ota_manifest_store_cached(const OtaManifest &manifest);
+// manifest and source_name are cleared before work and remain empty on failure.
 bool ota_manifest_fetch(OtaManifest *manifest,
                         char *source_name,
                         size_t source_name_len,
                         OtaManifestFailureCallback failure_callback);
-// backup must not alias current; it is scratch storage and is valid only on success.
+// backup must not alias current; a non-aliased output remains empty on failure.
 bool ota_manifest_fetch_backup_for_install(const OtaManifest &current,
                                            OtaManifest *backup,
                                            OtaManifestFailureCallback failure_callback);

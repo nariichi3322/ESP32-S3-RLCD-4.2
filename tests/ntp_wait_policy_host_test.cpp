@@ -23,5 +23,16 @@ int main()
     assert(ntp_total_wait_ticks<ShortTick>(
                65536, 1, UINT16_MAX - 1) == UINT16_MAX - 1);
 
+    assert((ntp_wait_ticks_to_milliseconds<Tick, uint32_t>(
+                7500, 250, UINT32_MAX) == 30000));
+    assert((ntp_wait_ticks_to_milliseconds<Tick, uint32_t>(
+                1, 250, UINT32_MAX) == 4));
+    assert((ntp_wait_ticks_to_milliseconds<Tick, uint32_t>(
+                UINT32_MAX - 1, 250, UINT32_MAX) == UINT32_MAX));
+    assert((ntp_wait_ticks_to_milliseconds<Tick, uint32_t>(
+                30, 0, UINT32_MAX) == 0));
+    assert((ntp_wait_ticks_to_milliseconds<Tick, uint32_t>(
+                30, 250, 0) == 0));
+
     return 0;
 }

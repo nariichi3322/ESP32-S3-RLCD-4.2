@@ -4,6 +4,7 @@
 enum class DailySayingAttemptOutcome {
     kAccepted,
     kHttpFailure,
+    kTerminalHttpFailure,
     kParseFailure,
     kTooLong,
 };
@@ -27,6 +28,7 @@ public:
                                     DailySayingAttemptOutcome outcome) const
     {
         if (outcome == DailySayingAttemptOutcome::kAccepted ||
+            outcome == DailySayingAttemptOutcome::kTerminalHttpFailure ||
             completed_attempts >= kDailySayingMaxAttempts) {
             return false;
         }

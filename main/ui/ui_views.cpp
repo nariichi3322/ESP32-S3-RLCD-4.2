@@ -6,7 +6,6 @@
 #include "app_runtime_timing.h"
 
 #include "alarm_services.h"
-#include "app_constexpr.h"
 #include "app_event_group.h"
 #include "app_tick_time.h"
 #include "audio_services.h"
@@ -53,10 +52,6 @@ constexpr int kUiPostPageSwitchPollMs = 250;
 constexpr int kUiLvglLockTimeoutMs = 80;
 #define UI_SETTINGS_TIMEOUT_RETURN_LOG "settings timeout, returning to clock"
 
-constexpr const char *kUiLogTexts[] = {
-    UI_SETTINGS_TIMEOUT_RETURN_LOG,
-};
-
 static_assert(kUiInfoPageOtaFallbackPollMs > 0,
               "UI info page OTA fallback poll interval must be positive");
 static_assert(kUiNetworkDiagRunningFallbackMs > 0,
@@ -65,9 +60,6 @@ static_assert(kUiNetworkDiagIdleFallbackMs > 0,
               "network diagnostics idle fallback interval must be positive");
 static_assert(kUiPostPageSwitchPollMs > 0, "post page switch poll interval must be positive");
 static_assert(kUiLvglLockTimeoutMs > 0, "UI LVGL lock timeout must be positive");
-static_assert(array_count(kUiLogTexts) > 0, "UI log text registry must not be empty");
-static_assert(cstr_array_nonempty(kUiLogTexts), "UI main-loop log texts must be non-empty");
-
 } // namespace
 
 namespace {
@@ -143,6 +135,7 @@ void ui_task(void *)
     bool cached_local_valid = false;
     bool xiaozhi_activation_requested = false;
     bool xiaozhi_activation_request_valid = false;
+    uint8_t lvgl_lock_failures = 0;
 
     for (;;) {
         time_t now;
@@ -229,7 +222,9 @@ void ui_task(void *)
         bool mode_due = battery.low_battery_mode != low_mode_visible;
 
         bool start_setup_prompt_after_ui = false;
-        if (Lvgl_lock(kUiLvglLockTimeoutMs)) {
+        const bool lvgl_locked = Lvgl_lock(kUiLvglLockTimeoutMs);
+        if (lvgl_locked) {
+            lvgl_lock_failures = 0;
             bool refresh_now = false;
             bool info_requested = runtime_surfaces.info_requested;
             InfoPageStateSnapshot info_state = {};
@@ -273,9 +268,10 @@ void ui_task(void *)
             if (info_requested && info_until != 0 &&
                 app_tick_deadline_reached(tick_now, info_until) &&
                 !info_ota_flow_active) {
-                info_page_clear();
-                info_requested = false;
-                runtime_surfaces.info_requested = false;
+                if (info_page_clear_if_current(info_state)) {
+                    info_requested = false;
+                    runtime_surfaces.info_requested = false;
+                }
             }
             if (battery.low_battery_mode &&
                 !(info_ota_snapshot_valid
@@ -360,13 +356,16 @@ void ui_task(void *)
             }
 
             NetworkDiagState network_diag_state = kNetworkDiagIdle;
+            SettingsActivitySnapshot network_diag_activity = {};
             if (network_diag_requested) {
                 network_diag_state = network_diag_state_load();
+                network_diag_activity = settings_activity_snapshot();
             }
             if (network_diag_requested &&
                 network_diag_state == kNetworkDiagDone &&
                 ui_runtime_settings_timeout_elapsed(
-                    settings_activity_last_tick())) {
+                    network_diag_activity.last_activity_tick) &&
+                settings_activity_claim_if_current(network_diag_activity)) {
                 network_diag_page_clear();
                 network_diag_requested = false;
                 runtime_surfaces.network_diag_requested = false;
@@ -392,7 +391,7 @@ void ui_task(void *)
                 if (wait_state == kNetworkDiagDone) {
                     network_diag_wait = static_cast<TickType_t>(
                         ui_inactivity_wait_ticks(xTaskGetTickCount(),
-                                                 settings_activity_last_tick(),
+                                                 network_diag_activity.last_activity_tick,
                                                  pdMS_TO_TICKS(kSettingsTimeoutMs)));
                 }
                 (void)ulTaskNotifyTake(pdTRUE, network_diag_wait);
@@ -447,20 +446,23 @@ void ui_task(void *)
                     settings_changed = true;
                 }
                 if (settings_requested) {
-                    TickType_t last_activity = settings_activity_last_tick();
+                    const SettingsActivitySnapshot timeout_activity =
+                        settings_activity_snapshot();
                     bool button_pressed = gpio_get_level(kBootButtonGpio) == 0 ||
                                           gpio_get_level(kKeyButtonGpio) == 0;
                     if (!settings_action_handled &&
                         !button_pressed &&
                         !is_settings_sync_busy() && !ota_flow_active() &&
-                        ui_runtime_settings_timeout_elapsed(last_activity)) {
+                        ui_runtime_settings_timeout_elapsed(
+                            timeout_activity.last_activity_tick) &&
+                        settings_page_clear_if_activity_current(
+                            timeout_activity)) {
                         ESP_LOGI(TAG, "%s", UI_SETTINGS_TIMEOUT_RETURN_LOG);
                         if (settings_navigation_snapshot().page_order_mode) {
                             if (save_work_page_order()) {
                                 active_work_page_store(first_enabled_work_page());
                             }
                         }
-                        settings_page_clear();
                         reset_settings_navigation_state();
                         settings_requested = false;
                         runtime_surfaces.settings_requested = false;
@@ -683,17 +685,24 @@ void ui_task(void *)
             start_setup_prompt_after_ui = setup_panel_visible &&
                                           setup_prompt_playback_pending();
             Lvgl_unlock();
+        } else if (lvgl_lock_failures < UINT8_MAX) {
+            ++lvgl_lock_failures;
         }
         if (start_setup_prompt_after_ui) {
             (void)start_setup_prompt_playback();
         }
-        TickType_t delay_ticks = ui_runtime_next_loop_delay_ticks(
-            local,
-            now,
-            battery,
-            battery_blink_visible,
-            active_page,
-            runtime_surfaces);
+        TickType_t delay_ticks = lvgl_locked
+                                     ? ui_runtime_next_loop_delay_ticks(
+                                           local,
+                                           now,
+                                           battery,
+                                           battery_blink_visible,
+                                           active_page,
+                                           runtime_surfaces)
+                                     : pdMS_TO_TICKS(ui_lvgl_lock_retry_delay_ms(
+                                           lvgl_lock_failures));
+        delay_ticks = static_cast<TickType_t>(
+            ui_nonzero_delay_ticks(static_cast<uint32_t>(delay_ticks)));
         ulTaskNotifyTake(pdTRUE, delay_ticks);
     }
 }

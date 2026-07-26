@@ -4,7 +4,7 @@
 #include <atomic>
 #include <stdint.h>
 
-inline constexpr uint32_t kDisplayDmaConservativeMaxDepth = 8;
+inline constexpr uint32_t kDisplayDmaConservativeMaxDepth = 0x7fffffffU;
 
 class DisplayDmaModeState {
 public:
@@ -51,8 +51,8 @@ public:
     }
 
 private:
-    static constexpr uint32_t kDepthMask = 0x0f;
-    static constexpr uint32_t kOtaQuietMask = 0x10;
+    static constexpr uint32_t kDepthMask = 0x7fffffffU;
+    static constexpr uint32_t kOtaQuietMask = 0x80000000U;
     static_assert(kDisplayDmaConservativeMaxDepth <= kDepthMask,
                   "display DMA conservative depth must fit atomic state");
     static_assert((kDepthMask & kOtaQuietMask) == 0,

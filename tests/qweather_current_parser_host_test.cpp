@@ -78,7 +78,10 @@ int main()
     air.ready = true;
     air.updated_at = 123456;
     now = parse_json(
-        "{\"aqi\":\"42\",\"category\":\"优\",\"primary\":\"NA\",\"pm2p5\":\"17\"}");
+        "{\"indexes\":[{\"code\":\"cn-mee\",\"aqi\":42,\"aqiDisplay\":\"42\","
+        "\"category\":\"优\",\"primaryPollutant\":{\"code\":\"na\"}}],"
+        "\"pollutants\":[{\"code\":\"pm2p5\",\"concentration\":{\"value\":17,"
+        "\"unit\":\"μg/m3\"}}]}");
     assert(parse_qweather_current_air(now, &air));
     assert(strcmp(air.aqi, "42") == 0);
     assert(strcmp(air.category, "优") == 0);
@@ -92,27 +95,32 @@ int main()
             sizeof(air_without_optional.primary));
     strlcpy(air_without_optional.pm2p5, "stale-pm2p5",
             sizeof(air_without_optional.pm2p5));
-    now = parse_json("{\"aqi\":\"80\",\"category\":\"良\"}");
+    now = parse_json(
+        "{\"indexes\":[{\"code\":\"cn-mee\",\"aqi\":80,\"category\":\"良\"}],"
+        "\"pollutants\":[]}");
     assert(parse_qweather_current_air(now, &air_without_optional));
     assert(air_without_optional.primary[0] == '\0');
     assert(air_without_optional.pm2p5[0] == '\0');
     cJSON_Delete(now);
 
     WeatherAirData partial_air = air;
-    now = parse_json("{\"aqi\":\"90\",\"primary\":\"PM2.5\",\"pm2p5\":\"35\"}");
+    now = parse_json(
+        "{\"indexes\":[{\"code\":\"cn-mee\",\"aqi\":90}],\"pollutants\":[]}");
     assert(!parse_qweather_current_air(now, &partial_air));
     assert_air_equal(partial_air, air);
     cJSON_Delete(now);
 
     WeatherAirData short_circuit_air = air;
-    now = parse_json("{\"category\":\"优\",\"primary\":\"NA\"}");
+    now = parse_json(
+        "{\"indexes\":[{\"code\":\"cn-mee\",\"category\":\"优\"}],"
+        "\"pollutants\":[]}");
     assert(!parse_qweather_current_air(now, &short_circuit_air));
     assert_air_equal(short_circuit_air, air);
     cJSON_Delete(now);
 
     WeatherAirData wrong_type_air = air;
     now = parse_json(
-        "{\"aqi\":42,\"category\":\"优\",\"primary\":\"NA\",\"pm2p5\":\"17\"}");
+        "{\"indexes\":\"bad\",\"pollutants\":[]}");
     assert(!parse_qweather_current_air(now, &wrong_type_air));
     assert_air_equal(wrong_type_air, air);
     cJSON_Delete(now);

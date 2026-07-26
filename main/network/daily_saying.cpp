@@ -1,15 +1,16 @@
 // 获取、筛选和缓存图片时钟底部每日文字。
 #include "app_constexpr.h"
 #include "app_metadata.h"
-#include "battery_runtime_state.h"
 #include "daily_saying_contract.h"
 #include "daily_saying_retry_policy.h"
 #include "daily_saying_service.h"
 #include "daily_saying_state.h"
 #include "daily_saying_parser.h"
 #include "network_http_client.h"
+#include "network_http_retry_policy.h"
+#include "network_sync_runtime.h"
+#include "network_sync_wait.h"
 #include "scoped_heap_buffer.h"
-#include "setup_portal_control.h"
 #include "ui_task_notify.h"
 
 #include <esp_log.h>
@@ -96,15 +97,15 @@ DailySayingAttemptOutcome parse_daily_saying_attempt(
     return DailySayingAttemptOutcome::kTooLong;
 }
 
-void settle_before_next_daily_saying_attempt()
+bool settle_before_next_daily_saying_attempt()
 {
-    vTaskDelay(pdMS_TO_TICKS(kDailySayingRetrySettleMs));
+    return wait_for_network_sync_settle(kDailySayingRetrySettleMs);
 }
 } // namespace
 
 bool perform_daily_saying_update()
 {
-    if (battery_low_mode_load()) {
+    if (!network_sync_continuation_allowed()) {
         return false;
     }
     char next[kDailySayingLen] = {};
@@ -117,25 +118,30 @@ bool perform_daily_saying_update()
     DailySayingAttemptStats stats;
     DailySayingRetryPolicy retry_policy;
     for (int attempt = 1; attempt <= kDailySayingMaxAttempts; ++attempt) {
-        if (setup_portal_start_requested()) {
+        if (!network_sync_continuation_allowed()) {
             break;
         }
         stats.record_attempt();
         response.clear();
         esp_err_t err = http_get_text(kDailySayingUrl, response.get(), response.size(), nullptr);
-        if (setup_portal_start_requested()) {
+        if (!network_sync_continuation_allowed()) {
             break;
         }
         if (err != ESP_OK) {
             stats.record_http_failure();
             ESP_LOGW(TAG, DAILY_SAYING_HTTP_FAILED_LOG_FORMAT, esp_err_to_name(err));
             const DailySayingAttemptOutcome outcome =
-                DailySayingAttemptOutcome::kHttpFailure;
+                network_http_immediate_retry_allowed(err)
+                    ? DailySayingAttemptOutcome::kHttpFailure
+                    : DailySayingAttemptOutcome::kTerminalHttpFailure;
             retry_policy.record(outcome);
-            if (!retry_policy.should_retry(attempt, outcome)) {
+            if (!retry_policy.should_retry(attempt, outcome) ||
+                !network_sync_continuation_allowed()) {
                 break;
             }
-            settle_before_next_daily_saying_attempt();
+            if (!settle_before_next_daily_saying_attempt()) {
+                break;
+            }
             continue;
         }
         const DailySayingAttemptOutcome outcome =
@@ -148,10 +154,13 @@ bool perform_daily_saying_update()
         if (outcome == DailySayingAttemptOutcome::kAccepted) {
             break;
         }
-        if (!retry_policy.should_retry(attempt, outcome)) {
+        if (!retry_policy.should_retry(attempt, outcome) ||
+            !network_sync_continuation_allowed()) {
             break;
         }
-        settle_before_next_daily_saying_attempt();
+        if (!settle_before_next_daily_saying_attempt()) {
+            break;
+        }
     }
     if (next[0] == '\0') {
         log_daily_saying_update_failed(stats);

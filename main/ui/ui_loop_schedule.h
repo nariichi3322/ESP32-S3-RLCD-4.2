@@ -42,6 +42,7 @@ bool ui_xiaozhi_activation_update_due(bool requested_active,
                                       bool allow_active_retry);
 uint32_t ui_next_minute_delay_ms(int local_second);
 uint32_t ui_pomodoro_boundary_delay_ms(uint32_t boundary_ms);
+uint32_t ui_lvgl_lock_retry_delay_ms(uint8_t consecutive_failures);
 uint32_t ui_nonzero_delay_ticks(uint32_t ticks);
 uint32_t ui_shortest_delay_ticks(const uint32_t *candidates, size_t count);
 uint32_t ui_inactivity_wait_ticks(uint32_t now_tick,

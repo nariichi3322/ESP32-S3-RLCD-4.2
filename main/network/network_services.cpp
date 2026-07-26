@@ -3,21 +3,19 @@
 
 #include "app_event_group.h"
 #include "app_metadata.h"
-#include "battery_runtime_state.h"
 #include "daily_saying_state.h"
 #include "daily_saying_service.h"
 #include "ota_runtime_state.h"
 
 #include "network_https_resources.h"
 #include "network_cache_policy.h"
-#include "network_credentials_state.h"
 #include "network_diagnostics.h"
 #include "ntp_services.h"
-#include "offline_mode_state.h"
 #include "network_provisioning_session.h"
 #include "provisioning_validation.h"
 #include "network_diagnostics_catalog.h"
 #include "network_sync_requests.h"
+#include "network_sync_runtime.h"
 #include "network_sync_schedule.h"
 #include "network_sync_wait.h"
 #include "network_task_guards.h"
@@ -39,7 +37,6 @@
 static constexpr uint32_t kNetworkShortRetryWaitMs = 1000;
 static constexpr uint32_t kNetworkWifiConnectTimeoutMs = 45000;
 static constexpr uint32_t kNetworkTaskStartupDelayMs = 2500;
-static constexpr uint32_t kNetworkBootSyncGateWarningMs = 1000;
 static constexpr time_t kBootWeatherRefreshDelaySec = 10;
 static constexpr time_t kBootSayingRefreshDelaySec = 25;
 static constexpr time_t kBootHttpsInterRequestGapSec = 8;
@@ -49,8 +46,6 @@ static_assert(kBootSayingRefreshDelaySec > kBootWeatherRefreshDelaySec,
               "boot saying refresh delay must stay after boot weather refresh");
 static_assert(kBootHttpsInterRequestGapSec > 0,
               "boot HTTPS inter-request gap must be positive");
-static_assert(kNetworkBootSyncGateWarningMs > 0,
-              "boot sync gate warning delay must be positive");
 static_assert(kNetworkDiagOtaLine == kNetworkDiagLineCount - 1,
               "network service diagnostics line mapping must match diagnostics line count");
 static constexpr const char *kNetworkDiagIpLocationWifiStartFailed = "IP定位: WiFi启动失败";
@@ -74,7 +69,6 @@ static constexpr const char *kNetworkSyncPowerLockUnavailableLog =
 static constexpr const char *kNetworkSyncWifiConnectTimeoutLog = "wifi connect timeout during sync window";
 static constexpr const char *kNetworkSyncContextChangedLog =
     "network sync deferred after runtime state change";
-static constexpr const char *kNetworkBootSyncGateWaitLog = "network sync waiting for boot connectivity task";
 #define PROVISIONING_BACKGROUND_REFRESH_FORMAT \
     "provisioning background refresh scheduled: ntp=1 weather=%d saying=%d"
 
@@ -92,26 +86,6 @@ struct NetworkSyncRuntimeState {
     bool boot_weather_due = false;
     bool boot_saying_due = false;
 };
-
-static NetworkSyncAvailability capture_network_runtime_availability()
-{
-    const NetworkCredentialsAvailability credentials = network_credentials_availability();
-    return {
-        credentials.wifi_configured,
-        credentials.weather_api_key_configured,
-        offline_mode_enabled_load(),
-        battery_low_mode_load(),
-    };
-}
-
-static bool network_sync_start_context_changed(
-    const NetworkSyncAvailability &scheduled,
-    const NetworkSyncAvailability &current)
-{
-    return network_sync_availability_changed(scheduled, current) ||
-           ota_blocks_background_network_sync(ota_runtime_state_load()) ||
-           setup_portal_start_requested();
-}
 
 static WorkPageDataRequirements capture_network_refresh_page_availability()
 {
@@ -188,6 +162,9 @@ static void clear_ready_boot_sync_flags(bool weather_ready, bool saying_ready, b
 
 static void cancel_disabled_page_boot_refreshes(NetworkSyncRuntimeState &runtime)
 {
+    if (!runtime.boot_weather_due && !runtime.boot_saying_due) {
+        return;
+    }
     const WorkPageDataRequirements pages =
         capture_network_refresh_page_availability();
     if (runtime.boot_weather_due && !pages.weather) {
@@ -204,6 +181,10 @@ static bool automatic_boot_refresh_page_disabled(
     const NetworkSyncSchedule &schedule,
     const NetworkSyncRequestSnapshot &requests)
 {
+    if (requests.provisioning ||
+        (!schedule.boot_weather_ready && !schedule.boot_saying_ready)) {
+        return false;
+    }
     NetworkAutomaticBootPageInput input = {};
     const WorkPageDataRequirements pages =
         capture_network_refresh_page_availability();
@@ -218,13 +199,17 @@ static bool automatic_boot_refresh_page_disabled(
 static void finish_network_radio_session(NetworkAwakeLockGuard &awake_lock,
                                          bool force_setup_portal = false)
 {
-    // Keep the CPU awake through esp_wifi_stop(), then service any deferred
-    // close request after this session releases its final PM-lock ownership.
+    // Keep the CPU awake through esp_wifi_stop(). If another protected owner
+    // blocks this attempt, retain a real close request until that owner exits.
     if (awake_lock.locked()) {
         stop_wifi_radio(force_setup_portal);
+        awake_lock.release();
+        request_wifi_radio_stop_when_idle();
+    } else {
+        // This caller never acquired session ownership, so it must not create a
+        // new stop request; it may only service one left by an earlier owner.
+        service_wifi_radio_stop_when_idle();
     }
-    awake_lock.release();
-    service_wifi_radio_stop_when_idle();
 }
 
 static void schedule_background_refresh_after_provisioning(
@@ -252,19 +237,20 @@ static void schedule_background_refresh_after_provisioning(
              runtime.boot_saying_due);
 }
 
-static void settle_between_network_operations(bool more_work_pending)
+static bool settle_between_network_operations(bool more_work_pending)
 {
-    if (more_work_pending) {
-        // The preceding client has already released its TLS buffers. Give the
-        // allocator and UI task a scheduling window before the next operation.
-        // The first minute uses a longer gap because boot UI, sensor and cache
-        // initialization still compete for internal/DMA memory.
-        bool startup_pressure = network_startup_pressure_window_active(
-            startup_screen_active(),
-            esp_timer_get_time());
-        vTaskDelay(pdMS_TO_TICKS(
-            network_inter_operation_settle_delay_ms(startup_pressure)));
+    if (!more_work_pending) {
+        return true;
     }
+    // The preceding client has already released its TLS buffers. Give the
+    // allocator and UI task a scheduling window before the next operation.
+    // The first minute uses a longer gap because boot UI, sensor and cache
+    // initialization still compete for internal/DMA memory.
+    const bool startup_pressure = network_startup_pressure_window_active(
+        startup_screen_active(),
+        esp_timer_get_time());
+    return wait_for_network_sync_settle(
+        network_inter_operation_settle_delay_ms(startup_pressure));
 }
 
 static bool defer_automatic_boot_https_for_memory(NetworkSyncSchedule *schedule,
@@ -393,7 +379,7 @@ static void finish_failed_network_sync_session(
     finish_network_radio_session(awake_lock);
 }
 
-static void execute_connected_sync_window(const NetworkSyncSchedule &schedule,
+static bool execute_connected_sync_window(const NetworkSyncSchedule &schedule,
                                           const NetworkSyncRequestSnapshot &requests,
                                           NetworkSyncRuntimeState &runtime)
 {
@@ -403,7 +389,11 @@ static void execute_connected_sync_window(const NetworkSyncSchedule &schedule,
     bool saying_ok = false;
     NetworkDisplayDmaGuard display_guard(schedule.weather_due || schedule.saying_due);
     if (schedule.ntp_due) {
-        if (perform_ntp_sync()) {
+        const bool ntp_succeeded = perform_ntp_sync();
+        if (!network_sync_continuation_allowed()) {
+            return false;
+        }
+        if (ntp_succeeded) {
             ntp_ok = true;
             runtime.boot_ntp_due = false;
             runtime.daily_ntp_pending = false;
@@ -415,17 +405,27 @@ static void execute_connected_sync_window(const NetworkSyncSchedule &schedule,
                                       &runtime.next_ntp_retry_at,
                                       &runtime.ntp_retry_failures);
         }
-        settle_between_network_operations(schedule.weather_due ||
-                                          schedule.saying_due);
+        if (!settle_between_network_operations(schedule.weather_due ||
+                                               schedule.saying_due)) {
+            return false;
+        }
     }
     if (schedule.weather_due) {
         WeatherUpdateResult result = perform_weather_update();
+        if (!network_sync_continuation_allowed()) {
+            return false;
+        }
         weather_ok = result == WeatherUpdateResult::kSuccess;
         weather_resource_deferred = result == WeatherUpdateResult::kResourceDeferred;
-        settle_between_network_operations(schedule.saying_due);
+        if (!settle_between_network_operations(schedule.saying_due)) {
+            return false;
+        }
     }
     if (schedule.saying_due) {
         saying_ok = perform_daily_saying_update();
+        if (!network_sync_continuation_allowed()) {
+            return false;
+        }
     }
     runtime.boot_weather_due = network_boot_weather_due_after_update(
         runtime.boot_weather_due,
@@ -459,9 +459,11 @@ static void execute_connected_sync_window(const NetworkSyncSchedule &schedule,
                                     ntp_ok,
                                     weather_ok,
                                     saying_ok);
+    return true;
 }
 
-static void execute_network_diagnostics_window()
+static bool execute_network_diagnostics_window(
+    const NetworkSyncAvailability &scheduled_runtime)
 {
     ESP_LOGI(TAG, "%s", kNetworkDiagWifiOnLog);
     NetworkAwakeLockGuard awake_lock;
@@ -470,30 +472,31 @@ static void execute_network_diagnostics_window()
         set_network_diag_unavailable(kNetworkDiagIpLocationPowerLockUnavailable);
     } else if (!start_wifi_radio(false)) {
         set_network_diag_unavailable(kNetworkDiagIpLocationWifiStartFailed);
-    } else if (!wait_for_wifi_connected(kNetworkWifiConnectTimeoutMs)) {
-        set_network_diag_unavailable(kNetworkDiagIpLocationWifiConnectTimeout);
     } else {
-        run_network_diagnostic_checks();
+        const NetworkSyncConnectionWaitResult connection_wait =
+            wait_for_valid_network_sync_connection(scheduled_runtime,
+                                                   kNetworkDiagBit,
+                                                   kNetworkWifiConnectTimeoutMs);
+        if (connection_wait == NetworkSyncConnectionWaitResult::kRuntimeChanged) {
+            ESP_LOGI(TAG, "%s", kNetworkSyncContextChangedLog);
+            finish_network_radio_session(awake_lock);
+            return false;
+        }
+        if (connection_wait == NetworkSyncConnectionWaitResult::kConnected) {
+            if (!run_network_diagnostic_checks()) {
+                ESP_LOGI(TAG, "%s", kNetworkSyncContextChangedLog);
+                finish_network_radio_session(awake_lock);
+                return false;
+            }
+        } else {
+            set_network_diag_unavailable(
+                kNetworkDiagIpLocationWifiConnectTimeout);
+        }
     }
     finish_network_radio_session(awake_lock);
     network_diag_finish();
     finish_network_diagnostics_sync();
-}
-
-static void wait_for_boot_sync_completion()
-{
-    EventBits_t bits = app_event_group_wait_bits(kBootSyncDoneBit,
-                                                 pdFALSE,
-                                                 pdTRUE,
-                                                 pdMS_TO_TICKS(kNetworkBootSyncGateWarningMs));
-    if ((bits & kBootSyncDoneBit) != 0) {
-        return;
-    }
-    ESP_LOGW(TAG, "%s", kNetworkBootSyncGateWaitLog);
-    app_event_group_wait_bits(kBootSyncDoneBit,
-                              pdFALSE,
-                              pdTRUE,
-                              portMAX_DELAY);
+    return true;
 }
 
 static void wait_for_network_runtime_or_wifi_stop_retry(
@@ -510,7 +513,6 @@ static void wait_for_network_runtime_or_wifi_stop_retry(
 
 void network_sync_task(void *)
 {
-    wait_for_boot_sync_completion();
     vTaskDelay(pdMS_TO_TICKS(kNetworkTaskStartupDelayMs));
     EventBits_t initial_bits = app_event_group_get_bits();
     NetworkSyncRuntimeState sync_runtime;
@@ -556,6 +558,14 @@ void network_sync_task(void *)
             }
         } else {
             sync_runtime.wifi_stop_retry_failures = 0;
+        }
+        const SetupPortalStopResult setup_portal_stop =
+            service_setup_portal_stop_request();
+        if (setup_portal_stop != SetupPortalStopResult::kNoRequest) {
+            if (setup_portal_stop == SetupPortalStopResult::kRetryPending) {
+                wait_for_setup_portal_retry();
+            }
+            continue;
         }
         NetworkSyncRequestSnapshot requests = snapshot_network_sync_requests();
         const NetworkSyncAvailability runtime =
@@ -605,13 +615,34 @@ void network_sync_task(void *)
                 app_event_group_clear_bits(kVisibleWeatherSyncBit);
             }
         }
-        if (setup_portal_active_load() && requests.none_for_setup_portal()) {
-            wait_for_network_runtime_request();
-            continue;
+        // A diagnostics request may have been queued just before low-battery
+        // mode became active. Finish nonessential requests before selecting a
+        // network window, then resnapshot so cleared bits cannot run stale.
+        if (runtime.low_battery_mode) {
+            finish_low_battery_network_requests(requests);
+            requests = snapshot_network_sync_requests();
+        }
+        if (setup_portal_active_load()) {
+            if (!requests.provisioning) {
+                wait_for_active_setup_portal_request();
+                continue;
+            }
+            // A request can be raised between clearing stale work and actually
+            // starting the AP. Preserve those level bits for later, but keep
+            // this connected window exclusively owned by provisioning.
+            requests = requests.provisioning_only();
         }
 
         if (requests.diagnostics) {
-            execute_network_diagnostics_window();
+            const NetworkSyncAvailability diagnostics_runtime =
+                capture_network_runtime_availability();
+            if (network_sync_start_context_changed(runtime, diagnostics_runtime)) {
+                ESP_LOGI(TAG, "%s", kNetworkSyncContextChangedLog);
+                continue;
+            }
+            if (!execute_network_diagnostics_window(diagnostics_runtime)) {
+                continue;
+            }
             wait_for_network_sync_event(kNetworkShortRetryWaitMs);
             continue;
         }
@@ -673,9 +704,6 @@ void network_sync_task(void *)
             requests,
             now,
             sync_runtime);
-        if (runtime.low_battery_mode) {
-            finish_low_battery_network_requests(requests);
-        }
 
         if (!schedule.ntp_due && !schedule.weather_due && !schedule.saying_due) {
             uint32_t wait_ms = network_idle_wait_ms(
@@ -700,11 +728,15 @@ void network_sync_task(void *)
             ESP_LOGI(TAG, "%s", kNetworkSyncContextChangedLog);
             continue;
         }
-        const EventBits_t current_request_bits = app_event_group_get_bits();
-        if (network_request_snapshot_canceled(
-                network_sync_request_bits(requests),
-                current_request_bits)) {
-            continue;
+        const EventBits_t scheduled_request_bits =
+            network_sync_request_bits(requests);
+        if (scheduled_request_bits != 0) {
+            const EventBits_t current_request_bits = app_event_group_get_bits();
+            if (network_request_snapshot_canceled(
+                    scheduled_request_bits,
+                    current_request_bits)) {
+                continue;
+            }
         }
         if (automatic_boot_refresh_page_disabled(schedule, requests)) {
             continue;
@@ -734,11 +766,10 @@ void network_sync_task(void *)
             continue;
         }
         const NetworkSyncConnectionWaitResult connection_wait =
-            wait_for_network_sync_connection(kNetworkWifiConnectTimeoutMs);
-        const NetworkSyncAvailability connected_runtime =
-            capture_network_runtime_availability();
-        if (connection_wait == NetworkSyncConnectionWaitResult::kRuntimeChanged ||
-            network_sync_start_context_changed(current_runtime, connected_runtime)) {
+            wait_for_valid_network_sync_connection(current_runtime,
+                                                   scheduled_request_bits,
+                                                   kNetworkWifiConnectTimeoutMs);
+        if (connection_wait == NetworkSyncConnectionWaitResult::kRuntimeChanged) {
             ESP_LOGI(TAG, "%s", kNetworkSyncContextChangedLog);
             finish_network_radio_session(awake_lock);
             continue;
@@ -769,9 +800,13 @@ void network_sync_task(void *)
                     sync_runtime);
                 continue;
             }
-            execute_connected_sync_window(schedule,
-                                          requests,
-                                          sync_runtime);
+            if (!execute_connected_sync_window(schedule,
+                                               requests,
+                                               sync_runtime)) {
+                ESP_LOGI(TAG, "%s", kNetworkSyncContextChangedLog);
+                finish_network_radio_session(awake_lock);
+                continue;
+            }
             stagger_boot_saying_after_weather(schedule,
                                               sync_runtime.boot_saying_due,
                                               &sync_runtime.boot_saying_due_at);

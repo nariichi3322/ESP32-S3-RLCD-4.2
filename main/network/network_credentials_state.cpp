@@ -12,12 +12,15 @@
 namespace {
 constexpr uint8_t kWifiConfiguredMask = 1U << 0;
 constexpr uint8_t kWeatherApiKeyConfiguredMask = 1U << 1;
+constexpr uint8_t kWeatherApiHostConfiguredMask = 1U << 2;
 struct NetworkCredentialsState {
     char wifi_ssid[kNetworkWifiSsidLen] = {};
     char wifi_password[kNetworkWifiPasswordLen] = {};
     char weather_api_key[kNetworkWeatherApiKeyLen] = {};
+    char weather_api_host[kQweatherApiHostLen] = {};
     bool wifi_configured = false;
     bool weather_api_key_configured = false;
+    bool weather_api_host_configured = false;
 };
 StaticTaskMutex s_credentials_mutex;
 EXT_RAM_BSS_ATTR NetworkCredentialsState s_credentials = {};
@@ -25,7 +28,11 @@ std::atomic<uint8_t> s_credentials_availability_mask{0};
 
 static_assert((kWifiConfiguredMask & kWeatherApiKeyConfiguredMask) == 0,
               "credential availability flags must not overlap");
-static_assert(sizeof(NetworkCredentialsState) == 196,
+static_assert((kWifiConfiguredMask & kWeatherApiHostConfiguredMask) == 0 &&
+                  (kWeatherApiKeyConfiguredMask &
+                   kWeatherApiHostConfiguredMask) == 0,
+              "credential availability flags must not overlap");
+static_assert(sizeof(NetworkCredentialsState) == 325,
               "credential state size changed; re-evaluate PSRAM placement");
 
 uint8_t credentials_availability_mask(const NetworkCredentialsState &credentials)
@@ -36,6 +43,9 @@ uint8_t credentials_availability_mask(const NetworkCredentialsState &credentials
     }
     if (credentials.weather_api_key_configured) {
         mask |= kWeatherApiKeyConfiguredMask;
+    }
+    if (credentials.weather_api_host_configured) {
+        mask |= kWeatherApiHostConfiguredMask;
     }
     return mask;
 }
@@ -118,6 +128,7 @@ NetworkCredentialsAvailability network_credentials_availability()
     const NetworkCredentialsAvailability availability = {
         (mask & kWifiConfiguredMask) != 0,
         (mask & kWeatherApiKeyConfiguredMask) != 0,
+        (mask & kWeatherApiHostConfiguredMask) != 0,
     };
     return availability;
 }
@@ -125,18 +136,23 @@ NetworkCredentialsAvailability network_credentials_availability()
 void network_credentials_store(const char *ssid,
                                const char *password,
                                const char *weather_api_key,
+                               const char *weather_api_host,
                                bool wifi_configured,
-                               bool weather_api_key_configured)
+                               bool weather_api_key_configured,
+                               bool weather_api_host_configured)
 {
     const char *ssid_source = ssid ? ssid : "";
     const char *password_source = password ? password : "";
     const char *api_key_source = weather_api_key ? weather_api_key : "";
+    const char *api_host_source = weather_api_host ? weather_api_host : "";
     const size_t ssid_length =
         strnlen(ssid_source, kNetworkWifiSsidLen - 1);
     const size_t password_length =
         strnlen(password_source, kNetworkWifiPasswordLen - 1);
     const size_t api_key_length =
         strnlen(api_key_source, kNetworkWeatherApiKeyLen - 1);
+    const size_t api_host_length =
+        strnlen(api_host_source, kQweatherApiHostLen - 1);
 
     ScopedSemaphoreLock state_lock(s_credentials_mutex);
     if (!state_lock) {
@@ -146,9 +162,12 @@ void network_credentials_store(const char *ssid,
     memcpy(s_credentials.wifi_ssid, ssid_source, ssid_length);
     memcpy(s_credentials.wifi_password, password_source, password_length);
     memcpy(s_credentials.weather_api_key, api_key_source, api_key_length);
+    memcpy(s_credentials.weather_api_host, api_host_source, api_host_length);
     s_credentials.wifi_configured = wifi_configured && ssid_length > 0;
     s_credentials.weather_api_key_configured =
         weather_api_key_configured && api_key_length > 0;
+    s_credentials.weather_api_host_configured =
+        weather_api_host_configured && api_host_length > 0;
     s_credentials_availability_mask.store(
         credentials_availability_mask(s_credentials),
         std::memory_order_release);
@@ -156,7 +175,7 @@ void network_credentials_store(const char *ssid,
 
 void network_credentials_clear()
 {
-    network_credentials_store("", "", "", false, false);
+    network_credentials_store("", "", "", "", false, false, false);
 }
 
 bool network_wifi_credentials_configured()
@@ -169,10 +188,25 @@ bool network_weather_api_key_configured()
     return network_credentials_availability().weather_api_key_configured;
 }
 
+bool network_weather_api_host_configured()
+{
+    return network_credentials_availability().weather_api_host_configured;
+}
+
+bool network_weather_configuration_configured()
+{
+    const NetworkCredentialsAvailability availability =
+        network_credentials_availability();
+    return availability.weather_api_key_configured &&
+           availability.weather_api_host_configured;
+}
+
 bool network_all_online_credentials_configured()
 {
     const NetworkCredentialsAvailability availability = network_credentials_availability();
-    return availability.wifi_configured && availability.weather_api_key_configured;
+    return availability.wifi_configured &&
+           availability.weather_api_key_configured &&
+           availability.weather_api_host_configured;
 }
 
 bool network_wifi_ssid_snapshot(char *out, size_t out_len)
@@ -185,4 +219,13 @@ bool network_weather_api_key_snapshot(char *out, size_t out_len)
 {
     return copy_field_snapshot(
         out, out_len, s_credentials.weather_api_key, s_credentials.weather_api_key_configured);
+}
+
+bool network_weather_api_host_snapshot(char *out, size_t out_len)
+{
+    return copy_field_snapshot(
+        out,
+        out_len,
+        s_credentials.weather_api_host,
+        s_credentials.weather_api_host_configured);
 }

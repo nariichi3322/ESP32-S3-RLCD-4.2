@@ -90,6 +90,18 @@ bool get_local_sensor_snapshot(float *temperature,
                                int *temperature_trend,
                                int *humidity_trend)
 {
+    if (temperature) {
+        *temperature = 0.0f;
+    }
+    if (humidity) {
+        *humidity = 0.0f;
+    }
+    if (temperature_trend) {
+        *temperature_trend = 0;
+    }
+    if (humidity_trend) {
+        *humidity_trend = 0;
+    }
     ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
     if (!lock) {
         return false;

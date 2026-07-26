@@ -10,6 +10,7 @@
 #include "ui_settings_activity_state.h"
 #include "ui_task_notify.h"
 #include "wifi_radio_services.h"
+#include "wifi_radio_state.h"
 
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -27,6 +28,10 @@ constexpr const char *kSetupPortalStartFailedLog =
     "queued setup portal start failed; retrying";
 constexpr const char *kSetupPortalStartedLog =
     "queued setup portal start completed";
+constexpr const char *kSetupPortalStopFailedLog =
+    "queued setup portal stop failed; retrying";
+constexpr const char *kSetupPortalStoppedLog =
+    "queued setup portal stop completed";
 #define PROVISIONING_FEEDBACK_WAIT_DONE_FORMAT \
     "provisioning result feedback wait complete: seen=%d elapsed_ms=%u"
 #define PROVISIONING_RESULT_DELIVERY_DEGRADED_FORMAT \
@@ -50,6 +55,21 @@ SetupPortalStartResult service_setup_portal_start_request()
     notify_ui_task();
     ESP_LOGI(TAG, "%s", kSetupPortalStartedLog);
     return SetupPortalStartResult::kStarted;
+}
+
+SetupPortalStopResult service_setup_portal_stop_request()
+{
+    if (!setup_portal_stop_requested()) {
+        return SetupPortalStopResult::kNoRequest;
+    }
+    stop_wifi_radio(true);
+    if (wifi_radio_on_load() || setup_portal_active_load()) {
+        ESP_LOGW(TAG, "%s", kSetupPortalStopFailedLog);
+        return SetupPortalStopResult::kRetryPending;
+    }
+    complete_setup_portal_stop_request();
+    ESP_LOGI(TAG, "%s", kSetupPortalStoppedLog);
+    return SetupPortalStopResult::kStopped;
 }
 
 void publish_setup_portal_result(WifiPortalSaveResult result)

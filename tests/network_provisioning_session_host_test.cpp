@@ -19,6 +19,11 @@ int s_settings_clear_calls = 0;
 int s_diag_clear_calls = 0;
 int s_info_clear_calls = 0;
 int s_notify_calls = 0;
+bool s_stop_requested = false;
+bool s_stop_succeeds = false;
+bool s_wifi_radio_on = false;
+int s_stop_wifi_calls = 0;
+int s_complete_stop_calls = 0;
 
 bool s_portal_active = false;
 bool s_feedback_seen = false;
@@ -50,6 +55,16 @@ void reset_start_state()
     s_notify_calls = 0;
 }
 
+void reset_stop_state()
+{
+    s_stop_requested = false;
+    s_stop_succeeds = false;
+    s_wifi_radio_on = false;
+    s_portal_active = false;
+    s_stop_wifi_calls = 0;
+    s_complete_stop_calls = 0;
+}
+
 void reset_feedback_state()
 {
     s_portal_active = false;
@@ -75,6 +90,32 @@ bool start_wifi_radio(bool force_setup_portal)
     assert(force_setup_portal);
     ++s_start_wifi_calls;
     return s_start_wifi_result;
+}
+
+bool setup_portal_stop_requested()
+{
+    return s_stop_requested;
+}
+
+void stop_wifi_radio(bool force_setup_portal)
+{
+    assert(force_setup_portal);
+    ++s_stop_wifi_calls;
+    if (s_stop_succeeds) {
+        s_wifi_radio_on = false;
+        s_portal_active = false;
+    }
+}
+
+bool wifi_radio_on_load()
+{
+    return s_wifi_radio_on;
+}
+
+void complete_setup_portal_stop_request()
+{
+    s_stop_requested = false;
+    ++s_complete_stop_calls;
 }
 
 EventBits_t app_event_group_clear_bits(EventBits_t bits)
@@ -190,6 +231,30 @@ int main()
     assert(s_diag_clear_calls == 1);
     assert(s_info_clear_calls == 1);
     assert(s_notify_calls == 1);
+
+    reset_stop_state();
+    assert(service_setup_portal_stop_request() == SetupPortalStopResult::kNoRequest);
+    assert(s_stop_wifi_calls == 0);
+    assert(s_complete_stop_calls == 0);
+
+    reset_stop_state();
+    s_stop_requested = true;
+    s_wifi_radio_on = true;
+    s_portal_active = true;
+    assert(service_setup_portal_stop_request() == SetupPortalStopResult::kRetryPending);
+    assert(s_stop_wifi_calls == 1);
+    assert(s_stop_requested);
+    assert(s_complete_stop_calls == 0);
+
+    reset_stop_state();
+    s_stop_requested = true;
+    s_stop_succeeds = true;
+    s_wifi_radio_on = true;
+    s_portal_active = true;
+    assert(service_setup_portal_stop_request() == SetupPortalStopResult::kStopped);
+    assert(s_stop_wifi_calls == 1);
+    assert(!s_stop_requested);
+    assert(s_complete_stop_calls == 1);
 
     reset_feedback_state();
     wait_for_provisioning_result_feedback();

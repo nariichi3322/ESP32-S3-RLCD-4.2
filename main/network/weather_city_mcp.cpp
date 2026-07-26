@@ -53,7 +53,8 @@ bool handle_weather_city(const XiaozhiMcpWeatherCityRequest &request,
         }
         return true;
     }
-    if (offline_mode_enabled_load() || !network_weather_api_key_configured()) {
+    if (offline_mode_enabled_load() ||
+        !network_weather_configuration_configured()) {
         if (result && result_len > 0) {
             std::snprintf(result, result_len, "weather service is not configured");
         }

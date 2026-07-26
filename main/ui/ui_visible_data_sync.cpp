@@ -1,7 +1,6 @@
 // 编排可见工作页的按需联网补拉并刷新天气时钟网络状态。
 #include "ui_visible_data_sync.h"
 
-#include "app_constexpr.h"
 #include "app_event_group.h"
 #include "app_metadata.h"
 #include "app_runtime_timing.h"
@@ -32,27 +31,10 @@ constexpr const char *kWeatherHumidityFormat = "%s%%";
 #define UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT "weather clock visible with %s weather, requesting sync"
 #define UI_GALLERY_SAYING_SYNC_REQUEST_LOG "gallery visible with missing/stale daily saying, requesting sync"
 
-constexpr const char *kVisibleDataFormatTexts[] = {
-    kWeatherTempFormat,
-    kWeatherHumidityFormat,
-};
-constexpr const char *kVisibleDataLogTexts[] = {
-    UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT,
-    UI_GALLERY_SAYING_SYNC_REQUEST_LOG,
-};
-
 static_assert(kWeatherCityTextSize > 1,
               "weather city status text buffer must fit text and NUL");
 static_assert(kWeatherValueTextSize > 1,
               "weather value status text buffer must fit text and NUL");
-static_assert(array_count(kVisibleDataFormatTexts) > 0,
-              "visible data format text registry must not be empty");
-static_assert(array_count(kVisibleDataLogTexts) > 0,
-              "visible data log text registry must not be empty");
-static_assert(cstr_array_nonempty(kVisibleDataFormatTexts),
-              "visible data format texts must be non-empty");
-static_assert(cstr_array_nonempty(kVisibleDataLogTexts),
-              "visible data log texts must be non-empty");
 
 void format_weather_status_text(const WeatherData &weather,
                                 char *city,
@@ -176,8 +158,7 @@ void update_visible_weather_sync(const ActiveWorkPageState &state,
         cancel_visible_sync_request(retry, kVisibleWeatherSyncBit, false);
         return;
     }
-    EventBits_t sync_bits = app_event_group_get_bits();
-    bool weather_ready = (sync_bits & kWeatherReadyBit) != 0;
+    const bool weather_ready = weather_ready_state_load();
     bool details_missing = state.weather_board &&
                            cache_status &&
                            !cache_status->extended_data_ready;
@@ -185,17 +166,18 @@ void update_visible_weather_sync(const ActiveWorkPageState &state,
                        cache_status &&
                        !weather_cache_stale(now, *cache_status) &&
                        !details_missing;
-    // The ready event remains authoritative: stale cache content can survive
-    // configuration removal. Only the fully idle steady state skips the
-    // mutex-protected OTA snapshot read performed by the one-second page.
+    // The weather-state owner publishes ready together with the EventGroup
+    // notification. Stale cache content can survive configuration removal, so
+    // only the fully idle steady state can skip the shared request-bit read.
     if (cache_fresh && retry.idle()) {
         return;
     }
-    if (!network_weather_api_key_configured() ||
+    if (!network_weather_configuration_configured() ||
         offline_mode_enabled_load()) {
         cancel_visible_sync_request(retry, kVisibleWeatherSyncBit, false);
         return;
     }
+    const EventBits_t sync_bits = app_event_group_get_bits();
     bool sync_in_flight =
         (sync_bits & (kManualWeatherSyncBit |
                       kVisibleWeatherSyncBit |
@@ -290,7 +272,7 @@ bool update_weather_clock_network_status(EventBits_t bits)
     }
 
     const bool offline_mode = offline_mode_enabled_load();
-    if (network_weather_api_key_configured() && !offline_mode) {
+    if (network_weather_configuration_configured() && !offline_mode) {
         const char *weather_info_text =
             (bits & kWifiConnectedBit) ? kClockWeatherInfoSyncingText
                                        : kClockWeatherInfoWaitingText;

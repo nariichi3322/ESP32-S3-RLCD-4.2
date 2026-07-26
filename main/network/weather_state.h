@@ -29,6 +29,7 @@ void get_weather_forecast_snapshot(WeatherForecastData *forecast);
 void get_weather_air_snapshot(WeatherAirData *air);
 WeatherAlertStatusSnapshot weather_alert_status_snapshot_load();
 uint32_t weather_state_version_load();
+bool weather_ready_state_load();
 bool weather_cache_status_snapshot_load(WeatherCacheStatusSnapshot *out);
 bool get_weather_alert_title_snapshot(int requested_index,
                                       char *title,

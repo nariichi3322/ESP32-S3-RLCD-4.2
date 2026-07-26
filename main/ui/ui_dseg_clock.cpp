@@ -52,6 +52,10 @@ int draw_dseg_text(lv_obj_t *canvas, const DsegFont &font, const char *text, int
     if (!canvas || !text || !font.bitmap) {
         return x_cursor;
     }
+    lv_img_dsc_t *image = lv_canvas_get_img(canvas);
+    if (!image) {
+        return x_cursor;
+    }
     for (const char *p = text; *p; ++p) {
         const DsegGlyph *glyph = find_dseg_glyph(font, *p);
         if (!glyph) {
@@ -61,10 +65,10 @@ int draw_dseg_text(lv_obj_t *canvas, const DsegFont &font, const char *text, int
         for (int y = 0; y < glyph->height; ++y) {
             for (int x = 0; x < glyph->width; ++x, ++bit) {
                 if (packed_1bit_bit_is_set(font.bitmap + glyph->bitmap_offset, bit)) {
-                    lv_canvas_set_px_color(canvas,
-                                           x_cursor + glyph->x_offset + x,
-                                           baseline_y + glyph->y_offset + y,
-                                           lv_color_black());
+                    lv_img_buf_set_px_color(image,
+                                            x_cursor + glyph->x_offset + x,
+                                            baseline_y + glyph->y_offset + y,
+                                            lv_color_black());
                 }
             }
         }

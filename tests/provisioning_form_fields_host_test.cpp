@@ -8,28 +8,31 @@ int main()
 {
     ProvisioningFormFields fields = {};
     read_provisioning_form_fields(
-        "ssid=My+WiFi&pass=abc%20123&api_key=++key++&weather_city=%E6%9D%AD%E5%B7%9E",
+        "ssid=My+WiFi&pass=abc%20123&api_key=++key++&api_host=++ABC123.RE.QWEATHERAPI.COM++&weather_city=%E6%9D%AD%E5%B7%9E",
         &fields);
     assert(strcmp(fields.ssid, "My WiFi") == 0);
     assert(strcmp(fields.pass, "abc 123") == 0);
     assert(strcmp(fields.api_key, "key") == 0);
+    assert(strcmp(fields.api_host, "ABC123.RE.QWEATHERAPI.COM") == 0);
     assert(strcmp(fields.weather_city, "杭州") == 0);
 
     fields = {};
     read_provisioning_form_fields(
-        "ssid=+Office+&password=fallback&weather=+legacy-key+&city=+%E4%B8%8A%E6%B5%B7+",
+        "ssid=+Office+&password=fallback&weather=+legacy-key+&weather_host=+legacy.qweatherapi.com+&city=+%E4%B8%8A%E6%B5%B7+",
         &fields);
     assert(strcmp(fields.ssid, " Office ") == 0);
     assert(strcmp(fields.pass, "fallback") == 0);
     assert(strcmp(fields.api_key, "legacy-key") == 0);
+    assert(strcmp(fields.api_host, "legacy.qweatherapi.com") == 0);
     assert(strcmp(fields.weather_city, "上海") == 0);
 
     fields = {};
     read_provisioning_form_fields(
-        "ssid=main&pass=primary&password=fallback&api_key=current&weather=legacy&weather_city=Beijing&city=Shanghai",
+        "ssid=main&pass=primary&password=fallback&api_key=current&weather=legacy&api_host=current.qweatherapi.com&weather_host=legacy.qweatherapi.com&weather_city=Beijing&city=Shanghai",
         &fields);
     assert(strcmp(fields.pass, "primary") == 0);
     assert(strcmp(fields.api_key, "current") == 0);
+    assert(strcmp(fields.api_host, "current.qweatherapi.com") == 0);
     assert(strcmp(fields.weather_city, "Beijing") == 0);
 
     char manual_time[kProvisioningManualTimeFieldSize] = {};

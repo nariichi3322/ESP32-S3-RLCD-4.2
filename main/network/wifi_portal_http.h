@@ -2,4 +2,4 @@
 #pragma once
 
 bool start_http_server();
-void stop_http_server();
+bool stop_http_server();

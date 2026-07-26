@@ -14,13 +14,16 @@
 #include "network_diagnostics_catalog.h"
 #include "network_diagnostics_state.h"
 #include "network_public_ip_parser.h"
+#include "network_sync_runtime.h"
 #include "ntp_services.h"
 #include "scoped_heap_buffer.h"
+#include "ui_settings_activity_state.h"
 #include "ui_task_notify.h"
 #include "weather_update.h"
 #include "wifi_portal_state.h"
 
 #include "esp_log.h"
+#include "freertos/task.h"
 #include "lwip/netdb.h"
 
 #include <cstdarg>
@@ -42,6 +45,7 @@ constexpr const char *kNetworkDiagStatusWaiting = "等待";
 constexpr const char *kNetworkDiagStatusChecking = "检测中";
 constexpr const char *kNetworkDiagStatusFailed = "超时/失败";
 constexpr const char *kNetworkDiagStatusOk = "OK";
+constexpr const char *kNetworkDiagStatusLowBatterySkipped = "电量低，已跳过";
 constexpr const char *kNetworkDiagPlaceholder = "--";
 constexpr const char *kNetworkDiagLocalIpFormat = "本地IP: %s";
 constexpr const char *kNetworkDiagPublicIpFormat = "公网IP: %s";
@@ -63,35 +67,6 @@ constexpr size_t kNetworkDiagIpv4TextMinSize = sizeof("255.255.255.255");
 #define NETWORK_DIAG_LINE_INDEX_INVALID_FORMAT "network diag line index invalid: %d"
 #define NETWORK_DIAG_LINE_FORMAT_FAILED_FORMAT "network diag line format failed index=%d"
 #define NETWORK_DIAG_LINE_TRUNCATED_FORMAT "network diag line truncated index=%d len=%d"
-constexpr const char *const kNetworkDiagTexts[] = {
-    kNetworkDiagPublicIpUrl,
-    kNetworkDiagQweatherDnsHost,
-    kNetworkDiagGithubDnsHost,
-    kNetworkDiagStatusWaiting,
-    kNetworkDiagStatusChecking,
-    kNetworkDiagStatusFailed,
-    kNetworkDiagStatusOk,
-    kNetworkDiagPlaceholder,
-    kNetworkDiagLocalIpFormat,
-    kNetworkDiagPublicIpFormat,
-    kNetworkDiagIpLocationFormat,
-    kNetworkDiagIpLocationCityFormat,
-    kNetworkDiagDnsFormat,
-    kNetworkDiagWeatherFormat,
-    kNetworkDiagNtpFormat,
-    kNetworkDiagSayingFormat,
-    kNetworkDiagInternetFormat,
-    kNetworkDiagOtaFormat,
-    NETWORK_DIAG_RESPONSE_ALLOC_FAILED_FORMAT,
-    NETWORK_DIAG_DNS_INVALID_HOST_LOG,
-    NETWORK_DIAG_DNS_LOOKUP_FAILED_FORMAT,
-    NETWORK_DIAG_HTTP_PROBE_INVALID_ARG_LOG,
-    NETWORK_DIAG_PUBLIC_IP_PARSE_FAILED_LOG,
-    NETWORK_DIAG_PUBLIC_IP_HTTP_FAILED_LOG,
-    NETWORK_DIAG_LINE_INDEX_INVALID_FORMAT,
-    NETWORK_DIAG_LINE_FORMAT_FAILED_FORMAT,
-    NETWORK_DIAG_LINE_TRUNCATED_FORMAT,
-};
 constexpr int kNetworkDiagLineIndices[] = {
     kNetworkDiagLocalIpLine,
     kNetworkDiagPublicIpLine,
@@ -135,9 +110,6 @@ static_assert(kNetworkDiagPublicIpTextSize > 1, "network diag public IP text buf
 static_assert(kNetworkDiagPublicIpTextSize >= kNetworkDiagIpv4TextMinSize,
               "network diag public IP text buffer must fit IPv4 text");
 static_assert(kNetworkDiagNtpMaxRetries > 0, "network diag NTP retry count must be positive");
-static_assert(array_count(kNetworkDiagTexts) > 0,
-              "network diagnostic text guard must cover fixed texts and logs");
-static_assert(cstr_array_nonempty(kNetworkDiagTexts), "network diagnostic fixed texts and logs must be non-empty");
 static_assert(array_count(kNetworkDiagLineIndices) == kNetworkDiagLineCount,
               "network diag line index table must cover every UI row");
 static_assert(network_diag_lines_in_range(), "network diag line indices must fit line table");
@@ -176,6 +148,38 @@ static_assert(kNetworkDiagInitialLines[0].index == kNetworkDiagLocalIpLine,
               "network diag initial table must follow visible row order");
 static_assert(kNetworkDiagInitialLines[array_count(kNetworkDiagInitialLines) - 1].index == kNetworkDiagOtaLine,
               "network diag initial table must end with OTA row");
+
+bool stop_remaining_network_diagnostics_if_low_battery(
+    NetworkDiagLineIndex first_pending_line)
+{
+    if (!battery_low_mode_load()) {
+        return false;
+    }
+    for (const auto &line : kNetworkDiagInitialLines) {
+        if (line.index >= first_pending_line) {
+            network_diag_set_line(line.index,
+                                  line.format,
+                                  kNetworkDiagStatusLowBatterySkipped);
+        }
+    }
+    return true;
+}
+
+bool network_diagnostics_should_continue(
+    NetworkDiagLineIndex first_pending_line,
+    bool &completed)
+{
+    if (stop_remaining_network_diagnostics_if_low_battery(
+            first_pending_line)) {
+        completed = true;
+        return false;
+    }
+    if (!network_sync_continuation_allowed()) {
+        completed = false;
+        return false;
+    }
+    return true;
+}
 
 const char *diag_result_text(bool ok)
 {
@@ -261,6 +265,9 @@ void network_diag_begin()
 
 void network_diag_finish()
 {
+    if (network_diag_page_requested()) {
+        settings_activity_record(xTaskGetTickCount());
+    }
     network_diag_state_store(kNetworkDiagDone);
     notify_ui_task();
 }
@@ -314,8 +321,13 @@ void network_diag_record_text_line(int index, const char *fmt, bool ok, const ch
 }
 } // namespace
 
-void run_network_diagnostic_checks()
+bool run_network_diagnostic_checks()
 {
+    bool completed = false;
+    if (!network_diagnostics_should_continue(kNetworkDiagLocalIpLine,
+                                             completed)) {
+        return completed;
+    }
     char location[kNetworkDiagLocationTextSize] = {};
     char city[kNetworkDiagCityTextSize] = {};
     char public_ip[kNetworkDiagPublicIpTextSize] = {};
@@ -326,6 +338,10 @@ void run_network_diagnostic_checks()
                                   local_ip_ok,
                                   local_ip,
                                   kNetworkDiagPlaceholder);
+    if (!network_diagnostics_should_continue(kNetworkDiagPublicIpLine,
+                                             completed)) {
+        return completed;
+    }
 
     network_diag_set_checking_line(kNetworkDiagPublicIpLine, kNetworkDiagPublicIpFormat);
     bool public_ip_ok = lookup_public_ip(public_ip, sizeof(public_ip));
@@ -334,35 +350,72 @@ void run_network_diagnostic_checks()
                                   public_ip_ok,
                                   public_ip,
                                   kNetworkDiagStatusFailed);
+    if (!network_diagnostics_should_continue(kNetworkDiagIpLocationLine,
+                                             completed)) {
+        return completed;
+    }
 
-    network_diag_set_checking_line(kNetworkDiagDnsLine, kNetworkDiagDnsFormat);
-    bool dns_ok = dns_lookup_ok(kNetworkDiagQweatherDnsHost) && dns_lookup_ok(kNetworkDiagGithubDnsHost);
     network_diag_set_checking_line(kNetworkDiagIpLocationLine, kNetworkDiagIpLocationFormat);
     bool ip_ok = ip_geolocation_lookup(location, sizeof(location), city, sizeof(city));
     network_diag_set_line(kNetworkDiagIpLocationLine, kNetworkDiagIpLocationCityFormat,
                           diag_result_text(ip_ok),
                           city[0] ? city : kNetworkDiagPlaceholder);
+    if (!network_diagnostics_should_continue(kNetworkDiagDnsLine,
+                                             completed)) {
+        return completed;
+    }
 
+    network_diag_set_checking_line(kNetworkDiagDnsLine, kNetworkDiagDnsFormat);
+    bool dns_ok = dns_lookup_ok(kNetworkDiagQweatherDnsHost) &&
+                  dns_lookup_ok(kNetworkDiagGithubDnsHost);
     network_diag_record_result_line(kNetworkDiagDnsLine, kNetworkDiagDnsFormat, dns_ok);
+    if (!network_diagnostics_should_continue(kNetworkDiagWeatherLine,
+                                             completed)) {
+        return completed;
+    }
 
     bool weather_ok = false;
-    if (network_weather_api_key_configured() && !battery_low_mode_load()) {
+    if (network_weather_configuration_configured() &&
+        !battery_low_mode_load()) {
         network_diag_set_checking_line(kNetworkDiagWeatherLine, kNetworkDiagWeatherFormat);
         weather_ok = perform_weather_update() == WeatherUpdateResult::kSuccess;
+    }
+    if (!network_diagnostics_should_continue(kNetworkDiagNtpLine,
+                                             completed)) {
+        network_diag_record_result_line(kNetworkDiagWeatherLine,
+                                        kNetworkDiagWeatherFormat,
+                                        weather_ok);
+        return completed;
     }
     network_diag_set_checking_line(kNetworkDiagNtpLine, kNetworkDiagNtpFormat);
     bool ntp_ok = perform_ntp_sync(kNetworkDiagNtpMaxRetries);
     network_diag_record_result_line(kNetworkDiagWeatherLine, kNetworkDiagWeatherFormat, weather_ok);
     network_diag_record_result_line(kNetworkDiagNtpLine, kNetworkDiagNtpFormat, ntp_ok);
+    if (!network_diagnostics_should_continue(kNetworkDiagSayingLine,
+                                             completed)) {
+        return completed;
+    }
 
     network_diag_set_checking_line(kNetworkDiagSayingLine, kNetworkDiagSayingFormat);
     bool saying_ok = !battery_low_mode_load() && perform_daily_saying_update();
+    if (!network_diagnostics_should_continue(kNetworkDiagInternetLine,
+                                             completed)) {
+        network_diag_record_result_line(kNetworkDiagSayingLine,
+                                        kNetworkDiagSayingFormat,
+                                        saying_ok);
+        return completed;
+    }
     network_diag_set_checking_line(kNetworkDiagInternetLine, kNetworkDiagInternetFormat);
     bool internet_ok = public_ip_ok || http_probe_ok(kNetworkDiagPublicIpUrl, kNetworkDiagWideProbeBufferSize);
     network_diag_record_result_line(kNetworkDiagSayingLine, kNetworkDiagSayingFormat, saying_ok);
     network_diag_record_result_line(kNetworkDiagInternetLine, kNetworkDiagInternetFormat, internet_ok);
+    if (!network_diagnostics_should_continue(kNetworkDiagOtaLine,
+                                             completed)) {
+        return completed;
+    }
 
     network_diag_set_checking_line(kNetworkDiagOtaLine, kNetworkDiagOtaFormat);
     bool ota_ok = http_probe_ok(kOtaManifestUrl, kNetworkDiagWideProbeBufferSize);
     network_diag_record_result_line(kNetworkDiagOtaLine, kNetworkDiagOtaFormat, ota_ok);
+    return true;
 }

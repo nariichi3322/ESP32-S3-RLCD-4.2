@@ -1,5 +1,7 @@
-// 声明 Wi-Fi 凭据与天气 API Key 的跨任务窄复制接口。
+// 声明 Wi-Fi、天气 API Key 与 API Host 的跨任务窄复制接口。
 #pragma once
+
+#include "qweather_api_host.h"
 
 #include <stddef.h>
 
@@ -10,6 +12,7 @@ inline constexpr size_t kNetworkWeatherApiKeyLen = 96;
 struct NetworkCredentialsAvailability {
     bool wifi_configured = false;
     bool weather_api_key_configured = false;
+    bool weather_api_host_configured = false;
 };
 
 bool network_credentials_state_init();
@@ -23,11 +26,16 @@ NetworkCredentialsAvailability network_credentials_availability();
 void network_credentials_store(const char *ssid,
                                const char *password,
                                const char *weather_api_key,
+                               const char *weather_api_host,
                                bool wifi_configured,
-                               bool weather_api_key_configured);
+                               bool weather_api_key_configured,
+                               bool weather_api_host_configured);
 void network_credentials_clear();
 bool network_wifi_credentials_configured();
 bool network_weather_api_key_configured();
+bool network_weather_api_host_configured();
+bool network_weather_configuration_configured();
 bool network_all_online_credentials_configured();
 bool network_wifi_ssid_snapshot(char *out, size_t out_len);
 bool network_weather_api_key_snapshot(char *out, size_t out_len);
+bool network_weather_api_host_snapshot(char *out, size_t out_len);

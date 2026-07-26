@@ -80,6 +80,13 @@ void format_boot_setup_detail(char *out, size_t out_len)
     copy_boot_detail_fallback_on_format_error(written, out, out_len);
 }
 
+void finish_boot_network_session(NetworkAwakeLockGuard &awake_lock)
+{
+    stop_wifi_radio();
+    awake_lock.release();
+    service_wifi_radio_stop_when_idle();
+}
+
 } // namespace
 
 int boot_sync_remaining_ms()
@@ -96,7 +103,8 @@ void run_boot_connectivity_sync()
         return;
     }
     char wifi_ssid[kNetworkWifiSsidLen] = {};
-    if (!network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid))) {
+    if (!network_all_online_credentials_configured() ||
+        !network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid))) {
         char detail[kBootSetupDetailTextSize] = {};
         format_boot_setup_detail(detail, sizeof(detail));
         update_boot_screen(kBootScreenCompletePercent, "Setup mode", detail);
@@ -111,18 +119,18 @@ void run_boot_connectivity_sync()
         update_boot_screen(kBootScreenCompletePercent,
                            kBootDetailPowerLockUnavailable,
                            kBootDetailStartingClock);
-        vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
         service_wifi_radio_stop_when_idle();
+        vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
         return;
     }
     if (!start_wifi_radio(false)) {
         update_boot_screen(kBootScreenCompletePercent, "Wi-Fi start failed", kBootDetailStartingClock);
-        vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
         awake_lock.release();
         // A running radio can fail while being reconfigured. Register a real
         // close request after releasing this session's PM lock so that rare
         // partial-start failures cannot leave Wi-Fi powered indefinitely.
         request_wifi_radio_stop_when_idle();
+        vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
         return;
     }
     int remaining_ms = boot_sync_remaining_ms();
@@ -131,10 +139,8 @@ void run_boot_connectivity_sync()
                                    : kBootWifiConnectTimeoutMs;
     if (!wait_for_wifi_connected(wifi_timeout_ms)) {
         update_boot_screen(kBootScreenCompletePercent, "Wi-Fi timeout", "Check SSID or password");
+        finish_boot_network_session(awake_lock);
         vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
-        stop_wifi_radio();
-        awake_lock.release();
-        service_wifi_radio_stop_when_idle();
         return;
     }
 
@@ -163,10 +169,8 @@ void run_boot_connectivity_sync()
                        ntp_ok ? "Time synchronized" : "NTP retry later",
                        kBootDetailBackgroundRefresh);
 
+    finish_boot_network_session(awake_lock);
     vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
-    stop_wifi_radio();
-    awake_lock.release();
-    service_wifi_radio_stop_when_idle();
 }
 
 void boot_connectivity_task(void *)

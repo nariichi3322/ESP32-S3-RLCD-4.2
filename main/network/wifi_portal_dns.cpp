@@ -36,6 +36,7 @@ constexpr const char *kCaptiveDnsTaskName = "captive_dns";
 #define CAPTIVE_DNS_SOCKET_FAILED_LOG "captive dns socket failed"
 #define CAPTIVE_DNS_BIND_FAILED_LOG "captive dns bind failed"
 #define CAPTIVE_DNS_TIMEOUT_SETUP_FAILED_FORMAT "captive dns timeout setup failed errno=%d"
+#define CAPTIVE_DNS_RECEIVE_FAILED_FORMAT "captive dns receive failed errno=%d"
 #define CAPTIVE_DNS_STARTED_LOG "captive dns started"
 #define CAPTIVE_DNS_STOPPED_LOG "captive dns stopped"
 #define CAPTIVE_DHCPS_STOP_FAILED_FORMAT "dhcps stop before captive setup failed: %s"
@@ -129,7 +130,19 @@ bool run_captive_dns_server()
                            0,
                            (sockaddr *)&from,
                            &from_len);
-        if (len <= 0) {
+        if (len < 0) {
+            const int receive_errno = errno;
+            if (receive_errno == EAGAIN ||
+                receive_errno == EWOULDBLOCK ||
+                receive_errno == EINTR) {
+                continue;
+            }
+            ESP_LOGW(TAG,
+                     CAPTIVE_DNS_RECEIVE_FAILED_FORMAT,
+                     receive_errno);
+            return false;
+        }
+        if (len == 0) {
             continue;
         }
         int response_len =

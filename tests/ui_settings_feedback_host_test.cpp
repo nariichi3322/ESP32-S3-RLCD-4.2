@@ -106,6 +106,7 @@ int main()
                                           uninitialized_feedback,
                                           sizeof(uninitialized_feedback)));
     assert(uninitialized_feedback[0] == '\0');
+    assert(settings_activity_state_init());
     assert(settings_feedback_state_init());
     assert(settings_feedback_state_init());
 

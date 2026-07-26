@@ -63,35 +63,6 @@ lv_color_t *s_time_canvas_buffer;
 lv_color_t *s_second_canvas_buffer;
 lv_color_t *s_status_gif_canvas_buffer;
 lv_color_t *s_second_progress_canvas_buffer;
-constexpr const char *kClockLogTexts[] = {
-    CLOCK_DATE_LABEL_CREATE_FAILED_LOG,
-    CLOCK_ALERT_PILL_CREATE_FAILED_LOG,
-    CLOCK_ALERT_ICON_CANVAS_CREATE_FAILED_LOG,
-    CLOCK_ALERT_LABEL_CREATE_FAILED_LOG,
-    CLOCK_STATUS_ICON_CANVAS_CREATE_FAILED_FORMAT,
-    CLOCK_LABEL_CREATE_FAILED_FORMAT,
-    CLOCK_ICON_CANVAS_CREATE_FAILED_FORMAT,
-    CLOCK_TREND_CANVAS_CREATE_FAILED_FORMAT,
-    CLOCK_FILL_CANVAS_CREATE_FAILED_FORMAT,
-    kClockComponentFallbackName,
-    kClockComponentWeatherCity,
-    kClockComponentWeatherIcon,
-    kClockComponentWeatherInfo,
-    kClockComponentWeatherTemp,
-    kClockComponentWeatherHumidity,
-    kClockComponentTempIcon,
-    kClockComponentHumidityIcon,
-    kClockComponentTempValue,
-    kClockComponentHumidityValue,
-    kClockComponentTempTrend,
-    kClockComponentHumidityTrend,
-    kClockComponentTime,
-    kClockComponentSecond,
-    kClockComponentStatusGif,
-    kClockComponentLowBatteryIcon,
-};
-static_assert(array_count(kClockLogTexts) > 0, "clock log registry must not be empty");
-static_assert(cstr_array_nonempty(kClockLogTexts), "clock log texts must be non-empty");
 constexpr int kClockTimeCanvasX = 18;
 constexpr int kClockTimeCanvasY = 76;
 constexpr int kClockTimeCanvasWidth = 292;

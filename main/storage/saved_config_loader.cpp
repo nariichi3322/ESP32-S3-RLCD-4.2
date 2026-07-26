@@ -13,6 +13,7 @@
 #include "network_credentials_state.h"
 #include "network_page_storage.h"
 #include "network_page_storage_policy.h"
+#include "qweather_api_host.h"
 #include "network_weather_city_storage.h"
 #include "offline_mode_state.h"
 #include "ui_work_page_catalog.h"
@@ -31,6 +32,7 @@ using network_config_nvs::ScopedNvsHandle;
 using network_page_storage::read_saved_page_mask;
 using network_page_storage::read_saved_page_order;
 using network_config_keys::kOfflineModeKey;
+using network_config_keys::kQweatherApiHostKey;
 using network_config_keys::kWeatherApiKeyKey;
 using network_config_keys::kWifiPassKey;
 using network_config_keys::kWifiSsidKey;
@@ -55,9 +57,11 @@ struct LoadedSavedConfig {
     esp_err_t ssid_err;
     esp_err_t pass_err;
     esp_err_t key_err;
+    esp_err_t host_err;
     char wifi_ssid[kNetworkWifiSsidLen];
     char wifi_password[kNetworkWifiPasswordLen];
     char weather_api_key[kNetworkWeatherApiKeyLen];
+    char weather_api_host[kQweatherApiHostLen];
     uint8_t chime;
     uint8_t all_day;
     uint8_t volume;
@@ -139,6 +143,7 @@ void initialize_loaded_saved_config(LoadedSavedConfig *loaded)
     loaded->ssid_err = ESP_FAIL;
     loaded->pass_err = ESP_FAIL;
     loaded->key_err = ESP_FAIL;
+    loaded->host_err = ESP_FAIL;
     loaded->volume = chime_settings::kDefaultVolumePercent;
     loaded->page_mask = kPageMaskV5KnownBits;
     loaded->xiaozhi_auto_return = kDefaultXiaozhiAutoReturnEnabled ? 1 : 0;
@@ -157,6 +162,11 @@ void read_saved_config(nvs_handle_t nvs, LoadedSavedConfig *loaded)
         nvs, kWifiPassKey, loaded->wifi_password, sizeof(loaded->wifi_password));
     loaded->key_err = read_nvs_string(
         nvs, kWeatherApiKeyKey, loaded->weather_api_key, sizeof(loaded->weather_api_key));
+    loaded->host_err = read_nvs_string(
+        nvs,
+        kQweatherApiHostKey,
+        loaded->weather_api_host,
+        sizeof(loaded->weather_api_host));
     network_chime_storage::StoredChimeSettings chime =
         network_chime_storage::read(nvs, chime_settings::kDefaultVolumePercent);
     loaded->chime = chime.enabled;
@@ -182,11 +192,17 @@ bool apply_loaded_config(const LoadedSavedConfig &loaded)
                                  loaded.wifi_ssid[0] != '\0';
     const bool weather_key_configured = loaded.key_err == ESP_OK &&
                                         loaded.weather_api_key[0] != '\0';
+    const bool weather_host_configured = loaded.host_err == ESP_OK &&
+                                         loaded.weather_api_host[0] != '\0' &&
+                                         qweather_api_host_input_valid(
+                                             loaded.weather_api_host);
     network_credentials_store(loaded.wifi_ssid,
                               loaded.wifi_password,
                               loaded.weather_api_key,
+                              loaded.weather_api_host,
                               wifi_configured,
-                              weather_key_configured);
+                              weather_key_configured,
+                              weather_host_configured);
     manual_weather_city_store(loaded.manual_weather_city);
     ChimeRuntimeSnapshot chime = {
         nvs_u8_to_bool(loaded.chime),
@@ -218,5 +234,6 @@ bool load_saved_config()
     if (offline_page_mask_changed && !save_work_page_settings()) {
         ESP_LOGW(TAG, "%s", kOfflinePageMaskPersistFailedLog);
     }
-    return network_wifi_credentials_configured();
+    return offline_mode_enabled_load() ||
+           network_all_online_credentials_configured();
 }

@@ -65,6 +65,15 @@ constexpr bool station_config_failure_blocks_start(bool enable_setup_portal)
     return !enable_setup_portal;
 }
 
+constexpr bool should_attempt_station_reconnect(bool credentials_configured,
+                                                bool radio_on,
+                                                bool stop_requested,
+                                                bool offline_mode)
+{
+    return credentials_configured && radio_on && !stop_requested &&
+           !offline_mode;
+}
+
 static_assert(kSetupApChannel > 0, "setup AP channel must be positive");
 static_assert(kSetupApMaxConnections > 0, "setup AP max connections must be positive");
 static_assert(sizeof(static_cast<wifi_sta_config_t *>(nullptr)->ssid) + 1 ==
@@ -91,6 +100,16 @@ static_assert(station_config_failure_blocks_start(false),
               "ordinary STA start must fail when station config cannot be applied");
 static_assert(!station_config_failure_blocks_start(true),
               "setup AP must remain available when station config cannot be applied");
+static_assert(should_attempt_station_reconnect(true, true, false, false),
+              "an active station session must reconnect after an unexpected disconnect");
+static_assert(!should_attempt_station_reconnect(false, true, false, false),
+              "a station without credentials must not reconnect");
+static_assert(!should_attempt_station_reconnect(true, false, false, false),
+              "a stopped radio must not reconnect");
+static_assert(!should_attempt_station_reconnect(true, true, true, false),
+              "a deliberate radio stop must suppress reconnect");
+static_assert(!should_attempt_station_reconnect(true, true, false, true),
+              "offline mode must suppress reconnect");
 
 void clear_wifi_stop_when_idle_request()
 {
@@ -301,6 +320,34 @@ bool disconnect_station_and_clear_state()
     return true;
 }
 
+void reconnect_station_after_disconnect_if_allowed()
+{
+    const bool stop_requested =
+        s_wifi_stop_requested.load(std::memory_order_acquire);
+    const bool offline_mode = offline_mode_enabled_load();
+    if (!should_attempt_station_reconnect(
+            network_wifi_credentials_configured(),
+            wifi_radio_on_load(),
+            stop_requested,
+            offline_mode)) {
+        return;
+    }
+
+    wifi_mode_t mode = WIFI_MODE_NULL;
+    if (esp_wifi_get_mode(&mode) != ESP_OK ||
+        (mode != WIFI_MODE_STA && mode != WIFI_MODE_APSTA)) {
+        return;
+    }
+
+    // A deliberate stop may begin while the mode query is in flight. Recheck
+    // immediately before connecting so the stop path retains radio ownership.
+    if (s_wifi_stop_requested.load(std::memory_order_acquire) ||
+        offline_mode_enabled_load()) {
+        return;
+    }
+    (void)start_station_connection(StationConnectAttempt::Reconnect);
+}
+
 bool register_wifi_event_handlers()
 {
     esp_err_t err = esp_event_handler_instance_register(WIFI_EVENT,
@@ -391,8 +438,8 @@ static void configure_wifi_power_save(bool enable_setup_portal)
 static void rollback_running_setup_transition(wifi_mode_t previous_mode,
                                               bool entering_setup_portal)
 {
-    if (entering_setup_portal) {
-        stop_http_server();
+    if (entering_setup_portal && !stop_http_server()) {
+        (void)request_setup_portal_stop();
     }
     esp_err_t err = esp_wifi_set_mode(previous_mode);
     if (err != ESP_OK) {
@@ -410,7 +457,10 @@ static bool configure_running_wifi_radio(bool enable_setup_portal,
         ((app_event_group_get_bits() & kWifiConnectedBit) != 0);
     const bool xiaozhi_keepalive_active = xiaozhi_ai_network_keepalive_active();
     if (!enable_setup_portal) {
-        stop_http_server();
+        if (!stop_http_server()) {
+            (void)request_setup_portal_stop();
+            return false;
+        }
         esp_err_t mode_err = esp_wifi_set_mode(WIFI_MODE_STA);
         if (mode_err != ESP_OK) {
             ESP_LOGW(TAG, WIFI_STA_ONLY_MODE_FAILED_FORMAT, esp_err_to_name(mode_err));
@@ -540,16 +590,20 @@ bool start_wifi_radio(bool enable_setup_portal)
                                     entering_setup_portal);
 }
 
-bool wait_for_wifi_connected(uint32_t timeout_ms)
+bool wait_for_wifi_connected(uint32_t timeout_ms, uint32_t cancel_bits)
 {
     if (!app_event_group_ready()) {
         ESP_LOGW(TAG, "%s", WIFI_WAIT_SKIPPED_EVENT_GROUP_UNAVAILABLE_LOG);
         return false;
     }
-    EventBits_t bits = app_event_group_wait_bits(kWifiConnectedBit,
+    const EventBits_t cancellation_bits = static_cast<EventBits_t>(cancel_bits);
+    EventBits_t bits = app_event_group_wait_bits(kWifiConnectedBit | cancellation_bits,
                                                  pdFALSE,
-                                                 pdTRUE,
+                                                 pdFALSE,
                                                  pdMS_TO_TICKS(timeout_ms));
+    if ((bits & cancellation_bits) != 0) {
+        return false;
+    }
     return (bits & kWifiConnectedBit) != 0;
 }
 
@@ -605,6 +659,9 @@ static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt)
     const bool explicit_stop_requested =
         attempt != WifiRadioStopAttempt::kNormal;
     if (!wifi_radio_on_load()) {
+        if (force_setup_portal && !stop_http_server()) {
+            return false;
+        }
         clear_wifi_stop_when_idle_request();
         return true;
     }
@@ -623,8 +680,11 @@ static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt)
     if (!network_wifi_credentials_configured() && !explicit_stop_requested) {
         return false;
     }
-    stop_http_server();
+    // Publish deliberate-stop ownership before stopping the HTTP server.
+    // Otherwise a concurrent STA disconnect can still start a reconnect while
+    // the portal teardown and esp_wifi_stop() sequence is already in flight.
     s_wifi_stop_requested.store(true, std::memory_order_release);
+    const bool portal_stopped = stop_http_server();
     wifi_mode_t mode = WIFI_MODE_NULL;
     esp_err_t err = esp_wifi_get_mode(&mode);
     if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
@@ -652,15 +712,19 @@ static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt)
         clear_sta_connection_state();
         notify_ui_task();
         ESP_LOGI(TAG, WIFI_RADIO_OFF_LOG);
-        return true;
+        return portal_stopped;
     }
 }
 
 void stop_wifi_radio(bool force_setup_portal)
 {
-    (void)stop_wifi_radio_internal(force_setup_portal
-                                       ? WifiRadioStopAttempt::kForced
-                                       : WifiRadioStopAttempt::kNormal);
+    const bool stopped = stop_wifi_radio_internal(
+        force_setup_portal
+            ? WifiRadioStopAttempt::kForced
+            : WifiRadioStopAttempt::kNormal);
+    if (force_setup_portal && !stopped && setup_portal_active_load()) {
+        (void)request_setup_portal_stop();
+    }
 }
 
 void request_wifi_radio_stop_when_idle()
@@ -714,15 +778,7 @@ void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, v
         clear_sta_connection_state();
         ESP_LOGW(TAG, WIFI_DISCONNECTED_FORMAT, event ? event->reason : -1);
         notify_ui_task();
-        wifi_mode_t mode = WIFI_MODE_NULL;
-        const bool station_mode_active = esp_wifi_get_mode(&mode) == ESP_OK &&
-                                         (mode == WIFI_MODE_STA ||
-                                          mode == WIFI_MODE_APSTA);
-        if (network_wifi_credentials_configured() && wifi_radio_on_load() &&
-            station_mode_active &&
-            !s_wifi_stop_requested.load(std::memory_order_acquire)) {
-            (void)start_station_connection(StationConnectAttempt::Reconnect);
-        }
+        reconnect_station_after_disconnect_if_allowed();
     } else if (event_base == IP_EVENT && event_id == IP_EVENT_STA_GOT_IP) {
         ip_event_got_ip_t *event = (ip_event_got_ip_t *)event_data;
         if (!event) {
@@ -795,7 +851,8 @@ void init_wifi()
         return;
     }
 
-    if (!network_wifi_credentials_configured() && !offline_mode_enabled_load()) {
+    if (!network_all_online_credentials_configured() &&
+        !offline_mode_enabled_load()) {
         start_wifi_radio(true);
     }
 }

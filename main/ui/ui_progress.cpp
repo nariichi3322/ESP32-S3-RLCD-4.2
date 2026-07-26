@@ -68,11 +68,18 @@ void draw_progress_segment(lv_obj_t *canvas, int index, bool filled)
     if (!canvas || !is_progress_segment_index(index)) {
         return;
     }
+    lv_img_dsc_t *image = lv_canvas_get_img(canvas);
+    if (!image) {
+        return;
+    }
     int x0 = index * kProgressSegmentStride;
     for (int y = 0; y < kProgressSegmentH; ++y) {
         for (int x = 0; x < kProgressSegmentW; ++x) {
             bool border = is_progress_segment_border_pixel(x, y);
-            lv_canvas_set_px_color(canvas, x0 + x, y, (filled || border) ? lv_color_black() : lv_color_white());
+            lv_img_buf_set_px_color(image,
+                                    x0 + x,
+                                    y,
+                                    (filled || border) ? lv_color_black() : lv_color_white());
         }
     }
 }

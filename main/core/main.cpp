@@ -33,6 +33,7 @@
 #include "ui_display_flush.h"
 #include "ui_info_page_state.h"
 #include "ui_settings_feedback.h"
+#include "ui_settings_activity_state.h"
 #include "ui_task.h"
 #include "ui_task_notify.h"
 #include "ui_work_page_catalog.h"
@@ -55,6 +56,8 @@
 
 #define MAIN_INVALID_TASK_CREATE_LOG_FORMAT "%s: invalid task create request"
 #define MAIN_TASK_CREATE_FAILED_LOG_FORMAT "%s task create failed"
+#define MAIN_TASK_CREATE_RETRY_LOG_FORMAT "regular task create retry: attempt=%u pending=0x%08lx"
+#define MAIN_TASK_CREATE_EXHAUSTED_LOG_FORMAT "regular task create incomplete: pending=0x%08lx"
 #define MAIN_NVS_INIT_REQUIRES_ERASE_LOG_FORMAT "nvs init requires erase: %s"
 #define MAIN_NVS_ERASE_FAILED_LOG_FORMAT "nvs erase failed: %s"
 #define MAIN_NVS_REINIT_FAILED_LOG_FORMAT "nvs re-init failed: %s"
@@ -75,6 +78,7 @@
 #define MAIN_WIFI_PORTAL_STATE_INIT_FAILED_LOG_FORMAT "Wi-Fi portal state initialization failed"
 #define MAIN_BATTERY_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT "battery runtime state initialization failed"
 #define MAIN_INFO_PAGE_STATE_INIT_FAILED_LOG_FORMAT "info page state initialization failed"
+#define MAIN_SETTINGS_ACTIVITY_STATE_INIT_FAILED_LOG_FORMAT "settings activity state initialization failed"
 #define MAIN_SETTINGS_FEEDBACK_STATE_INIT_FAILED_LOG_FORMAT "settings feedback state initialization failed"
 #define MAIN_WORK_PAGE_CATALOG_INIT_FAILED_LOG_FORMAT "work page catalog initialization failed"
 #define MAIN_POMODORO_STATE_INIT_FAILED_LOG_FORMAT "pomodoro runtime state initialization failed"
@@ -84,6 +88,10 @@
 #define MAIN_DISPLAY_UNAVAILABLE_LOG_FORMAT "RLCD display resources unavailable; startup stopped"
 #define MAIN_I2C_UNAVAILABLE_LOG_FORMAT "I2C master bus unavailable; startup stopped"
 #define MAIN_LVGL_INIT_FAILED_LOG_FORMAT "LVGL initialization failed; startup stopped"
+#define MAIN_BOOT_SCREEN_FINISH_RETRY_LOG_FORMAT "boot screen finish retry: attempt=%u/%u"
+#define MAIN_BOOT_SCREEN_FINISH_FAILED_LOG_FORMAT "boot screen finish failed; startup stopped"
+#define MAIN_BOOT_TASK_COMPLETION_DELAYED_LOG_FORMAT \
+    "%s completion delayed; holding startup until resources are released"
 
 namespace {
 constexpr uint32_t kBootAnimTaskStack = 6144;
@@ -95,8 +103,12 @@ constexpr uint32_t kUiTaskStack = 8192;
 constexpr uint32_t kButtonTaskStack = 3072;
 constexpr uint32_t kAlarmTaskStack = 4096;
 constexpr uint32_t kPomodoroTaskStack = 4096;
+constexpr uint32_t kRegularTaskCreateRetryDelayMs = 100;
+constexpr uint32_t kRegularTaskCreateMaxAttempts = 3;
 constexpr uint32_t kBootSyncWaitMarginMs = 500;
 constexpr uint32_t kBootAnimStopWaitMs = 1500;
+constexpr uint32_t kBootScreenFinishRetryDelayMs = 50;
+constexpr uint32_t kBootScreenFinishMaxAttempts = 3;
 constexpr uint32_t kSetupPromptStartDelayMs = 350;
 constexpr UBaseType_t kHighServiceTaskPriority = 4;
 constexpr UBaseType_t kNormalServiceTaskPriority = 3;
@@ -154,6 +166,7 @@ constexpr AppInitializerSpec kCoreRuntimeStateInitializers[] = {
     {wifi_portal_state_init, MAIN_WIFI_PORTAL_STATE_INIT_FAILED_LOG_FORMAT},
     {battery_runtime_state_init, MAIN_BATTERY_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT},
     {info_page_state_init, MAIN_INFO_PAGE_STATE_INIT_FAILED_LOG_FORMAT},
+    {settings_activity_state_init, MAIN_SETTINGS_ACTIVITY_STATE_INIT_FAILED_LOG_FORMAT},
     {settings_feedback_state_init, MAIN_SETTINGS_FEEDBACK_STATE_INIT_FAILED_LOG_FORMAT},
     {work_page_catalog_init, MAIN_WORK_PAGE_CATALOG_INIT_FAILED_LOG_FORMAT},
 };
@@ -204,6 +217,16 @@ bool initialize_app_states(const AppInitializerSpec (&specs)[Count])
 
 static_assert(array_count(kRegularAppTasks) > 0,
               "regular task table must not be empty");
+static_assert(array_count(kRegularAppTasks) < 32,
+              "regular task retry mask must fit in uint32_t");
+static_assert(kRegularTaskCreateRetryDelayMs > 0,
+              "regular task retry delay must be positive");
+static_assert(kRegularTaskCreateMaxAttempts > 1,
+              "regular task creation must retain a retry opportunity");
+static_assert(kBootScreenFinishRetryDelayMs > 0,
+              "boot screen finish retry delay must be positive");
+static_assert(kBootScreenFinishMaxAttempts > 1,
+              "boot screen finish must retain a retry opportunity");
 static_assert(app_task_specs_valid(), "regular app task specs must be valid");
 static_assert(array_count(kCoreRuntimeStateInitializers) > 0,
               "core runtime initializer table must not be empty");
@@ -237,15 +260,47 @@ static TaskHandle_t create_app_task(TaskFunction_t task,
 
 static void create_regular_app_tasks()
 {
-    for (const AppTaskSpec &task : kRegularAppTasks) {
-        TaskHandle_t handle = create_app_task(task.task,
-                                              task.name,
-                                              task.stack_depth,
-                                              task.priority,
-                                              task.core_id);
-        if (task.register_ui_handle) {
-            register_ui_task_handle(handle);
+    constexpr uint32_t kAllRegularTaskBits =
+        (uint32_t{1} << array_count(kRegularAppTasks)) - 1;
+    uint32_t pending = kAllRegularTaskBits;
+    for (uint32_t attempt = 1;
+         attempt <= kRegularTaskCreateMaxAttempts && pending != 0;
+         ++attempt) {
+        uint32_t failed = 0;
+        for (size_t index = 0; index < array_count(kRegularAppTasks); ++index) {
+            const uint32_t task_bit = uint32_t{1} << index;
+            if ((pending & task_bit) == 0) {
+                continue;
+            }
+            const AppTaskSpec &task = kRegularAppTasks[index];
+            TaskHandle_t handle = create_app_task(task.task,
+                                                  task.name,
+                                                  task.stack_depth,
+                                                  task.priority,
+                                                  task.core_id);
+            if (!handle) {
+                failed |= task_bit;
+                continue;
+            }
+            if (task.register_ui_handle) {
+                register_ui_task_handle(handle);
+            }
         }
+        pending = failed;
+        if (pending != 0 && attempt < kRegularTaskCreateMaxAttempts) {
+            ESP_LOGW(TAG,
+                     MAIN_TASK_CREATE_RETRY_LOG_FORMAT,
+                     static_cast<unsigned>(attempt + 1),
+                     static_cast<unsigned long>(pending));
+            // Recently deleted boot tasks release dynamic stacks from the
+            // Idle task. Yield before retrying only the missing services.
+            vTaskDelay(pdMS_TO_TICKS(kRegularTaskCreateRetryDelayMs));
+        }
+    }
+    if (pending != 0) {
+        ESP_LOGE(TAG,
+                 MAIN_TASK_CREATE_EXHAUSTED_LOG_FORMAT,
+                 static_cast<unsigned long>(pending));
     }
 }
 
@@ -321,6 +376,47 @@ static void create_boot_task_or_signal(TaskFunction_t task,
         ESP_LOGW(TAG, MAIN_BOOT_TASK_CREATE_FAILED_LOG_FORMAT, failure_log);
         app_event_group_set_bits(done_bit);
     }
+}
+
+static bool finish_boot_screen_with_retry()
+{
+    for (uint32_t attempt = 1; attempt <= kBootScreenFinishMaxAttempts; ++attempt) {
+        if (finish_boot_screen()) {
+            return true;
+        }
+        if (attempt < kBootScreenFinishMaxAttempts) {
+            ESP_LOGW(TAG,
+                     MAIN_BOOT_SCREEN_FINISH_RETRY_LOG_FORMAT,
+                     static_cast<unsigned>(attempt + 1),
+                     static_cast<unsigned>(kBootScreenFinishMaxAttempts));
+            vTaskDelay(pdMS_TO_TICKS(kBootScreenFinishRetryDelayMs));
+        }
+    }
+    ESP_LOGE(TAG, "%s", MAIN_BOOT_SCREEN_FINISH_FAILED_LOG_FORMAT);
+    return false;
+}
+
+static void wait_for_boot_task_completion(EventBits_t done_bit,
+                                          TickType_t expected_wait,
+                                          const char *task_name)
+{
+    EventBits_t bits = app_event_group_wait_bits(done_bit,
+                                                 pdFALSE,
+                                                 pdTRUE,
+                                                 expected_wait);
+    if ((bits & done_bit) != 0) {
+        return;
+    }
+    ESP_LOGW(TAG,
+             MAIN_BOOT_TASK_COMPLETION_DELAYED_LOG_FORMAT,
+             task_name ? task_name : kFallbackBootTaskName);
+    // Both boot tasks own temporary stacks and the connectivity task may also
+    // own Wi-Fi/PM resources. Do not create permanent services against those
+    // resources after only the expected-duration window has elapsed.
+    app_event_group_wait_bits(done_bit,
+                              pdFALSE,
+                              pdTRUE,
+                              portMAX_DELAY);
 }
 
 extern "C" void app_main(void)
@@ -404,20 +500,25 @@ extern "C" void app_main(void)
                                kNetworkTaskCore,
                                kBootSyncDoneBit,
                                kBootConnectivityTaskCreateFailed);
-    app_event_group_wait_bits(kBootSyncDoneBit,
-                              pdFALSE,
-                              pdTRUE,
-                              pdMS_TO_TICKS(kBootStartupBudgetMs + kBootSyncWaitMarginMs));
+    wait_for_boot_task_completion(
+        kBootSyncDoneBit,
+        pdMS_TO_TICKS(kBootStartupBudgetMs + kBootSyncWaitMarginMs),
+        kBootSyncTaskName);
     update_boot_screen(100, kBootReadyStatus, kBootReadyDetail);
     request_boot_animation_stop();
-    app_event_group_wait_bits(kBootAnimDoneBit,
-                              pdFALSE,
-                              pdTRUE,
-                              pdMS_TO_TICKS(kBootAnimStopWaitMs));
+    wait_for_boot_task_completion(kBootAnimDoneBit,
+                                  pdMS_TO_TICKS(kBootAnimStopWaitMs),
+                                  kBootAnimTaskName);
     finish_boot_anim_to_last_frame();
-    finish_boot_screen();
+    if (!finish_boot_screen_with_retry()) {
+        return;
+    }
     startup_screen_mark_finished();
 
+    // A transient early allocation or PM-driver failure must not permanently
+    // disable runtime sleep or network/audio protection. Successful resources
+    // are retained, so the normal path only checks the ready catalog.
+    init_power_management();
     create_regular_app_tasks();
 
     if (setup_prompt_playback_pending()) {

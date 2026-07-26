@@ -2,7 +2,6 @@
 #include "ui_boot_screen.h"
 
 #include "active_work_page_state.h"
-#include "app_constexpr.h"
 #include "app_event_group.h"
 #include "app_metadata.h"
 #include "app_runtime_timing.h"
@@ -41,13 +40,6 @@ constexpr const char *kBootInitialStatusText = "Starting...";
 constexpr const char *kBootInitialDetailText = "Preparing system";
 #define BOOT_ANIM_DONE_EVENT_SKIPPED_LOG "boot anim done event skipped: app events unavailable"
 #define BOOT_ANIM_CANVAS_CREATE_FAILED_LOG "boot anim canvas create failed"
-constexpr const char *const kBootTexts[] = {
-    kBootTitleText,
-    kBootInitialStatusText,
-    kBootInitialDetailText,
-    BOOT_ANIM_DONE_EVENT_SKIPPED_LOG,
-    BOOT_ANIM_CANVAS_CREATE_FAILED_LOG,
-};
 lv_color_t *s_boot_anim_canvas_buffer;
 lv_obj_t *s_boot_status_label;
 lv_obj_t *s_boot_detail_label;
@@ -65,8 +57,6 @@ static_assert(kBootAnimFinishLvglLockTimeoutMs >= kBootAnimLvglLockTimeoutMs,
               "boot animation finish lock timeout must cover the normal lock timeout");
 static_assert(kBootScreenLvglLockTimeoutMs >= kBootAnimFinishLvglLockTimeoutMs,
               "boot screen lock timeout must cover boot animation finish lock timeout");
-static_assert(cstr_array_nonempty(kBootTexts), "boot screen text registry must not be empty");
-
 void release_boot_anim_canvas_buffer()
 {
     std::free(s_boot_anim_canvas_buffer);
@@ -84,12 +74,16 @@ static void draw_boot_anim_frame_index(int frame)
     } else if (frame >= BOOT_ANIM_FRAME_COUNT) {
         frame = BOOT_ANIM_FRAME_COUNT - 1;
     }
+    lv_img_dsc_t *image = lv_canvas_get_img(s_boot_anim_canvas);
+    if (!image) {
+        return;
+    }
     const uint8_t *pixels = boot_anim_frames[frame];
     uint32_t bit = 0;
     for (int y = 0; y < BOOT_ANIM_HEIGHT; ++y) {
         for (int x = 0; x < BOOT_ANIM_WIDTH; ++x, ++bit) {
             bool black = packed_1bit_bit_is_set(pixels, bit);
-            lv_canvas_set_px_color(s_boot_anim_canvas, x, y, black ? lv_color_black() : lv_color_white());
+            lv_img_buf_set_px_color(image, x, y, black ? lv_color_black() : lv_color_white());
         }
     }
     lv_obj_invalidate(s_boot_anim_canvas);
@@ -194,19 +188,21 @@ void update_boot_screen(int percent, const char *status, const char *detail)
     }
 }
 
-void finish_boot_screen()
+bool finish_boot_screen()
 {
-    if (Lvgl_lock(kBootScreenLvglLockTimeoutMs)) {
-        lv_obj_clean(lv_scr_act());
-        clear_clock_object_refs();
-        clear_info_object_refs();
-        s_boot_status_label = nullptr;
-        s_boot_detail_label = nullptr;
-        s_boot_anim_canvas = nullptr;
-        release_boot_anim_canvas_buffer();
-        active_work_page_store(first_enabled_work_page());
-        show_active_work_page();
-        lv_refr_now(nullptr);
-        Lvgl_unlock();
+    if (!Lvgl_lock(kBootScreenLvglLockTimeoutMs)) {
+        return false;
     }
+    lv_obj_clean(lv_scr_act());
+    clear_clock_object_refs();
+    clear_info_object_refs();
+    s_boot_status_label = nullptr;
+    s_boot_detail_label = nullptr;
+    s_boot_anim_canvas = nullptr;
+    release_boot_anim_canvas_buffer();
+    active_work_page_store(first_enabled_work_page());
+    show_active_work_page();
+    lv_refr_now(nullptr);
+    Lvgl_unlock();
+    return true;
 }

@@ -46,19 +46,19 @@ constexpr const char *kPortalSaveWeatherApiFailedTitle = "天气 API 验证失�
 constexpr const char *kPortalSaveWeatherCityInvalidTitle = "天气城市无效";
 constexpr const char *kPortalSaveConnectedBody = "天气时钟已连接到 Wi-Fi 网络。";
 constexpr const char *kPortalSaveValidatingBody =
-    "设备正在连接 Wi-Fi，并验证天气 API 密钥和天气城市，请稍候。";
+    "设备正在连接 Wi-Fi，并验证天气 API 密钥、API Host 和天气城市，请稍候。";
 constexpr const char *kPortalSaveMissingBody =
-    "请填写 Wi-Fi 和和风天气 API 密钥；如果只使用离线模式，也可以仅设置日期和时间。";
+    "在线模式请填写 Wi-Fi、和风天气 API 密钥和账号专属 API Host；离线模式可仅设置日期和时间。";
 constexpr const char *kPortalSaveWifiFailedBody =
     "设备未能连接到该 Wi-Fi。请检查密码、信号和路由器状态后重新填写。";
 constexpr const char *kPortalSaveWeatherApiFailedBody =
-    "Wi-Fi 已连接，但和风天气 API 密钥无法使用。请检查密钥后重新填写。";
+    "Wi-Fi 已连接，但和风天气验证失败。请检查 API 密钥和账号专属 API Host 后重新填写。";
 constexpr const char *kPortalSaveWeatherCityInvalidBody =
     "Wi-Fi 与 API 密钥可用，但和风天气无法识别该城市。请修改城市，或留空使用自动定位。";
 constexpr const char *kPortalOfflineSavedTitle = "离线模式已开启";
 constexpr const char *kPortalOfflineInvalidTitle = "日期或时间无效";
 constexpr const char *kPortalOfflineSavedBody = "天气时钟将使用 RTC 时间，并停止所有网络更新。";
-constexpr const char *kPortalOfflineInvalidBody = "请输入有效的日期和时间，或者填写 Wi-Fi 和和风天气 API 密钥。";
+constexpr const char *kPortalOfflineInvalidBody = "请输入有效日期和时间，或者填写 Wi-Fi、和风天气 API 密钥与账号专属 API Host。";
 constexpr const char *kPortalWifiScanBusyMessage = "Wi-Fi 正在扫描，请稍后刷新页面。";
 constexpr const char *kPortalWifiScanFailedMessage = "Wi-Fi 扫描失败，请刷新页面重试。";
 constexpr const char *kPortalWifiScanEmptyMessage = "没有发现可用的 Wi-Fi 网络。";
@@ -397,6 +397,8 @@ esp_err_t root_get_handler(httpd_req_t *req)
                 "<label>Wi-Fi 名称（SSID）</label><input name='ssid' placeholder='请选择或输入 Wi-Fi 名称' value='%s' autocomplete='off'>"
                 "<label>Wi-Fi 密码</label><input name='pass' placeholder='请输入 Wi-Fi 密码' type='password' autocomplete='current-password'>"
                 "<label>和风天气 API 密钥</label><input name='api_key' placeholder='已有密钥时可留空，继续使用原密钥' value='' autocomplete='off'>"
+                "<label>和风天气 API Host</label><input name='api_host' placeholder='例如：abc123.re.qweatherapi.com' value='' autocomplete='off' aria-describedby='api-host-hint'>"
+                "<p id='api-host-hint' class='hint'>请在和风天气控制台“设置 → API Host”中查看；只填写域名，不含 https:// 和路径。已有 Host 时可留空。</p>"
                 "<label>天气城市（选填）</label><input name='weather_city' placeholder='例如：杭州；留空则根据公网 IP 自动定位' value='%s' autocomplete='off'>"
                 "<label for='manual_time'>离线日期和时间（选填）</label><input id='manual_time' name='manual_time' type='datetime-local' placeholder='连接 Wi-Fi 时可留空' aria-describedby='manual-time-hint'>"
                 "<p id='manual-time-hint' class='hint'>连接 Wi-Fi 时可以留空；仅离线使用时填写。</p>"
@@ -456,7 +458,7 @@ esp_err_t send_save_result_page(httpd_req_t *req,
                 "h1{font-size:24px;margin:0 0 8px}p{font-size:15px;line-height:1.45;color:#4d5b68;margin:0 0 14px}.note{border:1px solid #d3dae2;border-radius:6px;padding:10px;margin:0 0 14px;color:#17202a;background:#fbfcfd;font-size:14px}.meta{border-top:1px solid #e1e6eb;padding-top:12px;color:#697784;font-size:13px}"
                 "a{display:block;height:46px;line-height:46px;text-align:center;background:#17202a;color:#fff;text-decoration:none;border-radius:6px;font-weight:800;margin-top:16px}"
                 "</style>%s</head><body><main class='wrap'><section class='panel'><div id='save-state' class='state'>%s</div><h1 id='save-title'>%s</h1><p id='save-body'>%s</p>"
-                "%s%s%s<div class='meta'>Wi-Fi 名称：%s<br>天气城市：%s<br>最近一次 Wi-Fi 断开原因：%d</div><a href='/'>返回配网页</a></section></main></body></html>",
+                "%s%s%s<div class='meta'>Wi-Fi 名称：%s<br>API Host：已保存<br>天气城市：%s<br>最近一次 Wi-Fi 断开原因：%d</div><a href='/'>返回配网页</a></section></main></body></html>",
                 kPortalHtmlHeadPrefix,
                 poll_script,
                 state_text,

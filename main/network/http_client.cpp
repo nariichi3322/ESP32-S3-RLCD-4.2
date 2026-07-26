@@ -33,8 +33,7 @@ constexpr const char *kHttpAcceptHeader = "application/json,text/plain,*/*";
 constexpr const char *kHttpAcceptEncodingHeaderName = "Accept-Encoding";
 constexpr const char *kHttpAcceptEncodingHeader = "identity";
 constexpr const char *kQweatherApiKeyHeader = "X-QW-Api-Key";
-constexpr const char *kQweatherGeoHost = "://geoapi.qweather.com/";
-constexpr const char *kQweatherDevHost = "://devapi.qweather.com/";
+constexpr const char *kQweatherApiHostSuffix = ".qweatherapi.com/";
 constexpr const char *kHttpPreviewDefaultStage = "http";
 constexpr const char *kHttpDecodeInvalidArgLog = "decode http body invalid arg";
 constexpr const char *kHttpGetInvalidArgLog = "http get invalid arg";
@@ -102,9 +101,7 @@ static_assert(kHttpPreviewBufferSize == kHttpPreviewMaxChars + kCStringTerminato
 
 bool is_qweather_url(const char *url)
 {
-    return url &&
-           (strstr(url, kQweatherGeoHost) ||
-            strstr(url, kQweatherDevHost));
+    return url && strstr(url, kQweatherApiHostSuffix);
 }
 
 bool http_status_ok(int status)

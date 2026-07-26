@@ -1,7 +1,6 @@
 // 组合刷新当前工作页的时间、正文、全天进度和天气预警。
 #include "ui_work_page_update.h"
 
-#include "app_constexpr.h"
 #include "sensor_time.h"
 #include "ui_clock_alert_state.h"
 #include "ui_clock_runtime.h"
@@ -20,16 +19,6 @@
 namespace {
 constexpr const char *kUiDatePlaceholder = "----/--/-- / 星期-";
 constexpr const char *kUiTimePlaceholder = "--:--";
-constexpr const char *kUiFormatTexts[] = {
-    kUiDatePlaceholder,
-    kUiTimePlaceholder,
-};
-
-static_assert(array_count(kUiFormatTexts) > 0,
-              "UI work-page format text registry must not be empty");
-static_assert(cstr_array_nonempty(kUiFormatTexts),
-              "UI work-page placeholders must be non-empty");
-
 bool update_visible_work_page_body(const struct tm &local,
                                    const ClockUiTimeSnapshot &time_snapshot,
                                    const ActiveWorkPageState &state)

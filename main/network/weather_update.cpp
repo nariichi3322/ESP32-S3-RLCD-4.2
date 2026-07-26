@@ -8,10 +8,11 @@
 
 #include "app_constexpr.h"
 #include "app_metadata.h"
-#include "battery_runtime_state.h"
 #include "manual_weather_city_state.h"
 #include "network_cache_policy.h"
+#include "network_sync_runtime.h"
 #include "network_sync_schedule.h"
+#include "network_sync_wait.h"
 #include "network_text.h"
 #include "qweather_location_text.h"
 #include "startup_state.h"
@@ -20,8 +21,6 @@
 #include <esp_attr.h>
 #include <esp_log.h>
 #include <esp_timer.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 
 #include <string.h>
 
@@ -90,6 +89,8 @@ static_assert(sizeof(WeatherCityResolutionCache) < 256,
 #define WEATHER_USING_IP_COORDINATES_FORMAT "using ip coordinates for weather now: %s"
 #define WEATHER_STARTUP_FOLLOWUP_DEFERRED_FORMAT \
     "startup weather %s deferred: internal_free=%u internal_largest=%u dma_largest=%u"
+#define WEATHER_RUNTIME_CHANGE_DEFERRED_FORMAT \
+    "weather update %s deferred after runtime state change"
 constexpr const char *kWeatherIpLookupUpdateFailedLog = "weather update failed after ip lookup";
 constexpr const char *kWeatherIpGeolocationLookupFailedLog = "ip geolocation lookup failed";
 constexpr const char *kWeatherIpRetryContextReusedLog =
@@ -195,16 +196,38 @@ void log_weather_update_warning(const char *message)
     ESP_LOGW(TAG, "%s", cstr_nonempty(message) ? message : "weather update failed");
 }
 
+void log_weather_runtime_change_deferred(const char *stage)
+{
+    ESP_LOGI(TAG,
+             WEATHER_RUNTIME_CHANGE_DEFERRED_FORMAT,
+             cstr_nonempty(stage) ? stage : "follow-up");
+}
+
+bool weather_sync_can_continue(const char *stage)
+{
+    if (network_sync_continuation_allowed()) {
+        return true;
+    }
+    log_weather_runtime_change_deferred(stage);
+    return false;
+}
+
 bool prepare_weather_followup_request(const char *stage)
 {
+    if (!weather_sync_can_continue(stage)) {
+        return false;
+    }
     // Each QWeather helper owns and releases its response/TLS buffers before
     // returning. Keep the longer settle and memory gate through the first
     // minute, including the staggered background refresh after the boot UI.
-    bool startup_pressure = network_startup_pressure_window_active(
+    const bool startup_pressure = network_startup_pressure_window_active(
         startup_screen_active(),
         esp_timer_get_time());
-    vTaskDelay(pdMS_TO_TICKS(
-        network_weather_request_settle_delay_ms(startup_pressure)));
+    if (!wait_for_network_sync_settle(
+            network_weather_request_settle_delay_ms(startup_pressure))) {
+        log_weather_runtime_change_deferred(stage);
+        return false;
+    }
     if (!startup_pressure) {
         return true;
     }
@@ -224,23 +247,23 @@ bool prepare_weather_followup_request(const char *stage)
     return false;
 }
 
-bool lookup_weather_city(const char *location,
-                         char *city_id,
-                         char *city_name,
-                         WeatherData *weather)
+QweatherCityLookupStatus lookup_weather_city(const char *location,
+                                             char *city_id,
+                                             char *city_name,
+                                             WeatherData *weather)
 {
     if (!city_id || !city_name || !weather) {
-        return false;
+        return kQweatherCityLookupError;
     }
-    return qweather_lookup_city(location,
-                                city_id,
-                                kQweatherCityIdSize,
-                                city_name,
-                                kWeatherCityNameSize,
-                                weather->lat,
-                                sizeof(weather->lat),
-                                weather->lon,
-                                sizeof(weather->lon));
+    return qweather_lookup_city_status(location,
+                                       city_id,
+                                       kQweatherCityIdSize,
+                                       city_name,
+                                       kWeatherCityNameSize,
+                                       weather->lat,
+                                       sizeof(weather->lat),
+                                       weather->lon,
+                                       sizeof(weather->lon));
 }
 
 WeatherUpdateResult fetch_and_commit_weather(const char *city_id,
@@ -286,7 +309,9 @@ WeatherUpdateResult fetch_and_commit_weather(const char *city_id,
                                                   forecast_ok);
         return WeatherUpdateResult::kResourceDeferred;
     }
-    bool air_ok = qweather_fetch_air(city_id, &workspace.air);
+    bool air_ok = qweather_fetch_air(workspace.weather.lat,
+                                     workspace.weather.lon,
+                                     &workspace.air);
     commit_weather_update_snapshot(workspace.weather,
                                    workspace.alert,
                                    workspace.forecast,
@@ -303,10 +328,12 @@ WeatherUpdateResult update_weather_by_manual_city(const char *manual_city,
     strlcpy(workspace.location, manual_city, sizeof(workspace.location));
     bool have_city_id = restore_weather_city_resolution_cache(&workspace);
     if (!have_city_id) {
-        have_city_id = lookup_weather_city(manual_city,
-                                           workspace.city_id,
-                                           workspace.lookup_city,
-                                           &workspace.weather);
+        have_city_id =
+            lookup_weather_city(manual_city,
+                                workspace.city_id,
+                                workspace.lookup_city,
+                                &workspace.weather) ==
+            kQweatherCityLookupOk;
         if (have_city_id) {
             store_weather_city_resolution_cache(workspace);
         }
@@ -347,19 +374,23 @@ WeatherUpdateResult update_weather_by_ip_location(WeatherUpdateWorkspace &worksp
         if (!prepare_weather_followup_request("city lookup")) {
             return WeatherUpdateResult::kResourceDeferred;
         }
-        have_city_id = lookup_weather_city(workspace.location,
-                                           workspace.city_id,
-                                           workspace.lookup_city,
-                                           &workspace.weather);
-        if (!have_city_id && workspace.ip_city[0] != '\0') {
+        QweatherCityLookupStatus city_status =
+            lookup_weather_city(workspace.location,
+                                workspace.city_id,
+                                workspace.lookup_city,
+                                &workspace.weather);
+        have_city_id = city_status == kQweatherCityLookupOk;
+        if (qweather_city_lookup_should_try_alternate(city_status) &&
+            workspace.ip_city[0] != '\0') {
             ESP_LOGW(TAG, WEATHER_RETRY_IP_CITY_LOOKUP_FORMAT, workspace.ip_city);
             if (!prepare_weather_followup_request("city lookup retry")) {
                 return WeatherUpdateResult::kResourceDeferred;
             }
-            have_city_id = lookup_weather_city(workspace.ip_city,
-                                               workspace.city_id,
-                                               workspace.lookup_city,
-                                               &workspace.weather);
+            city_status = lookup_weather_city(workspace.ip_city,
+                                              workspace.city_id,
+                                              workspace.lookup_city,
+                                              &workspace.weather);
+            have_city_id = city_status == kQweatherCityLookupOk;
         }
         if (have_city_id) {
             store_weather_city_resolution_cache(workspace);
@@ -392,7 +423,8 @@ WeatherUpdateResult update_weather_by_ip_location(WeatherUpdateWorkspace &worksp
 
 WeatherUpdateResult perform_weather_update()
 {
-    if (!network_weather_api_key_configured() || battery_low_mode_load()) {
+    if (!network_weather_configuration_configured() ||
+        !network_sync_continuation_allowed()) {
         clear_weather_ip_retry_context();
         clear_weather_city_resolution_cache();
         clear_weather_ready_event();

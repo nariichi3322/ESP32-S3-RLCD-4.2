@@ -48,6 +48,7 @@ struct PmLockDescriptor {
 };
 
 StaticTaskMutex s_pm_lock_mutex;
+bool s_pm_configured = false;
 PmLockRuntime s_network_pm_lock_runtime;
 PmLockRuntime s_audio_pm_lock_runtime;
 PmLockRuntime s_audio_wake_pm_lock_runtime;
@@ -105,6 +106,9 @@ void log_pm_lock_mutex_failure(const char *name)
 bool create_pm_lock(const PmLockDescriptor &lock)
 {
     PmLockRuntime &runtime = *lock.runtime;
+    if (runtime.handle) {
+        return true;
+    }
     esp_err_t err = esp_pm_lock_create(lock.type, 0, lock.lock_name, &runtime.handle);
     if (err != ESP_OK) {
         runtime.handle = nullptr;
@@ -113,6 +117,16 @@ bool create_pm_lock(const PmLockDescriptor &lock)
                  lock.create_log_name,
                  esp_err_to_name(err));
         return false;
+    }
+    return true;
+}
+
+bool pm_lock_catalog_ready()
+{
+    for (const PmLockDescriptor *lock : kPmLockCatalog) {
+        if (!lock->runtime->handle) {
+            return false;
+        }
     }
     return true;
 }
@@ -213,24 +227,27 @@ bool set_pm_lock_active(const PmLockDescriptor &lock, bool enabled)
 void init_power_management()
 {
 #if CONFIG_PM_ENABLE
-    if (s_pm_lock_mutex.handle()) {
+    if (s_pm_configured && pm_lock_catalog_ready()) {
         return;
     }
-    if (!s_pm_lock_mutex.init()) {
+    if (!s_pm_lock_mutex.handle() && !s_pm_lock_mutex.init()) {
         ESP_LOGW(TAG, POWER_MUTEX_CREATE_FAILED_LOG_FORMAT);
         return;
     }
-    esp_pm_config_t pm_config = {};
-    pm_config.max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
-    pm_config.min_freq_mhz = CONFIG_XTAL_FREQ;
-    pm_config.light_sleep_enable = true;
+    if (!s_pm_configured) {
+        esp_pm_config_t pm_config = {};
+        pm_config.max_freq_mhz = CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ;
+        pm_config.min_freq_mhz = CONFIG_XTAL_FREQ;
+        pm_config.light_sleep_enable = true;
 
-    esp_err_t err = esp_pm_configure(&pm_config);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, POWER_SETUP_FAILED_LOG_FORMAT, esp_err_to_name(err));
-    } else {
-        ESP_LOGI(TAG, POWER_SETUP_OK_LOG_FORMAT,
-                 pm_config.max_freq_mhz, pm_config.min_freq_mhz);
+        esp_err_t err = esp_pm_configure(&pm_config);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, POWER_SETUP_FAILED_LOG_FORMAT, esp_err_to_name(err));
+        } else {
+            s_pm_configured = true;
+            ESP_LOGI(TAG, POWER_SETUP_OK_LOG_FORMAT,
+                     pm_config.max_freq_mhz, pm_config.min_freq_mhz);
+        }
     }
     for (const PmLockDescriptor *lock : kPmLockCatalog) {
         (void)create_pm_lock(*lock);

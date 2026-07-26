@@ -121,5 +121,5 @@ bool xiaozhi_power_session_acquire_realtime()
             ESP_LOGW(TAG, "Xiaozhi Wi-Fi power save disable failed");
         }
     }
-    return wait_for_wifi_connected(kWifiWaitMs);
+    return wait_for_wifi_connected(kWifiWaitMs, kXiaozhiPageStateChangedBit);
 }

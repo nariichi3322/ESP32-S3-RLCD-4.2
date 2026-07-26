@@ -11,6 +11,7 @@ constexpr uint32_t kActionCount = 100000;
 
 int main()
 {
+    assert(settings_activity_state_init());
     assert(!settings_page_requested());
     settings_page_request();
     assert(settings_page_requested());
@@ -19,23 +20,37 @@ int main()
 
     assert(settings_activity_action_sequence() == 0);
     assert(settings_activity_last_tick() == 0);
+    const SettingsActivitySnapshot initial = settings_activity_snapshot();
+    assert(initial.action_sequence == 0);
+    assert(initial.last_activity_tick == 0);
+    assert(initial.revision == 0);
 
     settings_activity_record(17);
     assert(settings_activity_last_tick() == 17);
+    const SettingsActivitySnapshot before_later_activity =
+        settings_activity_snapshot();
+    assert(before_later_activity.action_sequence == 0);
+    assert(before_later_activity.last_activity_tick == 17);
+    assert(before_later_activity.revision == 1);
+    settings_activity_record(18);
+    settings_page_request();
+    assert(!settings_page_clear_if_activity_current(before_later_activity));
+    assert(settings_page_requested());
 
     std::atomic<bool> invalid_order_seen{false};
     std::thread writer([] {
         for (uint32_t i = 1; i <= kActionCount; ++i) {
-            settings_activity_record_action(i + 17);
+            settings_activity_record_action(i + 18);
         }
     });
     std::thread reader([&] {
         uint32_t observed_sequence = 0;
         while (observed_sequence < kActionCount) {
-            uint32_t sequence = settings_activity_action_sequence();
+            const SettingsActivitySnapshot snapshot =
+                settings_activity_snapshot();
+            uint32_t sequence = snapshot.action_sequence;
             if (sequence != observed_sequence) {
-                uint32_t activity_tick = settings_activity_last_tick();
-                if (activity_tick < sequence + 17) {
+                if (snapshot.last_activity_tick < sequence + 18) {
                     invalid_order_seen.store(true, std::memory_order_relaxed);
                 }
                 observed_sequence = sequence;
@@ -47,7 +62,20 @@ int main()
 
     assert(!invalid_order_seen.load(std::memory_order_relaxed));
     assert(settings_activity_action_sequence() == kActionCount);
-    assert(settings_activity_last_tick() == kActionCount + 17);
+    assert(settings_activity_last_tick() == kActionCount + 18);
+    const SettingsActivitySnapshot final_activity =
+        settings_activity_snapshot();
+    assert(final_activity.action_sequence == kActionCount);
+    assert(final_activity.last_activity_tick == kActionCount + 18);
+    assert(final_activity.revision == kActionCount + 2);
+    assert(settings_page_clear_if_activity_current(final_activity));
+    assert(!settings_page_requested());
+
+    const SettingsActivitySnapshot before_claim =
+        settings_activity_snapshot();
+    assert(settings_activity_claim_if_current(before_claim));
+    assert(!settings_activity_claim_if_current(before_claim));
+    assert(settings_activity_snapshot().revision == before_claim.revision + 1);
 
     std::atomic<bool> request_test_started{false};
     std::thread request_writer([&request_test_started] {

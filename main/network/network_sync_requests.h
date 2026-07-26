@@ -25,13 +25,16 @@ struct NetworkSyncRequestSnapshot {
         return manual_saying || visible_saying;
     }
 
-    bool none_for_setup_portal() const
-    {
-        return !provisioning && !manual_ntp && !manual_weather &&
-               !manual_saying && !visible_weather && !visible_saying &&
-               !diagnostics;
-    }
+    NetworkSyncRequestSnapshot provisioning_only() const;
 };
+
+inline NetworkSyncRequestSnapshot
+NetworkSyncRequestSnapshot::provisioning_only() const
+{
+    NetworkSyncRequestSnapshot filtered;
+    filtered.provisioning = provisioning;
+    return filtered;
+}
 
 NetworkSyncRequestSnapshot snapshot_network_sync_requests();
 EventBits_t network_sync_request_bits(const NetworkSyncRequestSnapshot &requests);

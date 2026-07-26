@@ -74,34 +74,55 @@ static_assert(kCalendarTodayRadius > 0 &&
                   kCalendarTodayRadius * 2 <= kCalendarCellH - kCalendarTodayInsetH,
               "calendar today radius must fit highlight box");
 
-static void canvas_fill_rect_safe(lv_obj_t *canvas, int w, int h, int x, int y, int rw, int rh, lv_color_t color)
+static void canvas_fill_rect_safe(lv_img_dsc_t *image,
+                                  int w,
+                                  int h,
+                                  int x,
+                                  int y,
+                                  int rw,
+                                  int rh,
+                                  lv_color_t color)
 {
     for (int yy = y; yy < y + rh; ++yy) {
         for (int xx = x; xx < x + rw; ++xx) {
-            canvas_set_px_safe(canvas, xx, yy, w, h, color);
+            canvas_image_set_px_safe(image, xx, yy, w, h, color);
         }
     }
 }
 
-static void canvas_dot_rect(lv_obj_t *canvas, int w, int h, int x, int y, int rw, int rh)
+static void canvas_dot_rect(lv_img_dsc_t *image,
+                            int w,
+                            int h,
+                            int x,
+                            int y,
+                            int rw,
+                            int rh)
 {
     for (int yy = y; yy < y + rh; yy += kCalendarDottedFillYStep) {
         for (int xx = x; xx < x + rw; xx += kCalendarDottedFillXStep) {
-            canvas_set_px_safe(canvas, xx, yy, w, h, lv_color_black());
+            canvas_image_set_px_safe(image, xx, yy, w, h, lv_color_black());
         }
     }
     int right = x + rw - 1;
     int bottom = y + rh - 1;
     for (int yy = y; yy <= bottom; yy += kCalendarDottedFillYStep) {
-        canvas_set_px_safe(canvas, right, yy, w, h, lv_color_black());
+        canvas_image_set_px_safe(image, right, yy, w, h, lv_color_black());
     }
     for (int xx = x; xx <= right; xx += kCalendarDottedFillXStep) {
-        canvas_set_px_safe(canvas, xx, bottom, w, h, lv_color_black());
+        canvas_image_set_px_safe(image, xx, bottom, w, h, lv_color_black());
     }
-    canvas_set_px_safe(canvas, right, bottom, w, h, lv_color_black());
+    canvas_image_set_px_safe(image, right, bottom, w, h, lv_color_black());
 }
 
-static void canvas_fill_round_rect_safe(lv_obj_t *canvas, int w, int h, int x, int y, int rw, int rh, int radius, lv_color_t color)
+static void canvas_fill_round_rect_safe(lv_img_dsc_t *image,
+                                        int w,
+                                        int h,
+                                        int x,
+                                        int y,
+                                        int rw,
+                                        int rh,
+                                        int radius,
+                                        lv_color_t color)
 {
     int r2 = radius * radius;
     for (int yy = 0; yy < rh; ++yy) {
@@ -119,7 +140,7 @@ static void canvas_fill_round_rect_safe(lv_obj_t *canvas, int w, int h, int x, i
                 dy = yy - (rh - radius - 1);
             }
             if (dx == 0 || dy == 0 || dx * dx + dy * dy <= r2) {
-                canvas_set_px_safe(canvas, x + xx, y + yy, w, h, color);
+                canvas_image_set_px_safe(image, x + xx, y + yy, w, h, color);
             }
         }
     }
@@ -150,9 +171,9 @@ static void draw_calendar_text(lv_obj_t *canvas,
     lv_obj_invalidate_area(canvas, &area);
 }
 
-static void draw_calendar_weekday_header()
+static void draw_calendar_weekday_header(lv_img_dsc_t *image)
 {
-    canvas_fill_rect_safe(s_calendar_canvas,
+    canvas_fill_rect_safe(image,
                           kCalendarCanvasW,
                           kCalendarCanvasH,
                           kCalendarGridX,
@@ -160,7 +181,7 @@ static void draw_calendar_weekday_header()
                           kCalendarCellW,
                           kCalendarHeaderH,
                           lv_color_black());
-    canvas_fill_rect_safe(s_calendar_canvas,
+    canvas_fill_rect_safe(image,
                           kCalendarCanvasW,
                           kCalendarCanvasH,
                           kCalendarGridX + kCalendarCellW * kCalendarSaturdayColumn,
@@ -168,7 +189,7 @@ static void draw_calendar_weekday_header()
                           kCalendarCellW,
                           kCalendarHeaderH,
                           lv_color_black());
-    canvas_dot_rect(s_calendar_canvas,
+    canvas_dot_rect(image,
                     kCalendarCanvasW,
                     kCalendarCanvasH,
                     kCalendarGridX + kCalendarCellW,
@@ -204,6 +225,7 @@ static void draw_calendar_weekday_header()
 
 static void draw_calendar_day_cell(const struct tm &local,
                                    const CalendarMonthLayout &layout,
+                                   lv_img_dsc_t *image,
                                    int day)
 {
     int display_row = -1;
@@ -216,7 +238,7 @@ static void draw_calendar_day_cell(const struct tm &local,
     bool is_today = day == local.tm_mday;
 
     if (is_today) {
-        canvas_fill_round_rect_safe(s_calendar_canvas,
+        canvas_fill_round_rect_safe(image,
                                     kCalendarCanvasW,
                                     kCalendarCanvasH,
                                     x + kCalendarTodayInsetX,
@@ -264,7 +286,8 @@ static void draw_calendar_grid(const struct tm &local)
         return;
     }
     lv_canvas_fill_bg(s_calendar_canvas, lv_color_white(), LV_OPA_COVER);
-    draw_calendar_weekday_header();
+    lv_img_dsc_t *image = lv_canvas_get_img(s_calendar_canvas);
+    draw_calendar_weekday_header(image);
 
     int year = local.tm_year + kTmYearOffset;
     int month = local.tm_mon + kTmMonthOffset;
@@ -278,7 +301,7 @@ static void draw_calendar_grid(const struct tm &local)
         return;
     }
     for (int day = 1; day <= days; ++day) {
-        draw_calendar_day_cell(local, layout, day);
+        draw_calendar_day_cell(local, layout, image, day);
     }
     lv_obj_invalidate(s_calendar_canvas);
 }

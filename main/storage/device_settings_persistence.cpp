@@ -27,15 +27,39 @@ constexpr const char *kNvsActionSavingPageSettings = "saving page settings";
 constexpr const char *kNvsActionSavingPageOrder = "saving page order";
 constexpr const char *kNvsActionSavingXiaozhiAutoReturn = "saving Xiaozhi auto return";
 constexpr const char *kNvsActionSavingGalleryRotation = "saving gallery rotation";
+constexpr const char *kNvsFailureContextPageSettings = "page settings";
+constexpr const char *kNvsFailureContextXiaozhiAutoReturn = "Xiaozhi auto return";
+constexpr const char *kNvsFailureContextGalleryRotation = "gallery rotation";
 #define NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT "nvs save hourly reminder failed: %s"
-#define NVS_SAVE_PAGE_SETTINGS_FAILED_FORMAT "nvs save page settings failed: %s"
 #define NVS_SAVE_PAGE_ORDER_FAILED_FORMAT "nvs save page order failed: %s"
-#define NVS_SAVE_XIAOZHI_AUTO_RETURN_FAILED_FORMAT "nvs save Xiaozhi auto return failed: %s"
-#define NVS_SAVE_GALLERY_ROTATION_FAILED_FORMAT "nvs save gallery rotation failed: %s"
+#define NVS_SAVE_U8_SETTING_FAILED_FORMAT "nvs save %s failed: %s"
 
 constexpr uint8_t bool_to_nvs_u8(bool value)
 {
     return value ? 1 : 0;
+}
+
+bool save_changed_u8_setting(const char *action,
+                             const char *failure_context,
+                             const char *key,
+                             uint8_t value)
+{
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, action);
+    if (err != ESP_OK) {
+        return false;
+    }
+    bool changed = false;
+    err = write_changed_nvs_u8(nvs.get(), err, key, value, &changed);
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
+    if (!nvs.close_save_ok(err)) {
+        ESP_LOGW(TAG,
+                 NVS_SAVE_U8_SETTING_FAILED_FORMAT,
+                 failure_context,
+                 esp_err_to_name(err));
+        return false;
+    }
+    return true;
 }
 } // namespace
 
@@ -64,17 +88,11 @@ bool save_hourly_chime_setting()
 
 bool save_work_page_settings()
 {
-    ScopedNvsHandle nvs;
-    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingPageSettings);
-    if (err != ESP_OK) {
-        return false;
-    }
     uint8_t mask = normalize_work_page_enabled_mask(work_page_enabled_mask_load());
-    bool changed = false;
-    err = write_changed_nvs_u8(nvs.get(), err, kPageMaskV5Key, mask, &changed);
-    err = commit_nvs_if_changed(nvs.get(), err, changed);
-    if (!nvs.close_save_ok(err)) {
-        ESP_LOGW(TAG, NVS_SAVE_PAGE_SETTINGS_FAILED_FORMAT, esp_err_to_name(err));
+    if (!save_changed_u8_setting(kNvsActionSavingPageSettings,
+                                 kNvsFailureContextPageSettings,
+                                 kPageMaskV5Key,
+                                 mask)) {
         return false;
     }
     work_page_enabled_mask_store(mask);
@@ -108,42 +126,17 @@ bool save_work_page_order()
 
 bool save_xiaozhi_auto_return_setting()
 {
-    ScopedNvsHandle nvs;
-    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingXiaozhiAutoReturn);
-    if (err != ESP_OK) {
-        return false;
-    }
-    bool changed = false;
-    err = write_changed_nvs_u8(nvs.get(),
-                               err,
-                               kXiaozhiAutoReturnKey,
-                               bool_to_nvs_u8(xiaozhi_auto_return_enabled_load()),
-                               &changed);
-    err = commit_nvs_if_changed(nvs.get(), err, changed);
-    if (!nvs.close_save_ok(err)) {
-        ESP_LOGW(TAG, NVS_SAVE_XIAOZHI_AUTO_RETURN_FAILED_FORMAT, esp_err_to_name(err));
-        return false;
-    }
-    return true;
+    return save_changed_u8_setting(
+        kNvsActionSavingXiaozhiAutoReturn,
+        kNvsFailureContextXiaozhiAutoReturn,
+        kXiaozhiAutoReturnKey,
+        bool_to_nvs_u8(xiaozhi_auto_return_enabled_load()));
 }
 
 bool save_gallery_rotation_setting()
 {
-    ScopedNvsHandle nvs;
-    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingGalleryRotation);
-    if (err != ESP_OK) {
-        return false;
-    }
-    bool changed = false;
-    err = write_changed_nvs_u8(nvs.get(),
-                               err,
-                               kGalleryRotationKey,
-                               gallery_rotation_period_load(),
-                               &changed);
-    err = commit_nvs_if_changed(nvs.get(), err, changed);
-    if (!nvs.close_save_ok(err)) {
-        ESP_LOGW(TAG, NVS_SAVE_GALLERY_ROTATION_FAILED_FORMAT, esp_err_to_name(err));
-        return false;
-    }
-    return true;
+    return save_changed_u8_setting(kNvsActionSavingGalleryRotation,
+                                   kNvsFailureContextGalleryRotation,
+                                   kGalleryRotationKey,
+                                   gallery_rotation_period_load());
 }

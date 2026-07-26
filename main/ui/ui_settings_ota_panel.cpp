@@ -1,7 +1,6 @@
 // 构建并刷新设置页中的 OTA 状态、进度和操作提示。
 #include "ui_settings_ota_panel.h"
 
-#include "app_constexpr.h"
 #include "app_metadata.h"
 #include "ota_runtime_state.h"
 #include "ui_page_state.h"
@@ -36,19 +35,6 @@ constexpr const char *kSettingsOtaHintChecking = "正在检查，请等待";
 constexpr const char *kSettingsOtaHintRebooting = "即将重启";
 constexpr const char *kSettingsOtaHintRetry = "BOOT重新检查";
 constexpr const char *kSettingsOtaHintCheck = "BOOT开始检查";
-constexpr const char *kSettingsOtaHintTexts[] = {
-    kSettingsOtaUpdatingWithSpeedFormat,
-    kSettingsOtaUpdatingFormat,
-    kSettingsOtaCurrentVersionFormat,
-    kSettingsOtaLinePlaceholder,
-    kSettingsOtaHintDownloading,
-    kSettingsOtaHintInstall,
-    kSettingsOtaHintChecking,
-    kSettingsOtaHintRebooting,
-    kSettingsOtaHintRetry,
-    kSettingsOtaHintCheck,
-};
-
 int settings_ota_progress_fill_width(int progress)
 {
     int clamped = progress;
@@ -73,9 +59,6 @@ bool set_settings_ota_fill_width(int width)
     return true;
 }
 
-static_assert(array_count(kSettingsOtaHintTexts) > 0, "settings OTA hint text registry must not be empty");
-static_assert(cstr_array_nonempty(kSettingsOtaHintTexts),
-              "settings OTA status and hint texts must be non-empty");
 static_assert(kSettingsOtaLineTextSize > 1 && kSettingsOtaHintTextSize > 1,
               "settings OTA text buffers must fit text and NUL");
 static_assert(kSettingsOtaBarInset >= 0, "settings OTA progress inset must be non-negative");

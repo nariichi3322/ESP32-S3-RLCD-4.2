@@ -35,16 +35,8 @@ constexpr int kBatterySegmentY = 4;
 constexpr int kBatterySegmentW = 4;
 constexpr int kBatterySegmentH = 8;
 constexpr int kBatterySegmentGap = 6;
-constexpr const char *kBatteryLogTexts[] = {
-    BATTERY_ICON_INVALID_ARG_LOG,
-    BATTERY_FRAME_CREATE_FAILED_LOG,
-    BATTERY_INNER_CREATE_FAILED_LOG,
-    BATTERY_TIP_CREATE_FAILED_LOG,
-    BATTERY_SEGMENT_CREATE_FAILED_FORMAT,
-};
 EXT_RAM_BSS_ATTR lv_obj_t *s_battery_segments[kWorkPageCount][kBatterySegmentCount];
 
-static_assert(cstr_array_nonempty(kBatteryLogTexts), "battery log texts must be non-empty");
 static_assert(array_count(s_battery_segments) == kWorkPageCount,
               "battery segment storage must cover every work page");
 static_assert(array_count(s_battery_segments[0]) == kBatterySegmentCount,

@@ -10,6 +10,7 @@
 #include "network_credentials_state.h"
 #include "manual_time_parser.h"
 #include "provisioning_form_fields.h"
+#include "qweather_api_host.h"
 #include "rtc_services.h"
 #include "wifi_portal_state.h"
 
@@ -33,8 +34,10 @@ constexpr const char *kConfigEventReasonProvisioningSave = "provisioning save";
 #define PROVISIONING_EMPTY_BODY_LOG "provisioning ignored empty request body"
 #define PROVISIONING_EMPTY_SSID_LOG "provisioning ignored empty ssid"
 #define PROVISIONING_EMPTY_API_KEY_LOG "provisioning ignored empty api key for online setup"
+#define PROVISIONING_EMPTY_API_HOST_LOG "provisioning ignored empty API Host for online setup"
+#define PROVISIONING_INVALID_API_HOST_LOG "provisioning ignored invalid QWeather API Host"
 #define PROVISIONING_INVALID_WEATHER_CITY_LOG "provisioning ignored invalid weather city"
-#define PROVISIONING_SAVED_FORMAT "provisioning saved ssid=%s pass_len=%u api_key=%s len=%u weather_city=%s city_len=%u"
+#define PROVISIONING_SAVED_FORMAT "provisioning saved ssid=%s pass_len=%u api_key=%s len=%u api_host=%s len=%u weather_city=%s city_len=%u"
 
 // Synchronous setup handlers share one HTTP server task, so only one save
 // request can own this workspace at a time.
@@ -43,6 +46,7 @@ static_assert(sizeof(s_provisioning_form_fields_workspace) >=
                   kProvisioningSsidFieldSize +
                       kProvisioningPasswordFieldSize +
                       kProvisioningApiKeyFieldSize +
+                      kProvisioningApiHostFieldSize +
                       kProvisioningWeatherCityFieldSize,
               "provisioning form workspace must contain every bounded field");
 
@@ -143,6 +147,20 @@ bool save_credentials_from_body(const char *body)
         ESP_LOGW(TAG, "%s", PROVISIONING_EMPTY_API_KEY_LOG);
         return false;
     }
+    if (fields.api_host[0] == '\0') {
+        (void)network_weather_api_host_snapshot(fields.api_host,
+                                                sizeof(fields.api_host));
+    }
+    if (fields.api_host[0] == '\0') {
+        ESP_LOGW(TAG, "%s", PROVISIONING_EMPTY_API_HOST_LOG);
+        return false;
+    }
+    if (!normalize_qweather_api_host(fields.api_host,
+                                     fields.api_host,
+                                     sizeof(fields.api_host))) {
+        ESP_LOGW(TAG, "%s", PROVISIONING_INVALID_API_HOST_LOG);
+        return false;
+    }
     if (!is_weather_city_input_valid(fields.weather_city)) {
         ESP_LOGW(TAG, "%s", PROVISIONING_INVALID_WEATHER_CITY_LOG);
         return false;
@@ -152,11 +170,17 @@ bool save_credentials_from_body(const char *body)
              (unsigned)strlen(fields.pass),
              fields.api_key[0] ? "set" : "empty",
              (unsigned)strlen(fields.api_key),
+             fields.api_host[0] ? "set" : "empty",
+             (unsigned)strlen(fields.api_host),
              fields.weather_city[0] ? "set" : "auto",
              (unsigned)strlen(fields.weather_city));
     clear_wifi_last_disconnect_reason();
     clear_config_event_bits(kWifiConnectedBit, kConfigEventReasonProvisioningSave);
-    if (!save_config(fields.ssid, fields.pass, fields.api_key, fields.weather_city)) {
+    if (!save_config(fields.ssid,
+                     fields.pass,
+                     fields.api_key,
+                     fields.api_host,
+                     fields.weather_city)) {
         return false;
     }
     return true;

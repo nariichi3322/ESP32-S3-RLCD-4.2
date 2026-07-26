@@ -74,5 +74,43 @@ int main()
     assert(!ota_backup_manifest_metadata_matches(nullptr, kLowerSha, 1234,
                                                  "v1.5.5", kUpperSha, 1234));
 
+    const char image_version[32] = "v1.5.28";
+    const char old_image_version[32] = "v1.5.27";
+    const char image_project[32] = "weather_clock";
+    const char other_image_project[32] = "other_project";
+    const char empty_image_version[32] = {};
+    assert(ota_app_description_matches_expected(
+        image_version, sizeof(image_version),
+        image_project, sizeof(image_project),
+        "v1.5.28", "weather_clock"));
+    assert(!ota_app_description_matches_expected(
+        old_image_version, sizeof(old_image_version),
+        image_project, sizeof(image_project),
+        "v1.5.28", "weather_clock"));
+    assert(!ota_app_description_matches_expected(
+        image_version, sizeof(image_version),
+        other_image_project, sizeof(other_image_project),
+        "v1.5.28", "weather_clock"));
+    assert(!ota_app_description_matches_expected(
+        empty_image_version, sizeof(empty_image_version),
+        image_project, sizeof(image_project),
+        "v1.5.28", "weather_clock"));
+    assert(!ota_app_description_matches_expected(
+        image_version, sizeof(image_version),
+        image_project, sizeof(image_project),
+        "", "weather_clock"));
+    assert(!ota_app_description_matches_expected(
+        nullptr, sizeof(image_version),
+        image_project, sizeof(image_project),
+        "v1.5.28", "weather_clock"));
+    const char unterminated_version[] = {'v', '1', '.', '5'};
+    assert(!ota_app_description_matches_expected(
+        unterminated_version,
+        sizeof(unterminated_version),
+        image_project,
+        sizeof(image_project),
+        "v1.5",
+        "weather_clock"));
+
     return 0;
 }

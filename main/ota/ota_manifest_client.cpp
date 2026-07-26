@@ -62,6 +62,20 @@ void notify_manifest_failure(OtaManifestFailureCallback callback)
     }
 }
 
+void clear_manifest_output(OtaManifest *manifest)
+{
+    if (manifest) {
+        *manifest = OtaManifest{};
+    }
+}
+
+void clear_text_output(char *out, size_t out_len)
+{
+    if (app_text::output_buffer_available(out, out_len)) {
+        out[0] = '\0';
+    }
+}
+
 bool parse_manifest_with_log(const char *json, OtaManifest *manifest)
 {
     OtaManifestParseResult result = ota_parse_manifest_json(json, manifest);
@@ -93,6 +107,7 @@ bool fetch_manifest_from_source(const OtaManifestSource &source,
                                 ScopedHeapBuffer<char> &response,
                                 OtaManifestFailureCallback failure_callback)
 {
+    clear_manifest_output(manifest);
     if (!manifest || !response || response.size() <= 1) {
         notify_manifest_failure(failure_callback);
         return false;
@@ -158,6 +173,8 @@ bool ota_manifest_fetch(OtaManifest *manifest,
                         size_t source_name_len,
                         OtaManifestFailureCallback failure_callback)
 {
+    clear_manifest_output(manifest);
+    clear_text_output(source_name, source_name_len);
     if (!manifest) {
         notify_manifest_failure(failure_callback);
         return false;
@@ -190,6 +207,7 @@ bool ota_manifest_fetch(OtaManifest *manifest,
             return true;
         }
     }
+    clear_manifest_output(manifest);
     notify_manifest_failure(failure_callback);
     return false;
 }
@@ -198,7 +216,11 @@ bool ota_manifest_fetch_backup_for_install(const OtaManifest &current,
                                            OtaManifest *backup,
                                            OtaManifestFailureCallback failure_callback)
 {
-    if (!backup || backup == &current || current.version[0] == '\0' ||
+    if (!backup || backup == &current) {
+        return false;
+    }
+    clear_manifest_output(backup);
+    if (current.version[0] == '\0' ||
         !ota_valid_sha256_string(current.sha256)) {
         return false;
     }
@@ -234,5 +256,6 @@ bool ota_manifest_fetch_backup_for_install(const OtaManifest &current,
         }
         return true;
     }
+    clear_manifest_output(backup);
     return false;
 }

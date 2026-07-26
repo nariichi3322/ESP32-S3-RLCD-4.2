@@ -85,27 +85,6 @@ constexpr const char *kInfoSourceFormat = "Source: %s";
 constexpr const char *kProjectSourceUrl = "github.com/wickenzh/ESP32-S3-RLCD-4.2";
 constexpr const char *kInfoLinePlaceholder = "--";
 constexpr const char *kInfoReturnHintText = "Hold KEY to return";
-constexpr const char *kAuxPageTexts[] = {
-    kNetworkDiagTitle,
-    kNetworkDiagSummaryReady,
-    kNetworkDiagSummaryRunning,
-    kNetworkDiagSummaryDone,
-    kNetworkDiagSummaryIdle,
-    kNetworkDiagLinePlaceholder,
-    kNetworkDiagHintIdle,
-    kNetworkDiagHintRunning,
-    kInfoLastNtpFormat,
-    kInfoWifiFormat,
-    kInfoLastWeatherFormat,
-    kInfoBatteryFullFormat,
-    kInfoBatteryPercentOnlyFormat,
-    kInfoBatteryPlaceholder,
-    kInfoVersionFormat,
-    kInfoSourceFormat,
-    kProjectSourceUrl,
-    kInfoLinePlaceholder,
-    kInfoReturnHintText,
-};
 constexpr int kInfoTextX = 30;
 constexpr int kInfoTextW = 340;
 constexpr int kInfoSourceTextX = 0;
@@ -122,7 +101,6 @@ constexpr size_t kInfoSourceLabelIndex = kInfoLabelCount - 1;
 
 #define NETWORK_DIAG_LINE_LABEL_CREATE_FAILED_FORMAT "network diag line %d label create failed"
 
-static_assert(cstr_array_nonempty(kAuxPageTexts), "auxiliary page text registry must not be empty");
 static_assert(kNetworkDiagLocalIpLine < kNetworkDiagPublicIpLine,
               "network diagnostics local IP line must precede public IP line");
 static_assert(kNetworkDiagPublicIpLine < kNetworkDiagGridFirstLine,

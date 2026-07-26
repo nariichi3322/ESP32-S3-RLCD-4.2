@@ -7,4 +7,4 @@ void boot_anim_task(void *);
 void finish_boot_anim_to_last_frame();
 void show_boot_screen();
 void update_boot_screen(int percent, const char *status, const char *detail);
-void finish_boot_screen();
+bool finish_boot_screen();

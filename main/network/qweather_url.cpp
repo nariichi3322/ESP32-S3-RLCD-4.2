@@ -3,15 +3,14 @@
 
 #include "app_text_format.h"
 #include "network_url.h"
+#include "qweather_api_host.h"
 
 #include <stdarg.h>
 #include <stdio.h>
 
 namespace {
-constexpr const char *kApiHost = "devapi.qweather.com";
-constexpr const char *kGeoApiHost = "geoapi.qweather.com";
 constexpr const char *kCityLookupUrlFormat =
-    "https://geoapi.qweather.com/v2/city/lookup?location=%s&number=1&range=cn&lang=zh";
+    "https://%s/geo/v2/city/lookup?location=%s&number=1&range=cn&lang=zh";
 constexpr const char *kAlertUrlFormat =
     "https://%s/weatheralert/v1/current/%s/%s?lang=zh&localTime=true";
 constexpr const char *kNowUrlFormat =
@@ -19,22 +18,24 @@ constexpr const char *kNowUrlFormat =
 constexpr const char *kDailyUrlFormat =
     "https://%s/v7/weather/%dd?location=%s&lang=zh&unit=m";
 constexpr const char *kAirUrlFormat =
-    "https://%s/v7/air/now?location=%s&lang=zh";
+    "https://%s/airquality/v1/current/%s/%s?lang=zh";
 constexpr size_t kMaximumFormattedIntSize = 12;
+constexpr size_t kMaximumCoordinateTextSize = 24;
 
-static_assert(sizeof(kCityLookupUrlFormat) + kQweatherEncodedLocationSize <=
+static_assert(sizeof(kCityLookupUrlFormat) + kQweatherEncodedLocationSize +
+                      kQweatherApiHostLen <=
                   kQweatherRequestUrlSize,
               "QWeather city URL workspace must fit the maximum encoded location");
-static_assert(sizeof(kNowUrlFormat) + sizeof(kApiHost) +
+static_assert(sizeof(kNowUrlFormat) + kQweatherApiHostLen +
                       kQweatherEncodedLocationSize <=
                   kQweatherRequestUrlSize,
               "QWeather current URL workspace must fit the maximum encoded location");
-static_assert(sizeof(kDailyUrlFormat) + sizeof(kApiHost) +
+static_assert(sizeof(kDailyUrlFormat) + kQweatherApiHostLen +
                       kQweatherEncodedLocationSize + kMaximumFormattedIntSize <=
                   kQweatherRequestUrlSize,
               "QWeather daily URL workspace must fit the maximum encoded location");
-static_assert(sizeof(kAirUrlFormat) + sizeof(kApiHost) +
-                      kQweatherEncodedLocationSize <=
+static_assert(sizeof(kAirUrlFormat) + kQweatherApiHostLen +
+                      2 * kMaximumCoordinateTextSize <=
                   kQweatherRequestUrlSize,
               "QWeather air URL workspace must fit the maximum encoded location");
 
@@ -69,8 +70,12 @@ QweatherUrlStatus encode_location(const char *location,
 QweatherUrlStatus build_city_url(char *out,
                                  size_t out_len,
                                  const char *format,
+                                 const char *host,
                                  const char *city_id)
 {
+    if (!host || host[0] == '\0') {
+        return kQweatherUrlInvalidArgument;
+    }
     char encoded_location[kQweatherEncodedLocationSize] = {};
     QweatherUrlStatus status = encode_location(city_id,
                                                encoded_location,
@@ -78,27 +83,21 @@ QweatherUrlStatus build_city_url(char *out,
     if (status != kQweatherUrlOk) {
         return status;
     }
-    return format_url(out, out_len, format, qweather_api_host(), encoded_location);
+    return format_url(out, out_len, format, host, encoded_location);
 }
 
 static_assert(kQweatherEncodedLocationSize > 1,
               "encoded QWeather location buffer must fit text and NUL");
 } // namespace
 
-const char *qweather_api_host()
-{
-    return kApiHost;
-}
-
-const char *qweather_geo_api_host()
-{
-    return kGeoApiHost;
-}
-
 QweatherUrlStatus build_qweather_city_lookup_url(char *out,
                                                  size_t out_len,
+                                                 const char *host,
                                                  const char *location)
 {
+    if (!host || host[0] == '\0') {
+        return kQweatherUrlInvalidArgument;
+    }
     char encoded_location[kQweatherEncodedLocationSize] = {};
     QweatherUrlStatus status = encode_location(location,
                                                encoded_location,
@@ -106,35 +105,47 @@ QweatherUrlStatus build_qweather_city_lookup_url(char *out,
     if (status != kQweatherUrlOk) {
         return status;
     }
-    return format_url(out, out_len, kCityLookupUrlFormat, encoded_location);
+    return format_url(out,
+                      out_len,
+                      kCityLookupUrlFormat,
+                      host,
+                      encoded_location);
 }
 
 QweatherUrlStatus build_qweather_alert_url(char *out,
                                            size_t out_len,
+                                           const char *host,
                                            const char *latitude,
                                            const char *longitude)
 {
-    if (!latitude || !longitude) {
+    if (!host || host[0] == '\0' || !latitude || !longitude) {
         return kQweatherUrlInvalidArgument;
     }
     return format_url(out,
                       out_len,
                       kAlertUrlFormat,
-                      qweather_api_host(),
+                      host,
                       latitude,
                       longitude);
 }
 
-QweatherUrlStatus build_qweather_now_url(char *out, size_t out_len, const char *city_id)
+QweatherUrlStatus build_qweather_now_url(char *out,
+                                        size_t out_len,
+                                        const char *host,
+                                        const char *city_id)
 {
-    return build_city_url(out, out_len, kNowUrlFormat, city_id);
+    return build_city_url(out, out_len, kNowUrlFormat, host, city_id);
 }
 
 QweatherUrlStatus build_qweather_daily_url(char *out,
                                            size_t out_len,
+                                           const char *host,
                                            const char *city_id,
                                            int days)
 {
+    if (!host || host[0] == '\0') {
+        return kQweatherUrlInvalidArgument;
+    }
     char encoded_location[kQweatherEncodedLocationSize] = {};
     QweatherUrlStatus status = encode_location(city_id,
                                                encoded_location,
@@ -145,12 +156,26 @@ QweatherUrlStatus build_qweather_daily_url(char *out,
     return format_url(out,
                       out_len,
                       kDailyUrlFormat,
-                      qweather_api_host(),
+                      host,
                       days,
                       encoded_location);
 }
 
-QweatherUrlStatus build_qweather_air_url(char *out, size_t out_len, const char *city_id)
+QweatherUrlStatus build_qweather_air_url(char *out,
+                                        size_t out_len,
+                                        const char *host,
+                                        const char *latitude,
+                                        const char *longitude)
 {
-    return build_city_url(out, out_len, kAirUrlFormat, city_id);
+    if (!host || host[0] == '\0' ||
+        !latitude || latitude[0] == '\0' ||
+        !longitude || longitude[0] == '\0') {
+        return kQweatherUrlInvalidArgument;
+    }
+    return format_url(out,
+                      out_len,
+                      kAirUrlFormat,
+                      host,
+                      latitude,
+                      longitude);
 }

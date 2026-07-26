@@ -16,3 +16,22 @@ constexpr Tick ntp_total_wait_ticks(unsigned attempt_count,
     }
     return per_attempt_ticks * static_cast<Tick>(attempt_count);
 }
+
+template <typename Tick, typename Milliseconds>
+constexpr Milliseconds ntp_wait_ticks_to_milliseconds(
+    Tick wait_ticks,
+    unsigned tick_rate_hz,
+    Milliseconds max_milliseconds)
+{
+    if (wait_ticks == 0 || tick_rate_hz == 0 || max_milliseconds == 0) {
+        return 0;
+    }
+    const unsigned long long milliseconds =
+        static_cast<unsigned long long>(wait_ticks) * 1000ULL /
+        static_cast<unsigned long long>(tick_rate_hz);
+    if (milliseconds >
+        static_cast<unsigned long long>(max_milliseconds)) {
+        return max_milliseconds;
+    }
+    return static_cast<Milliseconds>(milliseconds);
+}

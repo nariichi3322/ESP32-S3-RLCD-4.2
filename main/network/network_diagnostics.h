@@ -7,4 +7,5 @@ void network_diag_finish();
 void network_diag_set_line(int index, const char *fmt, ...);
 
 // 只执行检测项目；调用方负责 begin/finish 与 Wi-Fi 会话生命周期。
-void run_network_diagnostic_checks();
+// 运行态阻断时返回 false，由调用方保留请求并关闭本轮射频。
+bool run_network_diagnostic_checks();

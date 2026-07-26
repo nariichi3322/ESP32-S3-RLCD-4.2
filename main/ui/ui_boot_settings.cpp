@@ -136,15 +136,6 @@ constexpr const char *kSettingsPrimaryItems[kSettingsPrimaryCount] = {"网络", 
 constexpr const char *kSettingsPageOrderEntryFormat = "%d %s";
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
 constexpr const char *kSettingsLabelPlaceholder = "--";
-constexpr const char *kSettingsFixedTexts[] = {
-    kSettingsLabelPlaceholder,
-};
-constexpr const char *kBootSettingsLogTexts[] = {
-    SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT,
-    SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT,
-    SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT,
-    SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT,
-};
 
 enum SettingsMenuColumn {
     kSettingsMenuPrimaryColumn,
@@ -193,11 +184,7 @@ static_assert(array_count(s_settings_labels) == kSettingsLabelCount,
               "settings label storage must match configured label count");
 static_assert(array_count(s_settings_switch_dots) == kSettingsSecondaryMaxCount,
               "settings switch dot storage must match secondary slot count");
-static_assert(array_count(kSettingsFixedTexts) > 0, "settings fixed text registry must not be empty");
-static_assert(array_count(kBootSettingsLogTexts) > 0, "boot/settings log registry must not be empty");
 static_assert(cstr_array_nonempty(kSettingsPrimaryItems), "settings primary menu texts must be non-empty");
-static_assert(cstr_array_nonempty(kSettingsFixedTexts), "settings fixed texts must be non-empty");
-static_assert(cstr_array_nonempty(kBootSettingsLogTexts), "boot/settings log texts must be non-empty");
 static_assert(settings_layout::kSettingsGridColumns > 0,
               "settings grid must have columns");
 static_assert(settings_layout::kSettingsGridColW > 0 &&

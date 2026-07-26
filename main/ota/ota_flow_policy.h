@@ -13,6 +13,52 @@ enum OtaUiState {
     kOtaNoUpdate = 6,
 };
 
+enum class OtaWifiFinishPolicy {
+    kReleaseAwakeLock,
+    kHoldAwakeLockUntilRestart,
+};
+
+enum class OtaNetworkBlockReason {
+    kNone,
+    kOfflineMode,
+    kNoWifi,
+    kLowBattery,
+    kSetupPortal,
+};
+
+struct OtaNetworkContinuationState {
+    bool offline_mode = false;
+    bool wifi_configured = false;
+    bool low_battery = false;
+    bool setup_portal_start_requested = false;
+    bool setup_portal_active = false;
+};
+
+constexpr OtaNetworkBlockReason ota_network_block_reason(
+    const OtaNetworkContinuationState &state)
+{
+    if (state.offline_mode) {
+        return OtaNetworkBlockReason::kOfflineMode;
+    }
+    if (!state.wifi_configured) {
+        return OtaNetworkBlockReason::kNoWifi;
+    }
+    if (state.low_battery) {
+        return OtaNetworkBlockReason::kLowBattery;
+    }
+    if (state.setup_portal_start_requested || state.setup_portal_active) {
+        return OtaNetworkBlockReason::kSetupPortal;
+    }
+    return OtaNetworkBlockReason::kNone;
+}
+
+constexpr OtaWifiFinishPolicy ota_wifi_finish_policy(bool update_succeeded)
+{
+    return update_succeeded
+               ? OtaWifiFinishPolicy::kHoldAwakeLockUntilRestart
+               : OtaWifiFinishPolicy::kReleaseAwakeLock;
+}
+
 constexpr bool ota_blocks_background_network_sync(int state)
 {
     return state == kOtaChecking || state == kOtaUpdating;

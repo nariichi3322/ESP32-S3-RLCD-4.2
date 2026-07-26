@@ -4,7 +4,6 @@
 #include "active_work_page_state.h"
 #include "app_display_config.h"
 #include "app_hardware.h"
-#include "app_constexpr.h"
 #include "app_metadata.h"
 #include "ota_runtime_state.h"
 #include "ui_display_diag_policy.h"
@@ -21,10 +20,6 @@ constexpr uint32_t kDisplayFullReasonCoveredWide = 1U << 2;
 constexpr uint16_t kRlcdBlackThreshold = 0xC618;
 #define DISPLAY_FLUSH_DIAG_LOG_FORMAT "display flush diag: page=%d partial=%lu ranges=%lu full=%lu reason_single=%lu reason_covered=%lu reason_ranges=%lu"
 #define DISPLAY_FULL_REASON_OVERLAP_ASSERT "display full-refresh reason bits must not overlap"
-
-constexpr const char *kDisplayFlushLogTexts[] = {
-    DISPLAY_FLUSH_DIAG_LOG_FORMAT,
-};
 
 struct FlushRange {
     int x1;
@@ -107,7 +102,6 @@ constexpr bool bridged_flush_ranges_merge_once()
            ranges[0].x2 == 30;
 }
 
-static_assert(cstr_array_nonempty(kDisplayFlushLogTexts), "display flush log texts must be non-empty");
 static_assert(kDisplayFullReasonSingleWide != 0, "display full-refresh single-wide reason bit must be nonzero");
 static_assert(kDisplayFullReasonTooManyRanges != 0, "display full-refresh range-count reason bit must be nonzero");
 static_assert(kDisplayFullReasonCoveredWide != 0, "display full-refresh covered-width reason bit must be nonzero");

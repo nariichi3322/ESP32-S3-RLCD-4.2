@@ -6,6 +6,7 @@
 #include "alarm_storage.h"
 #include "alarm_task_wait_policy.h"
 #include "app_metadata.h"
+#include "app_tick_time.h"
 #include "audio_services.h"
 #include "pomodoro_services.h"
 #include "reminder_schedule.h"
@@ -16,6 +17,8 @@
 #include "xiaozhi_mcp.h"
 
 #include <atomic>
+#include <cinttypes>
+#include <cstdint>
 #include <ctime>
 #include <cstdio>
 #include <cstring>
@@ -43,6 +46,7 @@ constexpr const char *kAlarmReplaceConfirmationInvalidResult =
 TaskNotificationTarget s_alarm_task_target;
 std::atomic<bool> s_stop_requested{false};
 std::atomic<bool> s_save_pending{false};
+std::atomic<bool> s_auto_disable_save_pending{false};
 
 bool conflicts_with_running_pomodoro(int hour, int minute)
 {
@@ -163,6 +167,40 @@ void wait_for_xiaozhi_audio_release()
                                        alarm_stop_callback);
 }
 
+bool flush_alarm_auto_disable_save()
+{
+    if (!s_auto_disable_save_pending.load(std::memory_order_acquire)) {
+        return true;
+    }
+    AlarmSnapshot snapshot = {};
+    alarm_get_snapshot(&snapshot);
+    if (snapshot.enabled || snapshot.ringing) {
+        // 新闹钟状态已经覆盖旧的单次自动关闭待办。
+        s_auto_disable_save_pending.store(false, std::memory_order_release);
+        return true;
+    }
+    if (!persist_alarm(false, snapshot.hour, snapshot.minute)) {
+        return false;
+    }
+    s_auto_disable_save_pending.store(false, std::memory_order_release);
+    return true;
+}
+
+void schedule_alarm_auto_disable_save_retry(TickType_t now,
+                                            uint8_t failure_count,
+                                            TickType_t *deadline)
+{
+    if (!deadline) {
+        return;
+    }
+    TickType_t delay_ticks =
+        pdMS_TO_TICKS(alarm_save_retry_delay_ms(failure_count));
+    if (delay_ticks == 0) {
+        delay_ticks = 1;
+    }
+    *deadline = now + delay_ticks;
+}
+
 void run_alarm_ring()
 {
     s_stop_requested.store(false);
@@ -171,11 +209,12 @@ void run_alarm_ring()
     clear_pending_alarm_replacement();
     // 先关闭运行态，再释放小智音频后写 NVS；避免实时语音期间 Flash 写入。
     s_save_pending.store(false);
+    s_auto_disable_save_pending.store(false, std::memory_order_release);
     publish_alarm_state(false, true, snapshot.hour, snapshot.minute);
     wait_for_xiaozhi_audio_release();
     if (!persist_alarm(false, snapshot.hour, snapshot.minute)) {
         ESP_LOGW(TAG, "alarm auto-disable persistence failed");
-        s_save_pending.store(true);
+        s_auto_disable_save_pending.store(true, std::memory_order_release);
     }
 
     TickType_t started = xTaskGetTickCount();
@@ -194,7 +233,7 @@ void run_alarm_ring()
     }
     xiaozhi_ai_set_alarm_suspended(false);
     publish_alarm_state(false, false, snapshot.hour, snapshot.minute);
-    if (!alarm_flush_pending_save()) {
+    if (!flush_alarm_auto_disable_save()) {
         ESP_LOGW(TAG, "alarm deferred auto-disable save failed");
     }
     ESP_LOGI(TAG, "alarm finished stopped=%d", s_stop_requested.load() ? 1 : 0);
@@ -267,6 +306,7 @@ bool mcp_set_alarm(const XiaozhiMcpAlarmRequest &request, char *result, size_t r
                  request.minute);
     }
     mark_alarm_stop_requested();
+    s_auto_disable_save_pending.store(false, std::memory_order_release);
     publish_alarm_state(true, false, request.hour, request.minute);
     s_save_pending.store(true);
     if (result && result_len > 0) {
@@ -281,6 +321,7 @@ bool mcp_disable_alarm(char *result, size_t result_len)
     alarm_get_snapshot(&snapshot);
     clear_pending_alarm_replacement();
     mark_alarm_stop_requested();
+    s_auto_disable_save_pending.store(false, std::memory_order_release);
     publish_alarm_state(false, false, snapshot.hour, snapshot.minute);
     s_save_pending.store(true);
     if (result && result_len > 0) {
@@ -304,7 +345,47 @@ bool alarm_services_init()
 void alarm_task(void *)
 {
     s_alarm_task_target.publish(xTaskGetCurrentTaskHandle());
+    uint8_t auto_disable_save_failures = 0;
+    TickType_t auto_disable_save_retry_at = 0;
+    bool auto_disable_save_retry_scheduled = false;
     for (;;) {
+        if (s_auto_disable_save_pending.load(std::memory_order_acquire)) {
+            TickType_t now = xTaskGetTickCount();
+            if (!auto_disable_save_retry_scheduled) {
+                auto_disable_save_failures = 1;
+                schedule_alarm_auto_disable_save_retry(
+                    now, auto_disable_save_failures, &auto_disable_save_retry_at);
+                auto_disable_save_retry_scheduled = true;
+            }
+            TickType_t retry_wait =
+                app_tick_deadline_remaining(now, auto_disable_save_retry_at);
+            if (retry_wait > 0) {
+                ulTaskNotifyTake(pdTRUE, retry_wait);
+                continue;
+            }
+            if (flush_alarm_auto_disable_save()) {
+                ESP_LOGI(TAG, "alarm deferred auto-disable save recovered");
+                auto_disable_save_failures = 0;
+                auto_disable_save_retry_at = 0;
+                auto_disable_save_retry_scheduled = false;
+            } else {
+                if (auto_disable_save_failures < UINT8_MAX) {
+                    ++auto_disable_save_failures;
+                }
+                schedule_alarm_auto_disable_save_retry(
+                    xTaskGetTickCount(),
+                    auto_disable_save_failures,
+                    &auto_disable_save_retry_at);
+                ESP_LOGW(TAG,
+                         "alarm deferred auto-disable save retry=%u delay_ms=%" PRIu32,
+                         static_cast<unsigned>(auto_disable_save_failures),
+                         alarm_save_retry_delay_ms(auto_disable_save_failures));
+            }
+            continue;
+        }
+        auto_disable_save_failures = 0;
+        auto_disable_save_retry_at = 0;
+        auto_disable_save_retry_scheduled = false;
         AlarmSnapshot snapshot = {};
         alarm_get_snapshot(&snapshot);
         if (!snapshot.enabled) {
@@ -321,6 +402,7 @@ void alarm_task(void *)
         if (snapshot.enabled && !snapshot.ringing && time_valid &&
             local.tm_hour == snapshot.hour && local.tm_min == snapshot.minute) {
             run_alarm_ring();
+            continue;
         }
         const int current_millisecond = wall_clock_ms >= 0
                                             ? static_cast<int>(wall_clock_ms % 1000)
@@ -367,6 +449,7 @@ bool alarm_set_once(int hour, int minute)
     }
     clear_pending_alarm_replacement();
     s_save_pending.store(false);
+    s_auto_disable_save_pending.store(false, std::memory_order_release);
     mark_alarm_stop_requested();
     publish_alarm_state(true, false, hour, minute);
     ESP_LOGI(TAG, "alarm set %02d:%02d single-use", hour, minute);
@@ -384,6 +467,7 @@ bool alarm_disable()
         return false;
     }
     s_save_pending.store(false);
+    s_auto_disable_save_pending.store(false, std::memory_order_release);
     publish_alarm_state(false, false, snapshot.hour, snapshot.minute);
     ESP_LOGI(TAG, "alarm disabled");
     return true;
@@ -412,6 +496,7 @@ bool alarm_clear_saved_state()
     s_save_pending.store(false);
     alarm_storage::ClearResult result = alarm_storage::clear();
     if (result.status == alarm_storage::ClearStatus::kAlreadyEmpty) {
+        s_auto_disable_save_pending.store(false, std::memory_order_release);
         publish_alarm_state(false, false, 0, 0);
         return true;
     }
@@ -425,6 +510,7 @@ bool alarm_clear_saved_state()
         wake_alarm_task();
         return false;
     }
+    s_auto_disable_save_pending.store(false, std::memory_order_release);
     publish_alarm_state(false, false, 0, 0);
     return true;
 }

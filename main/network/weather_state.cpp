@@ -21,6 +21,7 @@ constexpr uint32_t kWeatherAlertCountMask = 0x7U << kWeatherAlertCountShift;
 constexpr uint32_t kWeatherAlertVersionShift = 4;
 constexpr uint32_t kWeatherAlertVersionMask = 0x0fffffffU;
 std::atomic<uint32_t> s_weather_alert_status{0};
+std::atomic<bool> s_weather_ready{false};
 #define WEATHER_UPDATED_LOG_FORMAT "weather updated: %s %s %sC %s%% icon=%s forecast=%s air=%s"
 #define WEATHER_CURRENT_PUBLISHED_BEFORE_DEFER_FORMAT \
     "weather current published before deferred follow-up: %s %s %sC"
@@ -75,6 +76,7 @@ void publish_weather_ready_event()
         ESP_LOGW(TAG, "%s", kWeatherReadyEventUnavailableLog);
         return;
     }
+    s_weather_ready.store(true, std::memory_order_release);
     app_event_group_set_bits(kWeatherReadyBit);
 }
 
@@ -176,6 +178,11 @@ uint32_t weather_state_version_load()
         s_weather_alert_status.load(std::memory_order_acquire));
 }
 
+bool weather_ready_state_load()
+{
+    return s_weather_ready.load(std::memory_order_acquire);
+}
+
 bool weather_cache_status_snapshot_load(WeatherCacheStatusSnapshot *out)
 {
     if (!out) {
@@ -216,6 +223,7 @@ bool get_weather_alert_title_snapshot(int requested_index,
 
 void clear_weather_ready_event()
 {
+    s_weather_ready.store(false, std::memory_order_release);
     if (!app_event_group_ready()) {
         ESP_LOGW(TAG, "%s", kWeatherReadyEventUnavailableLog);
         return;

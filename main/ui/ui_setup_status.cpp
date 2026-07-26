@@ -46,22 +46,6 @@ constexpr size_t kSetupStatusApPasswordIndex = 2;
 constexpr size_t kSetupStatusPortalIpIndex = 3;
 constexpr size_t kSetupStatusStaSsidIndex = 4;
 constexpr size_t kSetupStatusStaIpIndex = 5;
-constexpr const char *kSetupStatusFixedTexts[] = {
-    kSetupStatusTitle,
-    kSetupStatusPlaceholder,
-    kSetupApSsidFormat,
-    kSetupApPasswordFormat,
-    kSetupPortalIpFormat,
-    kSetupStaSsidFormat,
-    kSetupStaIpFormat,
-    kSetupStaIpReasonFormat,
-    kSetupStaIpPlaceholder,
-};
-constexpr const char *kSetupStatusLogTexts[] = {
-    SETUP_STATUS_LABEL_CREATE_FAILED_FORMAT,
-    SETUP_STATUS_LINE_INDEX_OUT_OF_RANGE_FORMAT,
-};
-
 template <typename... Args>
 bool set_setup_status_line(size_t index, const char *fallback, const char *format, Args... args)
 {
@@ -81,8 +65,6 @@ static_assert(array_count(kSetupStatusLabelY) == array_count(s_setup_status_labe
 static_assert(kSetupStatusStaIpIndex < array_count(s_setup_status_labels),
               "setup status semantic indices must fit label storage");
 static_assert(cstr_array_nonempty(kSetupStatusInitialText), "setup status initial texts must be non-empty");
-static_assert(cstr_array_nonempty(kSetupStatusFixedTexts), "setup status fixed texts must be non-empty");
-static_assert(cstr_array_nonempty(kSetupStatusLogTexts), "setup status log texts must be non-empty");
 } // namespace
 
 void build_setup_status_panel(lv_obj_t *parent)

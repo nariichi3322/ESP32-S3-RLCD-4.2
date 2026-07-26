@@ -16,6 +16,9 @@ CATEGORY_RE = re.compile(
 )
 NUMBERED_ITEM_RE = re.compile(r"^\s*\d+[.)、]\s*(.+?)\s*$")
 VERSION_LINE_RE = re.compile(r"^\s*(?:#{1,6}\s*)?`?v\d+\.\d+\.\d+`?[：:]?\s*$")
+IMPORTANT_NOTICE_RE = re.compile(
+    r"^\s*(?:>\s*)?(?:\*\*)?重要提示(?:\*\*)?[：:]\s*(.+?)\s*$"
+)
 MAX_FEISHU_TEXT_CHARS = 4500
 
 
@@ -51,9 +54,37 @@ def require_categories(text: str) -> dict[str, list[str]]:
     return categories
 
 
+def parse_important_notices(text: str) -> list[str]:
+    notices: list[str] = []
+    in_github_important_block = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line == "> [!IMPORTANT]":
+            in_github_important_block = True
+            continue
+        if in_github_important_block:
+            if line.startswith("> "):
+                notice = " ".join(line[2:].split())
+                if notice:
+                    notices.append(notice)
+                continue
+            in_github_important_block = False
+        match = IMPORTANT_NOTICE_RE.fullmatch(line)
+        if not match:
+            continue
+        notice = " ".join(match.group(1).split())
+        if notice:
+            notices.append(notice)
+    return notices
+
+
 def format_github_markdown(version: str, text: str) -> str:
     categories = require_categories(text)
     lines = [f"## {version}"]
+    notices = parse_important_notices(text)
+    if notices:
+        lines.extend(("", "> [!IMPORTANT]"))
+        lines.extend(f"> {notice}" for notice in notices)
     for name in CATEGORY_ORDER:
         items = categories[name]
         if not items:
@@ -66,6 +97,10 @@ def format_github_markdown(version: str, text: str) -> str:
 def format_feishu_text(version: str, repository: str, release_url: str, text: str) -> str:
     categories = require_categories(text)
     lines = ["天气时钟 Release 更新", f"版本：{version}"]
+    notices = parse_important_notices(text)
+    if notices:
+        lines.append("重要提示：")
+        lines.extend(notices)
     footer = [f"仓库：{repository}", f"Release：{release_url}"]
     truncated = False
     for name in CATEGORY_ORDER:

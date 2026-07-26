@@ -13,12 +13,12 @@ void configure_canvas_base(lv_obj_t *canvas,
                            int height);
 int clamp_int(int value, int min_value, int max_value);
 void invalidate_canvas_rect(lv_obj_t *canvas, int x1, int y1, int x2, int y2);
-void canvas_set_px_safe(lv_obj_t *canvas,
-                        int x,
-                        int y,
-                        int width,
-                        int height,
-                        lv_color_t color);
+void canvas_image_set_px_safe(lv_img_dsc_t *image,
+                              int x,
+                              int y,
+                              int width,
+                              int height,
+                              lv_color_t color);
 void canvas_draw_line(lv_obj_t *canvas,
                       int width,
                       int height,

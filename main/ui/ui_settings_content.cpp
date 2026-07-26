@@ -1,7 +1,6 @@
 // 生成网络、声音、显示和系统设置的二级菜单动态文案。
 #include "ui_settings_content.h"
 
-#include "app_constexpr.h"
 #include "app_metadata.h"
 #include "custom_assets.h"
 #include "manual_weather_city_state.h"
@@ -42,46 +41,8 @@ constexpr const char *kSettingsFactoryResetConfirmText = "确认恢复";
 constexpr const char *kSettingsFactoryResetText = "恢复出厂设置";
 constexpr const char *kSettingsSystemInfoText = "关于本机";
 constexpr const char *kSettingsCheckUpdateText = "检查更新";
-constexpr const char *kSettingsSecondaryTexts[] = {
-    kSettingsNetworkSyncTimeText,
-    kSettingsNetworkSyncWeatherText,
-    kSettingsNetworkSayingText,
-    kSettingsWeatherCityManualFormat,
-    kSettingsWeatherCityAutoText,
-    kSettingsSoundVolumeFormat,
-    kSettingsSoundChoiceFormat,
-    kSettingsHourlyText,
-    kSettingsAllDayText,
-    kSettingsPageSwitchText,
-    kSettingsPageOrderText,
-    kSettingsAlarmOffText,
-    kSettingsAlarmOnFormat,
-    kSettingsXiaozhiAutoReturnText,
-    kSettingsGalleryRotationFormat,
-    kSettingsOfflineFormat,
-    kSettingsOfflineOnText,
-    kSettingsOfflineOffText,
-    kSettingsNetworkDiagText,
-    kSettingsFactoryResetConfirmText,
-    kSettingsFactoryResetText,
-    kSettingsSystemInfoText,
-    kSettingsCheckUpdateText,
-};
-constexpr const char *kSettingsContentLogTexts[] = {
-    SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT,
-    SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT,
-};
-
 static_assert(kSettingsSecondaryTextSize > 1,
               "settings secondary text buffer must fit text and NUL");
-static_assert(array_count(kSettingsSecondaryTexts) > 0,
-              "settings secondary text registry must not be empty");
-static_assert(array_count(kSettingsContentLogTexts) > 0,
-              "settings content log registry must not be empty");
-static_assert(cstr_array_nonempty(kSettingsSecondaryTexts),
-              "settings secondary menu texts must be non-empty");
-static_assert(cstr_array_nonempty(kSettingsContentLogTexts),
-              "settings content logs must be non-empty");
 } // namespace
 
 void set_secondary_text(char items[][kSettingsSecondaryTextSize],

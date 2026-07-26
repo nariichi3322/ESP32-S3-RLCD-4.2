@@ -17,7 +17,7 @@ using network_chime_storage::kChimeSoundKey;
 using network_chime_storage::kChimeVolumeKey;
 using network_chime_storage::kHourlyAllDayKey;
 using network_chime_storage::kHourlyChimeKey;
-using network_config_keys::kLegacyApiHostKey;
+using network_config_keys::kQweatherApiHostKey;
 using network_config_keys::kOfflineModeKey;
 using network_config_keys::kWeatherApiKeyKey;
 using network_config_keys::kWifiPassKey;
@@ -46,7 +46,7 @@ constexpr const char *kSavedConfigKeys[] = {
     kWeatherApiKeyKey,
     kManualWeatherCityKey,
     kIgnoredAssetWeatherCityKey,
-    kLegacyApiHostKey,
+    kQweatherApiHostKey,
     kOfflineModeKey,
     kHourlyChimeKey,
     kHourlyAllDayKey,
@@ -82,8 +82,8 @@ static_assert(cstr_array_contains(kSavedConfigKeys, kManualWeatherCityKey),
               "factory reset must clear manual weather city");
 static_assert(cstr_array_contains(kSavedConfigKeys, kIgnoredAssetWeatherCityKey),
               "factory reset must clear ignored asset weather city");
-static_assert(cstr_array_contains(kSavedConfigKeys, kLegacyApiHostKey),
-              "factory reset must clear legacy API host");
+static_assert(cstr_array_contains(kSavedConfigKeys, kQweatherApiHostKey),
+              "factory reset must clear QWeather API Host");
 static_assert(cstr_array_contains(kSavedConfigKeys, kOfflineModeKey),
               "factory reset must clear offline mode");
 static_assert(cstr_array_contains(kSavedConfigKeys, kHourlyChimeKey),

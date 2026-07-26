@@ -6,6 +6,24 @@
 inline constexpr uint32_t kAlarmMinuteMs = 60U * 1000U;
 inline constexpr uint32_t kAlarmHourMs = 60U * kAlarmMinuteMs;
 inline constexpr uint32_t kAlarmDayMs = 24U * kAlarmHourMs;
+inline constexpr uint32_t kAlarmSaveRetryBaseMs = kAlarmMinuteMs;
+inline constexpr uint32_t kAlarmSaveRetryMaximumMs = kAlarmHourMs;
+
+constexpr uint32_t alarm_save_retry_delay_ms(uint8_t failure_count)
+{
+    uint32_t delay_ms = kAlarmSaveRetryBaseMs;
+    uint8_t remaining_doublings = failure_count > 1 ? failure_count - 1 : 0;
+    while (remaining_doublings > 0 && delay_ms < kAlarmSaveRetryMaximumMs) {
+        if (delay_ms > kAlarmSaveRetryMaximumMs / 2U) {
+            return kAlarmSaveRetryMaximumMs;
+        }
+        delay_ms *= 2U;
+        --remaining_doublings;
+    }
+    return delay_ms < kAlarmSaveRetryMaximumMs
+               ? delay_ms
+               : kAlarmSaveRetryMaximumMs;
+}
 
 constexpr bool alarm_wait_clock_fields_valid(int current_hour,
                                              int current_minute,
@@ -59,3 +77,5 @@ static_assert(kAlarmHourMs == 60U * 60U * 1000U,
               "alarm hour duration must remain one hour");
 static_assert(kAlarmDayMs == 24U * 60U * 60U * 1000U,
               "alarm day duration must remain one day");
+static_assert(alarm_save_retry_delay_ms(7) == kAlarmSaveRetryMaximumMs,
+              "alarm persistence retry must reach its one-hour cap");

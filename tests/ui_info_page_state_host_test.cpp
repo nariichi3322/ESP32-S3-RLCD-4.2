@@ -13,10 +13,11 @@ constexpr int kIterations = 100000;
 
 int main()
 {
-    InfoPageStateSnapshot state = {true, 99};
+    InfoPageStateSnapshot state = {true, 99, 42};
     info_page_state_load(&state);
     assert(!state.requested);
     assert(state.hold_until_tick == 0);
+    assert(state.revision == 0);
     info_page_request(kFirstDeadline);
     assert(!info_page_requested());
     assert(info_page_state_init());
@@ -25,23 +26,41 @@ int main()
     info_page_state_load(&state);
     assert(!state.requested);
     assert(state.hold_until_tick == 0);
+    assert(state.revision == 0);
     assert(!info_page_requested());
 
     info_page_hold_until_store(77);
     info_page_state_load(&state);
     assert(!state.requested);
     assert(state.hold_until_tick == 77);
+    const uint32_t idle_hold_revision = state.revision;
+    assert(idle_hold_revision != 0);
     assert(!info_page_requested());
 
     info_page_request(kFirstDeadline);
     assert(info_page_requested());
     info_page_state_load(&state);
     assert(state.hold_until_tick == kFirstDeadline);
+    assert(state.revision != idle_hold_revision);
+    const InfoPageStateSnapshot stale_deadline = state;
 
     info_page_hold_until_store(kSecondDeadline);
     info_page_state_load(&state);
     assert(state.requested);
     assert(state.hold_until_tick == kSecondDeadline);
+    assert(state.revision != stale_deadline.revision);
+    assert(!info_page_clear_if_current(stale_deadline));
+    assert(info_page_requested());
+    assert(info_page_clear_if_current(state));
+    assert(!info_page_requested());
+    assert(!info_page_clear_if_current(state));
+
+    info_page_request(kFirstDeadline);
+    info_page_state_load(&state);
+    const InfoPageStateSnapshot stale_request = state;
+    info_page_request(kSecondDeadline);
+    assert(!info_page_clear_if_current(stale_request));
+    assert(info_page_requested());
 
     std::atomic<bool> invalid_snapshot_seen{false};
     std::thread writer([] {
@@ -69,5 +88,6 @@ int main()
     info_page_state_load(&state);
     assert(!state.requested);
     assert(state.hold_until_tick == 0);
+    assert(state.revision != 0);
     return 0;
 }

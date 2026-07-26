@@ -3,7 +3,6 @@
 
 #include "active_work_page_state.h"
 #include "alarm_services.h"
-#include "app_constexpr.h"
 #include "app_event_group.h"
 #include "app_metadata.h"
 #include "app_runtime_timing.h"
@@ -93,60 +92,6 @@ constexpr size_t kSettingsFeedbackTextSize = 32;
 #define FACTORY_RESET_REQUESTED_LOG "factory reset requested from settings"
 #define SYSTEM_INFO_REQUESTED_LOG "system info requested from settings"
 
-constexpr const char *kSettingsActionTexts[] = {
-    kSettingsSaveFailedFeedback,
-    kSettingsOrderSavedFeedback,
-    kSettingsSyncBusyFeedback,
-    kSettingsOfflineEnabledFeedback,
-    kSettingsOfflineDisabledFeedback,
-    kOfflinePageUnavailableFeedback,
-    kManualWeatherCityEditFeedback,
-    kManualWeatherCityClearConfirmFeedback,
-    kManualWeatherCityAutoFeedback,
-    kManualNtpSyncFeedback,
-    kManualWeatherSyncFeedback,
-    kManualSayingSyncFeedback,
-    kSoundVolumeFeedbackFormat,
-    kSoundIndexFeedbackFormat,
-    kHourlyChimeEnabledFeedback,
-    kHourlyChimeDisabledFeedback,
-    kAllDayChimeEnabledFeedback,
-    kAllDayChimeDisabledFeedback,
-    kPageOrderInstructionFeedback,
-    kPageSwitchInstructionFeedback,
-    kLastWorkPageFeedback,
-    kXiaozhiNeedsHomeFeedback,
-    kXiaozhiHomeBlockedFeedback,
-    kPomodoroRunningFeedback,
-    kXiaozhiAutoReturnEnabledFeedback,
-    kXiaozhiAutoReturnDisabledFeedback,
-    kGalleryRotationBuiltinFeedback,
-    kGalleryRotationFeedbackFormat,
-    kAlarmDisabledFeedback,
-    kAlarmSetByXiaozhiFeedback,
-    kWorkPageFeedbackFormat,
-    kWorkPageEnabledSuffix,
-    kWorkPageDisabledSuffix,
-    kOfflineSetupConfirmFeedback,
-    kSetupStartFailedFeedback,
-    kOfflineSetupInstructionFeedback,
-    kNetworkDiagSyncFeedback,
-    kFactoryResetConfirmFeedback,
-    kFactoryResetFailedFeedback,
-    HOURLY_CHIME_SETTING_LOG_FORMAT,
-    ALL_DAY_CHIME_SETTING_LOG_FORMAT,
-    CHIME_SETTING_ENABLED_LOG_VALUE,
-    CHIME_SETTING_DISABLED_LOG_VALUE,
-    MANUAL_WEATHER_CITY_CLEARED_SYNC_LOG,
-    MANUAL_NTP_SYNC_REQUESTED_LOG,
-    MANUAL_WEATHER_SYNC_REQUESTED_LOG,
-    MANUAL_SAYING_SYNC_REQUESTED_LOG,
-    MANUAL_NETWORK_DIAG_REQUESTED_LOG,
-    FACTORY_RESET_CONFIRM_REQUESTED_LOG,
-    FACTORY_RESET_REQUESTED_LOG,
-    SYSTEM_INFO_REQUESTED_LOG,
-};
-
 constexpr bool work_page_index_valid(int page)
 {
     return page >= 0 && page < kWorkPageCount;
@@ -215,19 +160,17 @@ void clear_inactive_settings_confirmation(int primary, int selected)
 static_assert(kWorkPageCount > 0 && kWorkPageCount <= 8,
               "work page mask in settings UI is stored as uint8_t");
 static_assert(kAllWorkPageMask != 0, "settings UI must have at least one work page bit");
-static_assert(array_count(kSettingsActionTexts) > 0, "settings action text registry must not be empty");
-static_assert(cstr_array_nonempty(kSettingsActionTexts), "settings action texts must be non-empty");
 } // namespace
 
 namespace {
-void handle_page_order_settings_action()
+void handle_page_order_settings_action(
+    SettingsNavigationSnapshot navigation)
 {
     uint8_t previous_order[kWorkPageCount] = {};
     if (!work_page_order_normalize_and_copy(previous_order, sizeof(previous_order))) {
         set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
         return;
     }
-    SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
     int current = valid_enabled_work_page_order_index(navigation.page_order_selection);
     int next = next_enabled_work_page_order_index(current);
     if (!swap_work_page_order_entries_preserving_home(current, next)) {
@@ -357,13 +300,16 @@ void handle_sound_settings_action(int selected)
     }
 }
 
-void handle_display_settings_action(int selected)
+void handle_display_settings_action(
+    int selected,
+    SettingsNavigationSnapshot navigation)
 {
-    SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
     if (navigation.page_toggle_mode) {
-        int page = navigation.selection;
+        int page = selected;
         if (!work_page_index_valid(page)) {
-            page = kWorkPageWeatherClock;
+            set_settings_feedback(kSettingsSaveFailedFeedback,
+                                  kSettingsFeedbackDefaultMs);
+            return;
         }
         const uint8_t previous_mask = work_page_enabled_mask_load();
         const bool page_was_enabled =
@@ -467,7 +413,9 @@ void handle_display_settings_action(int selected)
     set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
 }
 
-void handle_system_settings_action(int selected)
+void handle_system_settings_action(
+    int selected,
+    SettingsNavigationSnapshot navigation)
 {
     if (selected == kSystemSettingsOfflineItem) {
         if (!offline_mode_enabled_load()) {
@@ -509,7 +457,6 @@ void handle_system_settings_action(int selected)
         network_diag_reset();
         settings_page_clear();
         network_diag_page_request();
-        SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
         navigation.focus_secondary = true;
         navigation.primary_selection = kSettingsPrimarySystem;
         navigation.selection = 0;
@@ -532,7 +479,6 @@ void handle_system_settings_action(int selected)
             set_settings_feedback(kSetupStartFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
         navigation.page_toggle_mode = false;
         navigation.page_order_mode = false;
         settings_navigation_store(navigation);
@@ -540,7 +486,6 @@ void handle_system_settings_action(int selected)
         settings_confirmation_clear(SettingsConfirmation::kOfflineDisable);
     } else if (selected == kSystemSettingsInfoItem) {
         settings_page_clear();
-        SettingsNavigationSnapshot navigation = settings_navigation_snapshot();
         navigation.page_toggle_mode = false;
         navigation.page_order_mode = false;
         settings_navigation_store(navigation);
@@ -574,7 +519,7 @@ void handle_settings_action()
     }
     settings_activity_record(xTaskGetTickCount());
     if (navigation.page_order_mode) {
-        handle_page_order_settings_action();
+        handle_page_order_settings_action(navigation);
         return;
     }
     if (!navigation.focus_secondary) {
@@ -595,8 +540,8 @@ void handle_settings_action()
     } else if (primary == kSettingsPrimarySound) {
         handle_sound_settings_action(selected);
     } else if (primary == kSettingsPrimaryDisplay) {
-        handle_display_settings_action(selected);
+        handle_display_settings_action(selected, navigation);
     } else if (primary == kSettingsPrimarySystem) {
-        handle_system_settings_action(selected);
+        handle_system_settings_action(selected, navigation);
     }
 }

@@ -12,6 +12,22 @@ inline constexpr int kOtaAvailableConfirmTimeoutMs = 60 * 1000;
 inline constexpr int kOtaDownloadBufferSize = 4096;
 inline constexpr int kOtaChunkDelayMs = 25;
 
+enum class OtaInstallAttemptResult {
+    kSucceeded,
+    kRetryBackupSource,
+    kTerminalFailure,
+};
+
+constexpr bool ota_install_attempt_succeeded(OtaInstallAttemptResult result)
+{
+    return result == OtaInstallAttemptResult::kSucceeded;
+}
+
+constexpr bool ota_install_backup_allowed(OtaInstallAttemptResult result)
+{
+    return result == OtaInstallAttemptResult::kRetryBackupSource;
+}
+
 static_assert(kOtaHttpTimeoutMs > 0, "OTA HTTP timeout must be positive");
 static_assert(kOtaStatusMinIntervalMs > 0,
               "OTA progress interval must be positive");

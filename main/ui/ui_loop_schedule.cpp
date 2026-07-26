@@ -11,6 +11,7 @@ constexpr uint32_t kMsPerSecond = 1000;
 constexpr int kSecondsPerMinute = 60;
 constexpr uint32_t kNextSecondDelayMinMs = 10;
 constexpr uint32_t kNextSecondDelayMaxMs = kMsPerSecond + kUiLoopBoundaryWakeSlackMs;
+constexpr uint32_t kLvglLockRetryDelaysMs[] = {100, 200, 400, 800, 1000};
 
 static_assert(kUsPerSecond == 1000LL * kMsPerSecond,
               "UI microsecond and millisecond constants must stay consistent");
@@ -20,6 +21,8 @@ static_assert(kNextSecondDelayMinMs > 0,
               "next-second delay minimum must be positive");
 static_assert(kNextSecondDelayMaxMs >= kMsPerSecond,
               "next-second delay maximum must cover one second");
+static_assert(kLvglLockRetryDelaysMs[0] > 0,
+              "LVGL lock retry delay must be positive");
 
 void include_settings_deadline(uint32_t now,
                                uint32_t deadline,
@@ -105,6 +108,20 @@ uint32_t ui_pomodoro_boundary_delay_ms(uint32_t boundary_ms)
         return 0;
     }
     return boundary_ms + kUiLoopBoundaryWakeSlackMs;
+}
+
+uint32_t ui_lvgl_lock_retry_delay_ms(uint8_t consecutive_failures)
+{
+    if (consecutive_failures == 0) {
+        return 0;
+    }
+    size_t index = static_cast<size_t>(consecutive_failures - 1U);
+    constexpr size_t count =
+        sizeof(kLvglLockRetryDelaysMs) / sizeof(kLvglLockRetryDelaysMs[0]);
+    if (index >= count) {
+        index = count - 1U;
+    }
+    return kLvglLockRetryDelaysMs[index];
 }
 
 uint32_t ui_nonzero_delay_ticks(uint32_t ticks)

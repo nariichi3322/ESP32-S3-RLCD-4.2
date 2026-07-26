@@ -140,6 +140,37 @@ inline bool ota_backup_manifest_metadata_matches(const char *current_version,
     return versions_match && checksums_match && sizes_match;
 }
 
+inline bool ota_fixed_text_matches(const char *actual,
+                                   size_t actual_capacity,
+                                   const char *expected)
+{
+    if (!actual || actual_capacity == 0 || !expected || expected[0] == '\0') {
+        return false;
+    }
+    const size_t expected_length = strlen(expected);
+    if (expected_length >= actual_capacity) {
+        return false;
+    }
+    return memcmp(actual, expected, expected_length) == 0 &&
+           actual[expected_length] == '\0';
+}
+
+inline bool ota_app_description_matches_expected(
+    const char *image_version,
+    size_t image_version_capacity,
+    const char *image_project_name,
+    size_t image_project_name_capacity,
+    const char *expected_version,
+    const char *expected_project_name)
+{
+    return ota_fixed_text_matches(image_version,
+                                  image_version_capacity,
+                                  expected_version) &&
+           ota_fixed_text_matches(image_project_name,
+                                  image_project_name_capacity,
+                                  expected_project_name);
+}
+
 inline void ota_sha256_to_hex(const uint8_t *hash, char *out, size_t out_len)
 {
     if (!out) {

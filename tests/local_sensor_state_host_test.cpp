@@ -28,6 +28,19 @@ int main()
     assert(!local_sensor_state_publish_sample(20.0f, 50.0f, 0, 0, &sample_changed));
     assert(!sample_changed);
 
+    float unavailable_temperature = 99.0f;
+    float unavailable_humidity = 88.0f;
+    int unavailable_temperature_trend = 1;
+    int unavailable_humidity_trend = -1;
+    assert(!get_local_sensor_snapshot(&unavailable_temperature,
+                                      &unavailable_humidity,
+                                      &unavailable_temperature_trend,
+                                      &unavailable_humidity_trend));
+    assert(unavailable_temperature == 0.0f);
+    assert(unavailable_humidity == 0.0f);
+    assert(unavailable_temperature_trend == 0);
+    assert(unavailable_humidity_trend == 0);
+
     LocalSensorStateSnapshot snapshot = {
         99.0f,
         88.0f,

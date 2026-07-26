@@ -6,6 +6,7 @@
 bool save_config(const char *ssid,
                  const char *pass,
                  const char *api_key,
+                 const char *api_host,
                  const char *weather_city = nullptr);
 bool save_manual_weather_city(const char *city);
 bool clear_manual_weather_city();

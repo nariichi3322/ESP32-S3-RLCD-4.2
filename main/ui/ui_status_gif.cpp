@@ -76,6 +76,10 @@ void draw_status_gif_frame(int frame)
     if (!canvas) {
         return;
     }
+    lv_img_dsc_t *image = lv_canvas_get_img(canvas);
+    if (!image) {
+        return;
+    }
     frame = clamp_status_gif_frame(frame);
     const uint8_t *pixels = builtin_status_gif_frame_or_null(frame);
     const uint8_t *prev_pixels = builtin_status_gif_frame_or_null(s_last_status_gif_frame);
@@ -107,7 +111,7 @@ void draw_status_gif_frame(int frame)
                     continue;
                 }
             }
-            lv_canvas_set_px_color(canvas, x, y, black ? lv_color_black() : lv_color_white());
+            lv_img_buf_set_px_color(image, x, y, black ? lv_color_black() : lv_color_white());
             changed = true;
             expand_area_to_include_pixel(x, y, &min_x, &min_y, &max_x, &max_y);
         }

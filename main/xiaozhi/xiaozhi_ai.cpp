@@ -523,6 +523,9 @@ void xiaozhi_ai_task(void *)
             // 15-second retry backoff instead of keeping the failed session at
             // realtime power for the whole delay.
             release_realtime_network();
+            if ((xEventGroupGetBits(s_events) & kAiPageActiveBit) == 0) {
+                continue;
+            }
             xiaozhi_snapshot_set(kXiaozhiAiWaitingForWifi, kWifiStatus, "连接失败，正在重试");
             xEventGroupWaitBits(s_events, kAiWakeBit, pdTRUE, pdFALSE, pdMS_TO_TICKS(kActivationRetryMs));
             continue;
@@ -654,10 +657,12 @@ void xiaozhi_ai_set_page_active(bool active)
             return;
         }
         xEventGroupClearBits(s_events, kAiPageActiveBit);
+        app_event_group_set_bits(kXiaozhiPageStateChangedBit);
         xEventGroupSetBits(s_events, kAiWakeBit);
         return;
     }
     if (!already_active) {
+        app_event_group_clear_bits(kXiaozhiPageStateChangedBit);
         xEventGroupSetBits(s_events, kAiPageActiveBit | kAiWakeBit);
     }
     const TickType_t task_start_now = xTaskGetTickCount();
@@ -722,6 +727,7 @@ void xiaozhi_ai_set_alarm_suspended(bool suspended)
     }
     if (suspended && s_events) {
         xEventGroupClearBits(s_events, kAiPageActiveBit);
+        app_event_group_set_bits(kXiaozhiPageStateChangedBit);
         xEventGroupSetBits(s_events, kAiWakeBit);
     }
     // 解除后由 UI 可见页判断恢复，避免闹钟线程替页面管理器决定是否重启小智。

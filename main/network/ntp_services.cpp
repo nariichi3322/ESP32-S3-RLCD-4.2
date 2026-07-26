@@ -9,6 +9,7 @@
 #include "housekeeping_schedule_notify.h"
 #include "ntp_runtime_state.h"
 #include "ntp_wait_policy.h"
+#include "network_sync_wait.h"
 #include "rtc_services.h"
 #include "sensor_time.h"
 #include "ui_task_notify.h"
@@ -22,6 +23,8 @@
 #define NTP_SYNCED_LOG_FORMAT "ntp synced: %04d-%02d-%02d %02d:%02d:%02d"
 #define NTP_TIMEOUT_LOG_FORMAT "ntp sync timeout retries=%d poll_ms=%lu"
 #define NTP_INVALID_RETRY_COUNT_LOG_FORMAT "ntp sync invalid retry count: %d"
+static constexpr const char *kNtpRuntimeChangedLog =
+    "ntp sync stopped after network runtime change";
 
 namespace {
 bool s_ntp_started = false;
@@ -117,34 +120,40 @@ bool ntp_synced_time_available(struct tm *local)
            is_system_time_plausible(local);
 }
 
-bool wait_for_ntp_synced_time(int max_retries, struct tm *synced_time)
+NetworkSyncCompletionWaitResult wait_for_ntp_synced_time(
+    int max_retries,
+    struct tm *synced_time)
 {
     if (!synced_time) {
-        return false;
+        return NetworkSyncCompletionWaitResult::kTimedOut;
     }
     struct tm local = {};
     if (ntp_synced_time_available(&local)) {
         *synced_time = local;
-        return true;
+        return NetworkSyncCompletionWaitResult::kCompleted;
     }
     const TickType_t total_wait = ntp_total_wait_ticks<TickType_t>(
         static_cast<unsigned>(max_retries),
         kNtpPollDelay,
         kNtpMaxFiniteWait);
+    const uint32_t total_wait_ms =
+        ntp_wait_ticks_to_milliseconds<TickType_t, uint32_t>(
+            total_wait,
+            configTICK_RATE_HZ,
+            UINT32_MAX);
+    NetworkSyncCompletionWaitResult wait_result =
+        NetworkSyncCompletionWaitResult::kTimedOut;
     if (app_event_group_ready()) {
-        app_event_group_wait_bits(kNtpSyncCompletedBit,
-                                  pdTRUE,
-                                  pdFALSE,
-                                  total_wait);
+        wait_result = wait_for_ntp_sync_completion(total_wait_ms);
     } else {
         vTaskDelay(total_wait);
     }
     local = {};
     if (ntp_synced_time_available(&local)) {
         *synced_time = local;
-        return true;
+        return NetworkSyncCompletionWaitResult::kCompleted;
     }
-    return false;
+    return wait_result;
 }
 } // namespace
 
@@ -164,7 +173,10 @@ bool perform_ntp_sync(int max_retries)
     start_or_restart_ntp();
 
     struct tm local = {};
-    const bool synced = wait_for_ntp_synced_time(max_retries, &local);
+    const NetworkSyncCompletionWaitResult wait_result =
+        wait_for_ntp_synced_time(max_retries, &local);
+    const bool synced =
+        wait_result == NetworkSyncCompletionWaitResult::kCompleted;
     stop_ntp();
     app_event_group_clear_bits(kNtpSyncCompletedBit);
     if (synced) {
@@ -177,6 +189,10 @@ bool perform_ntp_sync(int max_retries)
         notify_ui_task();
         log_ntp_synced_time(local);
         return true;
+    }
+    if (wait_result == NetworkSyncCompletionWaitResult::kRuntimeChanged) {
+        ESP_LOGI(TAG, "%s", kNtpRuntimeChangedLog);
+        return false;
     }
     ESP_LOGW(TAG, NTP_TIMEOUT_LOG_FORMAT,
              max_retries,

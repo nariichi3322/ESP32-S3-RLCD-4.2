@@ -107,27 +107,19 @@ bool update_inverted_trend_icon(lv_obj_t *canvas, int trend, int *last_trend)
         return false;
     }
     *last_trend = trend;
-    lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_COVER);
     const uint8_t *bits = trend > 0 ? trend_up_icon_bits : (trend < 0 ? trend_down_icon_bits : nullptr);
     if (bits) {
-        const int canvas_width = lv_obj_get_width(canvas);
-        const int canvas_height = lv_obj_get_height(canvas);
-        if (canvas_width < TREND_ICON_WIDTH || canvas_height < TREND_ICON_HEIGHT) {
-            lv_obj_invalidate(canvas);
-            return true;
-        }
-        const int icon_x = (canvas_width - TREND_ICON_WIDTH) / 2;
-        const int icon_y = (canvas_height - TREND_ICON_HEIGHT) / 2;
-        for (int y = 0; y < TREND_ICON_HEIGHT; ++y) {
-            const uint8_t *row = bits + y * TREND_ICON_BYTES_PER_ROW;
-            for (int x = 0; x < TREND_ICON_WIDTH; ++x) {
-                if (packed_1bit_bit_is_set(row, static_cast<uint32_t>(x))) {
-                    lv_canvas_set_px_color(canvas, icon_x + x, icon_y + y, lv_color_white());
-                }
-            }
-        }
+        draw_1bit_icon_centered(canvas,
+                                TREND_ICON_WIDTH,
+                                TREND_ICON_HEIGHT,
+                                TREND_ICON_BYTES_PER_ROW,
+                                bits,
+                                lv_color_white(),
+                                lv_color_black());
+    } else {
+        lv_canvas_fill_bg(canvas, lv_color_black(), LV_OPA_COVER);
+        lv_obj_invalidate(canvas);
     }
-    lv_obj_invalidate(canvas);
     return true;
 }
 

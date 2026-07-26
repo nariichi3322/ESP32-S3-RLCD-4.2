@@ -9,6 +9,22 @@ namespace {
 StaticTaskMutex s_info_page_mutex;
 InfoPageStateSnapshot s_info_page_state;
 std::atomic<bool> s_info_page_requested{false};
+
+void advance_info_page_revision()
+{
+    ++s_info_page_state.revision;
+    if (s_info_page_state.revision == 0) {
+        ++s_info_page_state.revision;
+    }
+}
+
+void clear_info_page_locked()
+{
+    advance_info_page_revision();
+    s_info_page_state.requested = false;
+    s_info_page_state.hold_until_tick = 0;
+    s_info_page_requested.store(false, std::memory_order_release);
+}
 }
 
 bool info_page_state_init()
@@ -40,6 +56,7 @@ void info_page_request(uint32_t hold_until_tick)
     if (!lock) {
         return;
     }
+    advance_info_page_revision();
     s_info_page_state.requested = true;
     s_info_page_state.hold_until_tick = hold_until_tick;
     s_info_page_requested.store(true, std::memory_order_release);
@@ -51,8 +68,24 @@ void info_page_clear()
     if (!lock) {
         return;
     }
-    s_info_page_state = {};
-    s_info_page_requested.store(false, std::memory_order_release);
+    if (!s_info_page_state.requested &&
+        s_info_page_state.hold_until_tick == 0) {
+        return;
+    }
+    clear_info_page_locked();
+}
+
+bool info_page_clear_if_current(const InfoPageStateSnapshot &expected)
+{
+    ScopedSemaphoreLock lock(s_info_page_mutex);
+    if (!lock ||
+        !expected.requested ||
+        !s_info_page_state.requested ||
+        s_info_page_state.revision != expected.revision) {
+        return false;
+    }
+    clear_info_page_locked();
+    return true;
 }
 
 void info_page_hold_until_store(uint32_t hold_until_tick)
@@ -61,5 +94,9 @@ void info_page_hold_until_store(uint32_t hold_until_tick)
     if (!lock) {
         return;
     }
+    if (s_info_page_state.hold_until_tick == hold_until_tick) {
+        return;
+    }
+    advance_info_page_revision();
     s_info_page_state.hold_until_tick = hold_until_tick;
 }

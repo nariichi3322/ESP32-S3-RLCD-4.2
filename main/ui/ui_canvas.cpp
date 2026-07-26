@@ -164,17 +164,29 @@ void invalidate_canvas_rect(lv_obj_t *canvas, int x1, int y1, int x2, int y2)
     lv_obj_invalidate_area(canvas, &area);
 }
 
-void canvas_set_px_safe(lv_obj_t *canvas, int x, int y, int w, int h, lv_color_t color)
+void canvas_image_set_px_safe(lv_img_dsc_t *image,
+                              int x,
+                              int y,
+                              int w,
+                              int h,
+                              lv_color_t color)
 {
-    if (!canvas || !canvas_point_in_bounds(x, y, w, h)) {
+    if (!image ||
+        !canvas_point_in_bounds(x, y, w, h) ||
+        x >= image->header.w ||
+        y >= image->header.h) {
         return;
     }
-    lv_canvas_set_px_color(canvas, x, y, color);
+    lv_img_buf_set_px_color(image, x, y, color);
 }
 
 void canvas_draw_line(lv_obj_t *canvas, int w, int h, int x0, int y0, int x1, int y1, lv_color_t color)
 {
     if (!canvas || !canvas_size_valid(w, h)) {
+        return;
+    }
+    lv_img_dsc_t *image = lv_canvas_get_img(canvas);
+    if (!image) {
         return;
     }
     int dx = abs_delta(x0, x1);
@@ -183,7 +195,7 @@ void canvas_draw_line(lv_obj_t *canvas, int w, int h, int x0, int y0, int x1, in
     int sy = line_step(y0, y1);
     int err = dx + dy;
     for (;;) {
-        canvas_set_px_safe(canvas, x0, y0, w, h, color);
+        canvas_image_set_px_safe(image, x0, y0, w, h, color);
         if (x0 == x1 && y0 == y1) {
             break;
         }
@@ -204,6 +216,10 @@ void canvas_draw_dashed_hline(lv_obj_t *canvas, int w, int h, int x1, int x2, in
     if (!canvas || !canvas_y_in_bounds(y, w, h)) {
         return;
     }
+    lv_img_dsc_t *image = lv_canvas_get_img(canvas);
+    if (!image) {
+        return;
+    }
     order_int_pair(&x1, &x2);
     if (x2 < 0 || x1 >= w) {
         return;
@@ -212,7 +228,7 @@ void canvas_draw_dashed_hline(lv_obj_t *canvas, int w, int h, int x1, int x2, in
     int draw_x2 = clamp_int(x2, 0, w - 1);
     for (int x = draw_x1; x <= draw_x2; ++x) {
         if (((x - x1) % kDashedLinePeriodPixels) < kDashedLineRunPixels) {
-            canvas_set_px_safe(canvas, x, y, w, h, color);
+            canvas_image_set_px_safe(image, x, y, w, h, color);
         }
     }
 }
@@ -225,11 +241,15 @@ void canvas_draw_filled_circle(lv_obj_t *canvas, int w, int h, int cx, int cy, i
     if (cx + radius < 0 || cx - radius >= w || cy + radius < 0 || cy - radius >= h) {
         return;
     }
+    lv_img_dsc_t *image = lv_canvas_get_img(canvas);
+    if (!image) {
+        return;
+    }
     const int radius_squared = square_int(radius);
     for (int y = -radius; y <= radius; ++y) {
         for (int x = -radius; x <= radius; ++x) {
             if (square_int(x) + square_int(y) <= radius_squared) {
-                canvas_set_px_safe(canvas, cx + x, cy + y, w, h, color);
+                canvas_image_set_px_safe(image, cx + x, cy + y, w, h, color);
             }
         }
     }

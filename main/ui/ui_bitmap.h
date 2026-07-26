@@ -13,4 +13,11 @@ void draw_1bit_icon(lv_obj_t *canvas,
                     const uint8_t *bits,
                     lv_color_t fg,
                     lv_color_t bg);
+void draw_1bit_icon_centered(lv_obj_t *canvas,
+                             int width,
+                             int height,
+                             int bytes_per_row,
+                             const uint8_t *bits,
+                             lv_color_t fg,
+                             lv_color_t bg);
 bool update_trend_icon(lv_obj_t *canvas, int trend, int *last_trend);

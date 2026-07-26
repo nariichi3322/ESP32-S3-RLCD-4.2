@@ -1,7 +1,6 @@
 // 处理天气定位经纬度、地区城市和显示城市候选文本。
 #include "qweather_location_text.h"
 
-#include "app_constexpr.h"
 #include "app_metadata.h"
 #include "app_text_format.h"
 #include "weather_city_contract.h"
@@ -18,14 +17,6 @@ constexpr size_t kIpRegionCityPartMinCount = kIpRegionCityPartIndex + 1;
 constexpr const char *kIpGeoCoordinateFormat = "%.4f,%.4f";
 constexpr const char *kIpRegionDelimiter = " ";
 constexpr const char *kIpGeoCitySuffix = "市";
-constexpr const char *kLocationTextConstants[] = {
-    kIpGeoCoordinateFormat,
-    kIpRegionDelimiter,
-    kIpGeoCitySuffix,
-    kIpLocationInvalidArgLog,
-    kIpLocationCoordinateTooLongLog,
-};
-
 bool cstr_has_suffix(const char *text, const char *suffix)
 {
     if (!text || !suffix || suffix[0] == '\0') {
@@ -55,10 +46,6 @@ static_assert(kIpRegionCityPartIndex < kIpRegionMaxParts,
               "IP region city index must fit region parts array");
 static_assert(kIpRegionCityPartMinCount <= kIpRegionMaxParts,
               "IP region city part minimum count must fit region parts array");
-static_assert(array_count(kLocationTextConstants) > 0,
-              "location text constant registry must not be empty");
-static_assert(cstr_array_nonempty(kLocationTextConstants),
-              "location format, delimiter, suffix and warning texts must be non-empty");
 } // namespace
 
 void copy_first_nonempty_text(char *out,

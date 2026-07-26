@@ -12,7 +12,9 @@ constexpr size_t max_size(size_t a, size_t b)
 
 constexpr size_t kMaxProvisioningFormFieldSize =
     max_size(max_size(max_size(kProvisioningManualTimeFieldSize, kProvisioningSsidFieldSize),
-                      max_size(kProvisioningPasswordFieldSize, kProvisioningApiKeyFieldSize)),
+                      max_size(kProvisioningPasswordFieldSize,
+                               max_size(kProvisioningApiKeyFieldSize,
+                                        kProvisioningApiHostFieldSize))),
              kProvisioningWeatherCityFieldSize);
 constexpr const char *kFormManualTimeKey = "manual_time";
 constexpr const char *kFormManualTimeFallbackKey = "datetime";
@@ -21,6 +23,8 @@ constexpr const char *kFormPasswordKey = "pass";
 constexpr const char *kFormPasswordFallbackKey = "password";
 constexpr const char *kFormApiKeyKey = "api_key";
 constexpr const char *kFormApiKeyFallbackKey = "weather";
+constexpr const char *kFormApiHostKey = "api_host";
+constexpr const char *kFormApiHostFallbackKey = "weather_host";
 constexpr const char *kFormWeatherCityKey = "weather_city";
 constexpr const char *kFormWeatherCityFallbackKey = "city";
 void form_value_fallback_trimmed(const char *body,
@@ -39,6 +43,8 @@ static_assert(kProvisioningManualTimeFieldSize > 1, "manual time field must fit 
 static_assert(kProvisioningSsidFieldSize > 1, "setup SSID field must fit text and NUL");
 static_assert(kProvisioningPasswordFieldSize > 1, "setup password field must fit text and NUL");
 static_assert(kProvisioningApiKeyFieldSize > 1, "setup API key field must fit text and NUL");
+static_assert(kProvisioningApiHostFieldSize == kQweatherApiHostLen,
+              "setup API Host field must match runtime Host buffer");
 static_assert(kProvisioningWeatherCityFieldSize == kManualWeatherCityLen,
               "setup weather city field must match runtime city buffer");
 } // namespace
@@ -55,6 +61,11 @@ void read_provisioning_form_fields(const char *body, ProvisioningFormFields *fie
                                 kFormApiKeyFallbackKey,
                                 fields->api_key,
                                 sizeof(fields->api_key));
+    form_value_fallback_trimmed(body,
+                                kFormApiHostKey,
+                                kFormApiHostFallbackKey,
+                                fields->api_host,
+                                sizeof(fields->api_host));
     form_value_fallback_trimmed(body,
                                 kFormWeatherCityKey,
                                 kFormWeatherCityFallbackKey,

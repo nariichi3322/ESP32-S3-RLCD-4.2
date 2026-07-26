@@ -1,7 +1,6 @@
 // 编排 UI 运行期超时、辅助页门控、唤醒间隔和小智自动返回。
 #include "ui_runtime_schedule.h"
 
-#include "app_constexpr.h"
 #include "active_work_page_state.h"
 #include "app_metadata.h"
 #include "app_runtime_timing.h"
@@ -29,9 +28,6 @@ namespace {
 
 #define UI_XIAOZHI_AUTO_RETURN_LOG "Xiaozhi idle timeout, returning to home page=%d"
 
-constexpr const char *kUiRuntimeLogTexts[] = {
-    UI_XIAOZHI_AUTO_RETURN_LOG,
-};
 constexpr int64_t kUiRuntimeUsPerSecond = 1000000LL;
 
 TickType_t next_second_delay_ticks(time_t sampled_wall_second)
@@ -59,11 +55,6 @@ static_assert(sizeof(TickType_t) == sizeof(uint32_t),
               "UI delay candidates require 32-bit FreeRTOS ticks");
 static_assert(kUiRuntimeUsPerSecond > 0,
               "UI wall-clock conversion factor must be positive");
-static_assert(array_count(kUiRuntimeLogTexts) > 0,
-              "UI runtime log text registry must not be empty");
-static_assert(cstr_array_nonempty(kUiRuntimeLogTexts),
-              "UI runtime log texts must be non-empty");
-
 } // namespace
 
 bool ui_runtime_settings_timeout_elapsed(TickType_t last_activity)

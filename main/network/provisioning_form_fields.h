@@ -2,6 +2,7 @@
 #pragma once
 
 #include "weather_city_contract.h"
+#include "qweather_api_host.h"
 
 #include <stddef.h>
 
@@ -9,12 +10,14 @@ inline constexpr size_t kProvisioningManualTimeFieldSize = 32;
 inline constexpr size_t kProvisioningSsidFieldSize = 33;
 inline constexpr size_t kProvisioningPasswordFieldSize = 65;
 inline constexpr size_t kProvisioningApiKeyFieldSize = 96;
+inline constexpr size_t kProvisioningApiHostFieldSize = kQweatherApiHostLen;
 inline constexpr size_t kProvisioningWeatherCityFieldSize = kManualWeatherCityLen;
 
 struct ProvisioningFormFields {
     char ssid[kProvisioningSsidFieldSize] = {};
     char pass[kProvisioningPasswordFieldSize] = {};
     char api_key[kProvisioningApiKeyFieldSize] = {};
+    char api_host[kProvisioningApiHostFieldSize] = {};
     char weather_city[kProvisioningWeatherCityFieldSize] = {};
 };
 

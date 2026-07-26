@@ -9,6 +9,22 @@ int main()
                   "alarm minute boundary must remain one minute");
     static_assert(kAlarmDayMs == 86400000U,
                   "alarm target wait must fit one day");
+    static_assert(kAlarmSaveRetryBaseMs == 60000U,
+                  "deferred alarm persistence must not retry aggressively");
+    static_assert(kAlarmSaveRetryMaximumMs == 3600000U,
+                  "deferred alarm persistence must cap at one hour");
+    static_assert(alarm_save_retry_delay_ms(0) == 60000U,
+                  "an unscheduled retry starts at one minute");
+    static_assert(alarm_save_retry_delay_ms(1) == 60000U,
+                  "the first failed retry waits one minute");
+    static_assert(alarm_save_retry_delay_ms(2) == 120000U,
+                  "the second failed retry waits two minutes");
+    static_assert(alarm_save_retry_delay_ms(6) == 1920000U,
+                  "the sixth failed retry waits thirty-two minutes");
+    static_assert(alarm_save_retry_delay_ms(7) == 3600000U,
+                  "the seventh failed retry is capped at one hour");
+    static_assert(alarm_save_retry_delay_ms(255) == 3600000U,
+                  "the retry delay must remain capped after saturation");
     static_assert(alarm_task_wait_ms(false, true, 6, 0, 0, 0, 7, 0) == 0,
                   "disabled alarm must sleep until notification");
     static_assert(alarm_task_wait_ms(true, false, 6, 0, 0, 0, 7, 0) == 0,

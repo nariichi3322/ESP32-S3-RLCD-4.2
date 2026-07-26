@@ -59,10 +59,13 @@ void finish_requested_settings_sync(bool requested,
     if (!requested) {
         return;
     }
-    finish_settings_sync(op, status);
     if (clear_bit) {
+        // Retire the old request before publishing an idle settings state.
+        // Otherwise the UI can enqueue the same operation while this bit is
+        // still set, and the cleanup below would erase that new request.
         app_event_group_clear_bits(bit);
     }
+    finish_settings_sync(op, status);
 }
 
 void finish_requested_manual_syncs(const NetworkSyncRequestSnapshot &requests,
@@ -176,6 +179,7 @@ void finish_offline_network_requests(const NetworkSyncRequestSnapshot &requests)
     if (wifi_radio_on_load() && !setup_portal_active_load()) {
         stop_wifi_radio(true);
     }
+    clear_network_request_bits();
     finish_requested_manual_syncs(requests, kNetworkStatusOfflineModeEnabled, false);
     if (requests.diagnostics) {
         network_diag_begin();
@@ -185,7 +189,6 @@ void finish_offline_network_requests(const NetworkSyncRequestSnapshot &requests)
         network_diag_finish();
         finish_settings_sync(kSettingsSyncNetworkDiag, kNetworkStatusOfflineModeEnabled);
     }
-    clear_network_request_bits();
 }
 
 void finish_unconfigured_network_requests(const NetworkSyncRequestSnapshot &requests)
@@ -205,7 +208,8 @@ void finish_unconfigured_network_requests(const NetworkSyncRequestSnapshot &requ
 
 void finish_low_battery_network_requests(const NetworkSyncRequestSnapshot &requests)
 {
-    if (!requests.weather_due() && !requests.saying_due()) {
+    if (!requests.weather_due() && !requests.saying_due() &&
+        !requests.diagnostics) {
         return;
     }
     finish_requested_settings_sync(requests.manual_weather,
@@ -219,6 +223,16 @@ void finish_low_battery_network_requests(const NetworkSyncRequestSnapshot &reque
                                    kManualSayingSyncBit,
                                    true);
     clear_requested_visible_syncs(requests);
+    if (requests.diagnostics) {
+        network_diag_begin();
+        for (int i = 0; i < kNetworkDiagLineCount; ++i) {
+            network_diag_set_line(i, kNetworkSyncLowBatterySkipped);
+        }
+        network_diag_finish();
+        finish_settings_sync_and_clear_bit(kSettingsSyncNetworkDiag,
+                                           kNetworkSyncLowBatterySkipped,
+                                           kNetworkDiagBit);
+    }
 }
 
 void finish_failed_sync_requests(const NetworkSyncRequestSnapshot &requests)
