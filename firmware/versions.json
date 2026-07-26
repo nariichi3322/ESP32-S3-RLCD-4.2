@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.29",
+  "latest": "v1.5.30",
   "items": [
+    {
+      "version": "v1.5.30",
+      "notes": "v1.5.30：共 12 项更新。\n1. 从旧版本升级后必须重新进入配网页补填“和风天气 API Host”；该字段在联网模式下…\n2. 修复账号专属 QWeather API Host 因证书链差异无法通过 TLS 校验的问题…\n3. 适配新版天气预警接口的 metadata + alerts 成功响应，修复空预警误判…\n4. 将城市查询、实时天气、预警、逐日预报和空气质量全部切换到账号专属 API Host，并…\n5. 修复页面开关、页面排序、系统辅助页、网络检测及检查更新在快速按键或超时临界点可能使用过…\n其余 7 项见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.30/weather_clock_v1.5.30.bin",
+        "sha256": "e36e60c05353d9212683a6986667ebd18447b98213e17176df45ed90a332dcc7",
+        "size": 6246928
+      },
+      "merged": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.30/weather_clock_v1.5.30_merged.bin",
+        "sha256": "feb97f7d178e7c5bd44332ca6dd27ca06d346e454bea499b0b444966af8832c1",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.29",
       "notes": "v1.5.29：共 10 项更新。\n1. 从旧版本升级后必须重新进入配网页补填“和风天气 API Host”；该字段在联网模式下…\n2. 将城市查询、实时天气、预警、逐日预报和空气质量全部切换到账号专属 API Host，并…\n3. 修复页面开关、页面排序、系统辅助页、网络检测及检查更新在快速按键或超时临界点可能使用过…\n4. 修复配网门户启停、主动断网、普通同步、网络检测和 OTA 异常收尾时可能遗留 Wi-F…\n5. 修复启动任务临时内存紧张时常驻服务可能漏建、启动页可能提前结束，以及单次闹钟自动关闭写…\n其余 5 项见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.21_merged.bin",
         "sha256": "2c8d3ac97088644c5b10220eb7bf4f5b36a94a1d63097b3fb5cf5d31e197c24d",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.20",
-      "notes": "v1.5.20：共 3 项更新。\n1. GitHub 源码仓库固件构建完成后新增飞书机器人通知，自动推送版本、构建结果和 Ac…\n2. 本地温湿度当前值、可用状态、趋势和刷新版本改用启动期静态任务互斥发布一致快照，页面、小…\n3. 新增本地温湿度 10000 批并发交错测试与构建通知安全契约，保持采样频率、四小时趋势…\n完整说明见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.20.bin",
-        "sha256": "2fadff3e491113e8770a722251ed33dbe05a1ba2a7d40bf1e43d6c38803821d6",
-        "size": 6227472
-      },
-      "merged": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.20_merged.bin",
-        "sha256": "68330904dc76b265b3602aed90ef6ae619971b780fdf4e4afc3f99600e3eeb4b",
         "size": 16509951
       }
     }
