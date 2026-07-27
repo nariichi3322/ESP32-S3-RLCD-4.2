@@ -8,6 +8,7 @@
 #include "manual_weather_city_state.h"
 #include "network_credentials_state.h"
 #include "scoped_heap_buffer.h"
+#include "wifi_portal_ui_assets.h"
 #include "wifi_portal_state.h"
 
 #include "esp_attr.h"
@@ -25,10 +26,10 @@ constexpr size_t kPortalWeatherCityNameSize = 32;
 constexpr size_t kPortalEscapedSsidSize = 80;
 constexpr size_t kPortalEscapedCitySize = 80;
 constexpr size_t kPortalSaveExtraTextSize = 220;
-constexpr size_t kPortalRootHtmlSize = 12288;
-constexpr size_t kPortalSaveResultHtmlSize = 2800;
-constexpr size_t kPortalOfflineResultHtmlSize = 1200;
-constexpr const char *kPortalSectionCloseHtml = "</div></section>";
+constexpr size_t kPortalRootHtmlSize = 24576;
+constexpr size_t kPortalSaveResultHtmlSize = 12288;
+constexpr size_t kPortalOfflineResultHtmlSize = 10240;
+constexpr const char *kPortalSectionCloseHtml = "</div></div></section>";
 constexpr const char *kPortalHtmlContentType = "text/html; charset=utf-8";
 constexpr const char *kPortalHttpStatusInternalError = "500 Internal Server Error";
 constexpr const char *kPortalHttpStatusFound = "302 Found";
@@ -279,7 +280,9 @@ void append_wifi_scan_list(char *html, size_t html_len)
     if (!app_text::output_buffer_available(html, html_len)) {
         return;
     }
-    html_append(html, html_len, "<section><div class='section-title'><span>附近的 Wi-Fi</span><a href='/'>重新扫描</a></div><div class='wifi-list'>");
+    html_append(html,
+                html_len,
+                "<section class='wifi-section portal-panel'><div class='portal-panel-body'><div class='section-title'><span>附近的 Wi-Fi</span><a href='/'>重新扫描</a></div><div class='wifi-list'>");
     wifi_scan_config_t scan_config = {};
     esp_err_t err = esp_wifi_scan_start(&scan_config, true);
     if (err != ESP_OK) {
@@ -369,22 +372,13 @@ esp_err_t root_get_handler(httpd_req_t *req)
     }
     html_append(html.data(), html.size(),
                 "%s"
-                "<title>天气时钟配网</title><style>"
-                ":root{color-scheme:light}*{box-sizing:border-box}body{margin:0;background:#eef1f5;color:#17202a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}"
-                ".wrap{max-width:480px;margin:0 auto;padding:22px 16px 34px}.brand{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}"
-                ".mark{width:44px;height:44px;border:2px solid #17202a;border-radius:8px;display:grid;place-items:center;font-weight:900;font-size:22px;background:#fff}"
-                ".pill{border:1px solid #b7c0ca;border-radius:999px;padding:7px 10px;font-size:12px;color:#465563;background:#fff}"
-                "h1{font-size:26px;line-height:1.12;margin:0 0 4px}p{margin:0}.sub{font-size:14px;color:#5d6b78}.panel{background:#fff;border:1px solid #d3dae2;border-radius:8px;padding:16px;box-shadow:0 8px 24px rgba(23,32,42,.08)}"
-                "label{display:block;font-size:12px;font-weight:700;letter-spacing:.03em;color:#465563;margin:13px 0 6px;text-transform:uppercase}"
-                "input{width:100%;height:46px;border:1px solid #aeb8c2;border-radius:6px;padding:0 12px;font-size:17px;background:#fbfcfd;color:#111;outline:none}"
-                "input:focus{border-color:#17202a;box-shadow:0 0 0 3px rgba(23,32,42,.10)}.hint{margin:7px 1px 0;color:#697784;font-size:13px;line-height:1.4}.feedback{margin:14px 0 2px;padding:12px;border:2px solid #9a2f2f;border-radius:6px;background:#fff7f7;color:#651f1f;font-size:14px;line-height:1.45}.feedback.pending{border-color:#697784;background:#fbfcfd;color:#465563}.feedback.success{border-color:#2f6f4e;background:#f4fbf7;color:#24563d}.feedback strong{display:block;font-size:16px;margin-bottom:3px}.actions{display:block;margin-top:24px}.submit{display:block;width:100%;height:48px;border:0;border-radius:6px;margin:0;background:#17202a;color:#fff;font-size:17px;font-weight:800}.submit:disabled{opacity:.72}.save-status{display:none;margin:12px 0 0;padding:10px;border:1px solid #c7d0d9;border-radius:6px;background:#fbfcfd;color:#465563;font-size:14px}.save-status.show{display:block}"
-                "section{margin-top:16px}.section-title{display:flex;align-items:center;justify-content:space-between;margin:0 2px 8px;font-size:13px;font-weight:800;color:#465563}.section-title a{color:#17202a;text-decoration:none}"
-                ".wifi-list{display:grid;gap:8px}.wifi{width:100%;border:1px solid #d3dae2;background:#fff;border-radius:6px;padding:12px;display:flex;justify-content:space-between;gap:12px;text-align:left;font-size:16px;color:#17202a}"
-                ".wifi b{font-size:12px;color:#697784;white-space:nowrap}.muted{padding:12px;border:1px dashed #c7d0d9;border-radius:6px;color:#697784;background:#fbfcfd}"
-                "</style><script>function pick(s){document.querySelector('[name=ssid]').value=s;document.querySelector('[name=pass]').focus();}function beginSave(f){var b=f.querySelector('.submit'),m=document.getElementById('save-status');if(b){b.disabled=true;b.textContent='正在保存，请稍候…';}if(m){m.classList.add('show');}setTimeout(function(){f.submit();},80);return false;}</script></head>"
-                "<body><main class='wrap'><div class='brand'><div><h1>天气时钟</h1><p class='sub'>连接 Wi-Fi 使用联网功能，或设置时间进入离线模式。</p></div><div class='mark'>42</div></div>"
-                "<div class='panel'><div class='pill'>配网热点：%s</div>%s%s%s",
+                "<title>天气时钟配网</title><style>%s</style><script>%s</script></head>"
+                "<body><main class='portal-shell'><header class='portal-header'><div class='brand-lockup'><div class='brand-mark'>42</div><div class='brand-copy'><h1>天气时钟</h1><p>网络、天气与离线时间设置</p></div></div>"
+                "<div class='ap-meta'><span>设备热点</span><strong>%s</strong></div></header>"
+                "<section class='portal-form-shell'>%s%s%s",
                 kPortalHtmlHeadPrefix,
+                wifi_portal_ui::kCommonCss,
+                wifi_portal_ui::kCommonScript,
                 text.setup_ap_ssid,
                 show_feedback ? feedback_open : "",
                 show_feedback ? portal_save_result_title(save_result) : "",
@@ -393,18 +387,10 @@ esp_err_t root_get_handler(httpd_req_t *req)
         html_append(html.data(), html.size(), "%s</div>", portal_save_result_body(save_result));
     }
     html_append(html.data(), html.size(),
-                "<form method='post' action='/save' accept-charset='UTF-8' onsubmit='return beginSave(this)'>"
-                "<label>Wi-Fi 名称（SSID）</label><input name='ssid' placeholder='请选择或输入 Wi-Fi 名称' value='%s' autocomplete='off'>"
-                "<label>Wi-Fi 密码</label><input name='pass' placeholder='请输入 Wi-Fi 密码' type='password' autocomplete='current-password'>"
-                "<label>和风天气 API 密钥</label><input name='api_key' placeholder='已有密钥时可留空，继续使用原密钥' value='' autocomplete='off'>"
-                "<label>和风天气 API Host</label><input name='api_host' placeholder='例如：abc123.re.qweatherapi.com' value='' autocomplete='off' aria-describedby='api-host-hint'>"
-                "<p id='api-host-hint' class='hint'>请在和风天气控制台“设置 → API Host”中查看；只填写域名，不含 https:// 和路径。已有 Host 时可留空。</p>"
-                "<label>天气城市（选填）</label><input name='weather_city' placeholder='例如：杭州；留空则根据公网 IP 自动定位' value='%s' autocomplete='off'>"
-                "<label for='manual_time'>离线日期和时间（选填）</label><input id='manual_time' name='manual_time' type='datetime-local' placeholder='连接 Wi-Fi 时可留空' aria-describedby='manual-time-hint'>"
-                "<p id='manual-time-hint' class='hint'>连接 Wi-Fi 时可以留空；仅离线使用时填写。</p>"
-                "<div class='actions'><button class='submit' type='submit'>保存并连接</button></div><p id='save-status' class='save-status' role='status' aria-live='polite'>正在保存设置并连接，请稍候…</p></form></div>",
+                wifi_portal_ui::kFormHtml,
                 text.safe_ssid,
                 text.safe_weather_city);
+    html_append(html.data(), html.size(), "</section>");
     append_wifi_scan_list(html.data(), html.size());
     html_append(html.data(), html.size(), "</main></body></html>");
     esp_err_t err = send_portal_html(req, html.data());
@@ -451,15 +437,10 @@ esp_err_t send_save_result_page(httpd_req_t *req,
     const int disconnect_reason = wifi_last_disconnect_reason();
     html_append(html.data(), html.size(),
                 "%s"
-                "<title>天气时钟配网结果</title><style>"
-                "*{box-sizing:border-box}body{margin:0;background:#eef1f5;color:#17202a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}"
-                ".wrap{max-width:460px;margin:0 auto;padding:28px 16px}.panel{background:#fff;border:1px solid #d3dae2;border-radius:8px;padding:18px;box-shadow:0 8px 24px rgba(23,32,42,.08)}"
-                ".state{width:72px;height:42px;border-radius:8px;border:2px solid #17202a;display:grid;place-items:center;font-size:16px;font-weight:900;margin-bottom:14px}"
-                "h1{font-size:24px;margin:0 0 8px}p{font-size:15px;line-height:1.45;color:#4d5b68;margin:0 0 14px}.note{border:1px solid #d3dae2;border-radius:6px;padding:10px;margin:0 0 14px;color:#17202a;background:#fbfcfd;font-size:14px}.meta{border-top:1px solid #e1e6eb;padding-top:12px;color:#697784;font-size:13px}"
-                "a{display:block;height:46px;line-height:46px;text-align:center;background:#17202a;color:#fff;text-decoration:none;border-radius:6px;font-weight:800;margin-top:16px}"
-                "</style>%s</head><body><main class='wrap'><section class='panel'><div id='save-state' class='state'>%s</div><h1 id='save-title'>%s</h1><p id='save-body'>%s</p>"
-                "%s%s%s<div class='meta'>Wi-Fi 名称：%s<br>API Host：已保存<br>天气城市：%s<br>最近一次 Wi-Fi 断开原因：%d</div><a href='/'>返回配网页</a></section></main></body></html>",
+                "<title>天气时钟配网结果</title><style>%s</style>%s</head><body><main class='result-shell'><section class='portal-panel result-panel'><div id='save-state' class='result-state'>%s</div><h1 id='save-title'>%s</h1><p id='save-body'>%s</p>"
+                "%s%s%s<div class='meta'>Wi-Fi 名称：%s<br>API Host：已保存<br>天气城市：%s<br>最近一次 Wi-Fi 断开原因：%d</div><a class='primary-link' href='/'>返回配网页</a></section></main></body></html>",
                 kPortalHtmlHeadPrefix,
+                wifi_portal_ui::kCommonCss,
                 poll_script,
                 state_text,
                 title,
@@ -483,14 +464,9 @@ esp_err_t send_offline_result_page(httpd_req_t *req, bool saved)
     }
     html_append(html.data(), html.size(),
                 "%s"
-                "<title>天气时钟离线模式</title><style>"
-                "*{box-sizing:border-box}body{margin:0;background:#eef1f5;color:#17202a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}"
-                ".wrap{max-width:460px;margin:0 auto;padding:28px 16px}.panel{background:#fff;border:1px solid #d3dae2;border-radius:8px;padding:18px;box-shadow:0 8px 24px rgba(23,32,42,.08)}"
-                ".state{width:72px;height:42px;border-radius:8px;border:2px solid #17202a;display:grid;place-items:center;font-size:16px;font-weight:900;margin-bottom:14px}"
-                "h1{font-size:24px;margin:0 0 8px}p{font-size:15px;line-height:1.45;color:#4d5b68;margin:0 0 14px}"
-                "a{display:block;height:46px;line-height:46px;text-align:center;background:#17202a;color:#fff;text-decoration:none;border-radius:6px;font-weight:800;margin-top:16px}"
-                "</style></head><body><main class='wrap'><section class='panel'><div class='state'>%s</div><h1>%s</h1><p>%s</p><a href='/'>返回配网页</a></section></main></body></html>",
+                "<title>天气时钟离线模式</title><style>%s</style></head><body><main class='result-shell'><section class='portal-panel result-panel'><div class='result-state'>%s</div><h1>%s</h1><p>%s</p><a class='primary-link' href='/'>返回配网页</a></section></main></body></html>",
                 kPortalHtmlHeadPrefix,
+                wifi_portal_ui::kCommonCss,
                 saved ? "已开启" : "提示",
                 saved ? kPortalOfflineSavedTitle : kPortalOfflineInvalidTitle,
                 saved ? kPortalOfflineSavedBody : kPortalOfflineInvalidBody);

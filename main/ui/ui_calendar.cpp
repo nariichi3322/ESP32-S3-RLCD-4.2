@@ -22,7 +22,7 @@
 #define CALENDAR_LAYOUT_INVALID_LOG "calendar layout invalid"
 
 static constexpr int kCalendarCanvasW = 364;
-static constexpr int kCalendarCanvasH = 228;
+static constexpr int kCalendarCanvasH = 232;
 static constexpr int kCalendarCanvasX = 18;
 static constexpr int kCalendarCanvasY = 63;
 static constexpr int kCalendarTopLineX = 18;
@@ -69,6 +69,10 @@ static_assert(kCalendarCellY + (kCalendarVisibleRowCount - 1) * kCalendarCellH +
                       kCalendarSubTextY + kCalendarSubTextH <=
                   kCalendarCanvasH,
               "calendar last visible row text must fit canvas height");
+static_assert(kCalendarCellY + (kCalendarVisibleRowCount - 1) * kCalendarCellH +
+                      kCalendarTodayInsetTop + kCalendarCellH - kCalendarTodayInsetH <=
+                  kCalendarCanvasH,
+              "calendar last visible row highlight must fit canvas height");
 static_assert(kCalendarTodayRadius > 0 &&
                   kCalendarTodayRadius * 2 <= kCalendarCellW - kCalendarTodayInsetW &&
                   kCalendarTodayRadius * 2 <= kCalendarCellH - kCalendarTodayInsetH,

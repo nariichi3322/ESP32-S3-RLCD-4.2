@@ -123,6 +123,7 @@ Shows the current month, weekday bar, lunar text, and holidays.
 - The calendar body redraws only on page entry, date/month change, or a time correction that crosses a day boundary.
 - The first frame after a page rebuild always redraws the calendar instead of reusing the previous page's date cache.
 - For rare six-row months, once today reaches the sixth row the already-passed first row is hidden so today remains visible.
+- When today is on the lowest visible row, its black highlight keeps the complete rounded bottom edge instead of being clipped by the canvas.
 
 ### 3.6 Temperature/Humidity History
 
@@ -182,6 +183,8 @@ With no saved online configuration and offline mode disabled, setup starts autom
    - **QWeather API Host:** find it under **Settings → API Host** in the QWeather Console, for example `abc123.re.qweatherapi.com`. Enter only the domain, without `https://`, a port, or a path.
    - **Weather city (optional):** for example Hangzhou. Chinese names ending in `市` are normalized and validated through QWeather. Leave empty for public-IP location.
    - **Offline date and time (optional):** use only when Wi-Fi is intentionally left empty. Leave it blank for normal Wi-Fi setup.
+
+The setup page groups fields into Network, Weather Service, and Offline sections. Nearby Wi-Fi uses a compact list, while validating, success, and failure states use distinct feedback treatments. This layout change does not alter field meaning, save order, or validation rules.
 
 Wi-Fi names up to the router-supported 32-byte limit are passed to the radio driver without losing the final byte. Because `v1.5.29` introduces the account-specific API Host, devices upgraded from an earlier version must reopen setup and fill this field; other saved values remain available for reuse.
 

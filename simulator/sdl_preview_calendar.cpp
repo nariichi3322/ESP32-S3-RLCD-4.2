@@ -14,12 +14,22 @@ namespace {
 using sdl_preview_widgets::canvas_fill_rect;
 
 constexpr int kCalendarCanvasW = 364;
-constexpr int kCalendarCanvasH = 228;
+constexpr int kCalendarCanvasH = 232;
 constexpr int kPreviewTmYearOffset = 1900;
 constexpr int kPreviewTmMonthOffset = 1;
 constexpr int kCalendarColumnCount = 7;
+constexpr int kCalendarVisibleRowCount = 5;
+constexpr int kCalendarCellY = 27;
+constexpr int kCalendarCellH = 41;
+constexpr int kCalendarTodayInsetTop = 3;
+constexpr int kCalendarTodayInsetH = 5;
 
 std::vector<lv_color_t> g_calendar_canvas_pixels(kCalendarCanvasW * kCalendarCanvasH);
+
+static_assert(kCalendarCellY + (kCalendarVisibleRowCount - 1) * kCalendarCellH +
+                      kCalendarTodayInsetTop + kCalendarCellH - kCalendarTodayInsetH <=
+                  kCalendarCanvasH,
+              "calendar preview last-row highlight must fit canvas height");
 
 int preview_days_in_month(int year, int month)
 {
@@ -136,7 +146,6 @@ void build_calendar_preview_body(lv_obj_t *screen, const struct tm *local)
     static_assert(array_count(kWeekdays) == kCalendarColumnCount,
                   "calendar preview weekday labels must cover seven columns");
     constexpr int kCellW = 52;
-    constexpr int kCellH = 41;
     constexpr int kHeaderH = 24;
     canvas_fill_rect(calendar, 0, 2, kCellW, 18, lv_color_black());
     canvas_fill_rect(calendar, kCellW * 6, 2, kCellW, 18, lv_color_black());
@@ -156,14 +165,14 @@ void build_calendar_preview_body(lv_obj_t *screen, const struct tm *local)
         int col = idx % kCalendarColumnCount;
         int row = idx / kCalendarColumnCount;
         int x = col * kCellW;
-        int y = kHeaderH + 3 + row * kCellH;
+        int y = kHeaderH + 3 + row * kCalendarCellH;
         bool today = day == local->tm_mday;
         if (today) {
             canvas_fill_round_rect(calendar,
                                    x + 4,
                                    y + 3,
                                    kCellW - 8,
-                                   kCellH - 5,
+                                   kCalendarCellH - 5,
                                    5,
                                    lv_color_black());
         }
