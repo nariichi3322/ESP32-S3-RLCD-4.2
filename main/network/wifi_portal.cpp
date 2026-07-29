@@ -9,13 +9,15 @@
 #include "network_credentials_state.h"
 #include "offline_mode_state.h"
 #include "power_services.h"
+#include "scoped_semaphore_lock.h"
 #include "setup_portal_control.h"
+#include "setup_portal_control_internal.h"
 #include "wifi_idle_stop_policy.h"
 #include "wifi_portal_dns.h"
 #include "wifi_portal_http.h"
-#include "wifi_portal_state.h"
+#include "wifi_portal_state_internal.h"
 #include "wifi_radio_services.h"
-#include "wifi_radio_state.h"
+#include "wifi_radio_state_internal.h"
 
 #include "audio_services.h"
 #include "ui_task_notify.h"
@@ -29,6 +31,14 @@
 #include <esp_netif.h>
 #include <esp_wifi.h>
 #include <esp_wifi_default.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
+static bool apply_station_config(bool reconnect);
+static void wifi_event_handler(void *,
+                               esp_event_base_t event_base,
+                               int32_t event_id,
+                               void *event_data);
 
 namespace {
 esp_netif_t *s_sta_netif = nullptr;
@@ -38,6 +48,7 @@ esp_event_handler_instance_t s_ip_event_handler_instance = nullptr;
 // 射频控制任务与 Wi-Fi 事件回调并发访问，用于抑制主动断开后的自动重连。
 std::atomic<bool> s_wifi_stop_requested{false};
 std::atomic<bool> s_wifi_stop_when_idle_requested{false};
+StaticTaskMutex s_wifi_lifecycle_mutex;
 constexpr uint8_t kSetupApChannel = 1;
 constexpr uint8_t kSetupApMaxConnections = 4;
 constexpr const char *kSetupApSsidFormat = "WeatherClock-%02X%02X";
@@ -145,6 +156,8 @@ enum class WifiRadioStopAttempt {
 #define WIFI_STOP_SKIPPED_XIAOZHI_LOG "Wi-Fi stop skipped: Xiaozhi AI page is active"
 #define WIFI_DISCONNECT_DURING_STOP_FAILED_FORMAT "wifi disconnect during stop failed: %s"
 #define WIFI_STOP_FAILED_FORMAT "wifi stop failed: %s"
+#define WIFI_STOP_DEFERRED_OWNER_FORMAT \
+    "wifi stop deferred for competing network owner: snapshot=%d depth=%d"
 #define WIFI_RADIO_OFF_LOG "wifi radio off"
 #define WIFI_STA_CONFIG_FAILED_FORMAT "wifi sta config failed: %s"
 #define WIFI_STA_CONFIG_PORTAL_FALLBACK_LOG \
@@ -169,6 +182,8 @@ enum class WifiRadioStopAttempt {
 #define WIFI_INITIAL_MODE_SETUP_FAILED_FORMAT "wifi initial mode setup failed: %s"
 #define WIFI_INITIAL_SOFTAP_SETUP_FAILED_FORMAT "wifi initial softap setup failed: %s"
 #define WIFI_INIT_ROLLBACK_FAILED_FORMAT "wifi init rollback %s failed: %s"
+#define WIFI_INIT_RETRY_ABORTED_LOG \
+    "wifi initialization retry aborted: rollback incomplete"
 #define WIFI_SETUP_AP_CLIENT_COUNT_FORMAT "setup AP clients=%u"
 #define WIFI_SETUP_RESULT_STA_DISCONNECT_FAILED_FORMAT \
     "setup result STA disconnect failed: %s"
@@ -178,8 +193,19 @@ enum class WifiRadioStopAttempt {
     "setup portal returned to AP-only mode for result delivery"
 constexpr uint32_t kSetupResultDeliveryRetryMs = 100;
 constexpr unsigned kSetupResultDeliveryAttempts = 3;
+constexpr uint32_t kWifiInitializationRetryMs = 100;
+constexpr unsigned kWifiInitializationAttempts = 3;
+constexpr TickType_t kWifiInitializationRetryDelay =
+    pdMS_TO_TICKS(kWifiInitializationRetryMs);
 static_assert(kSetupResultDeliveryAttempts > 0,
               "setup result delivery needs at least one attempt");
+static_assert(kWifiInitializationAttempts > 1,
+              "Wi-Fi initialization must retain a retry opportunity");
+static_assert(kWifiInitializationRetryDelay > 0,
+              "Wi-Fi initialization retry delay must be positive");
+#define WIFI_INIT_RETRY_FORMAT "wifi initialization retry: attempt=%u/%u"
+#define WIFI_INIT_RETRY_EXHAUSTED_LOG "wifi initialization retry exhausted"
+#define WIFI_LIFECYCLE_MUTEX_UNAVAILABLE_LOG "wifi lifecycle mutex unavailable"
 void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
 {
     if (!ip) {
@@ -237,16 +263,19 @@ void log_setup_ap_active()
     ESP_LOGI(TAG, WIFI_SETUP_AP_ACTIVE_FORMAT, setup_ap_ssid);
 }
 
-void rollback_failed_wifi_initialization(bool wifi_initialized)
+bool rollback_failed_wifi_initialization(bool wifi_initialized)
 {
+    bool cleanup_ok = true;
     if (s_ip_event_handler_instance) {
         esp_err_t err = esp_event_handler_instance_unregister(IP_EVENT,
                                                                IP_EVENT_STA_GOT_IP,
                                                                s_ip_event_handler_instance);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, WIFI_INIT_ROLLBACK_FAILED_FORMAT, "ip handler", esp_err_to_name(err));
+            cleanup_ok = false;
+        } else {
+            s_ip_event_handler_instance = nullptr;
         }
-        s_ip_event_handler_instance = nullptr;
     }
     if (s_wifi_event_handler_instance) {
         esp_err_t err = esp_event_handler_instance_unregister(WIFI_EVENT,
@@ -254,19 +283,29 @@ void rollback_failed_wifi_initialization(bool wifi_initialized)
                                                                s_wifi_event_handler_instance);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, WIFI_INIT_ROLLBACK_FAILED_FORMAT, "wifi handler", esp_err_to_name(err));
+            cleanup_ok = false;
+        } else {
+            s_wifi_event_handler_instance = nullptr;
         }
-        s_wifi_event_handler_instance = nullptr;
     }
+    bool driver_released = !wifi_initialized;
     if (wifi_initialized) {
         esp_err_t err = esp_wifi_deinit();
         if (err != ESP_OK) {
             ESP_LOGW(TAG, WIFI_INIT_ROLLBACK_FAILED_FORMAT, "driver", esp_err_to_name(err));
+            cleanup_ok = false;
+            driver_released = false;
+        } else {
+            driver_released = true;
         }
     }
-    esp_netif_destroy_default_wifi(s_ap_netif);
-    s_ap_netif = nullptr;
-    esp_netif_destroy_default_wifi(s_sta_netif);
-    s_sta_netif = nullptr;
+    if (driver_released) {
+        esp_netif_destroy_default_wifi(s_ap_netif);
+        s_ap_netif = nullptr;
+        esp_netif_destroy_default_wifi(s_sta_netif);
+        s_sta_netif = nullptr;
+    }
+    return cleanup_ok;
 }
 
 esp_err_t configure_softap()
@@ -386,9 +425,54 @@ bool configure_initial_wifi_mode()
     return true;
 }
 
+bool initialize_wifi_driver_once(bool *retry_safe)
+{
+    if (!retry_safe) {
+        return false;
+    }
+    *retry_safe = true;
+    s_sta_netif = esp_netif_create_default_wifi_sta();
+    if (!s_sta_netif) {
+        ESP_LOGW(TAG, WIFI_STA_NETIF_CREATE_FAILED_LOG);
+        return false;
+    }
+    s_ap_netif = esp_netif_create_default_wifi_ap();
+    if (!s_ap_netif) {
+        ESP_LOGW(TAG, WIFI_AP_NETIF_CREATE_FAILED_LOG);
+        *retry_safe = rollback_failed_wifi_initialization(false);
+        return false;
+    }
+    configure_captive_portal_dhcp(s_ap_netif);
+
+    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
+    esp_err_t err = esp_wifi_init(&cfg);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, WIFI_INIT_FAILED_FORMAT, esp_err_to_name(err));
+        *retry_safe = rollback_failed_wifi_initialization(false);
+        return false;
+    }
+    err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, WIFI_STORAGE_SETUP_FAILED_FORMAT, esp_err_to_name(err));
+        *retry_safe = rollback_failed_wifi_initialization(true);
+        return false;
+    }
+    if (!register_wifi_event_handlers()) {
+        *retry_safe = rollback_failed_wifi_initialization(true);
+        return false;
+    }
+    if (!configure_initial_wifi_mode()) {
+        *retry_safe = rollback_failed_wifi_initialization(true);
+        return false;
+    }
+    return true;
+}
+
 } // namespace
 
-bool apply_station_config(bool reconnect)
+static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt);
+
+static bool apply_station_config(bool reconnect)
 {
     wifi_config_t sta_config = {};
     if (!network_wifi_credentials_copy(
@@ -550,6 +634,11 @@ static bool start_stopped_wifi_radio(bool enable_setup_portal,
     err = esp_wifi_start();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, WIFI_START_FAILED_FORMAT, esp_err_to_name(err));
+        // esp_wifi_start() can fail after the driver has begun changing state.
+        // Publish conservative ownership and use the common forced-stop path so
+        // a partial start cannot be mistaken for an already powered-off radio.
+        wifi_radio_on_store(true);
+        (void)stop_wifi_radio_internal(WifiRadioStopAttempt::kForced);
         return false;
     }
     configure_wifi_power_save(enable_setup_portal);
@@ -559,7 +648,7 @@ static bool start_stopped_wifi_radio(bool enable_setup_portal,
             // start. Publish that ownership before using the common forced-stop
             // path so a stop failure remains observable and retryable.
             wifi_radio_on_store(true);
-            stop_wifi_radio(true);
+            (void)stop_wifi_radio_internal(WifiRadioStopAttempt::kForced);
             return false;
         }
         if (entering_setup_portal) {
@@ -574,6 +663,11 @@ static bool start_stopped_wifi_radio(bool enable_setup_portal,
 
 bool start_wifi_radio(bool enable_setup_portal)
 {
+    ScopedSemaphoreLock lifecycle_lock(s_wifi_lifecycle_mutex);
+    if (!lifecycle_lock) {
+        ESP_LOGW(TAG, "%s", WIFI_LIFECYCLE_MUTEX_UNAVAILABLE_LOG);
+        return false;
+    }
     if (offline_mode_enabled_load() && !enable_setup_portal) {
         ESP_LOGI(TAG, WIFI_START_SKIPPED_OFFLINE_LOG);
         return false;
@@ -582,12 +676,20 @@ bool start_wifi_radio(bool enable_setup_portal)
     if (entering_setup_portal) {
         wifi_portal_session_reset();
     }
-    if (wifi_radio_on_load()) {
-        return configure_running_wifi_radio(enable_setup_portal,
-                                            entering_setup_portal);
+    const bool started =
+        wifi_radio_on_load()
+            ? configure_running_wifi_radio(enable_setup_portal,
+                                           entering_setup_portal)
+            : start_stopped_wifi_radio(enable_setup_portal,
+                                       entering_setup_portal);
+    if (started) {
+        // A successful explicit start owns the radio again. Cancel any close
+        // retry retained after an earlier driver failure only after the new
+        // mode/configuration is fully usable.
+        clear_wifi_stop_when_idle_request();
+        s_wifi_stop_requested.store(false, std::memory_order_release);
     }
-    return start_stopped_wifi_radio(enable_setup_portal,
-                                    entering_setup_portal);
+    return started;
 }
 
 bool wait_for_wifi_connected(uint32_t timeout_ms, uint32_t cancel_bits)
@@ -680,6 +782,19 @@ static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt)
     if (!network_wifi_credentials_configured() && !explicit_stop_requested) {
         return false;
     }
+    if (attempt == WifiRadioStopAttempt::kNormal) {
+        PowerLockDepthSnapshot lock_depth = {};
+        const bool lock_depth_ok =
+            get_power_lock_depth_snapshot(&lock_depth);
+        if (!wifi_owned_normal_stop_allowed(lock_depth_ok,
+                                            lock_depth.network)) {
+            ESP_LOGI(TAG,
+                     WIFI_STOP_DEFERRED_OWNER_FORMAT,
+                     lock_depth_ok,
+                     lock_depth.network);
+            return false;
+        }
+    }
     // Publish deliberate-stop ownership before stopping the HTTP server.
     // Otherwise a concurrent STA disconnect can still start a reconnect while
     // the portal teardown and esp_wifi_stop() sequence is already in flight.
@@ -698,7 +813,9 @@ static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt)
     err = esp_wifi_stop();
     if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
         ESP_LOGW(TAG, WIFI_STOP_FAILED_FORMAT, esp_err_to_name(err));
-        s_wifi_stop_requested.store(false, std::memory_order_release);
+        // Keep deliberate-stop ownership while the retry is pending. Clearing
+        // it here lets the asynchronous disconnect event reconnect the STA
+        // between failed stop attempts and extends the high-power window.
         s_wifi_stop_when_idle_requested.store(true,
                                               std::memory_order_release);
         if (attempt != WifiRadioStopAttempt::kIdleRetry) {
@@ -718,6 +835,14 @@ static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt)
 
 void stop_wifi_radio(bool force_setup_portal)
 {
+    ScopedSemaphoreLock lifecycle_lock(s_wifi_lifecycle_mutex);
+    if (!lifecycle_lock) {
+        ESP_LOGW(TAG, "%s", WIFI_LIFECYCLE_MUTEX_UNAVAILABLE_LOG);
+        if (force_setup_portal && setup_portal_active_load()) {
+            (void)request_setup_portal_stop();
+        }
+        return;
+    }
     const bool stopped = stop_wifi_radio_internal(
         force_setup_portal
             ? WifiRadioStopAttempt::kForced
@@ -730,17 +855,24 @@ void stop_wifi_radio(bool force_setup_portal)
 void request_wifi_radio_stop_when_idle()
 {
     s_wifi_stop_when_idle_requested.store(true, std::memory_order_release);
-    service_wifi_radio_stop_when_idle();
-    // A shared network owner or a transient driver error blocked the immediate
-    // close. Wake the network task so it can classify the retained request;
-    // protected owners wait for state changes, while driver failures use the
-    // bounded retry schedule maintained by the network task.
+    // Only the serialized network task services an ordinary deferred close.
+    // Calling the driver here lets Xiaozhi/OTA cleanup race a newly acquired
+    // network window between its ownership check and esp_wifi_stop().
     notify_wifi_stop_retry_if_pending();
 }
 
 WifiRadioIdleStopResult service_wifi_radio_stop_when_idle()
 {
-    const bool requested = s_wifi_stop_when_idle_requested.load(std::memory_order_acquire);
+    if (!s_wifi_stop_when_idle_requested.load(std::memory_order_acquire)) {
+        return WifiRadioIdleStopResult::kNoRequest;
+    }
+    ScopedSemaphoreLock lifecycle_lock(s_wifi_lifecycle_mutex);
+    if (!lifecycle_lock) {
+        ESP_LOGW(TAG, "%s", WIFI_LIFECYCLE_MUTEX_UNAVAILABLE_LOG);
+        return WifiRadioIdleStopResult::kRetryRequired;
+    }
+    const bool requested =
+        s_wifi_stop_when_idle_requested.load(std::memory_order_acquire);
     if (!requested) {
         return WifiRadioIdleStopResult::kNoRequest;
     }
@@ -767,7 +899,10 @@ WifiRadioIdleStopResult service_wifi_radio_stop_when_idle()
                : WifiRadioIdleStopResult::kRetryRequired;
 }
 
-void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, void *event_data)
+static void wifi_event_handler(void *,
+                               esp_event_base_t event_base,
+                               int32_t event_id,
+                               void *event_data)
 {
     if (event_base == WIFI_EVENT && event_id == WIFI_EVENT_STA_START &&
         network_wifi_credentials_configured()) {
@@ -809,6 +944,11 @@ void wifi_event_handler(void *, esp_event_base_t event_base, int32_t event_id, v
 
 void init_wifi()
 {
+    if (!s_wifi_lifecycle_mutex.handle() &&
+        !s_wifi_lifecycle_mutex.init()) {
+        ESP_LOGW(TAG, "%s", WIFI_LIFECYCLE_MUTEX_UNAVAILABLE_LOG);
+        return;
+    }
     uint8_t mac[6] = {};
     esp_err_t err = esp_read_mac(mac, ESP_MAC_WIFI_SOFTAP);
     if (err != ESP_OK) {
@@ -816,38 +956,29 @@ void init_wifi()
     }
     format_setup_ap_ssid(mac[4], mac[5]);
 
-    s_sta_netif = esp_netif_create_default_wifi_sta();
-    if (!s_sta_netif) {
-        ESP_LOGW(TAG, WIFI_STA_NETIF_CREATE_FAILED_LOG);
-        return;
+    bool initialized = false;
+    for (unsigned attempt = 1;
+         attempt <= kWifiInitializationAttempts;
+         ++attempt) {
+        bool retry_safe = true;
+        if (initialize_wifi_driver_once(&retry_safe)) {
+            initialized = true;
+            break;
+        }
+        if (!retry_safe) {
+            ESP_LOGW(TAG, "%s", WIFI_INIT_RETRY_ABORTED_LOG);
+            break;
+        }
+        if (attempt < kWifiInitializationAttempts) {
+            ESP_LOGW(TAG,
+                     WIFI_INIT_RETRY_FORMAT,
+                     attempt + 1,
+                     kWifiInitializationAttempts);
+            vTaskDelay(kWifiInitializationRetryDelay);
+        }
     }
-    s_ap_netif = esp_netif_create_default_wifi_ap();
-    if (!s_ap_netif) {
-        ESP_LOGW(TAG, WIFI_AP_NETIF_CREATE_FAILED_LOG);
-        rollback_failed_wifi_initialization(false);
-        return;
-    }
-    configure_captive_portal_dhcp(s_ap_netif);
-
-    wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
-    err = esp_wifi_init(&cfg);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, WIFI_INIT_FAILED_FORMAT, esp_err_to_name(err));
-        rollback_failed_wifi_initialization(false);
-        return;
-    }
-    err = esp_wifi_set_storage(WIFI_STORAGE_RAM);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, WIFI_STORAGE_SETUP_FAILED_FORMAT, esp_err_to_name(err));
-        rollback_failed_wifi_initialization(true);
-        return;
-    }
-    if (!register_wifi_event_handlers()) {
-        rollback_failed_wifi_initialization(true);
-        return;
-    }
-    if (!configure_initial_wifi_mode()) {
-        rollback_failed_wifi_initialization(true);
+    if (!initialized) {
+        ESP_LOGW(TAG, "%s", WIFI_INIT_RETRY_EXHAUSTED_LOG);
         return;
     }
 

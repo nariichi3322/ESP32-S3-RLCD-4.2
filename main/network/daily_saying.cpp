@@ -4,7 +4,7 @@
 #include "daily_saying_contract.h"
 #include "daily_saying_retry_policy.h"
 #include "daily_saying_service.h"
-#include "daily_saying_state.h"
+#include "daily_saying_state_internal.h"
 #include "daily_saying_parser.h"
 #include "network_http_client.h"
 #include "network_http_retry_policy.h"
@@ -110,7 +110,8 @@ bool perform_daily_saying_update()
     }
     char next[kDailySayingLen] = {};
     ScopedHeapBuffer<char> response(kDailySayingResponseBufferSize,
-                                    HeapBufferInit::kZeroed);
+                                    HeapBufferInit::kZeroed,
+                                    HeapBufferStorage::kPsramPreferred);
     if (!response) {
         ESP_LOGW(TAG, DAILY_SAYING_RESPONSE_ALLOC_FAILED_LOG_FORMAT);
         return false;

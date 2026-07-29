@@ -13,6 +13,7 @@
 #include "ui_battery.h"
 #include "ui_bitmap.h"
 #include "ui_canvas_primitives.h"
+#include "ui_clock_layout.h"
 #include "ui_fonts.h"
 #include "ui_icons.h"
 #include "ui_page_state.h"
@@ -25,6 +26,8 @@
 #include <esp_log.h>
 
 namespace {
+using namespace ui_clock_layout;
+
 #define CLOCK_DATE_LABEL_CREATE_FAILED_LOG "clock date label create failed"
 #define CLOCK_ALERT_PILL_CREATE_FAILED_LOG "clock alert pill create failed"
 #define CLOCK_ALERT_ICON_CANVAS_CREATE_FAILED_LOG "clock alert icon canvas create failed"
@@ -63,79 +66,6 @@ lv_color_t *s_time_canvas_buffer;
 lv_color_t *s_second_canvas_buffer;
 lv_color_t *s_status_gif_canvas_buffer;
 lv_color_t *s_second_progress_canvas_buffer;
-constexpr int kClockTimeCanvasX = 18;
-constexpr int kClockTimeCanvasY = 76;
-constexpr int kClockTimeCanvasWidth = 292;
-constexpr int kClockTimeCanvasHeight = 92;
-constexpr int kClockSecondCanvasX = 320;
-constexpr int kClockSecondCanvasY = 124;
-constexpr int kClockSecondCanvasWidth = 60;
-constexpr int kClockSecondCanvasHeight = 40;
-constexpr int kClockStatusGifCanvasX = 279;
-constexpr int kClockStatusGifCanvasY = 196;
-constexpr int kClockDateLabelX = 198;
-constexpr int kClockDateLabelY = 15;
-constexpr int kClockDateLabelWidth = 182;
-constexpr int kClockDateLabelHeight = 26;
-constexpr int kClockAlertPillX = 64;
-constexpr int kClockAlertPillY = 11;
-constexpr int kClockAlertPillWidth = 128;
-constexpr int kClockAlertPillHeight = 26;
-constexpr int kClockAlertPillRadius = 13;
-constexpr int kClockAlertIconX = 4;
-constexpr int kClockAlertIconY = 4;
-constexpr int kClockAlertLabelX = 24;
-constexpr int kClockAlertLabelY = 4;
-constexpr int kClockAlertLabelWidth = 94;
-constexpr int kClockAlertLabelHeight = 18;
-constexpr int kClockChimeStatusIconX = 64;
-constexpr int kClockChimeStatusIconY = 15;
-constexpr int kClockWifiStatusIconX = 90;
-constexpr int kClockWifiStatusIconY = 15;
-constexpr int kClockAlarmStatusIconX = 116;
-constexpr int kClockAlarmStatusIconY = 15;
-constexpr int kClockDividerX = 18;
-constexpr int kClockTopDividerY = 54;
-constexpr int kClockBottomDividerY = 184;
-constexpr int kClockDividerWidth = 364;
-constexpr int kClockDividerHeight = 4;
-constexpr int kClockSecondProgressCanvasY = 180;
-constexpr int kClockLowerPanelSeparatorY = 188;
-constexpr int kClockLowerPanelSeparatorWidth = 2;
-constexpr int kClockLowerPanelSeparatorHeight = 102;
-constexpr int kClockLowerPanelSeparatorAX = 139;
-constexpr int kClockLowerPanelSeparatorBX = 260;
-constexpr int kClockWeatherCityLabelX = 14;
-constexpr int kClockWeatherCityLabelY = 196;
-constexpr int kClockWeatherCityLabelWidth = 76;
-constexpr int kClockWeatherCityLabelHeight = 20;
-constexpr int kClockWeatherIconLabelX = 91;
-constexpr int kClockWeatherIconLabelY = 194;
-constexpr int kClockWeatherIconLabelWidth = 34;
-constexpr int kClockWeatherIconLabelHeight = 38;
-constexpr int kClockWeatherInfoLabelX = 14;
-constexpr int kClockWeatherInfoLabelY = 218;
-constexpr int kClockWeatherInfoLabelWidth = 76;
-constexpr int kClockWeatherInfoLabelHeight = 20;
-constexpr int kClockWeatherMetricLabelX = 20;
-constexpr int kClockWeatherTempLabelY = 242;
-constexpr int kClockWeatherHumiLabelY = 264;
-constexpr int kClockWeatherMetricLabelWidth = 68;
-constexpr int kClockWeatherMetricLabelHeight = 20;
-constexpr int kClockTempIconX = 152;
-constexpr int kClockTempIconY = 214;
-constexpr int kClockHumiIconX = 154;
-constexpr int kClockHumiIconY = 244;
-constexpr int kClockLocalMetricLabelX = 174;
-constexpr int kClockLocalTempLabelY = 214;
-constexpr int kClockLocalHumiLabelY = 246;
-constexpr int kClockLocalMetricLabelWidth = 62;
-constexpr int kClockLocalMetricLabelHeight = 28;
-constexpr int kClockTrendCanvasX = 239;
-constexpr int kClockTempTrendCanvasY = 215;
-constexpr int kClockHumiTrendCanvasY = 248;
-constexpr int kClockLowBatteryIconX = 156;
-constexpr int kClockLowBatteryIconY = 214;
 
 const char *clock_component_name(const char *name)
 {

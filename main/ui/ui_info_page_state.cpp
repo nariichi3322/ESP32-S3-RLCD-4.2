@@ -1,5 +1,5 @@
 // 集中发布关于本机页面状态，避免 UI、输入和 OTA 读取到混合字段。
-#include "ui_info_page_state.h"
+#include "ui_info_page_state_internal.h"
 
 #include "scoped_semaphore_lock.h"
 

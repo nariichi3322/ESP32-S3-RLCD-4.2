@@ -3,12 +3,8 @@
 
 #include "lvgl.h"
 
-#include <time.h>
-
 struct ClockUiTimeSnapshot;
 
-void draw_progress_segment(lv_obj_t *canvas, int index, bool filled);
-void invalidate_progress_segment(lv_obj_t *canvas, int index);
 void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf, int y);
 void update_progress_canvas(lv_obj_t *canvas, int filled, int *last_filled);
 void build_work_page_day_progress(lv_obj_t *parent, int page);

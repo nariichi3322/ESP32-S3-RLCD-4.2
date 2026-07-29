@@ -8,7 +8,6 @@
 #include <stdlib.h>
 
 namespace {
-constexpr size_t kWeatherIconUtf8TextSize = 5;
 constexpr uint32_t kWeatherIconDefaultCodepoint = 0xF146;
 constexpr int kWeatherIconSunnyStart = 100;
 constexpr int kWeatherIconSunnyEnd = 104;
@@ -171,6 +170,8 @@ void write_weather_icon_utf8(char *out, size_t out_len, uint32_t cp)
 
 static_assert(kWeatherIconUtf8TextSize > kUtf8FourByteLen,
               "weather icon UTF-8 text buffer must fit a four-byte codepoint and NUL");
+static_assert(sizeof(WeatherIconText) == kWeatherIconUtf8TextSize,
+              "weather icon text value must contain only its UTF-8 bytes");
 static_assert(kWeatherIconSunnyStart <= kWeatherIconSunnyEnd,
               "sunny weather icon range must be ordered");
 static_assert(kWeatherIconNightSunnyStart <= kWeatherIconNightSunnyEnd,
@@ -222,9 +223,11 @@ uint32_t weather_icon_codepoint(const char *code)
     return kWeatherIconDefaultCodepoint;
 }
 
-const char *weather_icon_text(const char *code)
+WeatherIconText weather_icon_text(const char *code)
 {
-    static char text[kWeatherIconUtf8TextSize];
-    write_weather_icon_utf8(text, sizeof(text), weather_icon_codepoint(code));
+    WeatherIconText text = {};
+    write_weather_icon_utf8(text.value,
+                            sizeof(text.value),
+                            weather_icon_codepoint(code));
     return text;
 }

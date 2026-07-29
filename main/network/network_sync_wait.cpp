@@ -2,6 +2,8 @@
 #include "network_sync_wait.h"
 
 #include "app_event_group.h"
+#include "app_tick_time.h"
+#include "network_sync_requests.h"
 #include "network_sync_runtime.h"
 #include "network_sync_schedule.h"
 
@@ -9,7 +11,6 @@
 
 namespace {
 
-constexpr uint32_t kSetupPortalRetryWaitMs = 1000;
 constexpr EventBits_t kNetworkSyncWakeBits = kProvisioningSyncBit |
                                              kManualNtpSyncBit |
                                              kManualWeatherSyncBit |
@@ -19,8 +20,7 @@ constexpr EventBits_t kNetworkSyncWakeBits = kProvisioningSyncBit |
                                              kNetworkDiagBit |
                                              kNetworkStateChangedBit |
                                              kSetupPortalStartBit;
-constexpr EventBits_t kSetupPortalRetryWakeBits =
-    kNetworkSyncWakeBits & ~kSetupPortalStartBit;
+constexpr EventBits_t kSetupPortalRetryWakeBits = kNetworkStateChangedBit;
 constexpr EventBits_t kActiveSetupPortalWakeBits =
     kProvisioningSyncBit | kNetworkStateChangedBit;
 constexpr EventBits_t kNetworkConnectionWakeBits =
@@ -31,6 +31,15 @@ static_assert((kNetworkSyncWakeBits & kNetworkStateChangedBit) != 0,
               "network sync wait must wake on runtime state changes");
 static_assert((kSetupPortalRetryWakeBits & kSetupPortalStartBit) == 0,
               "setup portal retry wait must ignore its pending level bit");
+static_assert((kSetupPortalRetryWakeBits &
+               (kProvisioningSyncBit |
+                kManualNtpSyncBit |
+                kManualWeatherSyncBit |
+                kManualSayingSyncBit |
+                kVisibleWeatherSyncBit |
+                kVisibleSayingSyncBit |
+                kNetworkDiagBit)) == 0,
+              "setup portal retry wait must ignore queued level requests");
 static_assert((kActiveSetupPortalWakeBits & kNetworkDiagBit) == 0 &&
                   (kActiveSetupPortalWakeBits & kVisibleWeatherSyncBit) == 0,
               "active setup portal wait must ignore ordinary sync requests");
@@ -43,11 +52,15 @@ static_assert((kNtpCompletionWakeBits & kNtpSyncCompletedBit) != 0 &&
 
 bool wait_for_network_runtime_change(uint32_t timeout_ms)
 {
+    TickType_t timeout_ticks = pdMS_TO_TICKS(timeout_ms);
+    if (timeout_ms > 0) {
+        timeout_ticks = app_tick_nonzero_delay(timeout_ticks);
+    }
     const EventBits_t bits = app_event_group_wait_bits(
         kNetworkStateChangedBit,
         pdTRUE,
         pdFALSE,
-        pdMS_TO_TICKS(timeout_ms));
+        timeout_ticks);
     return (bits & kNetworkStateChangedBit) != 0;
 }
 
@@ -61,15 +74,16 @@ void wait_for_network_sync_event(uint32_t timeout_ms)
                               pdMS_TO_TICKS(timeout_ms));
 }
 
-void wait_for_setup_portal_retry()
+void wait_for_setup_portal_retry(uint8_t failure_count)
 {
-    // kSetupPortalStartBit can remain set throughout either a failed start or a
-    // stop that must finish before a queued start. Ignore that level bit so the
-    // transition cannot wake itself and spin without backoff.
+    // All sync requests are level-triggered and may remain queued while portal
+    // start/stop is failing. Only a real runtime-state edge may interrupt the
+    // bounded retry delay; otherwise pending work would create a busy loop.
     app_event_group_wait_bits(kSetupPortalRetryWakeBits,
+                              pdTRUE,
                               pdFALSE,
-                              pdFALSE,
-                              pdMS_TO_TICKS(kSetupPortalRetryWaitMs));
+                              pdMS_TO_TICKS(
+                                  setup_portal_retry_delay_ms(failure_count)));
 }
 
 void wait_for_active_setup_portal_request()
@@ -120,13 +134,18 @@ bool wait_for_network_sync_settle(uint32_t timeout_ms)
     return false;
 }
 
-NetworkSyncConnectionWaitResult wait_for_network_sync_connection(uint32_t timeout_ms)
+static NetworkSyncConnectionWaitResult wait_for_network_sync_connection(
+    uint32_t timeout_ms)
 {
+    TickType_t timeout_ticks = pdMS_TO_TICKS(timeout_ms);
+    if (timeout_ms > 0) {
+        timeout_ticks = app_tick_nonzero_delay(timeout_ticks);
+    }
     const EventBits_t bits = app_event_group_wait_bits(
         kNetworkConnectionWakeBits,
         pdFALSE,
         pdFALSE,
-        pdMS_TO_TICKS(timeout_ms));
+        timeout_ticks);
     if ((bits & kNetworkStateChangedBit) != 0) {
         return NetworkSyncConnectionWaitResult::kRuntimeChanged;
     }
@@ -138,7 +157,7 @@ NetworkSyncConnectionWaitResult wait_for_network_sync_connection(uint32_t timeou
 
 NetworkSyncConnectionWaitResult wait_for_valid_network_sync_connection(
     const NetworkSyncAvailability &scheduled_runtime,
-    uint32_t scheduled_request_bits,
+    const NetworkSyncRequestSnapshot &scheduled_requests,
     uint32_t timeout_ms)
 {
     constexpr int64_t kUsPerMs = 1000;
@@ -151,8 +170,8 @@ NetworkSyncConnectionWaitResult wait_for_valid_network_sync_connection(
         const EventBits_t current_bits = app_event_group_get_bits();
         if (network_sync_start_context_changed(scheduled_runtime,
                                                connected_runtime) ||
-            network_request_snapshot_canceled(scheduled_request_bits,
-                                              current_bits)) {
+            !network_sync_request_snapshot_still_current(
+                scheduled_requests)) {
             return NetworkSyncConnectionWaitResult::kRuntimeChanged;
         }
         if ((current_bits & kWifiConnectedBit) != 0) {
@@ -180,8 +199,8 @@ NetworkSyncConnectionWaitResult wait_for_valid_network_sync_connection(
         const EventBits_t refreshed_bits = app_event_group_get_bits();
         if (network_sync_start_context_changed(scheduled_runtime,
                                                refreshed_runtime) ||
-            network_request_snapshot_canceled(scheduled_request_bits,
-                                              refreshed_bits)) {
+            !network_sync_request_snapshot_still_current(
+                scheduled_requests)) {
             return NetworkSyncConnectionWaitResult::kRuntimeChanged;
         }
         if ((refreshed_bits & kWifiConnectedBit) != 0) {
@@ -207,11 +226,13 @@ NetworkSyncCompletionWaitResult wait_for_ntp_sync_completion(uint32_t timeout_ms
         }
         const uint32_t remaining_ms =
             static_cast<uint32_t>((remaining_us + 999) / 1000);
+        const TickType_t remaining_ticks =
+            app_tick_nonzero_delay(pdMS_TO_TICKS(remaining_ms));
         const EventBits_t bits = app_event_group_wait_bits(
             kNtpCompletionWakeBits,
             pdTRUE,
             pdFALSE,
-            pdMS_TO_TICKS(remaining_ms));
+            remaining_ticks);
         if ((bits & kNtpSyncCompletedBit) != 0) {
             return NetworkSyncCompletionWaitResult::kCompleted;
         }

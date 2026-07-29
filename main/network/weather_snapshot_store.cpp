@@ -1,4 +1,4 @@
-// 实现天气快照的完整读取和扩展数据失败保留规则。
+// 实现天气快照读取、扩展请求失败保留和基础同步失效规则。
 #include "weather_snapshot_store.h"
 
 #include <string.h>
@@ -57,7 +57,8 @@ void weather_snapshot_store_read(const WeatherSnapshotStore &store,
 
 bool weather_snapshot_store_extended_ready(const WeatherSnapshotStore &store)
 {
-    return store.forecast.ready &&
+    return !store.extended_refresh_required &&
+           store.forecast.ready &&
            store.forecast.count > 0 &&
            store.forecast.days[0].valid &&
            store.air.ready;
@@ -94,5 +95,33 @@ void weather_snapshot_store_commit(WeatherSnapshotStore *store,
     } else if (!same_location) {
         store->air = {};
     }
+    if (forecast_ok && air_ok) {
+        store->extended_refresh_required = false;
+    }
+    store->last_sync_time = synced_at;
+}
+
+void weather_snapshot_store_commit_basic(WeatherSnapshotStore *store,
+                                         const WeatherData &next,
+                                         const WeatherAlertData &next_alert,
+                                         bool alert_updated,
+                                         time_t synced_at)
+{
+    if (!store) {
+        return;
+    }
+    const bool same_location =
+        weather_location_matches(store->weather, next);
+    store->weather = next;
+    if (alert_updated) {
+        store->alert = next_alert;
+    } else if (!same_location) {
+        store->alert = {};
+    }
+    if (!same_location) {
+        store->forecast = {};
+        store->air = {};
+    }
+    store->extended_refresh_required = true;
     store->last_sync_time = synced_at;
 }

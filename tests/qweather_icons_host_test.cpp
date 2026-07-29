@@ -38,7 +38,10 @@ int main()
     assert(weather_icon_codepoint("9999") == 0xF1CBU);
     assert(weather_icon_codepoint("799") == 0xF146U);
 
-    assert(decode_three_byte_utf8(weather_icon_text("100")) == 0xF101U);
-    assert(decode_three_byte_utf8(weather_icon_text("9999")) == 0xF1CBU);
+    WeatherIconText sunny = weather_icon_text("100");
+    WeatherIconText unknown = weather_icon_text("9999");
+    assert(decode_three_byte_utf8(sunny.c_str()) == 0xF101U);
+    assert(decode_three_byte_utf8(unknown.c_str()) == 0xF1CBU);
+    assert(decode_three_byte_utf8(sunny.c_str()) == 0xF101U);
     return 0;
 }

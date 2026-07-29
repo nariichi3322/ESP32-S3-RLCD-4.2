@@ -1,5 +1,5 @@
 // 使用单个 32 位原子值发布声音设置，避免跨任务读取到混合配置。
-#include "chime_runtime_state.h"
+#include "chime_runtime_state_internal.h"
 
 #include "chime_settings.h"
 
@@ -67,16 +67,6 @@ void chime_runtime_snapshot_store(const ChimeRuntimeSnapshot &snapshot)
     s_chime_runtime.store(pack_snapshot(snapshot), std::memory_order_release);
 }
 
-bool chime_runtime_hourly_enabled()
-{
-    return (s_chime_runtime.load(std::memory_order_acquire) & kHourlyEnabledMask) != 0;
-}
-
-bool chime_runtime_all_day_enabled()
-{
-    return (s_chime_runtime.load(std::memory_order_acquire) & kAllDayMask) != 0;
-}
-
 bool chime_runtime_any_enabled()
 {
     constexpr uint32_t kAnyEnabledMask = kHourlyEnabledMask | kAllDayMask;
@@ -95,24 +85,8 @@ int chime_runtime_sound_index()
         (s_chime_runtime.load(std::memory_order_acquire) >> kSoundShift) & kByteMask);
 }
 
-void chime_runtime_hourly_enabled_store(bool enabled)
-{
-    update_field(kHourlyEnabledMask, enabled ? kHourlyEnabledMask : 0U);
-}
-
-void chime_runtime_all_day_enabled_store(bool enabled)
-{
-    update_field(kAllDayMask, enabled ? kAllDayMask : 0U);
-}
-
 void chime_runtime_volume_percent_store(int volume_percent)
 {
     update_field(kByteMask << kVolumeShift,
                  static_cast<uint32_t>(narrow_to_byte(volume_percent)) << kVolumeShift);
-}
-
-void chime_runtime_sound_index_store(int sound_index)
-{
-    update_field(kByteMask << kSoundShift,
-                 static_cast<uint32_t>(narrow_to_byte(sound_index)) << kSoundShift);
 }

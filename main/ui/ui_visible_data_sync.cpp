@@ -4,9 +4,9 @@
 #include "app_event_group.h"
 #include "app_metadata.h"
 #include "app_runtime_timing.h"
-#include "battery_runtime_state.h"
 #include "daily_saying_state.h"
 #include "network_credentials_state.h"
+#include "network_runtime_events.h"
 #include "offline_mode_state.h"
 #include "network_sync_schedule.h"
 #include "ota_services.h"
@@ -17,7 +17,6 @@
 #include "ui_visible_cache.h"
 #include "ui_work_page_catalog.h"
 #include "weather_state.h"
-#include "wifi_portal_state.h"
 
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -67,7 +66,7 @@ bool update_clock_weather_panel_text(const char *city,
                                         info,
                                         temperature,
                                         humidity,
-                                        weather_icon_text(icon_code));
+                                        weather_icon_text(icon_code).c_str());
 }
 
 bool weather_cache_stale(time_t now_value,
@@ -86,16 +85,19 @@ bool saying_cache_stale(time_t now_value,
 }
 
 void cancel_visible_sync_request(VisibleSyncRetryState<TickType_t> &retry,
+                                 TickType_t tick_now,
                                  EventBits_t request_bit,
                                  bool reset_attempts)
 {
     if (retry.requested()) {
-        app_event_group_clear_bits(request_bit);
+        cancel_pending_network_sync_requests(request_bit);
     }
     if (reset_attempts) {
         retry.reset();
     } else {
-        retry.reset_request();
+        retry.cancel_request(tick_now,
+                             kWeatherClockAutoSyncMaxAttempts,
+                             pdMS_TO_TICKS(kWeatherClockAutoBackoffMs));
     }
 }
 
@@ -106,7 +108,10 @@ void request_weather_sync_if_needed(VisibleSyncRetryState<TickType_t> &retry,
                                     const char *reason)
 {
     if (!network_visible_auto_sync_allowed(esp_timer_get_time())) {
-        cancel_visible_sync_request(retry, kVisibleWeatherSyncBit, false);
+        cancel_visible_sync_request(retry,
+                                    tick_value,
+                                    kVisibleWeatherSyncBit,
+                                    false);
         return;
     }
     if (retry.request_if_due(tick_value,
@@ -137,15 +142,10 @@ ActiveWorkPageState active_work_page_state_for_mode(int active_page,
     const WorkPageDataRequirements data_requirements =
         work_page_data_requirements(active_page);
     state.uses_weather_data = normal_mode && data_requirements.weather;
+    state.uses_extended_weather_data =
+        normal_mode && data_requirements.extended_weather;
     state.uses_daily_saying = normal_mode && data_requirements.daily_saying;
     return state;
-}
-
-ActiveWorkPageState active_work_page_state(int active_page)
-{
-    const bool normal_mode = !battery_low_mode_load() &&
-                             !setup_portal_active_load();
-    return active_work_page_state_for_mode(active_page, normal_mode);
 }
 
 void update_visible_weather_sync(const ActiveWorkPageState &state,
@@ -155,11 +155,14 @@ void update_visible_weather_sync(const ActiveWorkPageState &state,
                                  VisibleSyncRetryState<TickType_t> &retry)
 {
     if (!state.uses_weather_data) {
-        cancel_visible_sync_request(retry, kVisibleWeatherSyncBit, false);
+        cancel_visible_sync_request(retry,
+                                    tick_now,
+                                    kVisibleWeatherSyncBit,
+                                    false);
         return;
     }
     const bool weather_ready = weather_ready_state_load();
-    bool details_missing = state.weather_board &&
+    bool details_missing = state.uses_extended_weather_data &&
                            cache_status &&
                            !cache_status->extended_data_ready;
     bool cache_fresh = weather_ready &&
@@ -174,7 +177,10 @@ void update_visible_weather_sync(const ActiveWorkPageState &state,
     }
     if (!network_weather_configuration_configured() ||
         offline_mode_enabled_load()) {
-        cancel_visible_sync_request(retry, kVisibleWeatherSyncBit, false);
+        cancel_visible_sync_request(retry,
+                                    tick_now,
+                                    kVisibleWeatherSyncBit,
+                                    false);
         return;
     }
     const EventBits_t sync_bits = app_event_group_get_bits();
@@ -185,14 +191,20 @@ void update_visible_weather_sync(const ActiveWorkPageState &state,
 
     const bool ota_active = ota_flow_active();
     if (ota_active) {
-        cancel_visible_sync_request(retry, kVisibleWeatherSyncBit, false);
+        cancel_visible_sync_request(retry,
+                                    tick_now,
+                                    kVisibleWeatherSyncBit,
+                                    false);
         return;
     }
     if (weather_ready && !cache_status) {
         return;
     }
     if (cache_fresh) {
-        cancel_visible_sync_request(retry, kVisibleWeatherSyncBit, true);
+        cancel_visible_sync_request(retry,
+                                    tick_now,
+                                    kVisibleWeatherSyncBit,
+                                    true);
         return;
     }
     request_weather_sync_if_needed(retry,
@@ -210,7 +222,10 @@ void update_visible_daily_saying_sync(const ActiveWorkPageState &state,
                                       VisibleSyncRetryState<TickType_t> &retry)
 {
     if (!state.uses_daily_saying) {
-        cancel_visible_sync_request(retry, kVisibleSayingSyncBit, false);
+        cancel_visible_sync_request(retry,
+                                    tick_now,
+                                    kVisibleSayingSyncBit,
+                                    false);
         return;
     }
     const bool cache_fresh = !saying_cache_stale(now, cache_status);
@@ -219,13 +234,19 @@ void update_visible_daily_saying_sync(const ActiveWorkPageState &state,
     }
     const bool ota_active = ota_flow_active();
     if (ota_active) {
-        cancel_visible_sync_request(retry, kVisibleSayingSyncBit, false);
+        cancel_visible_sync_request(retry,
+                                    tick_now,
+                                    kVisibleSayingSyncBit,
+                                    false);
         return;
     }
     const bool needs_sync = !offline_mode_enabled_load() &&
                             !cache_fresh;
     if (!needs_sync) {
-        cancel_visible_sync_request(retry, kVisibleSayingSyncBit, true);
+        cancel_visible_sync_request(retry,
+                                    tick_now,
+                                    kVisibleSayingSyncBit,
+                                    true);
         return;
     }
 
@@ -235,7 +256,10 @@ void update_visible_daily_saying_sync(const ActiveWorkPageState &state,
                       kVisibleSayingSyncBit |
                       kProvisioningSyncBit)) != 0;
     if (!network_visible_auto_sync_allowed(esp_timer_get_time())) {
-        cancel_visible_sync_request(retry, kVisibleSayingSyncBit, false);
+        cancel_visible_sync_request(retry,
+                                    tick_now,
+                                    kVisibleSayingSyncBit,
+                                    false);
         return;
     }
     if (retry.request_if_due(tick_now,

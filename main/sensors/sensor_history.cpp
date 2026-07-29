@@ -1,12 +1,12 @@
 // 维护本地温湿度趋势和 24 小时历史样本的内存与 NVS 数据。
 #include "sensor_services.h"
+#include "sensor_services_internal.h"
 
 #include "app_metadata.h"
 #include "app_text_format.h"
-#include "hourly_sensor_history_state.h"
+#include "hourly_sensor_history_state_internal.h"
 #include "i2c_bsp.h"
-#include "local_sensor_state.h"
-#include "scoped_heap_buffer.h"
+#include "local_sensor_state_internal.h"
 #include "scoped_nvs_handle.h"
 #include "sensor_history_format.h"
 #include "sensor_time.h"
@@ -38,9 +38,6 @@ constexpr const char *kLegacyHourlyHistoryInvalidLog = "legacy hourly sensor his
 #define SENSOR_NVS_OPEN_FAILED_LOG_FORMAT "open sensor nvs failed: %s"
 #define HOURLY_SLOT_SAVE_FAILED_LOG_FORMAT "save hourly sensor slot failed: %s"
 #define HOURLY_SNAPSHOT_INVALID_ARG_LOG "hourly sensor snapshot invalid arg"
-constexpr const char *kHourlyLoadBufferAllocFailedLog = "hourly sensor load buffer alloc failed";
-constexpr const char *kLegacyHourlyLoadBufferAllocFailedLog =
-    "legacy hourly sensor load buffer alloc failed";
 constexpr const char *kHourlyStateResetFailedLog = "hourly sensor history state reset failed";
 constexpr const char *kHourlyStatePublishFailedLog = "hourly sensor history state publish failed";
 constexpr const char *kLocalSensorTrendPublishFailedLog = "local sensor trend publish failed";
@@ -64,9 +61,19 @@ constexpr int kSecondsPerMinute = 60;
 constexpr int kMinutesPerHour = 60;
 constexpr int kSensorTrendWindowHours = 4;
 constexpr int64_t kSensorTrendWindowMs = (int64_t)kSensorTrendWindowHours * kMinutesPerHour * kSecondsPerMinute * kMsPerSecond;
+struct SensorHistoryLoadWorkspace {
+    alignas(HourlySensorHistoryBlob)
+        uint8_t current[sizeof(HourlySensorHistoryBlob)];
+    alignas(LegacyHourlySensorHistoryBlob)
+        uint8_t legacy[sizeof(LegacyHourlySensorHistoryBlob)];
+};
+
 alignas(Shtc3Port) unsigned char s_shtc3_storage[sizeof(Shtc3Port)] = {};
 Shtc3Port *s_shtc3 = nullptr;
 EXT_RAM_BSS_ATTR SensorSample s_sensor_trend_samples[kSensorHistoryMinutes];
+// app_main is the sole caller of load_hourly_sensor_history(). Keep both wire
+// formats off its stack without introducing startup heap-allocation failures.
+EXT_RAM_BSS_ATTR SensorHistoryLoadWorkspace s_sensor_history_load_workspace;
 int s_sensor_trend_next = 0;
 int s_sensor_trend_count = 0;
 bool s_sensor_average_valid = false;
@@ -88,9 +95,17 @@ static_assert(kSensorTrendWindowMs > 0, "sensor trend window in ms must be posit
 static_assert(kSensorHistoryMinutes >= (kSensorTrendWindowHours * kMinutesPerHour) / kSensorSampleDayMinutes,
               "sensor trend history must cover the full day-sampling trend window");
 static_assert(std::is_trivially_destructible<HourlySensorHistoryBlob>::value,
-              "hourly history staging storage releases raw memory without a destructor call");
+              "hourly history staging storage reuses raw memory without a destructor call");
 static_assert(std::is_trivially_destructible<LegacyHourlySensorHistoryBlob>::value,
-              "legacy hourly history staging storage releases raw memory without a destructor call");
+              "legacy hourly history staging storage reuses raw memory without a destructor call");
+static_assert(std::is_trivially_destructible<SensorHistoryLoadWorkspace>::value,
+              "sensor history load workspace must not require static destruction");
+static_assert(sizeof(s_sensor_history_load_workspace.current) ==
+                  sizeof(HourlySensorHistoryBlob),
+              "current history workspace must exactly fit its wire object");
+static_assert(sizeof(s_sensor_history_load_workspace.legacy) ==
+                  sizeof(LegacyHourlySensorHistoryBlob),
+              "legacy history workspace must exactly fit its wire object");
 bool should_log_nvs_read_error(esp_err_t err)
 {
     return err != ESP_OK && err != ESP_ERR_NVS_NOT_FOUND;
@@ -279,7 +294,7 @@ static esp_err_t save_hourly_sensor_meta_and_slot(nvs_handle_t nvs,
     return nvs_set_blob(nvs, key, &sample, sizeof(sample));
 }
 
-void reset_hourly_sensor_history()
+static void reset_hourly_sensor_history()
 {
     if (!reset_hourly_sensor_history_state()) {
         ESP_LOGW(TAG, "%s", kHourlyStateResetFailedLog);
@@ -298,15 +313,8 @@ void load_hourly_sensor_history()
         return;
     }
 
-    ScopedHeapBuffer<uint8_t> load_storage(sizeof(HourlySensorHistoryBlob),
-                                           HeapBufferInit::kUninitialized,
-                                           HeapBufferStorage::kPsramPreferred);
-    if (!load_storage) {
-        ESP_LOGW(TAG, "%s", kHourlyLoadBufferAllocFailedLog);
-        return;
-    }
     HourlySensorHistoryBlob *loaded_history =
-        new (load_storage.get()) HourlySensorHistoryBlob;
+        new (s_sensor_history_load_workspace.current) HourlySensorHistoryBlob;
     sensor_history_format::initialize_empty_hourly_history(loaded_history);
     int64_t loaded_last_saved_at = 0;
     HourlySensorHistoryMeta meta = {};
@@ -331,17 +339,9 @@ void load_hourly_sensor_history()
         ESP_LOGW(TAG, HOURLY_META_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
     }
 
-    ScopedHeapBuffer<uint8_t> legacy_storage(
-        sizeof(LegacyHourlySensorHistoryBlob),
-        HeapBufferInit::kUninitialized,
-        HeapBufferStorage::kPsramPreferred);
-    if (!legacy_storage) {
-        ESP_LOGW(TAG, "%s", kLegacyHourlyLoadBufferAllocFailedLog);
-        nvs.close();
-        return;
-    }
     LegacyHourlySensorHistoryBlob *legacy =
-        new (legacy_storage.get()) LegacyHourlySensorHistoryBlob;
+        new (s_sensor_history_load_workspace.legacy)
+            LegacyHourlySensorHistoryBlob;
     bool legacy_loaded = read_legacy_hourly_sensor_history(nvs.get(), legacy);
     nvs.close();
     if (!legacy_loaded) {

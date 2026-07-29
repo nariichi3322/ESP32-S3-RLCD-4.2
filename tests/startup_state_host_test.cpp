@@ -1,5 +1,5 @@
 // 验证启动画面状态保持初始活跃并只能单向结束。
-#include "startup_state.h"
+#include "startup_state_internal.h"
 
 #include <cassert>
 #include <cstdio>

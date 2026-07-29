@@ -22,7 +22,7 @@ bool order_buffer_is_valid(const uint8_t *order, size_t order_size)
 
 bool is_work_page(int page)
 {
-    return page >= kWorkPageWeatherClock && page < kWorkPageCount;
+    return is_valid_work_page_id(page);
 }
 
 bool is_order_index(int index)
@@ -43,7 +43,7 @@ bool order_is_valid(const uint8_t *order, size_t order_size)
     bool seen[kWorkPageCount] = {};
     for (int i = 0; i < kWorkPageCount; ++i) {
         uint8_t page = order[i];
-        if (page >= kWorkPageCount || seen[page]) {
+        if (!is_valid_work_page_id(page) || seen[page]) {
             return false;
         }
         seen[page] = true;
@@ -70,6 +70,41 @@ bool mask_has_valid_home(uint8_t page_mask_value)
             return true;
         }
     }
+    return false;
+}
+
+bool order_has_valid_home(const uint8_t *order,
+                          size_t order_size,
+                          uint8_t page_mask_value)
+{
+    if (!order_is_valid(order, order_size)) {
+        return false;
+    }
+    const int first_enabled =
+        first_enabled_index(order, order_size, page_mask_value);
+    return index_found(first_enabled) &&
+           order[first_enabled] != kWorkPageXiaozhiAI;
+}
+
+bool swap_entries_preserving_home(uint8_t *order,
+                                  size_t order_size,
+                                  uint8_t page_mask_value,
+                                  int first_index,
+                                  int second_index)
+{
+    if (!order_is_valid(order, order_size) ||
+        !is_order_index(first_index) ||
+        !is_order_index(second_index)) {
+        return false;
+    }
+    const uint8_t first_page = order[first_index];
+    order[first_index] = order[second_index];
+    order[second_index] = first_page;
+    if (order_has_valid_home(order, order_size, page_mask_value)) {
+        return true;
+    }
+    order[second_index] = order[first_index];
+    order[first_index] = first_page;
     return false;
 }
 

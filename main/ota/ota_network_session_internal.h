@@ -1,4 +1,4 @@
-// 声明 OTA 专用 Wi-Fi 与网络唤醒锁会话的启动和收尾接口。
+// 声明仅供 OTA 状态机使用的 Wi-Fi 与网络唤醒锁会话接口。
 #pragma once
 
 #include "ota_flow_policy.h"

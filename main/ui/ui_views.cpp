@@ -1,7 +1,8 @@
 // 运行 LVGL UI 主任务并统一调度各页面刷新。
 #include "ui_views.h"
 
-#include "active_work_page_state.h"
+#include "active_work_page_state_internal.h"
+#include "app_constexpr.h"
 #include "app_metadata.h"
 #include "app_runtime_timing.h"
 
@@ -14,7 +15,6 @@
 #include "chime_runtime_state.h"
 #include "daily_saying_state.h"
 #include "local_sensor_state.h"
-#include "device_settings_persistence.h"
 #include "input_button_config.h"
 #include "lvgl_bsp.h"
 #include "network_diagnostics_state.h"
@@ -27,7 +27,7 @@
 #include "ui_aux_pages.h"
 #include "ui_boot_settings.h"
 #include "ui_draw_cache.h"
-#include "ui_info_page_state.h"
+#include "ui_info_page_state_internal.h"
 #include "ui_loop_schedule.h"
 #include "ui_runtime_schedule.h"
 #include "ui_setup_status.h"
@@ -50,7 +50,16 @@ constexpr int kUiNetworkDiagRunningFallbackMs = 1000;
 constexpr int kUiNetworkDiagIdleFallbackMs = 500;
 constexpr int kUiPostPageSwitchPollMs = 250;
 constexpr int kUiLvglLockTimeoutMs = 80;
+constexpr EventBits_t kUiWeatherNetworkStatusBits =
+    kWifiConnectedBit | kWeatherReadyBit;
 #define UI_SETTINGS_TIMEOUT_RETURN_LOG "settings timeout, returning to clock"
+
+enum class VisibleAuxiliaryPage {
+    kNone,
+    kSystemInfo,
+    kNetworkDiagnostics,
+    kSettings,
+};
 
 static_assert(kUiInfoPageOtaFallbackPollMs > 0,
               "UI info page OTA fallback poll interval must be positive");
@@ -60,27 +69,31 @@ static_assert(kUiNetworkDiagIdleFallbackMs > 0,
               "network diagnostics idle fallback interval must be positive");
 static_assert(kUiPostPageSwitchPollMs > 0, "post page switch poll interval must be positive");
 static_assert(kUiLvglLockTimeoutMs > 0, "UI LVGL lock timeout must be positive");
+static_assert(kUiWeatherNetworkStatusBits != 0,
+              "weather network status bits must be nonzero");
 } // namespace
 
 namespace {
-void show_boot_info_aux_page(bool &info_page_visible,
-                             bool &settings_page_visible)
+void show_boot_info_aux_page(VisibleAuxiliaryPage &visible_auxiliary_page)
 {
     build_boot_info_page();
     show_page(auxiliary_page_root(AuxiliaryPage::kSystemInfo));
-    info_page_visible = true;
-    settings_page_visible = false;
+    visible_auxiliary_page = VisibleAuxiliaryPage::kSystemInfo;
 }
 
-void show_network_diag_aux_page(bool &network_diag_page_visible,
-                                bool &info_page_visible,
-                                bool &settings_page_visible)
+void show_network_diag_aux_page(
+    VisibleAuxiliaryPage &visible_auxiliary_page)
 {
     build_network_diag_page();
     show_page(auxiliary_page_root(AuxiliaryPage::kNetworkDiagnostics));
-    network_diag_page_visible = true;
-    info_page_visible = false;
-    settings_page_visible = false;
+    visible_auxiliary_page = VisibleAuxiliaryPage::kNetworkDiagnostics;
+}
+
+void show_settings_aux_page(VisibleAuxiliaryPage &visible_auxiliary_page)
+{
+    build_settings_page();
+    show_page(auxiliary_page_root(AuxiliaryPage::kSettings));
+    visible_auxiliary_page = VisibleAuxiliaryPage::kSettings;
 }
 
 void apply_xiaozhi_page_activation(bool requested_active,
@@ -108,9 +121,8 @@ void ui_task(void *)
     UiStatusRefreshSnapshot last_status_snapshot = {};
     bool last_status_snapshot_valid = false;
     uint32_t last_battery_version = (uint32_t)-1;
-    bool info_page_visible = false;
-    bool network_diag_page_visible = false;
-    bool settings_page_visible = false;
+    VisibleAuxiliaryPage visible_auxiliary_page =
+        VisibleAuxiliaryPage::kNone;
     bool setup_panel_visible = false;
     bool low_mode_visible = false;
     bool alert_visible = false;
@@ -179,8 +191,17 @@ void ui_task(void *)
             runtime_surfaces.auxiliary_page_requested()) {
             xiaozhi_last_activity_tick = tick_now;
         }
+        uint32_t weather_network_bits = 0;
+        if (ui_weather_network_status_required(
+                active_page == kWorkPageWeatherClock,
+                battery.low_battery_mode,
+                runtime_surfaces.setup_portal_active)) {
+            weather_network_bits = static_cast<uint32_t>(
+                app_event_group_get_bits() & kUiWeatherNetworkStatusBits);
+        }
         UiStatusRefreshSnapshot current_status_snapshot = {
             local_sensor_state_version(),
+            weather_network_bits,
             chime_runtime_any_enabled(),
             wifi_radio_on_load(),
             alarm_is_enabled(),
@@ -291,9 +312,7 @@ void ui_task(void *)
                 runtime_surfaces.info_requested = false;
                 runtime_surfaces.network_diag_requested = false;
                 runtime_surfaces.settings_requested = false;
-                info_page_visible = false;
-                network_diag_page_visible = false;
-                settings_page_visible = false;
+                visible_auxiliary_page = VisibleAuxiliaryPage::kNone;
                 active_work_page_store(kWorkPageWeatherClock);
                 active_page = kWorkPageWeatherClock;
                 show_active_work_page();
@@ -318,9 +337,9 @@ void ui_task(void *)
             }
             if (info_requested && !settings_requested) {
                 bool info_changed = false;
-                if (!info_page_visible) {
-                    show_boot_info_aux_page(info_page_visible,
-                                            settings_page_visible);
+                if (visible_auxiliary_page !=
+                    VisibleAuxiliaryPage::kSystemInfo) {
+                    show_boot_info_aux_page(visible_auxiliary_page);
                     info_changed = true;
                 }
                 info_changed |= update_boot_info_page();
@@ -350,32 +369,33 @@ void ui_task(void *)
                 (void)ulTaskNotifyTake(pdTRUE, info_wait);
                 continue;
             }
-            if (info_page_visible) {
-                info_page_visible = false;
+            if (visible_auxiliary_page == VisibleAuxiliaryPage::kSystemInfo) {
+                visible_auxiliary_page = VisibleAuxiliaryPage::kNone;
                 restore_active_work_page_after_aux(true);
             }
 
             NetworkDiagState network_diag_state = kNetworkDiagIdle;
+            NetworkDiagPageRequestSnapshot network_diag_page_state = {};
             SettingsActivitySnapshot network_diag_activity = {};
             if (network_diag_requested) {
                 network_diag_state = network_diag_state_load();
+                network_diag_page_state = network_diag_page_snapshot_load();
                 network_diag_activity = settings_activity_snapshot();
             }
             if (network_diag_requested &&
                 network_diag_state == kNetworkDiagDone &&
                 ui_runtime_settings_timeout_elapsed(
                     network_diag_activity.last_activity_tick) &&
-                settings_activity_claim_if_current(network_diag_activity)) {
-                network_diag_page_clear();
+                settings_activity_claim_if_current(network_diag_activity) &&
+                network_diag_page_clear_if_current(network_diag_page_state)) {
                 network_diag_requested = false;
                 runtime_surfaces.network_diag_requested = false;
             }
             if (network_diag_requested && !settings_requested) {
                 bool network_diag_changed = false;
-                if (!network_diag_page_visible) {
-                    show_network_diag_aux_page(network_diag_page_visible,
-                                               info_page_visible,
-                                               settings_page_visible);
+                if (visible_auxiliary_page !=
+                    VisibleAuxiliaryPage::kNetworkDiagnostics) {
+                    show_network_diag_aux_page(visible_auxiliary_page);
                     network_diag_changed = true;
                 }
                 network_diag_changed |= update_network_diag_page();
@@ -397,20 +417,17 @@ void ui_task(void *)
                 (void)ulTaskNotifyTake(pdTRUE, network_diag_wait);
                 continue;
             }
-            if (network_diag_page_visible) {
-                network_diag_page_visible = false;
+            if (visible_auxiliary_page == VisibleAuxiliaryPage::kNetworkDiagnostics) {
+                visible_auxiliary_page = VisibleAuxiliaryPage::kNone;
                 restore_active_work_page_after_aux(false);
             }
 
             if (settings_requested) {
                 bool settings_changed = false;
                 bool settings_action_handled = false;
-                if (!settings_page_visible) {
-                    build_settings_page();
-                    show_page(auxiliary_page_root(AuxiliaryPage::kSettings));
-                    settings_page_visible = true;
-                    info_page_visible = false;
-                    network_diag_page_visible = false;
+                if (visible_auxiliary_page !=
+                    VisibleAuxiliaryPage::kSettings) {
+                    show_settings_aux_page(visible_auxiliary_page);
                     setup_panel_visible = false;
                     settings_changed = true;
                 }
@@ -423,8 +440,7 @@ void ui_task(void *)
                     runtime_surfaces = ui_runtime_surface_snapshot_load();
                     settings_requested = runtime_surfaces.settings_requested;
                     if (!settings_requested && runtime_surfaces.info_requested) {
-                        show_boot_info_aux_page(info_page_visible,
-                                                settings_page_visible);
+                        show_boot_info_aux_page(visible_auxiliary_page);
                         update_boot_info_page();
                         lv_refr_now(nullptr);
                         Lvgl_unlock();
@@ -432,9 +448,7 @@ void ui_task(void *)
                         continue;
                     }
                     if (!settings_requested && runtime_surfaces.network_diag_requested) {
-                        show_network_diag_aux_page(network_diag_page_visible,
-                                                   info_page_visible,
-                                                   settings_page_visible);
+                        show_network_diag_aux_page(visible_auxiliary_page);
                         update_network_diag_page();
                         lv_refr_now(nullptr);
                         Lvgl_unlock();
@@ -459,9 +473,7 @@ void ui_task(void *)
                             timeout_activity)) {
                         ESP_LOGI(TAG, "%s", UI_SETTINGS_TIMEOUT_RETURN_LOG);
                         if (settings_navigation_snapshot().page_order_mode) {
-                            if (save_work_page_order()) {
-                                active_work_page_store(first_enabled_work_page());
-                            }
+                            active_work_page_store(first_enabled_work_page());
                         }
                         reset_settings_navigation_state();
                         settings_requested = false;
@@ -506,8 +518,8 @@ void ui_task(void *)
                 }
             }
 
-            if (settings_page_visible) {
-                settings_page_visible = false;
+            if (visible_auxiliary_page == VisibleAuxiliaryPage::kSettings) {
+                visible_auxiliary_page = VisibleAuxiliaryPage::kNone;
                 restore_active_work_page_after_aux(false);
             }
 
@@ -638,7 +650,7 @@ void ui_task(void *)
                 }
                 if (!setup_active && !battery.low_battery_mode && active_pages.weather_clock) {
                     content_changed |= update_weather_clock_network_status(
-                        app_event_group_get_bits());
+                        current_status_snapshot.weather_network_bits);
                 }
                 if (battery_due || battery_blink_due) {
                     update_work_page_battery_icon(active_page,
@@ -685,15 +697,15 @@ void ui_task(void *)
             start_setup_prompt_after_ui = setup_panel_visible &&
                                           setup_prompt_playback_pending();
             Lvgl_unlock();
-        } else if (lvgl_lock_failures < UINT8_MAX) {
-            ++lvgl_lock_failures;
+        } else {
+            lvgl_lock_failures =
+                saturating_increment_u8(lvgl_lock_failures);
         }
         if (start_setup_prompt_after_ui) {
             (void)start_setup_prompt_playback();
         }
         TickType_t delay_ticks = lvgl_locked
                                      ? ui_runtime_next_loop_delay_ticks(
-                                           local,
                                            now,
                                            battery,
                                            battery_blink_visible,
@@ -701,8 +713,7 @@ void ui_task(void *)
                                            runtime_surfaces)
                                      : pdMS_TO_TICKS(ui_lvgl_lock_retry_delay_ms(
                                            lvgl_lock_failures));
-        delay_ticks = static_cast<TickType_t>(
-            ui_nonzero_delay_ticks(static_cast<uint32_t>(delay_ticks)));
+        delay_ticks = app_tick_nonzero_delay(delay_ticks);
         ulTaskNotifyTake(pdTRUE, delay_ticks);
     }
 }

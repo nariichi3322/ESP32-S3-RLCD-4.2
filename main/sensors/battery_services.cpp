@@ -1,11 +1,11 @@
 // 负责电池电压采样、电量估算和充电状态判断。
-#include "sensor_services.h"
+#include "sensor_services_internal.h"
 
 #include "app_metadata.h"
 #include "app_time_constants.h"
 #include "battery_charging_state.h"
 #include "battery_policy.h"
-#include "battery_runtime_state.h"
+#include "battery_runtime_state_internal.h"
 #include "network_runtime_events.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
@@ -136,10 +136,12 @@ static time_t last_charge_time_after_unplug(time_t previous)
 
 static void release_battery_gauge()
 {
-    if (s_battery_adc_cali_ready && s_battery_adc_cali) {
+    if (s_battery_adc_cali) {
         esp_err_t err = adc_cali_delete_scheme_curve_fitting(s_battery_adc_cali);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT, esp_err_to_name(err));
+            s_battery_adc_cali_ready = true;
+            return;
         }
     }
     s_battery_adc_cali = nullptr;
@@ -149,6 +151,8 @@ static void release_battery_gauge()
         esp_err_t err = adc_oneshot_del_unit(s_battery_adc);
         if (err != ESP_OK) {
             ESP_LOGW(TAG, BATTERY_ADC_UNIT_RELEASE_FAILED_LOG_FORMAT, esp_err_to_name(err));
+            s_battery_adc_ready = true;
+            return;
         }
     }
     s_battery_adc = nullptr;
@@ -351,12 +355,12 @@ bool sample_battery()
         }
         release_battery_gauge();
     } else {
-        if (consecutive_read_failures <= kBatteryChargingReadFailureGraceSamples) {
+        if (consecutive_read_failures <= kBatteryReadFailureMaxGraceSamples) {
             ++consecutive_read_failures;
         }
-        if (battery_charging_read_failure_within_grace(previous.charging,
-                                                       consecutive_read_failures)) {
-            if (consecutive_read_failures == 1) {
+        if (battery_read_failure_within_grace(previous.charging,
+                                              consecutive_read_failures)) {
+            if (previous.charging && consecutive_read_failures == 1) {
                 ESP_LOGI(TAG,
                          BATTERY_CHARGING_ADC_RETRY_LOG_FORMAT,
                          kBatteryChargingReadFailureGraceSamples);

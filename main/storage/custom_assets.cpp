@@ -50,9 +50,8 @@ static CustomAssetsHeader s_assets_header = {};
 static EXT_RAM_BSS_ATTR CustomAssetEntry s_entries[kCustomAssetMaxEntries] = {};
 static int s_entry_count = 0;
 static EXT_RAM_BSS_ATTR CustomAssetCatalog s_asset_catalog;
-static bool s_assets_ready = false;
 static constexpr const char *kCustomAssetsPartitionLabel = "assets";
-static constexpr size_t kCustomAssetCrcIoChunkSize = 512;
+static constexpr size_t kCustomAssetCrcIoChunkSize = 4 * 1024;
 static constexpr size_t kCustomAssetDiagnosticIoChunkSize = 256;
 // custom_assets_init() is the only caller of both scan paths, and it runs
 // synchronously before application tasks are created. Reuse one external-RAM
@@ -120,7 +119,7 @@ static_assert(sizeof(CustomAssetsHeader) +
               "custom asset header must fit its 16-bit wire size");
 static_assert(kCustomAssetCrcIoChunkSize > 0,
               "custom asset CRC I/O chunk size must be positive");
-static_assert(kCustomAssetCrcIoChunkSize <= 512,
+static_assert(kCustomAssetCrcIoChunkSize <= 4 * 1024,
               "custom asset CRC I/O chunk must stay within the validated workspace size");
 static_assert(kCustomAssetDiagnosticIoChunkSize > 0,
               "custom asset diagnostic I/O chunk size must be positive");
@@ -318,7 +317,6 @@ static void reset_custom_assets()
     memset(s_entries, 0, sizeof(s_entries));
     s_entry_count = 0;
     s_asset_catalog.reset();
-    s_assets_ready = false;
 }
 
 static int count_black_bits(const uint8_t *data, size_t len)
@@ -435,9 +433,8 @@ static bool register_custom_asset_entry(int entry_index)
     return false;
 }
 
-static void publish_custom_assets_ready_state()
+static void log_custom_assets_ready_state()
 {
-    s_assets_ready = s_asset_catalog.available();
     ESP_LOGI(TAG,
              CUSTOM_ASSETS_DIAG_READY_LOG_FORMAT,
              s_asset_catalog.main_gif() ? 1 : 0,
@@ -496,17 +493,12 @@ void custom_assets_init()
         }
     }
     s_asset_catalog.sort_gallery_by_index();
-    publish_custom_assets_ready_state();
+    log_custom_assets_ready_state();
 }
 
 bool custom_assets_available()
 {
-    return s_assets_ready;
-}
-
-bool custom_assets_has_main_gif()
-{
-    return s_asset_catalog.main_gif() != nullptr;
+    return s_asset_catalog.available();
 }
 
 int custom_assets_gallery_count()

@@ -1,5 +1,5 @@
 // 管理网络和音频期间的电源管理锁，避免关键流程被睡眠打断。
-#include "power_services.h"
+#include "power_services_internal.h"
 
 #include "app_metadata.h"
 #include "scoped_semaphore_lock.h"
@@ -13,6 +13,7 @@
 #define POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT "%s pm lock acquire failed: %s"
 #define POWER_PM_LOCK_RELEASE_ZERO_LOG_FORMAT "%s pm lock release skipped: depth is zero"
 #define POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT "%s pm lock release failed: %s"
+#define POWER_PM_LOCK_RELEASE_RECONCILED_LOG_FORMAT "%s pm lock driver already released; local depth reset"
 #define POWER_SETUP_FAILED_LOG_FORMAT "power management setup failed: %s"
 #define POWER_SETUP_OK_LOG_FORMAT "power management: max=%dMHz min=%dMHz light sleep enabled"
 #define POWER_MUTEX_CREATE_FAILED_LOG_FORMAT "pm lock mutex create failed"
@@ -92,7 +93,10 @@ static_assert(sizeof(kPmLockCatalog) / sizeof(kPmLockCatalog[0]) == 4,
 
 constexpr uint32_t kPmLockMutexTimeoutMs = 1000;
 constexpr TickType_t kPmLockMutexTimeout = pdMS_TO_TICKS(kPmLockMutexTimeoutMs);
+constexpr TickType_t kPmLockReleaseMutexTimeout = portMAX_DELAY;
 static_assert(kPmLockMutexTimeout > 0, "PM lock mutex tick timeout must be positive");
+static_assert(kPmLockReleaseMutexTimeout > kPmLockMutexTimeout,
+              "PM lock release must not abandon owned resources on timeout");
 
 void log_pm_lock_mutex_failure(const char *name)
 {
@@ -137,7 +141,8 @@ bool acquire_pm_lock(const PmLockDescriptor &lock)
     if (!runtime.handle) {
         return false;
     }
-    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
+    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(),
+                                   kPmLockMutexTimeout);
     if (!state_lock) {
         log_pm_lock_mutex_failure(lock.log_name);
         return false;
@@ -156,13 +161,35 @@ bool acquire_pm_lock(const PmLockDescriptor &lock)
     return true;
 }
 
+bool release_pm_lock_handle(const PmLockDescriptor &lock)
+{
+    PmLockRuntime &runtime = *lock.runtime;
+    esp_err_t err = esp_pm_lock_release(runtime.handle);
+    if (err == ESP_OK) {
+        return true;
+    }
+    if (err == ESP_ERR_INVALID_STATE) {
+        runtime.depth = 0;
+        ESP_LOGW(TAG,
+                 POWER_PM_LOCK_RELEASE_RECONCILED_LOG_FORMAT,
+                 lock.log_name);
+        return true;
+    }
+    ESP_LOGW(TAG,
+             POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT,
+             lock.log_name,
+             esp_err_to_name(err));
+    return false;
+}
+
 void release_pm_lock(const PmLockDescriptor &lock)
 {
     PmLockRuntime &runtime = *lock.runtime;
     if (!runtime.handle) {
         return;
     }
-    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
+    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(),
+                                   kPmLockReleaseMutexTimeout);
     if (!state_lock) {
         log_pm_lock_mutex_failure(lock.log_name);
         return;
@@ -172,15 +199,8 @@ void release_pm_lock(const PmLockDescriptor &lock)
         return;
     }
     --runtime.depth;
-    if (runtime.depth == 0) {
-        esp_err_t err = esp_pm_lock_release(runtime.handle);
-        if (err != ESP_OK) {
-            runtime.depth = 1;
-            ESP_LOGW(TAG,
-                     POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT,
-                     lock.log_name,
-                     esp_err_to_name(err));
-        }
+    if (runtime.depth == 0 && !release_pm_lock_handle(lock)) {
+        runtime.depth = 1;
     }
 }
 
@@ -190,7 +210,9 @@ bool set_pm_lock_active(const PmLockDescriptor &lock, bool enabled)
     if (!runtime.handle) {
         return false;
     }
-    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), kPmLockMutexTimeout);
+    const TickType_t mutex_timeout =
+        enabled ? kPmLockMutexTimeout : kPmLockReleaseMutexTimeout;
+    ScopedSemaphoreLock state_lock(s_pm_lock_mutex.handle(), mutex_timeout);
     if (!state_lock) {
         log_pm_lock_mutex_failure(lock.log_name);
         return false;
@@ -208,14 +230,9 @@ bool set_pm_lock_active(const PmLockDescriptor &lock, bool enabled)
             return false;
         }
     } else if (!enabled && active) {
-        esp_err_t err = esp_pm_lock_release(runtime.handle);
-        if (err == ESP_OK) {
+        if (release_pm_lock_handle(lock)) {
             runtime.depth = 0;
         } else {
-            ESP_LOGW(TAG,
-                     POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT,
-                     lock.log_name,
-                     esp_err_to_name(err));
             return false;
         }
     }

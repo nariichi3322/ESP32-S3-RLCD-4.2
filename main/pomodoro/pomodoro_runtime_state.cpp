@@ -1,5 +1,5 @@
 // 使用静态任务互斥发布番茄钟状态与 64 位单调时间，避免跨核关中断。
-#include "pomodoro_runtime_state.h"
+#include "pomodoro_runtime_state_internal.h"
 
 #include "scoped_semaphore_lock.h"
 

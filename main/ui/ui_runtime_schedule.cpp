@@ -1,7 +1,7 @@
 // 编排 UI 运行期超时、辅助页门控、唤醒间隔和小智自动返回。
 #include "ui_runtime_schedule.h"
 
-#include "active_work_page_state.h"
+#include "active_work_page_state_internal.h"
 #include "app_metadata.h"
 #include "app_runtime_timing.h"
 #include "app_tick_time.h"
@@ -30,7 +30,7 @@ namespace {
 
 constexpr int64_t kUiRuntimeUsPerSecond = 1000000LL;
 
-TickType_t next_second_delay_ticks(time_t sampled_wall_second)
+int64_t current_wall_clock_us(time_t &sampled_wall_second)
 {
     struct timeval now = {};
     int64_t wall_clock_us = esp_timer_get_time();
@@ -41,14 +41,23 @@ TickType_t next_second_delay_ticks(time_t sampled_wall_second)
         sampled_wall_second = static_cast<time_t>(
             wall_clock_us / kUiRuntimeUsPerSecond);
     }
+    return wall_clock_us;
+}
+
+TickType_t next_second_delay_ticks(time_t sampled_wall_second)
+{
+    int64_t wall_clock_us = current_wall_clock_us(sampled_wall_second);
     return pdMS_TO_TICKS(ui_next_second_delay_ms(
         static_cast<int64_t>(sampled_wall_second),
         wall_clock_us));
 }
 
-TickType_t next_minute_delay_ticks(const struct tm &local)
+TickType_t next_minute_delay_ticks(time_t sampled_wall_second)
 {
-    return pdMS_TO_TICKS(ui_next_minute_delay_ms(local.tm_sec));
+    int64_t wall_clock_us = current_wall_clock_us(sampled_wall_second);
+    return pdMS_TO_TICKS(ui_next_minute_delay_ms(
+        static_cast<int64_t>(sampled_wall_second),
+        wall_clock_us));
 }
 
 static_assert(sizeof(TickType_t) == sizeof(uint32_t),
@@ -77,8 +86,7 @@ UiRuntimeSurfaceSnapshot ui_runtime_surface_snapshot_load()
     };
 }
 
-TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
-                                            time_t sampled_wall_second,
+TickType_t ui_runtime_next_loop_delay_ticks(time_t sampled_wall_second,
                                             const BatteryRuntimeSnapshot &battery,
                                             bool battery_blink_visible,
                                             int active_page,
@@ -99,7 +107,7 @@ TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
             : 0;
     uint32_t delay_candidates[4] = {};
     delay_candidates[0] = minute_level_wait
-                              ? next_minute_delay_ticks(local)
+                              ? next_minute_delay_ticks(sampled_wall_second)
                               : second_delay_ticks;
     if (active_page == kWorkPageXiaozhiAI &&
         !battery.low_battery_mode &&
@@ -111,13 +119,13 @@ TickType_t ui_runtime_next_loop_delay_ticks(const struct tm &local,
             uint32_t boundary_ms = pomodoro_next_display_boundary_ms(
                 pomodoro.remaining_ms);
             if (boundary_ms > 0) {
-                delay_candidates[1] = ui_nonzero_delay_ticks(
+                delay_candidates[1] = app_tick_nonzero_delay(
                     pdMS_TO_TICKS(ui_pomodoro_boundary_delay_ms(boundary_ms)));
             }
         }
         uint32_t subtitle_delay_ms = xiaozhi_subtitle_animation_delay_ms();
         if (subtitle_delay_ms > 0) {
-            delay_candidates[2] = ui_nonzero_delay_ticks(
+            delay_candidates[2] = app_tick_nonzero_delay(
                 pdMS_TO_TICKS(subtitle_delay_ms));
         }
     }

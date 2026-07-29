@@ -22,6 +22,14 @@ constexpr bool wifi_idle_stop_allowed(const WifiIdleStopPolicyInput &input)
            !input.network_lock_active;
 }
 
+constexpr bool wifi_owned_normal_stop_allowed(bool lock_depth_available,
+                                              int network_lock_depth)
+{
+    return lock_depth_available &&
+           network_lock_depth >= 0 &&
+           network_lock_depth <= 1;
+}
+
 constexpr uint32_t wifi_idle_stop_retry_delay_ms(uint8_t failure_count)
 {
     if (failure_count == 0) {

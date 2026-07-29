@@ -1,5 +1,5 @@
 // 使用私有原子值发布离线模式运行态，避免跨模块直接访问业务全局量。
-#include "offline_mode_state.h"
+#include "offline_mode_state_internal.h"
 
 #include <atomic>
 

@@ -22,4 +22,3 @@ int effective_gallery_rotation_minutes(uint8_t period, int custom_image_count);
 const char *effective_gallery_rotation_label(uint8_t period, int custom_image_count);
 
 uint8_t gallery_rotation_period_load();
-void gallery_rotation_period_store(uint8_t period);

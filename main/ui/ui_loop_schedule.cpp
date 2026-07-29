@@ -7,10 +7,12 @@
 
 namespace {
 constexpr int64_t kUsPerSecond = 1000000;
+constexpr int64_t kUsPerMinute = 60 * kUsPerSecond;
 constexpr uint32_t kMsPerSecond = 1000;
-constexpr int kSecondsPerMinute = 60;
 constexpr uint32_t kNextSecondDelayMinMs = 10;
 constexpr uint32_t kNextSecondDelayMaxMs = kMsPerSecond + kUiLoopBoundaryWakeSlackMs;
+constexpr uint32_t kNextMinuteDelayMaxMs =
+    60 * kMsPerSecond + kUiLoopBoundaryWakeSlackMs;
 constexpr uint32_t kLvglLockRetryDelaysMs[] = {100, 200, 400, 800, 1000};
 
 static_assert(kUsPerSecond == 1000LL * kMsPerSecond,
@@ -21,6 +23,10 @@ static_assert(kNextSecondDelayMinMs > 0,
               "next-second delay minimum must be positive");
 static_assert(kNextSecondDelayMaxMs >= kMsPerSecond,
               "next-second delay maximum must cover one second");
+static_assert(kUsPerMinute == 60LL * kUsPerSecond,
+              "UI minute conversion must stay consistent");
+static_assert(kNextMinuteDelayMaxMs >= 60 * kMsPerSecond,
+              "next-minute delay maximum must cover one minute");
 static_assert(kLvglLockRetryDelaysMs[0] > 0,
               "LVGL lock retry delay must be positive");
 
@@ -92,14 +98,21 @@ bool ui_xiaozhi_activation_update_due(bool requested_active,
            (requested_active && allow_active_retry);
 }
 
-uint32_t ui_next_minute_delay_ms(int local_second)
+uint32_t ui_next_minute_delay_ms(int64_t sampled_wall_second,
+                                 int64_t wall_clock_us)
 {
-    int seconds_to_next = kSecondsPerMinute - local_second;
-    if (seconds_to_next <= 0 || seconds_to_next > kSecondsPerMinute) {
-        seconds_to_next = kSecondsPerMinute;
+    if (sampled_wall_second != wall_clock_us / kUsPerSecond ||
+        wall_clock_us < 0) {
+        return kNextSecondDelayMinMs;
     }
-    return static_cast<uint32_t>(seconds_to_next) * kMsPerSecond +
-           kUiLoopBoundaryWakeSlackMs;
+    int64_t minute_offset_us = wall_clock_us % kUsPerMinute;
+    int64_t until_next_us = kUsPerMinute - minute_offset_us;
+    uint32_t delay_ms = static_cast<uint32_t>(until_next_us / kMsPerSecond) +
+                        kUiLoopBoundaryWakeSlackMs;
+    if (delay_ms < kNextSecondDelayMinMs) {
+        return kNextSecondDelayMinMs;
+    }
+    return delay_ms > kNextMinuteDelayMaxMs ? kNextMinuteDelayMaxMs : delay_ms;
 }
 
 uint32_t ui_pomodoro_boundary_delay_ms(uint32_t boundary_ms)
@@ -124,11 +137,6 @@ uint32_t ui_lvgl_lock_retry_delay_ms(uint8_t consecutive_failures)
     return kLvglLockRetryDelaysMs[index];
 }
 
-uint32_t ui_nonzero_delay_ticks(uint32_t ticks)
-{
-    return ticks == 0 ? 1 : ticks;
-}
-
 uint32_t ui_shortest_delay_ticks(const uint32_t *candidates, size_t count)
 {
     if (!candidates || count == 0) {
@@ -147,7 +155,7 @@ uint32_t ui_inactivity_wait_ticks(uint32_t now_tick,
                                   uint32_t last_activity_tick,
                                   uint32_t timeout_ticks)
 {
-    return ui_nonzero_delay_ticks(app_tick_deadline_remaining(
+    return app_tick_nonzero_delay(app_tick_deadline_remaining(
         now_tick,
         last_activity_tick + timeout_ticks));
 }
@@ -157,13 +165,13 @@ uint32_t ui_info_page_wait_ticks(const UiInfoPageWaitInput &input,
                                  uint32_t ota_updating_fallback_ticks)
 {
     if (input.ota_updating) {
-        return ui_nonzero_delay_ticks(ota_updating_fallback_ticks);
+        return app_tick_nonzero_delay(ota_updating_fallback_ticks);
     }
     if (input.ota_flow_active) {
-        return ui_nonzero_delay_ticks(ota_active_fallback_ticks);
+        return app_tick_nonzero_delay(ota_active_fallback_ticks);
     }
     if (input.hold_until_tick != 0) {
-        return ui_nonzero_delay_ticks(app_tick_deadline_remaining(
+        return app_tick_nonzero_delay(app_tick_deadline_remaining(
             input.now_tick,
             input.hold_until_tick));
     }

@@ -2,7 +2,7 @@
 #include "xiaozhi_ai.h"
 
 #include "app_tick_time.h"
-#include "active_work_page_state.h"
+#include "active_work_page_state_internal.h"
 #include "app_event_group.h"
 #include "app_metadata.h"
 #include "alarm_services.h"

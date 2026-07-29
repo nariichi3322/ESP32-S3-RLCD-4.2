@@ -1,5 +1,6 @@
 // 验证联网凭据在并发读写时始终以同一代成对快照对外提供。
 #include "network_credentials_state.h"
+#include "network_credentials_state_internal.h"
 
 #include <assert.h>
 #include <atomic>
@@ -243,8 +244,10 @@ int main()
     assert(ssid[0] == '\0');
     assert(password[0] == '\0');
     assert(!network_wifi_credentials_configured());
-    assert(!network_weather_api_key_configured());
-    assert(!network_weather_api_host_configured());
+    const NetworkCredentialsAvailability empty_availability =
+        network_credentials_availability();
+    assert(!empty_availability.weather_api_key_configured);
+    assert(!empty_availability.weather_api_host_configured);
 
     network_credentials_clear();
     expect_mutex_released();

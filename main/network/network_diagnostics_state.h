@@ -3,6 +3,8 @@
 
 #include "network_diagnostics_catalog.h"
 
+#include <stdint.h>
+
 enum NetworkDiagState : int {
     kNetworkDiagIdle = 0,
     kNetworkDiagRunning = 1,
@@ -14,15 +16,20 @@ struct NetworkDiagnosticsSnapshot {
     char lines[kNetworkDiagLineCount][kNetworkDiagLineLen] = {};
 };
 
+struct NetworkDiagPageRequestSnapshot {
+    bool requested = false;
+    uint32_t revision = 0;
+};
+
 bool network_diagnostics_state_init();
-void network_diag_state_clear(NetworkDiagState state);
-void network_diag_state_store(NetworkDiagState state);
 NetworkDiagState network_diag_state_load();
-void network_diag_line_store(int index, const char *text);
 void network_diag_snapshot_load(NetworkDiagnosticsSnapshot *snapshot);
 bool network_diag_page_requested();
+NetworkDiagPageRequestSnapshot network_diag_page_snapshot_load();
 void network_diag_page_request();
 void network_diag_page_clear();
+bool network_diag_page_clear_if_current(
+    const NetworkDiagPageRequestSnapshot &snapshot);
 
 static_assert(kNetworkDiagIdle == 0,
               "network diagnostics idle state must remain the zero default");

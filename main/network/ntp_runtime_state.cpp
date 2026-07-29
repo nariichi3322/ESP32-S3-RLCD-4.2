@@ -1,5 +1,5 @@
 // 使用静态任务互斥维护 NTP 最近成功时间，避免跨任务读取撕裂。
-#include "ntp_runtime_state.h"
+#include "ntp_runtime_state_internal.h"
 
 #include "scoped_semaphore_lock.h"
 

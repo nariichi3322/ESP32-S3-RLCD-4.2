@@ -7,7 +7,7 @@
 #include "app_metadata.h"
 #include "app_time_constants.h"
 #include "housekeeping_schedule_notify.h"
-#include "ntp_runtime_state.h"
+#include "ntp_runtime_state_internal.h"
 #include "ntp_wait_policy.h"
 #include "network_sync_wait.h"
 #include "rtc_services.h"

@@ -2,9 +2,10 @@
 #include "alarm_services.h"
 
 #include "alarm_replacement_policy.h"
-#include "alarm_runtime_state.h"
+#include "alarm_runtime_state_internal.h"
 #include "alarm_storage.h"
 #include "alarm_task_wait_policy.h"
+#include "app_constexpr.h"
 #include "app_metadata.h"
 #include "app_tick_time.h"
 #include "audio_services.h"
@@ -46,6 +47,7 @@ constexpr const char *kAlarmReplaceConfirmationInvalidResult =
 TaskNotificationTarget s_alarm_task_target;
 std::atomic<bool> s_stop_requested{false};
 std::atomic<bool> s_save_pending{false};
+std::atomic<bool> s_save_retry_pending{false};
 std::atomic<bool> s_auto_disable_save_pending{false};
 
 bool conflicts_with_running_pomodoro(int hour, int minute)
@@ -138,6 +140,26 @@ void wake_alarm_task()
     (void)s_alarm_task_target.notify();
 }
 
+bool flush_alarm_pending_save(bool schedule_retry)
+{
+    if (!s_save_pending.load(std::memory_order_acquire)) {
+        s_save_retry_pending.store(false, std::memory_order_release);
+        return true;
+    }
+    AlarmSnapshot snapshot = {};
+    alarm_get_snapshot(&snapshot);
+    if (!persist_alarm(snapshot.enabled, snapshot.hour, snapshot.minute)) {
+        if (schedule_retry) {
+            s_save_retry_pending.store(true, std::memory_order_release);
+            wake_alarm_task();
+        }
+        return false;
+    }
+    s_save_pending.store(false, std::memory_order_release);
+    s_save_retry_pending.store(false, std::memory_order_release);
+    return true;
+}
+
 void request_alarm_stop()
 {
     mark_alarm_stop_requested();
@@ -186,18 +208,15 @@ bool flush_alarm_auto_disable_save()
     return true;
 }
 
-void schedule_alarm_auto_disable_save_retry(TickType_t now,
-                                            uint8_t failure_count,
-                                            TickType_t *deadline)
+void schedule_alarm_save_retry(TickType_t now,
+                               uint8_t failure_count,
+                               TickType_t *deadline)
 {
     if (!deadline) {
         return;
     }
-    TickType_t delay_ticks =
-        pdMS_TO_TICKS(alarm_save_retry_delay_ms(failure_count));
-    if (delay_ticks == 0) {
-        delay_ticks = 1;
-    }
+    const TickType_t delay_ticks = app_tick_nonzero_delay(
+        pdMS_TO_TICKS(alarm_save_retry_delay_ms(failure_count)));
     *deadline = now + delay_ticks;
 }
 
@@ -209,6 +228,7 @@ void run_alarm_ring()
     clear_pending_alarm_replacement();
     // 先关闭运行态，再释放小智音频后写 NVS；避免实时语音期间 Flash 写入。
     s_save_pending.store(false);
+    s_save_retry_pending.store(false, std::memory_order_release);
     s_auto_disable_save_pending.store(false, std::memory_order_release);
     publish_alarm_state(false, true, snapshot.hour, snapshot.minute);
     wait_for_xiaozhi_audio_release();
@@ -307,6 +327,7 @@ bool mcp_set_alarm(const XiaozhiMcpAlarmRequest &request, char *result, size_t r
     }
     mark_alarm_stop_requested();
     s_auto_disable_save_pending.store(false, std::memory_order_release);
+    s_save_retry_pending.store(false, std::memory_order_release);
     publish_alarm_state(true, false, request.hour, request.minute);
     s_save_pending.store(true);
     if (result && result_len > 0) {
@@ -322,6 +343,7 @@ bool mcp_disable_alarm(char *result, size_t result_len)
     clear_pending_alarm_replacement();
     mark_alarm_stop_requested();
     s_auto_disable_save_pending.store(false, std::memory_order_release);
+    s_save_retry_pending.store(false, std::memory_order_release);
     publish_alarm_state(false, false, snapshot.hour, snapshot.minute);
     s_save_pending.store(true);
     if (result && result_len > 0) {
@@ -345,54 +367,27 @@ bool alarm_services_init()
 void alarm_task(void *)
 {
     s_alarm_task_target.publish(xTaskGetCurrentTaskHandle());
-    uint8_t auto_disable_save_failures = 0;
-    TickType_t auto_disable_save_retry_at = 0;
-    bool auto_disable_save_retry_scheduled = false;
+    uint8_t deferred_save_failures = 0;
+    TickType_t deferred_save_retry_at = 0;
+    bool deferred_save_retry_scheduled = false;
     for (;;) {
-        if (s_auto_disable_save_pending.load(std::memory_order_acquire)) {
-            TickType_t now = xTaskGetTickCount();
-            if (!auto_disable_save_retry_scheduled) {
-                auto_disable_save_failures = 1;
-                schedule_alarm_auto_disable_save_retry(
-                    now, auto_disable_save_failures, &auto_disable_save_retry_at);
-                auto_disable_save_retry_scheduled = true;
-            }
-            TickType_t retry_wait =
-                app_tick_deadline_remaining(now, auto_disable_save_retry_at);
-            if (retry_wait > 0) {
-                ulTaskNotifyTake(pdTRUE, retry_wait);
-                continue;
-            }
-            if (flush_alarm_auto_disable_save()) {
-                ESP_LOGI(TAG, "alarm deferred auto-disable save recovered");
-                auto_disable_save_failures = 0;
-                auto_disable_save_retry_at = 0;
-                auto_disable_save_retry_scheduled = false;
-            } else {
-                if (auto_disable_save_failures < UINT8_MAX) {
-                    ++auto_disable_save_failures;
-                }
-                schedule_alarm_auto_disable_save_retry(
-                    xTaskGetTickCount(),
-                    auto_disable_save_failures,
-                    &auto_disable_save_retry_at);
-                ESP_LOGW(TAG,
-                         "alarm deferred auto-disable save retry=%u delay_ms=%" PRIu32,
-                         static_cast<unsigned>(auto_disable_save_failures),
-                         alarm_save_retry_delay_ms(auto_disable_save_failures));
-            }
-            continue;
-        }
-        auto_disable_save_failures = 0;
-        auto_disable_save_retry_at = 0;
-        auto_disable_save_retry_scheduled = false;
+        const bool save_retry_pending =
+            s_save_retry_pending.load(std::memory_order_acquire);
+        const bool auto_disable_save_pending =
+            s_auto_disable_save_pending.load(std::memory_order_acquire);
+        const bool deferred_save_pending =
+            save_retry_pending || auto_disable_save_pending;
         AlarmSnapshot snapshot = {};
         alarm_get_snapshot(&snapshot);
         if (!snapshot.enabled) {
-            ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-            continue;
+            if (!deferred_save_pending) {
+                ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+                continue;
+            }
         }
-        const int64_t wall_clock_ms = reminder_wall_clock_ms();
+
+        const int64_t wall_clock_ms =
+            snapshot.enabled ? reminder_wall_clock_ms() : -1;
         const time_t wall_clock_seconds =
             static_cast<time_t>(wall_clock_ms / 1000);
         struct tm local = {};
@@ -407,19 +402,65 @@ void alarm_task(void *)
         const int current_millisecond = wall_clock_ms >= 0
                                             ? static_cast<int>(wall_clock_ms % 1000)
                                             : -1;
-        const uint32_t wait_ms = alarm_task_wait_ms(snapshot.enabled,
-                                                    time_valid,
-                                                    local.tm_hour,
-                                                    local.tm_min,
-                                                    local.tm_sec,
-                                                    current_millisecond,
-                                                    snapshot.hour,
-                                                    snapshot.minute);
-        TickType_t wait_ticks = wait_ms > 0 ? pdMS_TO_TICKS(wait_ms) : portMAX_DELAY;
-        if (wait_ms > 0 && wait_ticks == 0) {
-            wait_ticks = 1;
+        const uint32_t alarm_wait_ms = alarm_task_wait_ms(snapshot.enabled,
+                                                          time_valid,
+                                                          local.tm_hour,
+                                                          local.tm_min,
+                                                          local.tm_sec,
+                                                          current_millisecond,
+                                                          snapshot.hour,
+                                                          snapshot.minute);
+        const TickType_t alarm_wait_ticks =
+            alarm_wait_ms > 0
+                ? app_tick_nonzero_delay(pdMS_TO_TICKS(alarm_wait_ms))
+                : portMAX_DELAY;
+
+        if (deferred_save_pending) {
+            TickType_t now = xTaskGetTickCount();
+            if (!deferred_save_retry_scheduled) {
+                deferred_save_failures = 1;
+                schedule_alarm_save_retry(
+                    now, deferred_save_failures, &deferred_save_retry_at);
+                deferred_save_retry_scheduled = true;
+            }
+            TickType_t retry_wait =
+                app_tick_deadline_remaining(now, deferred_save_retry_at);
+            if (alarm_wait_ticks < retry_wait) {
+                retry_wait = alarm_wait_ticks;
+            }
+            if (retry_wait > 0) {
+                ulTaskNotifyTake(pdTRUE, retry_wait);
+                continue;
+            }
+            const bool recovered = save_retry_pending
+                                       ? flush_alarm_pending_save(false)
+                                       : flush_alarm_auto_disable_save();
+            if (recovered) {
+                ESP_LOGI(TAG,
+                         "alarm deferred %s save recovered",
+                         save_retry_pending ? "state" : "auto-disable");
+                deferred_save_failures = 0;
+                deferred_save_retry_at = 0;
+                deferred_save_retry_scheduled = false;
+            } else {
+                deferred_save_failures =
+                    saturating_increment_u8(deferred_save_failures);
+                schedule_alarm_save_retry(
+                    xTaskGetTickCount(),
+                    deferred_save_failures,
+                    &deferred_save_retry_at);
+                ESP_LOGW(TAG,
+                         "alarm deferred %s save retry=%u delay_ms=%" PRIu32,
+                         save_retry_pending ? "state" : "auto-disable",
+                         static_cast<unsigned>(deferred_save_failures),
+                         alarm_save_retry_delay_ms(deferred_save_failures));
+            }
+            continue;
         }
-        ulTaskNotifyTake(pdTRUE, wait_ticks);
+        deferred_save_failures = 0;
+        deferred_save_retry_at = 0;
+        deferred_save_retry_scheduled = false;
+        ulTaskNotifyTake(pdTRUE, alarm_wait_ticks);
     }
 }
 
@@ -438,24 +479,6 @@ bool alarm_is_enabled()
     return alarm_runtime_is_enabled();
 }
 
-bool alarm_set_once(int hour, int minute)
-{
-    AlarmSnapshot snapshot = {};
-    alarm_get_snapshot(&snapshot);
-    if (snapshot.ringing || !alarm_time_valid(hour, minute) ||
-        conflicts_with_running_pomodoro(hour, minute) ||
-        !persist_alarm(true, hour, minute)) {
-        return false;
-    }
-    clear_pending_alarm_replacement();
-    s_save_pending.store(false);
-    s_auto_disable_save_pending.store(false, std::memory_order_release);
-    mark_alarm_stop_requested();
-    publish_alarm_state(true, false, hour, minute);
-    ESP_LOGI(TAG, "alarm set %02d:%02d single-use", hour, minute);
-    return true;
-}
-
 bool alarm_disable()
 {
     AlarmSnapshot snapshot = {};
@@ -467,6 +490,7 @@ bool alarm_disable()
         return false;
     }
     s_save_pending.store(false);
+    s_save_retry_pending.store(false, std::memory_order_release);
     s_auto_disable_save_pending.store(false, std::memory_order_release);
     publish_alarm_state(false, false, snapshot.hour, snapshot.minute);
     ESP_LOGI(TAG, "alarm disabled");
@@ -494,6 +518,7 @@ bool alarm_clear_saved_state()
     clear_pending_alarm_replacement();
     mark_alarm_stop_requested();
     s_save_pending.store(false);
+    s_save_retry_pending.store(false, std::memory_order_release);
     alarm_storage::ClearResult result = alarm_storage::clear();
     if (result.status == alarm_storage::ClearStatus::kAlreadyEmpty) {
         s_auto_disable_save_pending.store(false, std::memory_order_release);
@@ -522,14 +547,5 @@ bool alarm_save_pending()
 
 bool alarm_flush_pending_save()
 {
-    if (!s_save_pending.load()) {
-        return true;
-    }
-    AlarmSnapshot snapshot = {};
-    alarm_get_snapshot(&snapshot);
-    if (!persist_alarm(snapshot.enabled, snapshot.hour, snapshot.minute)) {
-        return false;
-    }
-    s_save_pending.store(false);
-    return true;
+    return flush_alarm_pending_save(true);
 }

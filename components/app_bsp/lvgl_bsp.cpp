@@ -14,6 +14,7 @@ static lv_disp_draw_buf_t disp_buf; 		// contains internal graphic buffer(s) cal
 static lv_disp_drv_t disp_drv;      		// contains callback functions
 static StaticSemaphore_t lvgl_mux_storage = {};
 static SemaphoreHandle_t lvgl_mux = NULL;
+static portMUX_TYPE lvgl_task_handle_mux = portMUX_INITIALIZER_UNLOCKED;
 static TaskHandle_t lvgl_task_handle = NULL;
 static int64_t lvgl_tick_last_us = 0;
 
@@ -47,6 +48,21 @@ static_assert(kMicrosecondsPerMillisecond == 1000, "millisecond to microsecond c
 
 static StackType_t lvgl_task_stack[kLvglTaskStackBytes / sizeof(StackType_t)] = {};
 static StaticTask_t lvgl_task_storage = {};
+
+static TaskHandle_t LoadLvglTaskHandle()
+{
+    portENTER_CRITICAL(&lvgl_task_handle_mux);
+    const TaskHandle_t task_handle = lvgl_task_handle;
+    portEXIT_CRITICAL(&lvgl_task_handle_mux);
+    return task_handle;
+}
+
+static void StoreLvglTaskHandle(TaskHandle_t task_handle)
+{
+    portENTER_CRITICAL(&lvgl_task_handle_mux);
+    lvgl_task_handle = task_handle;
+    portEXIT_CRITICAL(&lvgl_task_handle_mux);
+}
 
 static void LogLvglBufferAllocationFailure(const char *name, size_t bytes)
 {
@@ -93,7 +109,7 @@ static void ReleaseLvglInitResources(lv_disp_t *display,
     disp_buf = {};
     disp_drv = {};
     lvgl_tick_last_us = 0;
-    lvgl_task_handle = NULL;
+    StoreLvglTaskHandle(NULL);
     if (lvgl_mux != NULL) {
         vSemaphoreDelete(lvgl_mux);
         lvgl_mux = NULL;
@@ -122,14 +138,16 @@ void Lvgl_unlock(void)
         return;
     }
     const TaskHandle_t caller = xTaskGetCurrentTaskHandle();
+    const TaskHandle_t task_handle = LoadLvglTaskHandle();
     xSemaphoreGive(lvgl_mux);
-    if (lvgl_task_handle != NULL && caller != lvgl_task_handle) {
-        xTaskNotifyGive(lvgl_task_handle);
+    if (task_handle != NULL && caller != task_handle) {
+        xTaskNotifyGive(task_handle);
     }
 }
 
 static void Lvgl_port_task(void *arg)
 {
+    StoreLvglTaskHandle(xTaskGetCurrentTaskHandle());
     uint32_t task_delay_ms = LVGL_TASK_MAX_DELAY_MS;
     for (;;) {
         if (Lvgl_lock(-1)) {
@@ -211,6 +229,6 @@ bool Lvgl_PortInit(int width, int height,DispFlushCb flush_cb) {
         ReleaseLvglInitResources(display, buffer1, buffer2);
         return false;
     }
-    lvgl_task_handle = task_handle;
+    StoreLvglTaskHandle(task_handle);
     return true;
 }

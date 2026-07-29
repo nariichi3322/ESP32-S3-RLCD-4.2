@@ -23,17 +23,7 @@ bool network_wifi_credentials_copy(char *ssid,
                                    char *password,
                                    size_t password_len);
 NetworkCredentialsAvailability network_credentials_availability();
-void network_credentials_store(const char *ssid,
-                               const char *password,
-                               const char *weather_api_key,
-                               const char *weather_api_host,
-                               bool wifi_configured,
-                               bool weather_api_key_configured,
-                               bool weather_api_host_configured);
-void network_credentials_clear();
 bool network_wifi_credentials_configured();
-bool network_weather_api_key_configured();
-bool network_weather_api_host_configured();
 bool network_weather_configuration_configured();
 bool network_all_online_credentials_configured();
 bool network_wifi_ssid_snapshot(char *out, size_t out_len);

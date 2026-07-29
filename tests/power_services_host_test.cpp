@@ -1,5 +1,5 @@
 // 验证网络与音频 PM 锁的嵌套计数、失败回滚和作用域互斥释放语义。
-#include "power_services.h"
+#include "power_services_internal.h"
 
 #include "app_metadata.h"
 
@@ -7,12 +7,15 @@
 #include <esp_pm.h>
 
 #include <assert.h>
+#include <stdint.h>
 #include <string.h>
 
 const char *const TAG = "PowerServicesHostTest";
 bool g_fail_mutex_create = false;
 bool g_fail_mutex_take = false;
 int g_mutex_create_calls = 0;
+uint32_t g_last_mutex_take_timeout = 0;
+int g_unbounded_mutex_take_calls = 0;
 
 struct FakePmLock {
     const char *name = nullptr;
@@ -95,14 +98,19 @@ esp_err_t esp_pm_lock_release(esp_pm_lock_handle_t lock)
     if (s_fail_release_name && strcmp(lock->name, s_fail_release_name) == 0) {
         return ESP_FAIL;
     }
-    assert(lock->held);
+    if (!lock->held) {
+        return ESP_ERR_INVALID_STATE;
+    }
     lock->held = false;
     return ESP_OK;
 }
 
 const char *esp_err_to_name(esp_err_t err)
 {
-    return err == ESP_OK ? "ESP_OK" : "ESP_FAIL";
+    if (err == ESP_OK) {
+        return "ESP_OK";
+    }
+    return err == ESP_ERR_INVALID_STATE ? "ESP_ERR_INVALID_STATE" : "ESP_FAIL";
 }
 
 int main()
@@ -152,10 +160,13 @@ int main()
     assert(network && audio && wake && cpu);
 
     assert(acquire_network_awake_lock());
+    assert(g_last_mutex_take_timeout == 1000);
     assert(acquire_network_awake_lock());
+    assert(g_last_mutex_take_timeout == 1000);
     assert(network->acquire_attempts == 1);
     expect_depths(2, 0, 0, 0);
     release_network_awake_lock();
+    assert(g_last_mutex_take_timeout == UINT32_MAX);
     assert(network->release_attempts == 0);
     expect_depths(1, 0, 0, 0);
     release_network_awake_lock();
@@ -179,12 +190,28 @@ int main()
     release_network_awake_lock();
     expect_depths(0, 0, 0, 0);
 
+    assert(acquire_network_awake_lock());
+    const int network_acquires_before_stale_driver_state =
+        network->acquire_attempts;
+    network->held = false;
+    release_network_awake_lock();
+    expect_depths(0, 0, 0, 0);
+    assert(acquire_network_awake_lock());
+    assert(network->acquire_attempts ==
+           network_acquires_before_stale_driver_state + 1);
+    release_network_awake_lock();
+    expect_depths(0, 0, 0, 0);
+
     assert(acquire_audio_awake_lock());
     expect_depths(0, 1, 1, 1);
     const int cpu_acquires = cpu->acquire_attempts;
     set_audio_performance_mode(true);
     assert(cpu->acquire_attempts == cpu_acquires);
+    const int unbounded_takes_before_audio_release =
+        g_unbounded_mutex_take_calls;
     release_audio_awake_lock();
+    assert(g_unbounded_mutex_take_calls ==
+           unbounded_takes_before_audio_release + 3);
     expect_depths(0, 0, 0, 0);
 
     const int audio_releases_before_wake_failure = audio->release_attempts;
@@ -201,6 +228,17 @@ int main()
     s_fail_acquire_name = nullptr;
     assert(audio->release_attempts == audio_releases_before_cpu_failure + 1);
     assert(wake->release_attempts == wake_releases_before_cpu_failure + 1);
+    expect_depths(0, 0, 0, 0);
+
+    assert(acquire_audio_awake_lock());
+    const int cpu_acquires_before_stale_driver_state = cpu->acquire_attempts;
+    cpu->held = false;
+    release_audio_awake_lock();
+    expect_depths(0, 0, 0, 0);
+    assert(acquire_audio_awake_lock());
+    assert(cpu->acquire_attempts ==
+           cpu_acquires_before_stale_driver_state + 1);
+    release_audio_awake_lock();
     expect_depths(0, 0, 0, 0);
     return 0;
 }

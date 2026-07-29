@@ -17,7 +17,6 @@
 #include "qweather_forecast_parser.h"
 #include "qweather_response.h"
 #include "qweather_url.h"
-#include "scoped_heap_buffer.h"
 #include "weather_city_contract.h"
 
 #include "esp_log.h"
@@ -103,10 +102,18 @@ static_assert(std::is_trivially_destructible<WeatherAlertData>::value,
               "QWeather alert heap staging requires trivial destruction");
 static_assert(sizeof(WeatherAlertData) > 384,
               "QWeather alert staging should remain off the network task stack");
+static_assert((kQweatherRequestUrlSize + kQweatherAlertResponseBufferSize) %
+                      alignof(WeatherAlertData) ==
+                  0,
+              "QWeather alert staging must stay naturally aligned");
 static_assert(std::is_trivially_destructible<WeatherForecastData>::value,
               "QWeather forecast heap staging requires trivial destruction");
 static_assert(sizeof(WeatherForecastData) > 512,
               "QWeather forecast staging should remain off the network task stack");
+static_assert((kQweatherRequestUrlSize + kQweatherDailyResponseBufferSize) %
+                      alignof(WeatherForecastData) ==
+                  0,
+              "QWeather forecast staging must stay naturally aligned");
 
 bool qweather_url_ready(QweatherUrlStatus status,
                         const char *stage,
@@ -242,7 +249,8 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
     QweatherResponseBuffer response(
         kQweatherStageAlert,
         kQweatherAlertResponseBufferSize,
-        kQweatherRequestUrlSize);
+        kQweatherRequestUrlSize,
+        sizeof(WeatherAlertData));
     if (!response) {
         return false;
     }
@@ -274,18 +282,16 @@ bool qweather_fetch_alert(const char *lat, const char *lon, WeatherAlertData *al
         return false;
     }
 
-    ScopedHeapBuffer<uint8_t> alert_storage(
-        sizeof(WeatherAlertData),
-        HeapBufferInit::kUninitialized,
-        HeapBufferStorage::kPsramPreferred);
-    if (!alert_storage) {
+    void *alert_storage = response.staging();
+    if (!alert_storage ||
+        response.staging_size() < sizeof(WeatherAlertData)) {
         ESP_LOGW(TAG,
                  QWEATHER_ALERT_STAGING_ALLOC_FAILED_FORMAT,
                  static_cast<unsigned>(sizeof(WeatherAlertData)));
         return false;
     }
     WeatherAlertData *next =
-        new (alert_storage.data()) WeatherAlertData{};
+        new (alert_storage) WeatherAlertData{};
     int alert_count = cJSON_GetArraySize(alerts);
     for (int i = 0; i < alert_count; ++i) {
         const cJSON *item = cJSON_GetArrayItem(alerts, i);
@@ -373,7 +379,8 @@ static QweatherDailyAttemptStatus qweather_fetch_daily_days(
     QweatherResponseBuffer response(
         kQweatherStageDaily,
         kQweatherDailyResponseBufferSize,
-        kQweatherRequestUrlSize);
+        kQweatherRequestUrlSize,
+        sizeof(WeatherForecastData));
     if (!response) {
         return QweatherDailyAttemptStatus::kFailed;
     }
@@ -400,18 +407,16 @@ static QweatherDailyAttemptStatus qweather_fetch_daily_days(
         return QweatherDailyAttemptStatus::kFailed;
     }
 
-    ScopedHeapBuffer<uint8_t> forecast_storage(
-        sizeof(WeatherForecastData),
-        HeapBufferInit::kUninitialized,
-        HeapBufferStorage::kPsramPreferred);
-    if (!forecast_storage) {
+    void *forecast_storage = response.staging();
+    if (!forecast_storage ||
+        response.staging_size() < sizeof(WeatherForecastData)) {
         ESP_LOGW(TAG,
                  QWEATHER_DAILY_STAGING_ALLOC_FAILED_FORMAT,
                  static_cast<unsigned>(sizeof(WeatherForecastData)));
         return QweatherDailyAttemptStatus::kFailed;
     }
     WeatherForecastData *next =
-        new (forecast_storage.data()) WeatherForecastData{};
+        new (forecast_storage) WeatherForecastData{};
     bool ok = false;
     const cJSON *code = nullptr;
     const cJSON *daily = qweather_success_array(root.get(), kQweatherDailyJsonDailyField, &code);

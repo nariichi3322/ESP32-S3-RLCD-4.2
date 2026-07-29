@@ -3,10 +3,11 @@
 
 #include "alarm_services.h"
 #include "app_metadata.h"
+#include "app_tick_time.h"
 #include "audio_services.h"
 #include "battery_runtime_state.h"
 #include "ota_runtime_state.h"
-#include "pomodoro_runtime_state.h"
+#include "pomodoro_runtime_state_internal.h"
 #include "reminder_schedule.h"
 #include "sensor_time.h"
 #include "task_notification_target.h"
@@ -200,15 +201,15 @@ void pomodoro_task(void *)
                 publish_state(kPomodoroIdle, 0, 0, false, 0, 0);
                 continue;
             }
-            ulTaskNotifyTake(pdTRUE,
-                             pdMS_TO_TICKS(static_cast<uint32_t>((hold_remaining_us + 999) / 1000)));
+            const TickType_t wait_ticks = app_tick_nonzero_delay(
+                pdMS_TO_TICKS(static_cast<uint32_t>(
+                    (hold_remaining_us + 999) / 1000)));
+            ulTaskNotifyTake(pdTRUE, wait_ticks);
             continue;
         }
         if (snapshot.state == kPomodoroRunning) {
-            TickType_t wait_ticks = pdMS_TO_TICKS(snapshot.remaining_ms);
-            if (wait_ticks == 0) {
-                wait_ticks = 1;
-            }
+            const TickType_t wait_ticks =
+                app_tick_nonzero_delay(pdMS_TO_TICKS(snapshot.remaining_ms));
             ulTaskNotifyTake(pdTRUE, wait_ticks);
         } else {
             ulTaskNotifyTake(pdTRUE, portMAX_DELAY);

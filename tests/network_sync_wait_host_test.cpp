@@ -2,6 +2,7 @@
 #include "network_sync_wait.h"
 
 #include "app_event_group.h"
+#include "network_sync_requests.h"
 #include "network_sync_schedule.h"
 
 #include <cassert>
@@ -77,7 +78,7 @@ EventBits_t app_event_group_wait_bits(EventBits_t bits,
     s_wait_call.wait_for_all = wait_for_all;
     s_wait_call.timeout = timeout;
     ++s_wait_call.count;
-    const EventBits_t result = s_wait_result;
+    const EventBits_t result = s_wait_result & bits;
     s_current_bits |= result;
     if (result == 0) {
         s_now_us += static_cast<int64_t>(timeout) * 1000;
@@ -129,9 +130,10 @@ bool network_sync_start_context_changed(
     return s_runtime_changed;
 }
 
-bool network_request_snapshot_canceled(uint32_t, uint32_t)
+bool network_sync_request_snapshot_still_current(
+    const NetworkSyncRequestSnapshot &)
 {
-    return s_request_canceled;
+    return !s_request_canceled;
 }
 
 int main()
@@ -140,11 +142,46 @@ int main()
     wait_for_network_sync_event(4321);
     assert_wait(kExpectedSyncWakeBits, pdFALSE, pdMS_TO_TICKS(4321));
 
+    static_assert(setup_portal_retry_delay_ms(0) == 0);
+    static_assert(setup_portal_retry_delay_ms(1) == 1000);
+    static_assert(setup_portal_retry_delay_ms(2) == 2000);
+    static_assert(setup_portal_retry_delay_ms(3) == 4000);
+    static_assert(setup_portal_retry_delay_ms(5) == 16000);
+    static_assert(setup_portal_retry_delay_ms(6) == 30000);
+    static_assert(setup_portal_retry_delay_ms(32) == 30000);
+    static_assert(setup_portal_retry_delay_ms(UINT8_MAX) == 30000);
+
     reset_wait_call();
-    wait_for_setup_portal_retry();
-    assert_wait(kExpectedSyncWakeBits & ~kSetupPortalStartBit,
-                pdFALSE,
+    wait_for_setup_portal_retry(1);
+    assert_wait(kNetworkStateChangedBit,
+                pdTRUE,
                 pdMS_TO_TICKS(1000));
+
+    reset_wait_call();
+    wait_for_setup_portal_retry(6);
+    assert_wait(kNetworkStateChangedBit,
+                pdTRUE,
+                pdMS_TO_TICKS(30000));
+
+    reset_wait_call();
+    s_wait_result = kManualWeatherSyncBit |
+                    kVisibleSayingSyncBit |
+                    kNetworkDiagBit |
+                    kSetupPortalStartBit;
+    wait_for_setup_portal_retry(2);
+    assert_wait(kNetworkStateChangedBit,
+                pdTRUE,
+                pdMS_TO_TICKS(2000));
+    assert(s_now_us == 2000000);
+
+    reset_wait_call();
+    s_wait_result = kNetworkStateChangedBit | kManualWeatherSyncBit;
+    s_event_elapsed_us = 25000;
+    wait_for_setup_portal_retry(2);
+    assert_wait(kNetworkStateChangedBit,
+                pdTRUE,
+                pdMS_TO_TICKS(2000));
+    assert(s_now_us == 25000);
 
     reset_wait_call();
     wait_for_active_setup_portal_request();
@@ -185,69 +222,60 @@ int main()
     assert(s_wait_call.clear_on_exit == pdTRUE);
     assert(s_wait_call.timeout == pdMS_TO_TICKS(210));
 
-    reset_wait_call();
-    s_wait_result = kWifiConnectedBit;
-    assert(wait_for_network_sync_connection(45000) ==
-           NetworkSyncConnectionWaitResult::kConnected);
-    assert_wait(kWifiConnectedBit | kNetworkStateChangedBit,
-                pdFALSE,
-                pdMS_TO_TICKS(45000));
-
-    reset_wait_call();
-    s_wait_result = kNetworkStateChangedBit;
-    assert(wait_for_network_sync_connection(1234) ==
-           NetworkSyncConnectionWaitResult::kRuntimeChanged);
-    assert_wait(kWifiConnectedBit | kNetworkStateChangedBit,
-                pdFALSE,
-                pdMS_TO_TICKS(1234));
-
-    reset_wait_call();
-    s_wait_result = kWifiConnectedBit | kNetworkStateChangedBit;
-    assert(wait_for_network_sync_connection(77) ==
-           NetworkSyncConnectionWaitResult::kRuntimeChanged);
-
-    reset_wait_call();
-    assert(wait_for_network_sync_connection(9) ==
-           NetworkSyncConnectionWaitResult::kTimedOut);
-    assert_wait(kWifiConnectedBit | kNetworkStateChangedBit,
-                pdFALSE,
-                pdMS_TO_TICKS(9));
-
     const NetworkSyncAvailability scheduled_runtime = {};
+    const NetworkSyncRequestSnapshot scheduled_requests = [] {
+        NetworkSyncRequestSnapshot requests;
+        requests.manual_weather = true;
+        requests.manual_weather_generation = 1;
+        return requests;
+    }();
 
     reset_wait_call();
     s_current_bits = kWifiConnectedBit;
     assert(wait_for_valid_network_sync_connection(
-               scheduled_runtime, kManualWeatherSyncBit, 45000) ==
+               scheduled_runtime, scheduled_requests, 45000) ==
            NetworkSyncConnectionWaitResult::kConnected);
     assert(s_wait_call.count == 0);
 
     reset_wait_call();
     s_runtime_changed = true;
     assert(wait_for_valid_network_sync_connection(
-               scheduled_runtime, kManualWeatherSyncBit, 45000) ==
+               scheduled_runtime, scheduled_requests, 45000) ==
            NetworkSyncConnectionWaitResult::kRuntimeChanged);
     assert(s_wait_call.count == 0);
 
     reset_wait_call();
     s_request_canceled = true;
     assert(wait_for_valid_network_sync_connection(
-               scheduled_runtime, kManualWeatherSyncBit, 45000) ==
+               scheduled_runtime, scheduled_requests, 45000) ==
            NetworkSyncConnectionWaitResult::kRuntimeChanged);
     assert(s_wait_call.count == 0);
 
     reset_wait_call();
     assert(wait_for_valid_network_sync_connection(
-               scheduled_runtime, kManualWeatherSyncBit, 1234) ==
+               scheduled_runtime, scheduled_requests, 1234) ==
            NetworkSyncConnectionWaitResult::kTimedOut);
     assert_wait(kWifiConnectedBit | kNetworkStateChangedBit,
                 pdFALSE,
                 pdMS_TO_TICKS(1234));
 
     reset_wait_call();
+    s_wait_result = kNetworkStateChangedBit;
+    s_event_elapsed_us = 40000;
+    s_clear_wait_result_after_event = true;
+    assert(wait_for_valid_network_sync_connection(
+               scheduled_runtime, scheduled_requests, 1234) ==
+           NetworkSyncConnectionWaitResult::kTimedOut);
+    assert(s_wait_call.count == 2);
+    assert(s_wait_call.bits == (kWifiConnectedBit | kNetworkStateChangedBit));
+    assert(s_wait_call.clear_on_exit == pdFALSE);
+    assert(s_wait_call.timeout == pdMS_TO_TICKS(1194));
+    assert(s_clear_bits_count == 1);
+
+    reset_wait_call();
     s_wait_result = kWifiConnectedBit | kNetworkStateChangedBit;
     assert(wait_for_valid_network_sync_connection(
-               scheduled_runtime, kManualWeatherSyncBit, 45000) ==
+               scheduled_runtime, scheduled_requests, 45000) ==
            NetworkSyncConnectionWaitResult::kConnected);
     assert_wait(kWifiConnectedBit | kNetworkStateChangedBit,
                 pdFALSE,

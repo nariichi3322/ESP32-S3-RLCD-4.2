@@ -33,6 +33,12 @@ int main()
     input.radio_on = false;
     assert(!wifi_idle_stop_allowed(input));
 
+    assert(wifi_owned_normal_stop_allowed(true, 0));
+    assert(wifi_owned_normal_stop_allowed(true, 1));
+    assert(!wifi_owned_normal_stop_allowed(true, -1));
+    assert(!wifi_owned_normal_stop_allowed(true, 2));
+    assert(!wifi_owned_normal_stop_allowed(false, 0));
+
     assert(wifi_idle_stop_retry_delay_ms(0) == 0);
     assert(wifi_idle_stop_retry_delay_ms(1) == 1000);
     assert(wifi_idle_stop_retry_delay_ms(2) == 2000);

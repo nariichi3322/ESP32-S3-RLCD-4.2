@@ -1,10 +1,10 @@
 // 绘制温湿历史页曲线、坐标轴和极值徽标。
 #include "ui_history_chart.h"
 
-#include "app_constexpr.h"
 #include "app_metadata.h"
 #include "ui_canvas_primitives.h"
 #include "ui_history_format.h"
+#include "ui_history_layout.h"
 #include "ui_history_window.h"
 #include "ui_page_state.h"
 #include "ui_widgets.h"
@@ -12,44 +12,31 @@
 #include <esp_log.h>
 
 namespace {
+using namespace ui_history_layout;
+
 constexpr int kHistoryAxisMaxIndex = 0;
 constexpr int kHistoryAxisMidIndex = 1;
 constexpr int kHistoryAxisMinIndex = 2;
-constexpr int kHistoryBadgeRadius = 6;
-constexpr int kHistoryBadgeHorizontalPad = 3;
-constexpr int kHistoryBadgePointGap = 4;
-constexpr int kHistoryGridLineCount = 4;
-constexpr int kHistoryGridIntervalCount = kHistoryGridLineCount - 1;
 constexpr int kHistoryMinValidSamplesForLine = 2;
 constexpr int kHistoryMaxConnectedGapHours = 2;
-constexpr int kHistoryPointRadius = 3;
-constexpr int kHistoryAxisTickHours[] = {0, 6, 12, 18, 24};
 constexpr size_t kHistoryAxisHourTextSize = 8;
 constexpr size_t kHistoryAxisValueTextSize = 16;
 
 #define HISTORY_CHART_INVALID_ARG_LOG "history chart invalid arg"
 
-static_assert(kHistoryAxisValueCount == kHistoryAxisMinIndex + 1,
+static_assert(kAxisValueCount == kHistoryAxisMinIndex + 1,
               "History axis index count mismatch");
-static_assert(kHistoryAxisMaxIndex >= 0 && kHistoryAxisMaxIndex < kHistoryAxisValueCount,
+static_assert(kHistoryAxisMaxIndex >= 0 && kHistoryAxisMaxIndex < kAxisValueCount,
               "History max axis index out of range");
-static_assert(kHistoryAxisMidIndex >= 0 && kHistoryAxisMidIndex < kHistoryAxisValueCount,
+static_assert(kHistoryAxisMidIndex >= 0 && kHistoryAxisMidIndex < kAxisValueCount,
               "History mid axis index out of range");
-static_assert(kHistoryAxisMinIndex >= 0 && kHistoryAxisMinIndex < kHistoryAxisValueCount,
+static_assert(kHistoryAxisMinIndex >= 0 && kHistoryAxisMinIndex < kAxisValueCount,
               "History min axis index out of range");
-static_assert(kHistoryBadgeW > 0 && kHistoryBadgeH > 0,
-              "History badge dimensions must be positive");
-static_assert(kHistoryGridLineCount > 1,
-              "History grid needs at least two lines");
-static_assert(kHistoryGridIntervalCount == kHistoryGridLineCount - 1,
-              "History grid interval count mismatch");
 static_assert(kHistoryMinValidSamplesForLine >= 2,
               "History line needs at least two samples");
-static_assert(array_count(kHistoryAxisTickHours) == kHistoryAxisTickCount,
-              "History axis tick hour count mismatch");
-static_assert(kHistoryAxisTickHours[0] == 0 &&
-                  kHistoryAxisTickHours[kHistoryAxisTickCount - 1] == kHistoryWindowHours,
-              "History axis ticks must span the full display window");
+static_assert(kDisplayedWindowHours == kHistoryWindowHours &&
+                  kDisplayedSecondsPerHour == kHistorySecondsPerHour,
+              "history chart layout and sample window must stay aligned");
 
 float history_sample_value(const HourlySensorSample &sample, bool temperature)
 {
@@ -61,8 +48,8 @@ void set_history_axis_placeholders(lv_obj_t **axis_labels)
     if (!axis_labels) {
         return;
     }
-    for (int i = 0; i < kHistoryAxisValueCount; ++i) {
-        set_label_text_if_changed(axis_labels[i], kHistoryAxisPlaceholder);
+    for (int i = 0; i < kAxisValueCount; ++i) {
+        set_label_text_if_changed(axis_labels[i], kAxisPlaceholder);
     }
 }
 } // namespace
@@ -78,9 +65,9 @@ void style_history_value_badge(lv_obj_t *label)
     lv_obj_set_style_text_font(label, &lv_font_montserrat_12, LV_PART_MAIN);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_border_width(label, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(label, kHistoryBadgeRadius, LV_PART_MAIN);
-    lv_obj_set_style_pad_left(label, kHistoryBadgeHorizontalPad, LV_PART_MAIN);
-    lv_obj_set_style_pad_right(label, kHistoryBadgeHorizontalPad, LV_PART_MAIN);
+    lv_obj_set_style_radius(label, kBadgeRadius, LV_PART_MAIN);
+    lv_obj_set_style_pad_left(label, kBadgeHorizontalPad, LV_PART_MAIN);
+    lv_obj_set_style_pad_right(label, kBadgeHorizontalPad, LV_PART_MAIN);
     lv_obj_set_style_pad_top(label, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_bottom(label, 0, LV_PART_MAIN);
 }
@@ -104,19 +91,19 @@ void set_history_badge(lv_obj_t *label,
         return;
     }
     set_label_text_if_changed(label, text ? text : "");
-    int x = canvas_x + point_x - kHistoryBadgeW / 2;
+    int x = canvas_x + point_x - kBadgeWidth / 2;
     int min_x = canvas_x + plot_x;
-    int max_x = canvas_x + plot_x + plot_w - kHistoryBadgeW;
+    int max_x = canvas_x + plot_x + plot_w - kBadgeWidth;
     int min_y = canvas_y + plot_y;
-    int max_y = canvas_y + plot_y + plot_h - kHistoryBadgeH;
-    int y = canvas_y + point_y - kHistoryBadgeH - kHistoryBadgePointGap;
+    int max_y = canvas_y + plot_y + plot_h - kBadgeHeight;
+    int y = canvas_y + point_y - kBadgeHeight - kBadgePointGap;
     if (y < min_y) {
-        y = canvas_y + point_y + kHistoryBadgePointGap;
+        y = canvas_y + point_y + kBadgePointGap;
     }
     x = clamp_int(x, min_x, max_x);
     y = clamp_int(y, min_y, max_y);
     lv_obj_set_pos(label, x, y);
-    lv_obj_set_size(label, kHistoryBadgeW, kHistoryBadgeH);
+    lv_obj_set_size(label, kBadgeWidth, kBadgeHeight);
     lv_obj_clear_flag(label, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -126,9 +113,9 @@ void update_history_axis_labels(time_t start,
     if (!time_labels) {
         return;
     }
-    for (int i = 0; i < kHistoryAxisTickCount; ++i) {
+    for (int i = 0; i < kAxisTickCount; ++i) {
         char text[kHistoryAxisHourTextSize] = {};
-        format_history_axis_hour(start + kHistoryAxisTickHours[i] * kHistorySecondsPerHour,
+        format_history_axis_hour(start + kAxisTickHours[i] * kHistorySecondsPerHour,
                                  text,
                                  sizeof(text));
         set_label_text_if_changed(time_labels[i], text);
@@ -178,8 +165,8 @@ void draw_history_chart_panel(lv_obj_t *canvas,
         ++valid_count;
     }
 
-    for (int i = 0; i < kHistoryGridLineCount; ++i) {
-        int y = plot_y + (plot_h * i) / kHistoryGridIntervalCount;
+    for (int i = 0; i < kGridLineCount; ++i) {
+        int y = plot_y + (plot_h * i) / kGridIntervalCount;
         canvas_draw_dashed_hline(canvas,
                                  canvas_w,
                                  canvas_h,
@@ -259,12 +246,12 @@ void draw_history_chart_panel(lv_obj_t *canvas,
                                   canvas_h,
                                   x,
                                   y,
-                                  kHistoryPointRadius,
+                                  kPointRadius,
                                   lv_color_black());
         set_history_badge(max_label,
                           text,
-                          kHistoryChartCanvasX,
-                          kHistoryChartCanvasY,
+                          kCanvasX,
+                          kCanvasY,
                           x,
                           y,
                           plot_x,
@@ -284,12 +271,12 @@ void draw_history_chart_panel(lv_obj_t *canvas,
                                   canvas_h,
                                   x,
                                   y,
-                                  kHistoryPointRadius,
+                                  kPointRadius,
                                   lv_color_black());
         set_history_badge(min_label,
                           text,
-                          kHistoryChartCanvasX,
-                          kHistoryChartCanvasY,
+                          kCanvasX,
+                          kCanvasY,
                           x,
                           y,
                           plot_x,

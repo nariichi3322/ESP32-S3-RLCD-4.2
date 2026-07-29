@@ -10,7 +10,7 @@ struct NetworkSyncScheduleInput {
     time_t next_ntp_retry_at = 0;
     time_t boot_weather_due_at = 0;
     time_t boot_saying_due_at = 0;
-    bool have_weather_key = false;
+    bool have_weather_config = false;
     bool low_battery_mode = false;
     bool provisioning_sync_due = false;
     bool manual_ntp_due = false;
@@ -24,7 +24,7 @@ struct NetworkSyncScheduleInput {
 
 struct NetworkSyncAvailability {
     bool have_wifi_creds = false;
-    bool have_weather_key = false;
+    bool have_weather_config = false;
     bool offline_mode = false;
     bool low_battery_mode = false;
 };
@@ -94,8 +94,6 @@ bool network_startup_pressure_window_active(bool startup_screen_active,
 uint32_t network_weather_request_settle_delay_ms(bool startup_pressure_active);
 uint32_t network_inter_operation_settle_delay_ms(bool startup_pressure_active);
 bool network_visible_auto_sync_allowed(int64_t uptime_us);
-bool network_request_snapshot_canceled(uint32_t requested_bits,
-                                       uint32_t pending_bits);
 bool network_startup_followup_https_allowed(bool startup_pressure_active,
                                             size_t internal_free,
                                             size_t internal_largest,
@@ -105,6 +103,3 @@ bool network_automatic_boot_https_allowed(bool startup_screen_active,
                                           size_t internal_free,
                                           size_t internal_largest,
                                           size_t dma_largest);
-bool network_boot_weather_due_after_update(bool boot_weather_due,
-                                           bool boot_weather_ready,
-                                           bool resource_deferred);

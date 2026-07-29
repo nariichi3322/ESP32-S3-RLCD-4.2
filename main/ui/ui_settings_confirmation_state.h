@@ -8,6 +8,3 @@ enum class SettingsConfirmation {
 };
 
 bool settings_confirmation_pending(SettingsConfirmation confirmation);
-void settings_confirmation_request(SettingsConfirmation confirmation);
-void settings_confirmation_clear(SettingsConfirmation confirmation);
-void settings_confirmation_clear_all();

@@ -1,5 +1,5 @@
 // 验证离线模式运行态默认值、切换和并发读取保持原子可见。
-#include "offline_mode_state.h"
+#include "offline_mode_state_internal.h"
 
 #include <assert.h>
 #include <atomic>

@@ -15,4 +15,3 @@ bool network_awake_lock_active();
 bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out);
 [[nodiscard]] bool acquire_audio_awake_lock();
 void release_audio_awake_lock();
-void set_audio_performance_mode(bool enabled);

@@ -1,7 +1,8 @@
-// 提供数组长度和固定 C 字符串表的通用编译期校验。
+// 提供数组、固定 C 字符串和小型计数器的通用编译期 helper。
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 
 template <typename T, size_t N>
 constexpr size_t array_count(const T (&)[N])
@@ -44,6 +45,13 @@ constexpr size_t cstr_length(const char *text)
         ++length;
     }
     return length;
+}
+
+constexpr uint8_t saturating_increment_u8(uint8_t value)
+{
+    return value < UINT8_MAX
+               ? static_cast<uint8_t>(value + 1U)
+               : UINT8_MAX;
 }
 
 template <typename T, size_t N>

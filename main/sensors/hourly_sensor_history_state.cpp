@@ -1,5 +1,5 @@
 // 使用静态任务互斥维护温湿度小时历史、版本和最后保存时间。
-#include "hourly_sensor_history_state.h"
+#include "hourly_sensor_history_state_internal.h"
 
 #include "scoped_semaphore_lock.h"
 

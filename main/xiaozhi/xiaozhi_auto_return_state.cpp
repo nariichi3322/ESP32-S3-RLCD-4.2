@@ -1,5 +1,5 @@
 // 实现小智自动返回开关的单一原子所有权边界。
-#include "xiaozhi_auto_return_state.h"
+#include "xiaozhi_auto_return_state_internal.h"
 
 #include <atomic>
 

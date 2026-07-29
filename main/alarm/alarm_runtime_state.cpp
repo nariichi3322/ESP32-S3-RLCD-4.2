@@ -1,5 +1,5 @@
 // 使用静态任务互斥发布闹钟状态和覆盖确认，避免普通任务复制状态时关闭跨核中断。
-#include "alarm_runtime_state.h"
+#include "alarm_runtime_state_internal.h"
 
 #include "scoped_semaphore_lock.h"
 

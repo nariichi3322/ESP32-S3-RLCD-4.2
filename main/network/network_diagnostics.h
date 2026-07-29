@@ -1,11 +1,4 @@
-// 声明网络检测会话、逐行结果更新和检测执行入口。
+// 声明设置页可使用的网络检测控制入口。
 #pragma once
 
 void network_diag_reset();
-void network_diag_begin();
-void network_diag_finish();
-void network_diag_set_line(int index, const char *fmt, ...);
-
-// 只执行检测项目；调用方负责 begin/finish 与 Wi-Fi 会话生命周期。
-// 运行态阻断时返回 false，由调用方保留请求并关闭本轮射频。
-bool run_network_diagnostic_checks();

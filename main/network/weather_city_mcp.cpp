@@ -4,11 +4,12 @@
 #include "app_event_group.h"
 #include "network_config.h"
 #include "network_credentials_state.h"
+#include "network_sync_request_generation.h"
 #include "offline_mode_state.h"
 #include "qweather_client.h"
 #include "ui_task_notify.h"
 #include "weather_city_contract.h"
-#include "weather_city_pending_state.h"
+#include "weather_city_pending_state_internal.h"
 #include "xiaozhi_mcp.h"
 
 #include <cstdio>
@@ -135,7 +136,7 @@ bool weather_city_mcp_flush_pending_save()
     }
     (void)weather_city_pending_clear(snapshot.generation);
     if (!offline_mode_enabled_load() && app_event_group_ready()) {
-        app_event_group_set_bits(kManualWeatherSyncBit);
+        (void)publish_network_sync_request(kManualWeatherSyncBit);
     }
     notify_ui_task();
     return true;

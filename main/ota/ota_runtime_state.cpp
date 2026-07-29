@@ -1,5 +1,5 @@
 // 使用静态任务互斥管理完整 OTA 快照，并用原子镜像提供高频状态判断。
-#include "ota_runtime_state.h"
+#include "ota_runtime_state_internal.h"
 
 #include "housekeeping_schedule_notify.h"
 #include "network_runtime_events.h"
@@ -44,6 +44,8 @@ static_assert(kOtaNoUpdate <= static_cast<int>(kOtaRuntimeStateMask),
               "OTA runtime state must fit the atomic mirror");
 static_assert(sizeof(OtaRuntimeTimingSnapshot) < sizeof(OtaRuntimeSnapshot),
               "OTA timing readers must not copy the full status payload");
+static_assert(sizeof(OtaRuntimeFlagsSnapshot) <= sizeof(uint64_t),
+              "OTA flags snapshot must remain lightweight");
 static_assert(sizeof(s_ota_status_text) == kOtaStatusLen,
               "OTA status text storage must match the public snapshot");
 static_assert(sizeof(OtaRuntimeControlState) < sizeof(OtaRuntimeSnapshot),
@@ -126,10 +128,14 @@ int ota_runtime_state_load()
     return static_cast<int>(flags & kOtaRuntimeStateMask);
 }
 
-bool ota_runtime_reboot_pending_load()
+OtaRuntimeFlagsSnapshot ota_runtime_flags_load()
 {
-    uint32_t flags = s_ota_runtime_flags.load(std::memory_order_acquire);
-    return (flags & kOtaRuntimeRebootPendingBit) != 0;
+    const uint32_t flags =
+        s_ota_runtime_flags.load(std::memory_order_acquire);
+    return {
+        static_cast<int>(flags & kOtaRuntimeStateMask),
+        (flags & kOtaRuntimeRebootPendingBit) != 0,
+    };
 }
 
 void ota_runtime_publish_status(int state,

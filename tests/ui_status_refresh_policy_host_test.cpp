@@ -5,7 +5,12 @@
 
 int main()
 {
-    UiStatusRefreshSnapshot stable = {4, false, false, false};
+    assert(ui_weather_network_status_required(true, false, false));
+    assert(!ui_weather_network_status_required(false, false, false));
+    assert(!ui_weather_network_status_required(true, true, false));
+    assert(!ui_weather_network_status_required(true, false, true));
+
+    UiStatusRefreshSnapshot stable = {4, 0, false, false, false};
     assert(ui_status_refresh_due(stable, stable, false, false));
     assert(!ui_status_refresh_due(stable, stable, true, false));
     assert(ui_status_refresh_due(stable, stable, true, true));
@@ -18,6 +23,11 @@ int main()
     assert(ui_status_refresh_inputs_changed(changed, stable));
     assert(ui_status_refresh_due(changed, stable, true, false));
     assert(ui_sensor_status_refresh_due(changed, stable, true, false));
+
+    changed = stable;
+    changed.weather_network_bits = 1;
+    assert(ui_status_refresh_due(changed, stable, true, false));
+    assert(!ui_sensor_status_refresh_due(changed, stable, true, false));
 
     changed = stable;
     changed.chime_enabled = true;

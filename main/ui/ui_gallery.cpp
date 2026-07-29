@@ -13,12 +13,14 @@
 #include "ui_battery.h"
 #include "ui_bitmap.h"
 #include "ui_canvas_primitives.h"
+#include "ui_gallery_layout.h"
 #include "ui_gallery_rotation_state.h"
 #include "ui_gallery_selection.h"
 #include "ui_fonts.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
 #include "ui_widgets.h"
+#include "ui_work_page_layout.h"
 #include "ui_work_status.h"
 
 #include <esp_attr.h>
@@ -31,6 +33,8 @@
 #define GALLERY_TIME_CANVAS_CREATE_FAILED_LOG "gallery time canvas create failed"
 #define GALLERY_SAYING_LABEL_CREATE_FAILED_LOG "gallery saying label create failed"
 #define GALLERY_CUSTOM_IMAGE_BUFFER_ALLOC_FAILED_LOG "custom gallery image buffer allocation failed"
+
+using namespace ui_gallery_layout;
 
 struct GalleryRuntimeState {
     GalleryCustomImageRetryState custom_image_retry;
@@ -61,110 +65,17 @@ static constexpr size_t kGalleryRuntimeExpectedSize =
 static_assert(sizeof(GalleryRuntimeState) == kGalleryRuntimeExpectedSize,
               "gallery runtime state must contain only compact scalars and pointers");
 
-static constexpr int kGalleryTopLineX = 18;
-static constexpr int kGalleryTopLineY = 54;
-static constexpr int kGalleryTopLineW = 364;
-static constexpr int kGalleryTopLineH = 4;
-static constexpr int kGalleryImageCanvasX = 20;
-static constexpr int kGalleryImageCanvasY = 66;
-static constexpr int kGalleryDividerX = 252;
-static constexpr int kGalleryDividerY = 70;
-static constexpr int kGalleryDividerW = 3;
-static constexpr int kGalleryDividerH = kGalleryImageCanvasY + CLOCK_GALLERY_IMAGE_HEIGHT -
-                                        kGalleryDividerY;
-static constexpr int kGalleryTimeCanvasX = 268;
-static constexpr int kGalleryTimeCanvasY = 66;
-static constexpr int kGalleryTimeCanvasW = 112;
-static constexpr int kGalleryTimeCanvasH = 198;
-static constexpr int kGallerySayingLabelX = 18;
-static constexpr int kGallerySayingLabelY = 275;
-static constexpr int kGallerySayingLabelW = 364;
-static constexpr int kGallerySayingLabelH = 24;
 static constexpr int kGalleryMinutesPerHour = 60;
 static constexpr int kGalleryHoursPerDay = 24;
 static constexpr int kGalleryDaysPerLeapYear = 366;
-static constexpr int kGalleryBlockDigitRows = 7;
-static constexpr int kGalleryBlockDigitCols = 5;
-static constexpr int kGalleryBlockDigitScale = 10;
-static constexpr int kGalleryBlockDigitGap = 8;
-static constexpr int kGalleryBlockDigitW = kGalleryBlockDigitCols * kGalleryBlockDigitScale;
-static constexpr int kGalleryBlockDigitH = kGalleryBlockDigitRows * kGalleryBlockDigitScale;
-static constexpr int kGalleryBlockNumberW = kGalleryBlockDigitW * 2 + kGalleryBlockDigitGap;
-static constexpr int kGalleryDecimalBase = 10;
-static constexpr uint8_t kGalleryTensDigitMask = 1U << 0;
-static constexpr uint8_t kGalleryOnesDigitMask = 1U << 1;
-static constexpr uint8_t kGalleryBothDigitsMask =
-    kGalleryTensDigitMask | kGalleryOnesDigitMask;
-static constexpr int kGalleryTimeHourY = 15;
-static constexpr int kGalleryTimeMinuteY = 116;
 static constexpr size_t kCustomGalleryImageBufferSize =
     CLOCK_GALLERY_IMAGE_BYTES_PER_ROW * CLOCK_GALLERY_IMAGE_HEIGHT;
 
-static const char *const kBlockDigits[][kGalleryBlockDigitRows] = {
-    {"11111", "10001", "10011", "10101", "11001", "10001", "11111"},
-    {"00100", "01100", "00100", "00100", "00100", "00100", "01110"},
-    {"11110", "00001", "00001", "11110", "10000", "10000", "11111"},
-    {"11110", "00001", "00001", "01110", "00001", "00001", "11110"},
-    {"10010", "10010", "10010", "11111", "00010", "00010", "00010"},
-    {"11111", "10000", "10000", "11110", "00001", "00001", "11110"},
-    {"01111", "10000", "10000", "11110", "10001", "10001", "01110"},
-    {"11111", "00001", "00010", "00100", "01000", "01000", "01000"},
-    {"01110", "10001", "10001", "01110", "10001", "10001", "01110"},
-    {"01110", "10001", "10001", "01111", "00001", "00001", "11110"},
-};
-static constexpr int kGalleryBlockDigitCount = static_cast<int>(array_count(kBlockDigits));
-
-static constexpr int gallery_block_digit_x(int digit_index)
-{
-    return (kGalleryTimeCanvasW - kGalleryBlockNumberW) / 2 +
-           digit_index * (kGalleryBlockDigitW + kGalleryBlockDigitGap);
-}
-
-static constexpr uint8_t gallery_changed_digit_mask(int previous, int current)
-{
-    if (current < 0 || current >= kGalleryDecimalBase * kGalleryDecimalBase) {
-        return 0;
-    }
-    if (previous < 0 || previous >= kGalleryDecimalBase * kGalleryDecimalBase) {
-        return kGalleryBothDigitsMask;
-    }
-    return static_cast<uint8_t>(
-        ((previous / kGalleryDecimalBase) != (current / kGalleryDecimalBase)
-             ? kGalleryTensDigitMask
-             : 0U) |
-        ((previous % kGalleryDecimalBase) != (current % kGalleryDecimalBase)
-             ? kGalleryOnesDigitMask
-             : 0U));
-}
-
-static_assert(kGalleryBlockDigitCount > 0, "Gallery block digit table must not be empty");
-static_assert(kGalleryTopLineW > 0 && kGalleryTopLineH > 0, "Gallery top separator size must be positive");
-static_assert(kGalleryDividerW > 0 && kGalleryDividerH > 0, "Gallery divider size must be positive");
-static_assert(kGalleryDividerY + kGalleryDividerH == kGalleryImageCanvasY + CLOCK_GALLERY_IMAGE_HEIGHT,
-              "Gallery divider bottom must align with the image canvas bottom");
-static_assert(kGalleryTimeCanvasW > 0 && kGalleryTimeCanvasH > 0, "Gallery time canvas dimensions must be positive");
-static_assert(kGallerySayingLabelW > 0 && kGallerySayingLabelH > 0, "Gallery saying label size must be positive");
+static_assert(kGalleryBlockDigitCount > 0,
+              "Gallery block digit table must not be empty");
 static_assert(kGalleryMinutesPerHour > 0, "Gallery minutes per hour must be positive");
 static_assert(kGalleryHoursPerDay > 0, "Gallery hours per day must be positive");
 static_assert(kGalleryDaysPerLeapYear > 0, "Gallery year span must be positive");
-static_assert(kGalleryBlockDigitCount == 10, "Gallery block digit table must contain decimal digits");
-static_assert(kGalleryBlockDigitRows > 0 && kGalleryBlockDigitCols > 0, "Gallery block digit grid must be positive");
-static_assert(kGalleryBlockDigitScale > 1, "Gallery block digit scale must leave a visible gap");
-static_assert(kGalleryBlockDigitGap >= 0, "Gallery block digit gap must not be negative");
-static_assert(kGalleryBlockNumberW <= kGalleryTimeCanvasW, "Gallery block number must fit the time canvas width");
-static_assert(kGalleryTimeHourY >= 0, "Gallery hour Y must not be negative");
-static_assert(kGalleryTimeMinuteY >= 0, "Gallery minute Y must not be negative");
-static_assert(kGalleryTimeHourY + kGalleryBlockDigitH <= kGalleryTimeCanvasH,
-              "Gallery hour digits must fit the time canvas height");
-static_assert(kGalleryTimeMinuteY + kGalleryBlockDigitH <= kGalleryTimeCanvasH,
-              "Gallery minute digits must fit the time canvas height");
-static_assert(kGalleryTimeHourY + kGalleryBlockDigitH < kGalleryTimeMinuteY,
-              "Gallery hour and minute dirty regions must not overlap");
-static_assert(gallery_block_digit_x(0) >= 0, "Gallery first digit must fit the time canvas");
-static_assert(gallery_block_digit_x(0) + kGalleryBlockDigitW <= gallery_block_digit_x(1),
-              "Gallery block digit dirty regions must not overlap");
-static_assert(gallery_block_digit_x(1) + kGalleryBlockDigitW <= kGalleryTimeCanvasW,
-              "Gallery second digit must fit the time canvas");
 static_assert(gallery_changed_digit_mask(-1, 0) == kGalleryBothDigitsMask,
               "Gallery initial draw must update both digits");
 static_assert(gallery_changed_digit_mask(34, 35) == kGalleryOnesDigitMask,
@@ -251,7 +162,7 @@ static void draw_block_digit(lv_img_dsc_t *image, int digit, int x, int y, int s
     }
     for (int row = 0; row < kGalleryBlockDigitRows; ++row) {
         for (int col = 0; col < kGalleryBlockDigitCols; ++col) {
-            if (kBlockDigits[digit][row][col] == '1') {
+            if (kGalleryBlockDigits[digit][row][col] == '1') {
                 image_fill_rect(image,
                                 x + col * scale,
                                 y + row * scale,
@@ -501,10 +412,10 @@ void build_gallery_page()
                                false);
 
     lv_obj_t *top_line = make_bar(screen,
-                                  kGalleryTopLineX,
-                                  kGalleryTopLineY,
-                                  kGalleryTopLineW,
-                                  kGalleryTopLineH);
+                                  ui_work_page_layout::kTopSeparatorX,
+                                  ui_work_page_layout::kTopSeparatorY,
+                                  ui_work_page_layout::kTopSeparatorWidth,
+                                  ui_work_page_layout::kTopSeparatorHeight);
     set_obj_black(top_line, true);
     build_work_page_day_progress(screen, kWorkPageGallery);
 

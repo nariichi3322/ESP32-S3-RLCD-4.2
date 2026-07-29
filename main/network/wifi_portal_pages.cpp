@@ -9,7 +9,7 @@
 #include "network_credentials_state.h"
 #include "scoped_heap_buffer.h"
 #include "wifi_portal_ui_assets.h"
-#include "wifi_portal_state.h"
+#include "wifi_portal_state_internal.h"
 
 #include "esp_attr.h"
 #include "esp_log.h"
@@ -357,7 +357,9 @@ esp_err_t root_get_handler(httpd_req_t *req)
     html_escape(text.weather_city,
                 text.safe_weather_city,
                 sizeof(text.safe_weather_city));
-    const WifiPortalSaveResult save_result = wifi_portal_save_result_load();
+    const WifiPortalSaveSnapshot save =
+        wifi_portal_save_snapshot_load();
+    const WifiPortalSaveResult save_result = save.result;
     const bool show_feedback = portal_save_result_is_visible(save_result);
     const char *feedback_open = save_result == WifiPortalSaveResult::kValidating
                                     ? "<div class='feedback pending' role='status'><strong>"
@@ -395,7 +397,7 @@ esp_err_t root_get_handler(httpd_req_t *req)
     html_append(html.data(), html.size(), "</main></body></html>");
     esp_err_t err = send_portal_html(req, html.data());
     if (err == ESP_OK && save_result == WifiPortalSaveResult::kSuccess) {
-        wifi_portal_save_feedback_seen_store(true);
+        (void)wifi_portal_mark_save_feedback_seen(save);
     }
     return err;
 }

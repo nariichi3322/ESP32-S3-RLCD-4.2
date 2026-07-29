@@ -1,5 +1,5 @@
 // 验证 OTA 运行态快照、下载状态和提示保持到期复位。
-#include "ota_runtime_state.h"
+#include "ota_runtime_state_internal.h"
 
 #include <assert.h>
 #include <atomic>
@@ -57,8 +57,11 @@ int main()
     assert(available_timing.state == kOtaAvailable);
     assert(available_timing.status_until_tick == 200);
     assert(available_timing.status_hold_set);
+    const OtaRuntimeFlagsSnapshot available_flags =
+        ota_runtime_flags_load();
+    assert(available_flags.state == kOtaAvailable);
+    assert(!available_flags.reboot_pending);
     assert(ota_runtime_state_load() == kOtaAvailable);
-    assert(!ota_runtime_reboot_pending_load());
     assert(g_network_runtime_notification_count == 0);
     assert(g_housekeeping_notification_count == 1);
 
@@ -92,8 +95,10 @@ int main()
     assert(g_housekeeping_notification_count == 2);
 
     ota_runtime_reboot_pending_store(true);
-    assert(ota_runtime_state_load() == kOtaUpdating);
-    assert(ota_runtime_reboot_pending_load());
+    const OtaRuntimeFlagsSnapshot reboot_flags =
+        ota_runtime_flags_load();
+    assert(reboot_flags.state == kOtaUpdating);
+    assert(reboot_flags.reboot_pending);
     ota_runtime_publish_status(kOtaFailed, "failed", -1, 300, true);
     OtaRuntimeSnapshot failed;
     ota_runtime_snapshot_load(&failed);
@@ -165,8 +170,9 @@ int main()
     assert(final_snapshot.progress == 99);
     assert(final_snapshot.speed_kbps == 199);
     assert(strcmp(final_snapshot.status, "99") == 0);
-    assert(ota_runtime_state_load() == kOtaUpdating);
-    assert(!ota_runtime_reboot_pending_load());
+    const OtaRuntimeFlagsSnapshot final_flags = ota_runtime_flags_load();
+    assert(final_flags.state == kOtaUpdating);
+    assert(!final_flags.reboot_pending);
     assert(g_network_runtime_notification_count == 3);
     assert(g_housekeeping_notification_count == 7);
     return 0;

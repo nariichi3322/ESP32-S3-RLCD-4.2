@@ -1,4 +1,4 @@
-// 声明单次闹钟运行态与覆盖确认状态的一致快照接口。
+// 声明仅供闹钟服务实现使用的运行态与覆盖确认接口。
 #pragma once
 
 #include "alarm_replacement_policy.h"

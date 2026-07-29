@@ -1,5 +1,5 @@
 // 使用单个 32 位原子量发布设置页的完整导航状态。
-#include "ui_settings_navigation_state.h"
+#include "ui_settings_navigation_state_internal.h"
 
 #include <atomic>
 #include <cstdint>

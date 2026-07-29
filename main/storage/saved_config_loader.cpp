@@ -1,24 +1,24 @@
 // 在启动阶段读取 NVS，并一次发布联网凭据和普通设备设置运行态。
 #include "saved_config_loader.h"
 
-#include "active_work_page_state.h"
+#include "active_work_page_state_internal.h"
 #include "app_metadata.h"
-#include "chime_runtime_state.h"
+#include "chime_runtime_state_internal.h"
 #include "chime_settings.h"
 #include "device_settings_persistence.h"
-#include "manual_weather_city_state.h"
+#include "manual_weather_city_state_internal.h"
 #include "network_chime_storage.h"
 #include "network_config_keys.h"
 #include "network_config_nvs.h"
-#include "network_credentials_state.h"
+#include "network_credentials_state_internal.h"
 #include "network_page_storage.h"
 #include "network_page_storage_policy.h"
 #include "qweather_api_host.h"
 #include "network_weather_city_storage.h"
-#include "offline_mode_state.h"
-#include "ui_work_page_catalog.h"
-#include "ui_gallery_rotation_state.h"
-#include "xiaozhi_auto_return_state.h"
+#include "offline_mode_state_internal.h"
+#include "ui_gallery_rotation_state_internal.h"
+#include "ui_work_page_catalog_internal.h"
+#include "xiaozhi_auto_return_state_internal.h"
 
 #include <esp_attr.h>
 #include <esp_log.h>
@@ -231,7 +231,8 @@ bool load_saved_config()
     nvs.close();
     bool offline_page_mask_changed = apply_loaded_config(loaded);
     clear_loaded_saved_config(&loaded);
-    if (offline_page_mask_changed && !save_work_page_settings()) {
+    if (offline_page_mask_changed &&
+        !set_work_page_enabled_mask_setting(work_page_enabled_mask_load())) {
         ESP_LOGW(TAG, "%s", kOfflinePageMaskPersistFailedLog);
     }
     return offline_mode_enabled_load() ||

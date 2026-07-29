@@ -1,5 +1,5 @@
 // 验证番茄钟复合快照、单调剩余时间和并发发布始终保持同一批次。
-#include "pomodoro_runtime_state.h"
+#include "pomodoro_runtime_state_internal.h"
 
 #include <assert.h>
 #include <atomic>

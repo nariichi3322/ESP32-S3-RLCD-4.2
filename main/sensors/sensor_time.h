@@ -1,4 +1,4 @@
-// 声明传感器、天气、UI 和闹钟共用的本地时间判断与整点计算。
+// 声明传感器、UI、闹钟和 NTP 共用的本地时间判断与边界计算。
 #pragma once
 
 #include <time.h>
@@ -10,4 +10,3 @@ int periodic_sample_minutes(const struct tm &local, int day_minutes, int night_m
 int seconds_until_next_periodic_sample(const struct tm &local, int interval_seconds);
 time_t hour_start_from_time(time_t value);
 time_t next_local_midnight_time(time_t from);
-time_t next_weather_sync_time(time_t from);

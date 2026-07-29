@@ -1,5 +1,5 @@
 // 验证小时温湿度历史状态的完整快照、版本和并发发布一致性。
-#include "hourly_sensor_history_state.h"
+#include "hourly_sensor_history_state_internal.h"
 
 #include <assert.h>
 #include <atomic>

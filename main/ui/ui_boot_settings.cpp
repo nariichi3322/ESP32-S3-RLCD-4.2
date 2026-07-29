@@ -17,6 +17,7 @@
 #include "ui_settings_ota_panel.h"
 #include "ui_widgets.h"
 #include "ui_work_page_catalog.h"
+#include "work_page_ids.h"
 #include "xiaozhi_auto_return_state.h"
 
 #include <esp_attr.h>
@@ -98,7 +99,7 @@ bool work_page_enabled_in_switch_snapshot(
     const SettingsSecondaryStateSnapshot &snapshot,
     int page)
 {
-    if (page < 0 || page >= kWorkPageCount) {
+    if (!is_valid_work_page_id(page)) {
         return false;
     }
     return (snapshot.work_page_enabled_mask &

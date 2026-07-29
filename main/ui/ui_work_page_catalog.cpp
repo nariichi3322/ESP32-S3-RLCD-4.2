@@ -1,7 +1,7 @@
-// 管理工作页名称、启用状态、设置映射和用户自定义顺序。
-#include "ui_work_page_catalog.h"
+// 管理工作页名称、启用状态、页面特征和用户自定义顺序。
+#include "ui_work_page_catalog_internal.h"
 
-#include "active_work_page_state.h"
+#include "active_work_page_state_internal.h"
 #include "app_constexpr.h"
 #include "scoped_semaphore_lock.h"
 #include "ui_work_page_order_policy.h"
@@ -12,11 +12,11 @@
 namespace {
 constexpr int kFirstWorkPage = kWorkPageWeatherClock;
 constexpr int kFallbackWorkPage = kWorkPageWeatherClock;
-constexpr int kInvalidWorkPage = -1;
 constexpr uint8_t kWorkPageTraitRequiresNetwork = 1U << 0;
 constexpr uint8_t kWorkPageTraitLowRefreshIdle = 1U << 1;
 constexpr uint8_t kWorkPageTraitWeatherData = 1U << 2;
 constexpr uint8_t kWorkPageTraitDailySaying = 1U << 3;
+constexpr uint8_t kWorkPageTraitExtendedWeatherData = 1U << 4;
 
 struct WorkPageDescriptor {
     uint8_t page;
@@ -35,7 +35,7 @@ constexpr WorkPageDescriptor kWorkPageDescriptors[kWorkPageCount] = {
     {kWorkPageWeatherBoard,
      "天气看板",
      kWorkPageTraitRequiresNetwork | kWorkPageTraitLowRefreshIdle |
-         kWorkPageTraitWeatherData},
+         kWorkPageTraitWeatherData | kWorkPageTraitExtendedWeatherData},
     {kWorkPageFlipClock, "温湿时钟", 0},
     {kWorkPageCalendar, "日历", kWorkPageTraitLowRefreshIdle},
     {kWorkPageHistory, "温湿历史", kWorkPageTraitLowRefreshIdle},
@@ -90,6 +90,8 @@ constexpr uint8_t kWeatherDataWorkPageMask =
     work_page_mask_for_trait(kWorkPageTraitWeatherData);
 constexpr uint8_t kDailySayingWorkPageMask =
     work_page_mask_for_trait(kWorkPageTraitDailySaying);
+constexpr uint8_t kExtendedWeatherDataWorkPageMask =
+    work_page_mask_for_trait(kWorkPageTraitExtendedWeatherData);
 constexpr uint8_t kLocalWorkPageMask = static_cast<uint8_t>(~kNetworkWorkPageMask) & kAllWorkPageMask;
 
 constexpr bool work_page_descriptors_are_indexed_by_id()
@@ -135,10 +137,15 @@ constexpr bool work_page_descriptor_names_are_nonempty()
 constexpr bool work_page_descriptor_traits_are_valid()
 {
     constexpr uint8_t kNetworkDataTraits =
-        kWorkPageTraitWeatherData | kWorkPageTraitDailySaying;
+        kWorkPageTraitWeatherData | kWorkPageTraitDailySaying |
+        kWorkPageTraitExtendedWeatherData;
     for (const WorkPageDescriptor &descriptor : kWorkPageDescriptors) {
         if ((descriptor.traits & kNetworkDataTraits) != 0 &&
             (descriptor.traits & kWorkPageTraitRequiresNetwork) == 0) {
+            return false;
+        }
+        if ((descriptor.traits & kWorkPageTraitExtendedWeatherData) != 0 &&
+            (descriptor.traits & kWorkPageTraitWeatherData) == 0) {
             return false;
         }
     }
@@ -188,6 +195,8 @@ static_assert((kWeatherDataWorkPageMask & ~kNetworkWorkPageMask) == 0,
               "weather-data pages must require network access");
 static_assert((kDailySayingWorkPageMask & ~kNetworkWorkPageMask) == 0,
               "daily-saying pages must require network access");
+static_assert((kExtendedWeatherDataWorkPageMask & ~kWeatherDataWorkPageMask) == 0,
+              "extended-weather pages must consume basic weather data");
 static_assert(array_count(kDefaultWorkPageOrder) == kWorkPageCount,
               "default work page order must cover every work page");
 static_assert(array_count(kWorkPageDescriptors) == kDisplaySettingsPageItemCount,
@@ -244,6 +253,7 @@ WorkPageDataRequirements work_page_data_requirements(int page)
 {
     return {
         work_page_has_trait(page, kWorkPageTraitWeatherData),
+        work_page_has_trait(page, kWorkPageTraitExtendedWeatherData),
         work_page_has_trait(page, kWorkPageTraitDailySaying),
     };
 }
@@ -253,6 +263,7 @@ WorkPageDataRequirements enabled_work_page_data_requirements(uint8_t page_mask)
     page_mask = static_cast<uint8_t>(page_mask & kAllWorkPageMask);
     return {
         (page_mask & kWeatherDataWorkPageMask) != 0,
+        (page_mask & kExtendedWeatherDataWorkPageMask) != 0,
         (page_mask & kDailySayingWorkPageMask) != 0,
     };
 }
@@ -293,14 +304,6 @@ const char *work_page_name(int page)
         return kUnknownWorkPageName;
     }
     return kWorkPageDescriptors[page].name;
-}
-
-int display_settings_item_work_page(int item)
-{
-    if (item < 0 || item >= kDisplaySettingsPageItemCount) {
-        return kInvalidWorkPage;
-    }
-    return kWorkPageDescriptors[item].page;
 }
 
 int first_enabled_work_page()
@@ -386,31 +389,21 @@ void work_page_order_replace(const uint8_t *order, size_t order_size)
     memcpy(s_work_page_order, replacement, sizeof(s_work_page_order));
 }
 
-bool swap_work_page_order_entries_preserving_home(int first_index, int second_index)
+bool work_page_order_swapped_copy_preserving_home(int first_index,
+                                                  int second_index,
+                                                  uint8_t *order,
+                                                  size_t order_size)
 {
-    if (!work_page_order_policy::is_order_index(first_index) ||
-        !work_page_order_policy::is_order_index(second_index)) {
-        return false;
-    }
     const uint8_t page_mask = work_page_enabled_mask_load();
-    bool accepted = false;
-    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
-    if (!lock) {
+    if (!copy_normalized_work_page_order(order, order_size, page_mask)) {
         return false;
     }
-    uint8_t candidate[kWorkPageCount] = {};
-    memcpy(candidate, s_work_page_order, sizeof(candidate));
-    uint8_t page = candidate[first_index];
-    candidate[first_index] = candidate[second_index];
-    candidate[second_index] = page;
-    int first_enabled = work_page_order_policy::first_enabled_index(
-        candidate, sizeof(candidate), page_mask);
-    if (work_page_order_policy::index_found(first_enabled) &&
-        candidate[first_enabled] != kWorkPageXiaozhiAI) {
-        memcpy(s_work_page_order, candidate, sizeof(s_work_page_order));
-        accepted = true;
-    }
-    return accepted;
+    return work_page_order_policy::swap_entries_preserving_home(
+        order,
+        order_size,
+        page_mask,
+        first_index,
+        second_index);
 }
 
 int next_enabled_work_page(int current_page)

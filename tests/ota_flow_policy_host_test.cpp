@@ -1,6 +1,6 @@
 // 验证 OTA 活跃状态、提示到期和 Tick 回绕边界。
 #include "ota_flow_policy.h"
-#include "ota_network_session.h"
+#include "ota_network_session_internal.h"
 
 #include <assert.h>
 #include <stdint.h>

@@ -1,10 +1,11 @@
 // 调度本地温湿度、电池采样和传感器相关低频后台任务。
-#include "sensor_services.h"
+#include "sensor_services_internal.h"
 
 #include "app_metadata.h"
 #include "app_tick_time.h"
 #include "battery_policy.h"
 #include "battery_runtime_state.h"
+#include "hourly_sensor_history_state_internal.h"
 #include "housekeeping_schedule_notify.h"
 #include "housekeeping_wait_policy.h"
 #include "local_sensor_state.h"
@@ -52,6 +53,14 @@ TickType_t next_periodic_sample_tick(TickType_t now,
     }
     int seconds_to_next = seconds_until_next_periodic_sample(local, interval_seconds);
     return now + pdMS_TO_TICKS(seconds_to_next * kMillisecondsPerSecond);
+}
+
+static TickType_t next_sensor_sample_tick(TickType_t now)
+{
+    return next_periodic_sample_tick(now,
+                                     kSensorSampleDayMinutes,
+                                     kSensorSampleNightMinutes,
+                                     kUnknownTimeSensorSampleMs);
 }
 
 TickType_t next_housekeeping_wake_tick(bool low_battery,
@@ -115,12 +124,9 @@ void notify_housekeeping_schedule_changed()
     (void)s_housekeeping_task_target.notify();
 }
 
-TickType_t next_sensor_sample_tick(TickType_t now)
+bool init_sensor_services_state()
 {
-    return next_periodic_sample_tick(now,
-                                     kSensorSampleDayMinutes,
-                                     kSensorSampleNightMinutes,
-                                     kUnknownTimeSensorSampleMs);
+    return init_hourly_sensor_history_state();
 }
 
 void housekeeping_task(void *)

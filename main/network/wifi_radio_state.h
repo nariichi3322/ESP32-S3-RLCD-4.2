@@ -2,4 +2,3 @@
 #pragma once
 
 bool wifi_radio_on_load();
-void wifi_radio_on_store(bool radio_on);

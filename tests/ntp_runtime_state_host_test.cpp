@@ -1,5 +1,5 @@
 // 验证 NTP 最近成功时间在初始化边界和并发读写下保持完整值。
-#include "ntp_runtime_state.h"
+#include "ntp_runtime_state_internal.h"
 
 #include <atomic>
 #include <cassert>

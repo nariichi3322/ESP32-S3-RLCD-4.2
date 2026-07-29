@@ -30,11 +30,6 @@ EXT_RAM_BSS_ATTR lv_obj_t *s_work_page_day_progress_canvas[kWorkPageCount] = {};
 lv_color_t *s_work_page_day_progress_buffer = nullptr;
 int s_work_page_day_progress_filled = -1;
 
-bool valid_work_page(int page)
-{
-    return page >= 0 && page < kWorkPageCount;
-}
-
 bool is_progress_segment_index(int index)
 {
     return index >= 0 && index < kProgressSegmentCount;
@@ -60,7 +55,6 @@ bool is_progress_segment_border_pixel(int x, int y)
 bool progress_update_args_valid(lv_obj_t *canvas, const int *last_filled)
 {
     return canvas && last_filled;
-}
 }
 
 void draw_progress_segment(lv_obj_t *canvas, int index, bool filled)
@@ -91,6 +85,7 @@ void invalidate_progress_segment(lv_obj_t *canvas, int index)
     }
     int x0 = index * kProgressSegmentStride;
     invalidate_canvas_rect(canvas, x0, 0, x0 + kProgressSegmentW - 1, kProgressSegmentH - 1);
+}
 }
 
 void build_progress_canvas(lv_obj_t *parent, lv_obj_t **canvas, lv_color_t **buf, int y)
@@ -146,7 +141,9 @@ void update_progress_canvas(lv_obj_t *canvas, int filled, int *last_filled)
 
 void build_work_page_day_progress(lv_obj_t *parent, int page)
 {
-    if (!parent || !valid_work_page(page) || s_work_page_day_progress_canvas[page]) {
+    if (!parent ||
+        !is_valid_work_page_id(page) ||
+        s_work_page_day_progress_canvas[page]) {
         return;
     }
     build_progress_canvas(parent,
@@ -160,7 +157,8 @@ void build_work_page_day_progress(lv_obj_t *parent, int page)
 
 bool update_work_page_day_progress(int page, const ClockUiTimeSnapshot &time_snapshot)
 {
-    if (!valid_work_page(page) || !s_work_page_day_progress_canvas[page]) {
+    if (!is_valid_work_page_id(page) ||
+        !s_work_page_day_progress_canvas[page]) {
         return false;
     }
     int previous = s_work_page_day_progress_filled;
@@ -172,7 +170,7 @@ bool update_work_page_day_progress(int page, const ClockUiTimeSnapshot &time_sna
 
 void set_work_page_day_progress_visible(int page, bool visible)
 {
-    if (!valid_work_page(page)) {
+    if (!is_valid_work_page_id(page)) {
         return;
     }
     set_obj_visible(s_work_page_day_progress_canvas[page], visible);

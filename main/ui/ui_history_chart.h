@@ -6,14 +6,6 @@
 #include "lvgl.h"
 #include <time.h>
 
-inline constexpr int kHistoryAxisValueCount = 3;
-inline constexpr int kHistoryAxisTickCount = 5;
-inline constexpr int kHistoryChartCanvasX = 18;
-inline constexpr int kHistoryChartCanvasY = 82;
-inline constexpr int kHistoryBadgeW = 40;
-inline constexpr int kHistoryBadgeH = 16;
-inline constexpr char kHistoryAxisPlaceholder[] = "--";
-
 void style_history_value_badge(lv_obj_t *label);
 void set_history_badge(lv_obj_t *label,
                        const char *text,

@@ -37,10 +37,26 @@ void test_stage_and_response_buffer()
     assert(exchange.request_url()[0] == 'u');
     assert(exchange.get()[0] == 'r');
 
+    QweatherResponseBuffer staged("test", 32, 64, 16);
+    assert(staged);
+    assert(staged.request_url() != nullptr);
+    assert(staged.get() == staged.request_url() + 64);
+    assert(staged.staging() ==
+           static_cast<void *>(staged.get() + staged.size()));
+    assert(staged.staging_size() == 16);
+    memset(staged.staging(), 0x5a, staged.staging_size());
+    assert(static_cast<unsigned char *>(staged.staging())[15] == 0x5a);
+
     QweatherResponseBuffer overflow("test", SIZE_MAX, 1);
     assert(!overflow);
     assert(overflow.request_url() == nullptr);
     assert(overflow.get() == nullptr);
+
+    QweatherResponseBuffer staging_overflow("test", 1, 1, SIZE_MAX);
+    assert(!staging_overflow);
+    assert(staging_overflow.request_url() == nullptr);
+    assert(staging_overflow.get() == nullptr);
+    assert(staging_overflow.staging() == nullptr);
 }
 
 void test_json_root_rejects_invalid_input()

@@ -1,5 +1,5 @@
 // 验证设置页三类二次确认状态互不干扰并支持单项和全部清理。
-#include "ui_settings_confirmation_state.h"
+#include "ui_settings_confirmation_state_internal.h"
 
 #include <cassert>
 

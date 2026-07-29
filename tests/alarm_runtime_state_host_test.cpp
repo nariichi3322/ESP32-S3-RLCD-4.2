@@ -1,5 +1,5 @@
 // 验证闹钟复合快照、原子启用镜像和覆盖确认始终保持一致状态。
-#include "alarm_runtime_state.h"
+#include "alarm_runtime_state_internal.h"
 
 #include <assert.h>
 #include <atomic>

@@ -125,7 +125,9 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
     DisplayPort &display = app_display();
     DisplayFlushRuntimeState &runtime = display_flush_runtime();
 
-    if (ota_runtime_reboot_pending_load()) {
+    const OtaRuntimeFlagsSnapshot ota_at_flush_start =
+        ota_runtime_flags_load();
+    if (ota_at_flush_start.reboot_pending) {
         runtime.range_count = 0;
         runtime.force_full_refresh = false;
         runtime.full_reason_mask = 0;
@@ -204,14 +206,23 @@ void flush_callback(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color
         TickType_t now_tick = xTaskGetTickCount();
         int active_page = active_work_page_load();
         const bool page_changed = runtime.last_diag_page != active_page;
+        const bool diag_window_due =
+            runtime.last_diag_tick == 0 ||
+            now_tick - runtime.last_diag_tick >=
+                pdMS_TO_TICKS(kDisplayFlushDiagIntervalMs) ||
+            page_changed;
+        OtaRuntimeFlagsSnapshot ota_for_diag = {};
+        if (diag_window_due && runtime.full_cycles > 0) {
+            ota_for_diag = ota_runtime_flags_load();
+        }
         const DisplayFlushDiagDecision diag = display_flush_diag_decision(
             runtime.last_diag_tick == 0,
             now_tick - runtime.last_diag_tick >=
                 pdMS_TO_TICKS(kDisplayFlushDiagIntervalMs),
             page_changed,
             runtime.full_cycles,
-            ota_runtime_state_load() == kOtaUpdating,
-            ota_runtime_reboot_pending_load());
+            ota_for_diag.state == kOtaUpdating,
+            ota_for_diag.reboot_pending);
         if (diag.emit_log) {
             ESP_LOGI(TAG,
                      DISPLAY_FLUSH_DIAG_LOG_FORMAT,

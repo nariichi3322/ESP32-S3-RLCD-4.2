@@ -1,7 +1,7 @@
 // 构建启动屏、播放启动动画并在启动完成后切换到首个已启用工作页。
 #include "ui_boot_screen.h"
 
-#include "active_work_page_state.h"
+#include "active_work_page_state_internal.h"
 #include "app_event_group.h"
 #include "app_metadata.h"
 #include "app_runtime_timing.h"

@@ -136,7 +136,7 @@ NetworkSyncSchedule calculate_network_sync_schedule(const NetworkSyncScheduleInp
         !input.provisioning_sync_due && !input.manual_saying_due;
     schedule.boot_saying_ready = boot_saying_time_ready &&
                                  !schedule.stagger_boot_saying_after_weather;
-    schedule.weather_due = input.have_weather_key &&
+    schedule.weather_due = input.have_weather_config &&
                            !input.low_battery_mode &&
                            (input.manual_weather_due ||
                             input.provisioning_sync_due ||
@@ -160,7 +160,7 @@ bool network_sync_availability_changed(const NetworkSyncAvailability &scheduled,
                                        const NetworkSyncAvailability &current)
 {
     return scheduled.have_wifi_creds != current.have_wifi_creds ||
-           scheduled.have_weather_key != current.have_weather_key ||
+           scheduled.have_weather_config != current.have_weather_config ||
            scheduled.offline_mode != current.offline_mode ||
            scheduled.low_battery_mode != current.low_battery_mode;
 }
@@ -332,12 +332,6 @@ bool network_visible_auto_sync_allowed(int64_t uptime_us)
     return uptime_us < 0 || uptime_us >= kStartupVisibleAutoSyncDelayUs;
 }
 
-bool network_request_snapshot_canceled(uint32_t requested_bits,
-                                       uint32_t pending_bits)
-{
-    return (requested_bits & ~pending_bits) != 0;
-}
-
 bool network_startup_followup_https_allowed(bool startup_pressure_active,
                                             size_t internal_free,
                                             size_t internal_largest,
@@ -360,11 +354,4 @@ bool network_automatic_boot_https_allowed(bool startup_screen_active,
         internal_free,
         internal_largest,
         dma_largest);
-}
-
-bool network_boot_weather_due_after_update(bool boot_weather_due,
-                                           bool boot_weather_ready,
-                                           bool resource_deferred)
-{
-    return boot_weather_ready ? resource_deferred : boot_weather_due;
 }

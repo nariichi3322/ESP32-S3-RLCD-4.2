@@ -27,6 +27,21 @@ public:
         reset_attempts();
     }
 
+    void cancel_request(Tick now,
+                        int max_attempts,
+                        Tick backoff_ticks)
+    {
+        // Cancelling the final in-flight attempt must leave a recovery
+        // deadline; attempts == max without backoff would block forever.
+        const bool exhausted = requested_ &&
+                               max_attempts > 0 &&
+                               attempts_ >= max_attempts;
+        reset_request();
+        if (exhausted) {
+            start_backoff(now, backoff_ticks);
+        }
+    }
+
     bool request_if_due(Tick now,
                         bool sync_in_flight,
                         bool request_blocked,
@@ -44,10 +59,7 @@ public:
             app_tick_interval_elapsed(now, request_tick_, retry_ticks)) {
             reset_request();
             if (attempts_ >= max_attempts) {
-                backoff_active_ = true;
-                backoff_started_tick_ = now;
-                backoff_duration_ticks_ = backoff_ticks;
-                backoff_until_tick_ = now + backoff_ticks;
+                start_backoff(now, backoff_ticks);
                 backoff_active = true;
             }
         }
@@ -80,6 +92,14 @@ public:
     Tick backoff_until_tick() const { return backoff_until_tick_; }
 
 private:
+    void start_backoff(Tick now, Tick backoff_ticks)
+    {
+        backoff_active_ = true;
+        backoff_started_tick_ = now;
+        backoff_duration_ticks_ = backoff_ticks;
+        backoff_until_tick_ = now + backoff_ticks;
+    }
+
     bool requested_ = false;
     Tick request_tick_ = 0;
     int attempts_ = 0;

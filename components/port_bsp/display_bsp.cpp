@@ -68,6 +68,13 @@ static int RlcdTxRetryDelayMs(bool conservative, int attempt)
     return base_delay + attempt * step_delay;
 }
 
+static TickType_t RlcdTxRetryDelayTicks(bool conservative, int attempt)
+{
+    const TickType_t delay =
+        pdMS_TO_TICKS(RlcdTxRetryDelayMs(conservative, attempt));
+    return delay > 0 ? delay : 1;
+}
+
 static bool RlcdTxCanRetry(esp_err_t err)
 {
     return err == ESP_ERR_NO_MEM || err == ESP_ERR_TIMEOUT;
@@ -460,7 +467,7 @@ bool DisplayPort::RLCD_SendParamChecked(int command,
         if (!RlcdTxCanRetry(err)) {
             break;
         }
-        vTaskDelay(pdMS_TO_TICKS(RlcdTxRetryDelayMs(conservative, attempt)));
+        vTaskDelay(RlcdTxRetryDelayTicks(conservative, attempt));
     }
 
     ESP_LOGW(kDisplayLogTag,
@@ -508,7 +515,7 @@ void DisplayPort::RLCD_Sendbuffera(uint8_t *Data, int len) {
             if (!RlcdTxCanRetry(err)) {
                 break;
             }
-            vTaskDelay(pdMS_TO_TICKS(RlcdTxRetryDelayMs(quiet, attempt)));
+            vTaskDelay(RlcdTxRetryDelayTicks(quiet, attempt));
         }
 
         if (err != ESP_OK) {

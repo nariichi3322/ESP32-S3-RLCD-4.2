@@ -1,5 +1,5 @@
 // 验证关于本机页面请求与截止 Tick 在并发读写下保持一致快照。
-#include "ui_info_page_state.h"
+#include "ui_info_page_state_internal.h"
 
 #include <atomic>
 #include <cassert>

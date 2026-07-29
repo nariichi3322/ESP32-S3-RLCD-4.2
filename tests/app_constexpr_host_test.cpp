@@ -1,4 +1,4 @@
-// 验证公共数组和固定 C 字符串编译期 helper 的边界行为。
+// 验证公共数组、固定 C 字符串和饱和计数 helper 的边界行为。
 #include "app_constexpr.h"
 
 #include <assert.h>
@@ -21,6 +21,9 @@ int main()
     static_assert(cstr_length(nullptr) == 0);
     static_assert(cstr_length("") == 0);
     static_assert(cstr_length("length") == 6);
+    static_assert(saturating_increment_u8(0) == 1);
+    static_assert(saturating_increment_u8(UINT8_MAX - 1) == UINT8_MAX);
+    static_assert(saturating_increment_u8(UINT8_MAX) == UINT8_MAX);
     static_assert(cstr_array_nonempty(valid_texts));
     static_assert(!cstr_array_nonempty(empty_texts));
     static_assert(cstr_array_contains(valid_texts, "beta"));

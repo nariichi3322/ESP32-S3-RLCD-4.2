@@ -1,8 +1,9 @@
 // 实现 OTA 专用 Wi-Fi 连接等待、运行态复核和网络资源收尾。
-#include "ota_network_session.h"
+#include "ota_network_session_internal.h"
 
 #include "app_event_group.h"
 #include "app_metadata.h"
+#include "app_tick_time.h"
 #include "battery_policy.h"
 #include "battery_runtime_state.h"
 #include "network_credentials_state.h"
@@ -27,8 +28,8 @@ enum class OtaWifiConnectionWaitResult {
 
 OtaNetworkBlockReason ota_network_block_reason_load()
 {
-    BatteryRuntimeSnapshot battery;
-    battery_runtime_snapshot_load(&battery);
+    const BatteryRuntimeStatusSnapshot battery =
+        battery_runtime_status_load();
 
     OtaNetworkContinuationState state = {};
     state.offline_mode = offline_mode_enabled_load();
@@ -68,11 +69,13 @@ OtaWifiConnectionWaitResult wait_for_ota_wifi_connection(
         }
         const uint32_t remaining_ms =
             static_cast<uint32_t>((remaining_us + kUsPerMs - 1) / kUsPerMs);
+        const TickType_t remaining_ticks =
+            app_tick_nonzero_delay(pdMS_TO_TICKS(remaining_ms));
         const EventBits_t bits = app_event_group_wait_bits(
             kOtaConnectionWakeBits,
             pdFALSE,
             pdFALSE,
-            pdMS_TO_TICKS(remaining_ms));
+            remaining_ticks);
         if ((bits & kNetworkStateChangedBit) != 0) {
             // OTA status changes publish the same edge. Ignore that stale edge
             // when the live network policy still permits this OTA session.

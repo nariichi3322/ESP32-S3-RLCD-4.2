@@ -1,7 +1,6 @@
 // 构建和刷新当月日历页面及其农历节日显示。
 #include "ui_work_pages.h"
 
-#include "app_constexpr.h"
 #include "app_metadata.h"
 #include "app_time_constants.h"
 #include "battery_runtime_state.h"
@@ -14,6 +13,7 @@
 #include "ui_page_state.h"
 #include "ui_progress.h"
 #include "ui_widgets.h"
+#include "ui_work_page_layout.h"
 #include "ui_work_status.h"
 
 #include <esp_log.h>
@@ -21,62 +21,12 @@
 #define CALENDAR_CANVAS_CREATE_FAILED_LOG "calendar canvas create failed"
 #define CALENDAR_LAYOUT_INVALID_LOG "calendar layout invalid"
 
-static constexpr int kCalendarCanvasW = 364;
-static constexpr int kCalendarCanvasH = 232;
-static constexpr int kCalendarCanvasX = 18;
-static constexpr int kCalendarCanvasY = 63;
-static constexpr int kCalendarTopLineX = 18;
-static constexpr int kCalendarTopLineY = 54;
-static constexpr int kCalendarTopLineW = 364;
-static constexpr int kCalendarTopLineH = 4;
-static constexpr int kCalendarSundayColumn = 0;
-static constexpr int kCalendarSaturdayColumn = kCalendarWeekdayCount - 1;
-static constexpr int kCalendarHeaderY = 2;
-static constexpr int kCalendarHeaderH = 18;
-static constexpr int kCalendarCellY = 27;
-static constexpr int kCalendarCellW = 52;
-static constexpr int kCalendarCellH = 41;
-static constexpr int kCalendarGridX = 0;
-static constexpr int kCalendarDottedFillYStep = 3;
-static constexpr int kCalendarDottedFillXStep = 4;
-static constexpr int kCalendarTodayInsetX = 4;
-static constexpr int kCalendarTodayInsetTop = 3;
-static constexpr int kCalendarTodayInsetW = 8;
-static constexpr int kCalendarTodayInsetH = 5;
-static constexpr int kCalendarTodayRadius = 5;
-static constexpr int kCalendarDayTextXInset = 2;
-static constexpr int kCalendarDayTextY = 2;
-static constexpr int kCalendarDayTextWInset = 4;
-static constexpr int kCalendarDayTextH = 14;
-static constexpr int kCalendarSubTextY = 20;
-static constexpr int kCalendarSubTextH = 12;
-static constexpr int kCalendarDayTextSize = 4; // "31" plus terminator, with one byte spare.
-static constexpr const char *kCalendarWeekdays[kCalendarWeekdayCount] = {"日", "一", "二", "三", "四", "五", "六"};
+using namespace ui_calendar_view_layout;
+
 static lv_obj_t *s_calendar_canvas;
 static lv_color_t *s_calendar_canvas_buffer;
 static int s_last_calendar_drawn_month = -1;
 static int s_last_calendar_drawn_day = -1;
-
-static_assert(array_count(kCalendarWeekdays) == kCalendarWeekdayCount,
-              "calendar weekday label table must match weekday count");
-static_assert(kCalendarCanvasW > 0 && kCalendarCanvasH > 0,
-              "calendar canvas size must be positive");
-static_assert(kCalendarTopLineW > 0 && kCalendarTopLineH > 0,
-              "calendar top separator size must be positive");
-static_assert(kCalendarGridX + kCalendarCellW * kCalendarWeekdayCount == kCalendarCanvasW,
-              "calendar columns must fill canvas width");
-static_assert(kCalendarCellY + (kCalendarVisibleRowCount - 1) * kCalendarCellH +
-                      kCalendarSubTextY + kCalendarSubTextH <=
-                  kCalendarCanvasH,
-              "calendar last visible row text must fit canvas height");
-static_assert(kCalendarCellY + (kCalendarVisibleRowCount - 1) * kCalendarCellH +
-                      kCalendarTodayInsetTop + kCalendarCellH - kCalendarTodayInsetH <=
-                  kCalendarCanvasH,
-              "calendar last visible row highlight must fit canvas height");
-static_assert(kCalendarTodayRadius > 0 &&
-                  kCalendarTodayRadius * 2 <= kCalendarCellW - kCalendarTodayInsetW &&
-                  kCalendarTodayRadius * 2 <= kCalendarCellH - kCalendarTodayInsetH,
-              "calendar today radius must fit highlight box");
 
 static void canvas_fill_rect_safe(lv_img_dsc_t *image,
                                   int w,
@@ -102,17 +52,17 @@ static void canvas_dot_rect(lv_img_dsc_t *image,
                             int rw,
                             int rh)
 {
-    for (int yy = y; yy < y + rh; yy += kCalendarDottedFillYStep) {
-        for (int xx = x; xx < x + rw; xx += kCalendarDottedFillXStep) {
+    for (int yy = y; yy < y + rh; yy += kDottedFillYStep) {
+        for (int xx = x; xx < x + rw; xx += kDottedFillXStep) {
             canvas_image_set_px_safe(image, xx, yy, w, h, lv_color_black());
         }
     }
     int right = x + rw - 1;
     int bottom = y + rh - 1;
-    for (int yy = y; yy <= bottom; yy += kCalendarDottedFillYStep) {
+    for (int yy = y; yy <= bottom; yy += kDottedFillYStep) {
         canvas_image_set_px_safe(image, right, yy, w, h, lv_color_black());
     }
-    for (int xx = x; xx <= right; xx += kCalendarDottedFillXStep) {
+    for (int xx = x; xx <= right; xx += kDottedFillXStep) {
         canvas_image_set_px_safe(image, xx, bottom, w, h, lv_color_black());
     }
     canvas_image_set_px_safe(image, right, bottom, w, h, lv_color_black());
@@ -178,48 +128,48 @@ static void draw_calendar_text(lv_obj_t *canvas,
 static void draw_calendar_weekday_header(lv_img_dsc_t *image)
 {
     canvas_fill_rect_safe(image,
-                          kCalendarCanvasW,
-                          kCalendarCanvasH,
-                          kCalendarGridX,
-                          kCalendarHeaderY,
-                          kCalendarCellW,
-                          kCalendarHeaderH,
+                          kCanvasWidth,
+                          kCanvasHeight,
+                          kGridX,
+                          kHeaderY,
+                          kCellWidth,
+                          kHeaderHeight,
                           lv_color_black());
     canvas_fill_rect_safe(image,
-                          kCalendarCanvasW,
-                          kCalendarCanvasH,
-                          kCalendarGridX + kCalendarCellW * kCalendarSaturdayColumn,
-                          kCalendarHeaderY,
-                          kCalendarCellW,
-                          kCalendarHeaderH,
+                          kCanvasWidth,
+                          kCanvasHeight,
+                          kGridX + kCellWidth * kSaturdayColumn,
+                          kHeaderY,
+                          kCellWidth,
+                          kHeaderHeight,
                           lv_color_black());
     canvas_dot_rect(image,
-                    kCalendarCanvasW,
-                    kCalendarCanvasH,
-                    kCalendarGridX + kCalendarCellW,
-                    kCalendarHeaderY,
-                    kCalendarCellW * (kCalendarWeekdayCount - 2),
-                    kCalendarHeaderH);
+                    kCanvasWidth,
+                    kCanvasHeight,
+                    kGridX + kCellWidth,
+                    kHeaderY,
+                    kCellWidth * (kCalendarWeekdayCount - 2),
+                    kHeaderHeight);
 
     for (int col = 0; col < kCalendarWeekdayCount; ++col) {
-        int x = kCalendarGridX + col * kCalendarCellW;
-        if (col == kCalendarSundayColumn || col == kCalendarSaturdayColumn) {
+        int x = kGridX + col * kCellWidth;
+        if (col == kSundayColumn || col == kSaturdayColumn) {
             draw_calendar_text(s_calendar_canvas,
-                               kCalendarWeekdays[col],
+                               kWeekdays[col],
                                x,
-                               kCalendarHeaderY,
-                               kCalendarCellW,
-                               kCalendarHeaderH,
+                               kHeaderY,
+                               kCellWidth,
+                               kHeaderHeight,
                                &zh_font_16,
                                lv_color_white(),
                                LV_TEXT_ALIGN_CENTER);
         } else {
             draw_calendar_text(s_calendar_canvas,
-                               kCalendarWeekdays[col],
+                               kWeekdays[col],
                                x,
-                               kCalendarHeaderY,
-                               kCalendarCellW,
-                               kCalendarHeaderH,
+                               kHeaderY,
+                               kCellWidth,
+                               kHeaderHeight,
                                &zh_font_16,
                                lv_color_black(),
                                LV_TEXT_ALIGN_CENTER);
@@ -237,30 +187,30 @@ static void draw_calendar_day_cell(const struct tm &local,
     if (!calendar_day_display_position(layout, day, &display_row, &col)) {
         return;
     }
-    int x = kCalendarGridX + col * kCalendarCellW;
-    int y = kCalendarCellY + display_row * kCalendarCellH;
+    int x = kGridX + col * kCellWidth;
+    int y = kCellY + display_row * kCellHeight;
     bool is_today = day == local.tm_mday;
 
     if (is_today) {
         canvas_fill_round_rect_safe(image,
-                                    kCalendarCanvasW,
-                                    kCalendarCanvasH,
-                                    x + kCalendarTodayInsetX,
-                                    y + kCalendarTodayInsetTop,
-                                    kCalendarCellW - kCalendarTodayInsetW,
-                                    kCalendarCellH - kCalendarTodayInsetH,
-                                    kCalendarTodayRadius,
+                                    kCanvasWidth,
+                                    kCanvasHeight,
+                                    x + kTodayInsetX,
+                                    y + kTodayInsetTop,
+                                    kCellWidth - kTodayInsetWidth,
+                                    kCellHeight - kTodayInsetHeight,
+                                    kTodayRadius,
                                     lv_color_black());
     }
 
-    char day_text[kCalendarDayTextSize] = {};
+    char day_text[kDayTextSize] = {};
     format_calendar_day_text(day_text, sizeof(day_text), day);
     draw_calendar_text(s_calendar_canvas,
                        day_text,
-                       x + kCalendarDayTextXInset,
-                       y + kCalendarDayTextY,
-                       kCalendarCellW - kCalendarDayTextWInset,
-                       kCalendarDayTextH,
+                       x + kDayTextXInset,
+                       y + kDayTextY,
+                       kCellWidth - kDayTextWidthInset,
+                       kDayTextHeight,
                        &lv_font_montserrat_16,
                        is_today ? lv_color_white() : lv_color_black(),
                        LV_TEXT_ALIGN_CENTER);
@@ -275,10 +225,10 @@ static void draw_calendar_day_cell(const struct tm &local,
     calendar_day_info(day_tm, &info);
     draw_calendar_text(s_calendar_canvas,
                        info.subtext,
-                       x + kCalendarDayTextXInset,
-                       y + kCalendarSubTextY,
-                       kCalendarCellW - kCalendarDayTextWInset,
-                       kCalendarSubTextH,
+                       x + kDayTextXInset,
+                       y + kSubTextY,
+                       kCellWidth - kDayTextWidthInset,
+                       kSubTextHeight,
                        &zh_font_16,
                        is_today ? lv_color_white() : lv_color_black(),
                        LV_TEXT_ALIGN_CENTER);
@@ -343,15 +293,15 @@ void build_calendar_page()
                                true);
 
     lv_obj_t *top_line = make_bar(screen,
-                                  kCalendarTopLineX,
-                                  kCalendarTopLineY,
-                                  kCalendarTopLineW,
-                                  kCalendarTopLineH);
+                                  ui_work_page_layout::kTopSeparatorX,
+                                  ui_work_page_layout::kTopSeparatorY,
+                                  ui_work_page_layout::kTopSeparatorWidth,
+                                  ui_work_page_layout::kTopSeparatorHeight);
     set_obj_black(top_line, true);
     build_work_page_day_progress(screen, kWorkPageCalendar);
 
     if (!s_calendar_canvas_buffer) {
-        s_calendar_canvas_buffer = alloc_canvas_buffer(kCalendarCanvasW, kCalendarCanvasH);
+        s_calendar_canvas_buffer = alloc_canvas_buffer(kCanvasWidth, kCanvasHeight);
     }
     if (!s_calendar_canvas_buffer) {
         lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
@@ -364,10 +314,10 @@ void build_calendar_page()
     } else {
         configure_canvas_base(s_calendar_canvas,
                               s_calendar_canvas_buffer,
-                              kCalendarCanvasX,
-                              kCalendarCanvasY,
-                              kCalendarCanvasW,
-                              kCalendarCanvasH);
+                              kCanvasX,
+                              kCanvasY,
+                              kCanvasWidth,
+                              kCanvasHeight);
         lv_canvas_fill_bg(s_calendar_canvas, lv_color_white(), LV_OPA_COVER);
     }
 

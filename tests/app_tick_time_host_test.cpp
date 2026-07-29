@@ -17,6 +17,11 @@ int main()
     static_assert(!app_tick_interval_elapsed<uint32_t>(3, tick_max - 5, 10));
     static_assert(app_tick_interval_elapsed<uint32_t>(4, tick_max - 5, 10));
 
+    static_assert(app_tick_nonzero_delay<uint32_t>(0) == 1);
+    static_assert(app_tick_nonzero_delay<uint32_t>(25) == 25);
+    static_assert(app_tick_nonzero_delay<uint16_t>(0) == 1);
+    static_assert(app_tick_nonzero_delay<uint32_t>(tick_max) == tick_max);
+
     static_assert(app_tick_deadline_pending<uint32_t>(100, 110));
     static_assert(app_tick_deadline_reached<uint32_t>(110, 110));
     static_assert(app_tick_deadline_reached<uint32_t>(111, 110));

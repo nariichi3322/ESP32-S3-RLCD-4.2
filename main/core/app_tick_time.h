@@ -11,6 +11,15 @@ constexpr bool app_tick_interval_elapsed(Tick now, Tick started, Tick duration)
     return static_cast<Tick>(now - started) >= duration;
 }
 
+// 已确认需要阻塞的正时长换算后至少等待一个 Tick，避免亚 Tick 时长退化为忙等。
+template <typename Tick>
+constexpr Tick app_tick_nonzero_delay(Tick ticks)
+{
+    static_assert(std::is_integral<Tick>::value && std::is_unsigned<Tick>::value,
+                  "Tick must be an unsigned integral type");
+    return ticks == 0 ? static_cast<Tick>(1) : ticks;
+}
+
 // 仅用于距离小于 Tick 半周期的短截止时间；当前 UI 截止时间均为秒级。
 template <typename Tick>
 constexpr bool app_tick_deadline_reached(Tick now, Tick deadline)

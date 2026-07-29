@@ -1,22 +1,24 @@
 // 管理页面根对象、可见性、工作页顺序和低电量显示状态。
 #include "ui_page_state.h"
 
-#include "ui_views.h"
-
-#include "active_work_page_state.h"
+#include "active_work_page_state_internal.h"
 #include "app_display_config.h"
 #include "app_metadata.h"
-#include "battery_policy.h"
 #include "battery_runtime_state.h"
 #include "ui_clock.h"
 #include "ui_clock_header_objects.h"
 #include "ui_clock_surface_objects.h"
 #include "ui_flip_clock.h"
+#include "ui_progress.h"
 #include "ui_setup_status.h"
 #include "ui_status_refresh_policy.h"
+#include "ui_widgets.h"
+#include "ui_work_page_catalog.h"
+#include "ui_work_pages.h"
 #include "ui_xiaozhi.h"
 #include "weather_state.h"
 #include "wifi_portal_state.h"
+#include "work_page_ids.h"
 
 #include <esp_attr.h>
 #include <esp_log.h>
@@ -85,7 +87,7 @@ static_assert(kLowerPanelObjectCapacity > 0, "lower panel object storage must no
 
 lv_obj_t *work_page_root(int page)
 {
-    if (page < 0 || page >= kWorkPageCount) {
+    if (!is_valid_work_page_id(page)) {
         return nullptr;
     }
     return s_work_page_roots[page];
@@ -93,7 +95,7 @@ lv_obj_t *work_page_root(int page)
 
 void set_work_page_root(int page, lv_obj_t *root)
 {
-    if (page < 0 || page >= kWorkPageCount) {
+    if (!is_valid_work_page_id(page)) {
         return;
     }
     s_work_page_roots[page] = root;
@@ -233,12 +235,6 @@ void clear_lower_panel_object_refs()
     for (lv_obj_t *&obj : s_lower_panel_objects) {
         obj = nullptr;
     }
-}
-
-bool update_low_battery_state()
-{
-    return battery_runtime_low_mode_update(kLowBatteryEnterPercent,
-                                           kLowBatteryExitPercent);
 }
 
 void apply_clock_mode_visibility(bool setup_active, bool low_battery_mode)

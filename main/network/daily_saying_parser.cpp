@@ -3,9 +3,9 @@
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
+#include "ascii_text.h"
 #include "network_json.h"
 #include "network_json_root.h"
-#include "network_text.h"
 
 #include "cJSON.h"
 #include <string.h>
@@ -45,7 +45,7 @@ bool copy_trimmed_text(const char *text, char *out, size_t out_len)
         return false;
     }
     copy_cstr(out, out_len, text);
-    trim_ascii(out);
+    trim_ascii_whitespace(out);
     return out[0] != '\0';
 }
 
@@ -61,7 +61,7 @@ bool copy_plain_text_candidate(const char *response, char *out, size_t out_len)
         return false;
     }
     copy_cstr(out, out_len, response);
-    trim_ascii(out);
+    trim_ascii_whitespace(out);
     return plain_text_candidate(out);
 }
 

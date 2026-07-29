@@ -1,5 +1,5 @@
 // 验证电池运行态生产模块的一致快照和低电量迟滞规则。
-#include "battery_runtime_state.h"
+#include "battery_runtime_state_internal.h"
 
 #include <atomic>
 #include <cassert>
@@ -19,7 +19,6 @@ int main()
     assert(!status.charging);
     assert(!status.low_battery_mode);
     assert(battery_percent_load() == -1);
-    assert(!battery_charging_load());
     assert(!battery_low_mode_load());
     assert(battery_runtime_version_load() == 0);
     battery_runtime_snapshot_load(&snapshot);
@@ -39,20 +38,11 @@ int main()
     assert(!battery_low_mode_for_percent(true, 13, kEnterPercent, kExitPercent));
 
     snapshot.percent = 9;
-    battery_runtime_snapshot_store(snapshot);
-    const uint32_t low_enter_version = battery_runtime_version_load();
-    assert(battery_runtime_low_mode_update(kEnterPercent, kExitPercent));
-    assert(battery_low_mode_load());
-    assert(battery_runtime_version_load() == low_enter_version + 1);
-    assert(!battery_runtime_low_mode_update(kEnterPercent, kExitPercent));
-    assert(battery_runtime_version_load() == low_enter_version + 1);
-    snapshot.percent = 13;
     snapshot.low_battery_mode = true;
+    snapshot.version = 1;
     battery_runtime_snapshot_store(snapshot);
-    const uint32_t low_exit_version = battery_runtime_version_load();
-    assert(battery_runtime_low_mode_update(kEnterPercent, kExitPercent));
-    assert(!battery_low_mode_load());
-    assert(battery_runtime_version_load() == low_exit_version + 1);
+    assert(battery_low_mode_load());
+    assert(battery_runtime_version_load() == snapshot.version);
 
     snapshot.percent = 50;
     snapshot.voltage = 50.0f;
@@ -63,7 +53,6 @@ int main()
     snapshot.low_battery_mode = false;
     battery_runtime_snapshot_store(snapshot);
     assert(battery_percent_load() == 50);
-    assert(battery_charging_load());
     assert(!battery_low_mode_load());
     assert(battery_runtime_version_load() == snapshot.version);
     status = battery_runtime_status_load();
@@ -121,7 +110,6 @@ int main()
 
     battery_runtime_snapshot_load(&snapshot);
     assert(battery_percent_load() == snapshot.percent);
-    assert(battery_charging_load() == snapshot.charging);
     assert(battery_low_mode_load() == snapshot.low_battery_mode);
     assert(battery_runtime_version_load() == snapshot.version);
     status = battery_runtime_status_load();

@@ -1,5 +1,5 @@
 // 维护天气数据的一致快照、成功更新时间和 ready 事件发布。
-#include "weather_state.h"
+#include "weather_state_internal.h"
 
 #include "app_event_group.h"
 #include "app_metadata.h"
@@ -25,6 +25,8 @@ std::atomic<bool> s_weather_ready{false};
 #define WEATHER_UPDATED_LOG_FORMAT "weather updated: %s %s %sC %s%% icon=%s forecast=%s air=%s"
 #define WEATHER_CURRENT_PUBLISHED_BEFORE_DEFER_FORMAT \
     "weather current published before deferred follow-up: %s %s %sC"
+#define WEATHER_BASIC_UPDATED_LOG_FORMAT \
+    "weather basic data updated: %s %s %sC %s%% icon=%s"
 constexpr const char *kWeatherFetchStatusOk = "ok";
 constexpr const char *kWeatherFetchStatusCached = "cached";
 constexpr const char *kWeatherReadyEventUnavailableLog =
@@ -58,6 +60,16 @@ uint32_t pack_weather_alert_status(const WeatherAlertData &alert,
     return (alert.active ? kWeatherAlertActiveMask : 0U) |
            (static_cast<uint32_t>(count) << kWeatherAlertCountShift) |
            ((version & kWeatherAlertVersionMask) << kWeatherAlertVersionShift);
+}
+
+void publish_weather_alert_status_locked()
+{
+    const uint32_t current =
+        s_weather_alert_status.load(std::memory_order_relaxed);
+    s_weather_alert_status.store(
+        pack_weather_alert_status(s_weather_store.alert,
+                                  next_weather_alert_version(current)),
+        std::memory_order_release);
 }
 
 WeatherAlertStatusSnapshot unpack_weather_alert_status(uint32_t packed)
@@ -104,12 +116,29 @@ bool commit_weather_snapshot(const WeatherData &next,
                                       forecast_ok,
                                       air_ok,
                                       now);
-        const uint32_t current =
-            s_weather_alert_status.load(std::memory_order_relaxed);
-        s_weather_alert_status.store(
-            pack_weather_alert_status(s_weather_store.alert,
-                                      next_weather_alert_version(current)),
-            std::memory_order_release);
+        publish_weather_alert_status_locked();
+    }
+    publish_weather_ready_event();
+    return true;
+}
+
+bool commit_basic_weather_snapshot(const WeatherData &next,
+                                   const WeatherAlertData &next_alert,
+                                   bool alert_updated)
+{
+    time_t now = 0;
+    time(&now);
+    {
+        ScopedSemaphoreLock lock(s_weather_state_mutex);
+        if (!lock) {
+            return false;
+        }
+        weather_snapshot_store_commit_basic(&s_weather_store,
+                                            next,
+                                            next_alert,
+                                            alert_updated,
+                                            now);
+        publish_weather_alert_status_locked();
     }
     publish_weather_ready_event();
     return true;
@@ -148,22 +177,6 @@ void get_weather_full_snapshot(WeatherData *weather,
 void get_weather_snapshot(WeatherData *weather)
 {
     get_weather_full_snapshot(weather, nullptr, nullptr, nullptr);
-}
-
-void get_weather_forecast_snapshot(WeatherForecastData *forecast)
-{
-    if (!forecast) {
-        return;
-    }
-    get_weather_full_snapshot(nullptr, nullptr, forecast, nullptr);
-}
-
-void get_weather_air_snapshot(WeatherAirData *air)
-{
-    if (!air) {
-        return;
-    }
-    get_weather_full_snapshot(nullptr, nullptr, nullptr, air);
 }
 
 WeatherAlertStatusSnapshot weather_alert_status_snapshot_load()
@@ -235,6 +248,7 @@ void commit_weather_update_snapshot(const WeatherData &next,
                                     const WeatherAlertData &next_alert,
                                     const WeatherForecastData &next_forecast,
                                     const WeatherAirData &next_air,
+                                    bool alert_updated,
                                     bool forecast_ok,
                                     bool air_ok)
 {
@@ -242,7 +256,7 @@ void commit_weather_update_snapshot(const WeatherData &next,
                                  next_alert,
                                  next_forecast,
                                  next_air,
-                                 true,
+                                 alert_updated,
                                  forecast_ok,
                                  air_ok)) {
         return;
@@ -255,6 +269,22 @@ void commit_weather_update_snapshot(const WeatherData &next,
              next.icon,
              forecast_ok ? kWeatherFetchStatusOk : kWeatherFetchStatusCached,
              air_ok ? kWeatherFetchStatusOk : kWeatherFetchStatusCached);
+}
+
+void commit_weather_basic_snapshot(const WeatherData &next,
+                                   const WeatherAlertData &next_alert,
+                                   bool alert_updated)
+{
+    if (!commit_basic_weather_snapshot(next, next_alert, alert_updated)) {
+        return;
+    }
+    ESP_LOGI(TAG,
+             WEATHER_BASIC_UPDATED_LOG_FORMAT,
+             next.city,
+             next.text,
+             next.temp,
+             next.humidity,
+             next.icon);
 }
 
 void commit_weather_resource_deferred_snapshot(

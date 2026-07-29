@@ -29,8 +29,6 @@ inline const char *ota_manifest_source_name_or_unknown(const char *name)
     return name && name[0] != '\0' ? name : kOtaUnknownManifestSource;
 }
 
-void ota_manifest_load_cached(OtaManifest *manifest);
-void ota_manifest_store_cached(const OtaManifest &manifest);
 // manifest and source_name are cleared before work and remain empty on failure.
 bool ota_manifest_fetch(OtaManifest *manifest,
                         char *source_name,

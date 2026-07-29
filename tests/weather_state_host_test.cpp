@@ -1,5 +1,5 @@
 // 直接验证生产天气状态的静态 mutex、事件发布和并发完整快照。
-#include "weather_state.h"
+#include "weather_state_internal.h"
 
 #include "app_metadata.h"
 
@@ -32,6 +32,8 @@ void fill_snapshot(char marker,
     strlcpy(weather->temp, text, sizeof(weather->temp));
     strlcpy(weather->humidity, text, sizeof(weather->humidity));
     strlcpy(weather->icon, text, sizeof(weather->icon));
+    strlcpy(weather->lat, "30.0", sizeof(weather->lat));
+    strlcpy(weather->lon, "120.0", sizeof(weather->lon));
 
     alert->active = true;
     alert->count = 1;
@@ -64,14 +66,15 @@ void assert_snapshot_marker(char marker,
     assert(air.ready && air.aqi[0] == marker);
 }
 
-void commit_marker(char marker)
+void commit_marker(char marker, bool alert_updated = true)
 {
     WeatherData weather = {};
     WeatherAlertData alert = {};
     WeatherForecastData forecast = {};
     WeatherAirData air = {};
     fill_snapshot(marker, &weather, &alert, &forecast, &air);
-    commit_weather_update_snapshot(weather, alert, forecast, air, true, true);
+    commit_weather_update_snapshot(
+        weather, alert, forecast, air, alert_updated, true, true);
 }
 } // namespace
 
@@ -153,13 +156,24 @@ int main()
     get_weather_full_snapshot(&weather, &alert, &forecast, &air);
     assert_snapshot_marker('B', weather, alert, forecast, air);
 
+    commit_marker('C', false);
+    get_weather_full_snapshot(&weather, &alert, &forecast, &air);
+    assert(weather.city[0] == 'C');
+    assert(alert.titles[0][0] == 'B');
+    assert(forecast.days[0].date[0] == 'C');
+    assert(air.aqi[0] == 'C');
+    alert_status = weather_alert_status_snapshot_load();
+    assert(alert_status.active);
+    assert(alert_status.count == 1);
+    assert(alert_status.version == 3);
+
     clear_weather_ready_event();
     assert(g_event_clear_count.load() == 1);
     assert(!weather_ready_state_load());
 
     g_fail_weather_mutex_take.store(true, std::memory_order_release);
     commit_marker('A');
-    assert(g_event_set_count.load() == 1);
+    assert(g_event_set_count.load() == 2);
     cache_status = {1, 1, true};
     assert(!weather_cache_status_snapshot_load(&cache_status));
     assert(cache_status.last_sync_time == 0);
@@ -181,8 +195,12 @@ int main()
     assert(!air.ready && air.aqi[0] == '\0');
     g_fail_weather_mutex_take.store(false, std::memory_order_release);
     get_weather_full_snapshot(&weather, &alert, &forecast, &air);
-    assert_snapshot_marker('B', weather, alert, forecast, air);
+    assert(weather.city[0] == 'C');
+    assert(alert.titles[0][0] == 'B');
+    assert(forecast.days[0].date[0] == 'C');
+    assert(air.aqi[0] == 'C');
 
+    commit_marker('B');
     std::atomic<bool> writer_done{false};
     std::thread writer([&]() {
         for (int i = 0; i < 4000; ++i) {

@@ -1,6 +1,6 @@
 // 验证图片时钟内置图库按星期、自定义图库按配置时段轮换及回退索引。
 #include "ui_gallery_selection.h"
-#include "ui_gallery_rotation_state.h"
+#include "ui_gallery_rotation_state_internal.h"
 
 #include <assert.h>
 

@@ -3,8 +3,9 @@
 
 #include "manual_weather_city_state.h"
 #include "offline_mode_state.h"
-#include "ui_settings_confirmation_state.h"
-#include "ui_gallery_rotation_state.h"
+#include "offline_mode_state_internal.h"
+#include "ui_settings_confirmation_state_internal.h"
+#include "ui_gallery_rotation_state_internal.h"
 #include "weather_city_contract.h"
 
 #include <assert.h>

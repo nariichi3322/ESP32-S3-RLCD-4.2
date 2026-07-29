@@ -1,5 +1,5 @@
 // 使用静态任务互斥发布本地温湿度快照，避免普通任务占用中断临界区。
-#include "local_sensor_state.h"
+#include "local_sensor_state_internal.h"
 
 #include "scoped_semaphore_lock.h"
 

@@ -1,5 +1,5 @@
 // 集中维护 Wi-Fi 射频运行状态，供网络与业务任务安全共享。
-#include "wifi_radio_state.h"
+#include "wifi_radio_state_internal.h"
 
 #include <atomic>
 

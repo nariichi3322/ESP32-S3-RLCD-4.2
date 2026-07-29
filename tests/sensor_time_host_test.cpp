@@ -1,4 +1,4 @@
-// 验证共享时间可信度、夜间窗口、整点归一化和天气同步时刻。
+// 验证共享时间可信度、夜间窗口、采样边界和本地时间边界。
 #include "sensor_time.h"
 
 #include "app_time_constants.h"
@@ -81,18 +81,8 @@ int main()
     expect_local_time(next_local_midnight_time(value), 2026, 7, 13, 0, 0);
     expect_local_time(next_local_midnight_time(local_epoch(2026, 12, 31, 23, 59, 59)),
                       2027, 1, 1, 0, 0);
-    expect_local_time(next_weather_sync_time(value), 2026, 7, 12, 14, 0);
-    expect_local_time(next_weather_sync_time(local_epoch(2026, 7, 12, 21, 30, 0)),
-                      2026, 7, 12, 22, 0);
-    expect_local_time(next_weather_sync_time(local_epoch(2026, 7, 12, 22, 30, 0)),
-                      2026, 7, 13, 0, 0);
-    expect_local_time(next_weather_sync_time(local_epoch(2026, 7, 13, 0, 30, 0)),
-                      2026, 7, 13, 2, 0);
-    expect_local_time(next_weather_sync_time(local_epoch(2026, 7, 13, 5, 30, 0)),
-                      2026, 7, 13, 6, 0);
 
     time_t invalid = local_epoch(2023, 7, 12, 12, 34, 56);
     assert(next_local_midnight_time(invalid) == 0);
-    assert(next_weather_sync_time(invalid) == invalid + 60 * 60);
     return 0;
 }

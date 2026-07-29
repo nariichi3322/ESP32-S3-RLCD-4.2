@@ -93,6 +93,36 @@ void test_failed_extended_fetch_preserves_same_location_cache()
     assert(weather_snapshot_store_extended_ready(store));
 }
 
+void test_basic_commit_preserves_payload_but_requires_extended_refresh()
+{
+    WeatherSnapshotStore store = {};
+    WeatherData weather = {};
+    WeatherAlertData alert = {};
+    WeatherForecastData forecast = {};
+    WeatherAirData air = {};
+    fill_initial_snapshot(&weather, &alert, &forecast, &air);
+    weather_snapshot_store_commit(
+        &store, weather, alert, forecast, air, true, true, true, 100);
+
+    WeatherData replacement = weather;
+    strlcpy(replacement.temp, "29", sizeof(replacement.temp));
+    weather_snapshot_store_commit_basic(
+        &store, replacement, WeatherAlertData{}, true, 200);
+
+    assert(strcmp(store.weather.temp, "29") == 0);
+    assert(!store.alert.active && store.alert.count == 0);
+    assert(strcmp(store.forecast.days[0].date, "2026-07-16") == 0);
+    assert(strcmp(store.air.aqi, "42") == 0);
+    assert(store.extended_refresh_required);
+    assert(store.last_sync_time == 200);
+    assert(!weather_snapshot_store_extended_ready(store));
+
+    weather_snapshot_store_commit(
+        &store, replacement, alert, forecast, air, true, true, true, 300);
+    assert(!store.extended_refresh_required);
+    assert(weather_snapshot_store_extended_ready(store));
+}
+
 void test_failed_extended_fetch_clears_changed_location_cache()
 {
     WeatherSnapshotStore store = {};
@@ -206,6 +236,7 @@ int main()
                   "large weather snapshots must not return to an ISR critical section");
     test_complete_commit_and_snapshot();
     test_failed_extended_fetch_preserves_same_location_cache();
+    test_basic_commit_preserves_payload_but_requires_extended_refresh();
     test_failed_extended_fetch_clears_changed_location_cache();
     test_failed_or_unattempted_alert_preserves_only_same_location_cache();
     test_partial_extended_readiness();

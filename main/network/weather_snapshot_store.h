@@ -9,6 +9,7 @@ struct WeatherSnapshotStore {
     WeatherForecastData forecast;
     WeatherAirData air;
     time_t last_sync_time = 0;
+    bool extended_refresh_required = false;
 };
 
 void weather_snapshot_store_read(const WeatherSnapshotStore &store,
@@ -26,3 +27,8 @@ void weather_snapshot_store_commit(WeatherSnapshotStore *store,
                                    bool forecast_ok,
                                    bool air_ok,
                                    time_t synced_at);
+void weather_snapshot_store_commit_basic(WeatherSnapshotStore *store,
+                                         const WeatherData &next,
+                                         const WeatherAlertData &next_alert,
+                                         bool alert_updated,
+                                         time_t synced_at);

@@ -15,4 +15,3 @@ bool info_page_requested();
 void info_page_request(uint32_t hold_until_tick);
 void info_page_clear();
 bool info_page_clear_if_current(const InfoPageStateSnapshot &expected);
-void info_page_hold_until_store(uint32_t hold_until_tick);

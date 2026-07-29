@@ -1,5 +1,5 @@
 // 验证 Wi-Fi 射频运行状态按启动和停止结果安全发布。
-#include "wifi_radio_state.h"
+#include "wifi_radio_state_internal.h"
 
 #include <cassert>
 #include <cstdio>

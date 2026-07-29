@@ -11,4 +11,3 @@ struct SettingsNavigationSnapshot {
 };
 
 SettingsNavigationSnapshot settings_navigation_snapshot();
-void settings_navigation_store(const SettingsNavigationSnapshot &state);

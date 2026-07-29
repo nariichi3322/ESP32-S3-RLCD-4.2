@@ -1,5 +1,5 @@
 // 集中维护启动画面生命周期的跨任务原子状态。
-#include "startup_state.h"
+#include "startup_state_internal.h"
 
 #include <atomic>
 

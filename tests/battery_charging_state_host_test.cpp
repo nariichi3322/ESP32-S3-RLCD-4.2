@@ -15,16 +15,21 @@ static_assert(kBatteryChargingStopSamples == 5);
 static_assert(kBatteryChargingAnimationStopPercent == 96);
 static_assert(kBatteryChargingAnimationIdleMs == 10 * 60 * 1000);
 static_assert(kBatteryChargingSampleMs == 1000);
+static_assert(kBatteryIdleReadFailureGraceSamples == 1);
 static_assert(kBatteryChargingReadFailureGraceSamples == 5);
+static_assert(kBatteryReadFailureMaxGraceSamples ==
+              kBatteryChargingReadFailureGraceSamples);
 static_assert(!battery_charging_requires_fast_sampling(false));
 static_assert(battery_charging_requires_fast_sampling(true));
-static_assert(!battery_charging_read_failure_within_grace(false, 1));
-static_assert(!battery_charging_read_failure_within_grace(true, 0));
-static_assert(battery_charging_read_failure_within_grace(true, 1));
-static_assert(battery_charging_read_failure_within_grace(
+static_assert(!battery_read_failure_within_grace(false, 0));
+static_assert(battery_read_failure_within_grace(false, 1));
+static_assert(!battery_read_failure_within_grace(false, 2));
+static_assert(!battery_read_failure_within_grace(true, 0));
+static_assert(battery_read_failure_within_grace(true, 1));
+static_assert(battery_read_failure_within_grace(
     true,
     kBatteryChargingReadFailureGraceSamples));
-static_assert(!battery_charging_read_failure_within_grace(
+static_assert(!battery_read_failure_within_grace(
     true,
     kBatteryChargingReadFailureGraceSamples + 1));
 

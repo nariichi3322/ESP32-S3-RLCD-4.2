@@ -1,5 +1,6 @@
 // 验证应用事件组所有者的生命周期、空句柄保护和参数透传。
-#include "app_event_group.h"
+#include "app_event_group_internal.h"
+#include "network_runtime_events.h"
 
 #include <assert.h>
 
@@ -131,6 +132,30 @@ int main()
     assert(s_last_wait_for_all == pdFALSE);
     assert(s_last_timeout == 123);
     assert(s_bits == 0);
+
+    const int clear_calls_before_empty_cancel = s_clear_calls;
+    assert(!cancel_pending_network_sync_requests(0));
+    assert(s_clear_calls == clear_calls_before_empty_cancel);
+
+    assert(app_event_group_set_bits(kVisibleWeatherSyncBit |
+                                    kVisibleSayingSyncBit) ==
+           (kVisibleWeatherSyncBit | kVisibleSayingSyncBit));
+    const int set_calls_before_cancel = s_set_calls;
+    assert(cancel_pending_network_sync_requests(kVisibleWeatherSyncBit));
+    assert((s_bits & kVisibleWeatherSyncBit) == 0);
+    assert((s_bits & kVisibleSayingSyncBit) != 0);
+    assert((s_bits & kNetworkStateChangedBit) != 0);
+    assert(s_set_calls == set_calls_before_cancel + 1);
+
+    assert(app_event_group_clear_bits(kNetworkStateChangedBit) != 0);
+    const int set_calls_before_settled_cancel = s_set_calls;
+    assert(!cancel_pending_network_sync_requests(kVisibleWeatherSyncBit));
+    assert((s_bits & kNetworkStateChangedBit) == 0);
+    assert(s_set_calls == set_calls_before_settled_cancel);
+    assert(cancel_pending_network_sync_requests(kVisibleSayingSyncBit));
+    assert((s_bits & kVisibleSayingSyncBit) == 0);
+    assert((s_bits & kNetworkStateChangedBit) != 0);
+    app_event_group_clear_bits(kNetworkStateChangedBit);
 
     app_event_group_release();
     assert(!app_event_group_ready());

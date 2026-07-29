@@ -110,7 +110,11 @@ bool xiaozhi_power_session_acquire_realtime()
         }
         s_network_lock_held = true;
     }
-    if (!wifi_radio_on_load() && !start_wifi_radio(false)) {
+    // Always cross the serialized radio lifecycle boundary. A deferred close
+    // may already be in flight after this session acquires its PM lock; the
+    // start call then either makes that close defer or restarts the radio after
+    // the old owner finishes stopping it.
+    if (!start_wifi_radio(false)) {
         return false;
     }
     // Once the page owns keepalive, only publish the transition once. Repeating

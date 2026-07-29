@@ -8,11 +8,11 @@
 #include "app_metadata.h"
 #include "network_diagnostics_state.h"
 #include "network_form.h"
-#include "network_text.h"
+#include "ascii_text.h"
 #include "setup_portal_control.h"
 #include "wifi_portal_dns.h"
 #include "wifi_portal_pages.h"
-#include "wifi_portal_state.h"
+#include "wifi_portal_state_internal.h"
 
 #include "ui_info_page_state.h"
 #include "ui_settings_activity_state.h"
@@ -157,11 +157,16 @@ bool stop_http_server_handle()
 
 esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
 {
-    wifi_portal_save_result_store(WifiPortalSaveResult::kNone);
-    wifi_portal_save_feedback_seen_store(false);
+    if (app_event_group_ready()) {
+        // Retire any older level-triggered validation before publishing the
+        // next save generation. A worker that already captured the old request
+        // will reject itself through the generation check.
+        app_event_group_clear_bits(kProvisioningSyncBit);
+    }
+    wifi_portal_begin_save_attempt();
     char ssid[kPortalSubmitSsidFieldSize] = {};
     form_value(body, "ssid", ssid, sizeof(ssid));
-    trim_ascii(ssid);
+    trim_ascii_whitespace(ssid);
     if (ssid[0] == '\0') {
         bool offline_saved = save_offline_datetime_from_body(body);
         if (!offline_saved) {
@@ -291,11 +296,13 @@ esp_err_t save_get_handler(httpd_req_t *req)
 
 esp_err_t portal_status_get_handler(httpd_req_t *req)
 {
-    const WifiPortalSaveResult result = wifi_portal_save_result_load();
+    const WifiPortalSaveSnapshot save =
+        wifi_portal_save_snapshot_load();
+    const WifiPortalSaveResult result = save.result;
     if (result == WifiPortalSaveResult::kSuccess) {
         esp_err_t err = send_portal_empty_status(req, kPortalHttpStatusOk);
         if (err == ESP_OK) {
-            wifi_portal_save_feedback_seen_store(true);
+            (void)wifi_portal_mark_save_feedback_seen(save);
         }
         return err;
     }

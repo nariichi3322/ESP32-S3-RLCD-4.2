@@ -1,5 +1,5 @@
 // 使用静态任务互斥保存手动天气城市，避免跨任务读取半写入 UTF-8。
-#include "manual_weather_city_state.h"
+#include "manual_weather_city_state_internal.h"
 
 #include "scoped_semaphore_lock.h"
 

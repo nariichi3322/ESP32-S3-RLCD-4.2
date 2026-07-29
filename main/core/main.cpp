@@ -1,34 +1,36 @@
 // 初始化硬件、系统服务和常驻任务，是固件应用入口。
 #include "app_display_config.h"
 #include "app_event_group.h"
+#include "app_event_group_internal.h"
 #include "app_hardware.h"
 #include "app_constexpr.h"
 #include "app_metadata.h"
 #include "lvgl_bsp.h"
 #include "alarm_services.h"
-#include "battery_runtime_state.h"
+#include "battery_runtime_state_internal.h"
 #include "pomodoro_services.h"
 #include "weather_city_mcp.h"
 #include "audio_services.h"
 #include "custom_assets.h"
-#include "daily_saying_state.h"
+#include "daily_saying_state_internal.h"
 #include "input_tasks.h"
 #include "manual_weather_city_state.h"
 #include "network_credentials_state.h"
 #include "network_diagnostics_state.h"
 #include "network_boot_sync.h"
 #include "network_http_transaction_lock.h"
+#include "network_sync_request_generation.h"
 #include "network_sync_task.h"
 #include "saved_config_loader.h"
 #include "wifi_radio_services.h"
-#include "ntp_runtime_state.h"
+#include "ntp_runtime_state_internal.h"
 #include "ota_runtime_state.h"
 #include "ota_services.h"
-#include "local_sensor_state.h"
+#include "local_sensor_state_internal.h"
 #include "power_services.h"
 #include "rtc_services.h"
-#include "sensor_services.h"
-#include "startup_state.h"
+#include "sensor_services_internal.h"
+#include "startup_state_internal.h"
 #include "ui_boot_screen.h"
 #include "ui_display_flush.h"
 #include "ui_info_page_state.h"
@@ -37,7 +39,7 @@
 #include "ui_task.h"
 #include "ui_task_notify.h"
 #include "ui_work_page_catalog.h"
-#include "weather_state.h"
+#include "weather_state_internal.h"
 #include "wifi_portal_state.h"
 #include "xiaozhi_ai.h"
 
@@ -68,6 +70,7 @@
 #define MAIN_WEATHER_STATE_INIT_FAILED_LOG_FORMAT "weather state initialization failed"
 #define MAIN_NETWORK_CREDENTIALS_STATE_INIT_FAILED_LOG_FORMAT "network credentials state initialization failed"
 #define MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT "network diagnostics state initialization failed"
+#define MAIN_NETWORK_REQUEST_GENERATION_INIT_FAILED_LOG_FORMAT "network request generation initialization failed"
 #define MAIN_NTP_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT "NTP runtime state initialization failed"
 #define MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT "hourly sensor history state initialization failed"
 #define MAIN_LOCAL_SENSOR_STATE_INIT_FAILED_LOG_FORMAT "local sensor state initialization failed"
@@ -92,6 +95,8 @@
 #define MAIN_BOOT_SCREEN_FINISH_FAILED_LOG_FORMAT "boot screen finish failed; startup stopped"
 #define MAIN_BOOT_TASK_COMPLETION_DELAYED_LOG_FORMAT \
     "%s completion delayed; holding startup until resources are released"
+#define MAIN_STARTUP_RESOURCE_CLEANUP_LOG_FORMAT \
+    "startup failed after resource activation; stopping Wi-Fi and parking audio"
 
 namespace {
 constexpr uint32_t kBootAnimTaskStack = 6144;
@@ -155,11 +160,12 @@ constexpr AppTaskSpec kRegularAppTasks[] = {
 };
 
 constexpr AppInitializerSpec kCoreRuntimeStateInitializers[] = {
+    {init_network_sync_request_generation, MAIN_NETWORK_REQUEST_GENERATION_INIT_FAILED_LOG_FORMAT},
     {init_weather_state, MAIN_WEATHER_STATE_INIT_FAILED_LOG_FORMAT},
     {network_credentials_state_init, MAIN_NETWORK_CREDENTIALS_STATE_INIT_FAILED_LOG_FORMAT},
     {network_diagnostics_state_init, MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT},
     {ntp_runtime_state_init, MAIN_NTP_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT},
-    {init_hourly_sensor_history_state, MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT},
+    {init_sensor_services_state, MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT},
     {init_local_sensor_state, MAIN_LOCAL_SENSOR_STATE_INIT_FAILED_LOG_FORMAT},
     {daily_saying_state_init, MAIN_DAILY_SAYING_STATE_INIT_FAILED_LOG_FORMAT},
     {init_manual_weather_city_state, MAIN_MANUAL_WEATHER_CITY_STATE_INIT_FAILED_LOG_FORMAT},
@@ -419,6 +425,13 @@ static void wait_for_boot_task_completion(EventBits_t done_bit,
                               portMAX_DELAY);
 }
 
+static void cleanup_failed_startup_resources()
+{
+    ESP_LOGW(TAG, "%s", MAIN_STARTUP_RESOURCE_CLEANUP_LOG_FORMAT);
+    stop_wifi_radio(true);
+    park_unused_audio_peripherals();
+}
+
 extern "C" void app_main(void)
 {
     DisplayPort &display = app_display();
@@ -451,7 +464,7 @@ extern "C" void app_main(void)
     }
     init_power_management();
     load_hourly_sensor_history();
-    load_daily_saying_cache();
+    reset_daily_saying_cache();
     custom_assets_init();
 
     (void)load_saved_config();
@@ -468,18 +481,21 @@ extern "C" void app_main(void)
     park_unused_audio_peripherals();
     xiaozhi_ai_init();
     if (!initialize_app_states(kFeatureRuntimeInitializers)) {
+        cleanup_failed_startup_resources();
         return;
     }
 
     display.RLCD_Init();
     if (!display.IsReady()) {
         ESP_LOGE(TAG, MAIN_DISPLAY_UNAVAILABLE_LOG_FORMAT);
+        cleanup_failed_startup_resources();
         return;
     }
     display.RLCD_ColorClear(ColorWhite);
     display.RLCD_Display();
     if (!Lvgl_PortInit(kDisplayWidth, kDisplayHeight, flush_callback)) {
         ESP_LOGE(TAG, MAIN_LVGL_INIT_FAILED_LOG_FORMAT);
+        cleanup_failed_startup_resources();
         return;
     }
     if (Lvgl_lock(-1)) {
@@ -511,6 +527,7 @@ extern "C" void app_main(void)
                                   kBootAnimTaskName);
     finish_boot_anim_to_last_frame();
     if (!finish_boot_screen_with_retry()) {
+        cleanup_failed_startup_resources();
         return;
     }
     startup_screen_mark_finished();

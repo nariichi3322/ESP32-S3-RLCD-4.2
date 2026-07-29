@@ -1,5 +1,5 @@
 // 验证本地温湿度当前值、趋势和版本在并发读写中保持同一批次。
-#include "local_sensor_state.h"
+#include "local_sensor_state_internal.h"
 
 #include <assert.h>
 #include <atomic>

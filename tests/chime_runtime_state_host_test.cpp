@@ -1,5 +1,6 @@
-// 验证声音四项配置的原子快照、独立更新和并发一致性。
+// 验证声音四项配置的原子快照、音量独立更新和并发一致性。
 #include "chime_runtime_state.h"
+#include "chime_runtime_state_internal.h"
 
 #include "chime_settings.h"
 
@@ -16,7 +17,7 @@ bool same_snapshot(const ChimeRuntimeSnapshot &left, const ChimeRuntimeSnapshot 
            left.sound_index == right.sound_index;
 }
 
-void test_default_and_individual_updates()
+void test_default_and_supported_updates()
 {
     ChimeRuntimeSnapshot snapshot = chime_runtime_snapshot_load();
     assert(!snapshot.hourly_enabled);
@@ -24,23 +25,18 @@ void test_default_and_individual_updates()
     assert(snapshot.volume_percent == chime_settings::kDefaultVolumePercent);
     assert(snapshot.sound_index == 0);
 
-    chime_runtime_snapshot_store({true, false, 40, 2});
-    chime_runtime_all_day_enabled_store(true);
+    chime_runtime_snapshot_store({true, true, 40, 2});
     chime_runtime_volume_percent_store(60);
-    chime_runtime_sound_index_store(3);
     snapshot = chime_runtime_snapshot_load();
     assert(snapshot.hourly_enabled);
     assert(snapshot.all_day);
     assert(snapshot.volume_percent == 60);
-    assert(snapshot.sound_index == 3);
-    assert(chime_runtime_hourly_enabled());
-    assert(chime_runtime_all_day_enabled());
+    assert(snapshot.sound_index == 2);
     assert(chime_runtime_any_enabled());
     assert(chime_runtime_volume_percent() == 60);
-    assert(chime_runtime_sound_index() == 3);
+    assert(chime_runtime_sound_index() == 2);
 
-    chime_runtime_hourly_enabled_store(false);
-    chime_runtime_all_day_enabled_store(false);
+    chime_runtime_snapshot_store({false, false, 60, 3});
     assert(!chime_runtime_any_enabled());
     snapshot = chime_runtime_snapshot_load();
     assert(snapshot.volume_percent == 60);
@@ -81,7 +77,7 @@ void test_concurrent_snapshot_publication()
 
 int main()
 {
-    test_default_and_individual_updates();
+    test_default_and_supported_updates();
     test_concurrent_snapshot_publication();
     return 0;
 }

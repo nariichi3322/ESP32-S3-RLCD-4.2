@@ -1,5 +1,5 @@
 // 实现图片时钟切换周期映射、内置图库 24 小时约束和原子运行态。
-#include "ui_gallery_rotation_state.h"
+#include "ui_gallery_rotation_state_internal.h"
 
 #include <atomic>
 

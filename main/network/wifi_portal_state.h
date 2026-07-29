@@ -17,6 +17,12 @@ enum class WifiPortalSaveResult : uint8_t {
     kSuccess,
 };
 
+struct WifiPortalSaveSnapshot {
+    WifiPortalSaveResult result = WifiPortalSaveResult::kNone;
+    bool feedback_seen = false;
+    uint32_t generation = 0;
+};
+
 inline constexpr bool wifi_portal_result_preserves_client_lease(
     WifiPortalSaveResult result)
 {
@@ -26,22 +32,9 @@ inline constexpr bool wifi_portal_result_preserves_client_lease(
 
 bool wifi_portal_state_init();
 bool setup_portal_active_load();
-void setup_portal_active_store(bool active);
 int wifi_last_disconnect_reason();
-void record_wifi_disconnect_reason(int reason);
-void clear_wifi_last_disconnect_reason();
 bool wifi_setup_ap_ssid_snapshot(char *out, size_t out_len);
-void wifi_setup_ap_ssid_store(const char *ssid);
 bool wifi_station_ip_snapshot(char *out, size_t out_len);
-void wifi_station_ip_store(const char *ip_text);
-void clear_wifi_station_ip();
+WifiPortalSaveSnapshot wifi_portal_save_snapshot_load();
 WifiPortalSaveResult wifi_portal_save_result_load();
-void wifi_portal_save_result_store(WifiPortalSaveResult result);
 bool wifi_portal_save_feedback_seen_load();
-void wifi_portal_save_feedback_seen_store(bool seen);
-void wifi_portal_session_reset();
-void wifi_portal_ap_channel_transition_begin();
-void wifi_portal_ap_channel_transition_end();
-uint8_t wifi_portal_ap_client_connected(uint8_t max_clients);
-uint8_t wifi_portal_ap_client_disconnected();
-bool wifi_portal_should_restart_dhcp();

@@ -1,7 +1,7 @@
 // 处理设置页网络、声音、显示和系统操作，不承担页面绘制。
 #include "ui_settings_actions.h"
 
-#include "active_work_page_state.h"
+#include "active_work_page_state_internal.h"
 #include "alarm_services.h"
 #include "app_event_group.h"
 #include "app_metadata.h"
@@ -20,14 +20,16 @@
 #include "ota_services.h"
 #include "pomodoro_services.h"
 #include "setup_portal_control.h"
-#include "ui_info_page_state.h"
+#include "ui_info_page_state_internal.h"
 #include "ui_gallery_rotation_state.h"
 #include "ui_settings_activity_state.h"
-#include "ui_settings_confirmation_state.h"
+#include "ui_settings_confirmation_state_internal.h"
 #include "ui_settings_feedback.h"
 #include "ui_settings_navigation.h"
+#include "ui_settings_navigation_state_internal.h"
 #include "ui_text_format.h"
 #include "ui_work_page_catalog.h"
+#include "work_page_ids.h"
 #include "xiaozhi_auto_return_state.h"
 
 #include <cstdarg>
@@ -92,14 +94,9 @@ constexpr size_t kSettingsFeedbackTextSize = 32;
 #define FACTORY_RESET_REQUESTED_LOG "factory reset requested from settings"
 #define SYSTEM_INFO_REQUESTED_LOG "system info requested from settings"
 
-constexpr bool work_page_index_valid(int page)
-{
-    return page >= 0 && page < kWorkPageCount;
-}
-
 uint8_t toggled_work_page_mask(uint8_t current_mask, int page)
 {
-    if (!work_page_index_valid(page)) {
+    if (!is_valid_work_page_id(page)) {
         return static_cast<uint8_t>(current_mask & kAllWorkPageMask);
     }
     uint8_t page_mask = static_cast<uint8_t>(1U << page);
@@ -124,12 +121,11 @@ void set_formatted_settings_feedback(const char *format, ...)
     set_settings_feedback(feedback, kSettingsFeedbackDefaultMs);
 }
 
-bool save_chime_setting_or_restore(const ChimeRuntimeSnapshot &previous)
+bool set_chime_setting_or_feedback(const ChimeRuntimeSnapshot &next)
 {
-    if (save_hourly_chime_setting()) {
+    if (set_chime_setting(next)) {
         return true;
     }
-    chime_runtime_snapshot_store(previous);
     set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
     return false;
 }
@@ -139,9 +135,8 @@ void queue_manual_settings_sync(SettingsSyncOp op,
                                 const char *log_message,
                                 EventBits_t event_bit)
 {
-    begin_settings_sync(op, feedback);
+    begin_settings_sync(op, feedback, event_bit);
     ESP_LOGI(TAG, "%s", log_message);
-    app_event_group_set_bits(event_bit);
 }
 
 void clear_inactive_settings_confirmation(int primary, int selected)
@@ -166,24 +161,20 @@ namespace {
 void handle_page_order_settings_action(
     SettingsNavigationSnapshot navigation)
 {
-    uint8_t previous_order[kWorkPageCount] = {};
-    if (!work_page_order_normalize_and_copy(previous_order, sizeof(previous_order))) {
-        set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
-        return;
-    }
     int current = valid_enabled_work_page_order_index(navigation.page_order_selection);
     int next = next_enabled_work_page_order_index(current);
-    if (!swap_work_page_order_entries_preserving_home(current, next)) {
+    uint8_t next_order[kWorkPageCount] = {};
+    if (!work_page_order_swapped_copy_preserving_home(
+            current, next, next_order, sizeof(next_order))) {
         set_settings_feedback(kXiaozhiHomeBlockedFeedback, kSettingsFeedbackDefaultMs);
         return;
     }
-    if (save_work_page_order()) {
+    if (set_work_page_order_setting(next_order, sizeof(next_order))) {
         navigation.page_order_selection = next;
         settings_navigation_store(navigation);
         active_work_page_store(first_enabled_work_page());
         set_settings_feedback(kSettingsOrderSavedFeedback, kSettingsFeedbackSavedMs);
     } else {
-        work_page_order_replace(previous_order, sizeof(previous_order));
         navigation.page_order_selection = current;
         settings_navigation_store(navigation);
         set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
@@ -246,8 +237,7 @@ void handle_sound_settings_action(int selected)
         ChimeRuntimeSnapshot next = previous;
         next.volume_percent = static_cast<uint8_t>(
             chime_settings::next_volume_percent(previous.volume_percent));
-        chime_runtime_snapshot_store(next);
-        if (!save_chime_setting_or_restore(previous)) {
+        if (!set_chime_setting_or_feedback(next)) {
             return;
         }
         set_formatted_settings_feedback(kSoundVolumeFeedbackFormat, next.volume_percent);
@@ -257,8 +247,7 @@ void handle_sound_settings_action(int selected)
         ChimeRuntimeSnapshot next = previous;
         next.sound_index = static_cast<uint8_t>(
             (previous.sound_index + 1) % chime_settings::kSoundCount);
-        chime_runtime_snapshot_store(next);
-        if (!save_chime_setting_or_restore(previous)) {
+        if (!set_chime_setting_or_feedback(next)) {
             return;
         }
         set_formatted_settings_feedback(kSoundIndexFeedbackFormat, next.sound_index + 1);
@@ -267,8 +256,7 @@ void handle_sound_settings_action(int selected)
         const ChimeRuntimeSnapshot previous = chime_runtime_snapshot_load();
         ChimeRuntimeSnapshot next = previous;
         next.hourly_enabled = !previous.hourly_enabled;
-        chime_runtime_snapshot_store(next);
-        if (!save_chime_setting_or_restore(previous)) {
+        if (!set_chime_setting_or_feedback(next)) {
             return;
         }
         const bool enabled = next.hourly_enabled;
@@ -284,8 +272,7 @@ void handle_sound_settings_action(int selected)
         const ChimeRuntimeSnapshot previous = chime_runtime_snapshot_load();
         ChimeRuntimeSnapshot next = previous;
         next.all_day = !previous.all_day;
-        chime_runtime_snapshot_store(next);
-        if (!save_chime_setting_or_restore(previous)) {
+        if (!set_chime_setting_or_feedback(next)) {
             return;
         }
         const bool enabled = next.all_day;
@@ -306,7 +293,7 @@ void handle_display_settings_action(
 {
     if (navigation.page_toggle_mode) {
         int page = selected;
-        if (!work_page_index_valid(page)) {
+        if (!is_valid_work_page_id(page)) {
             set_settings_feedback(kSettingsSaveFailedFeedback,
                                   kSettingsFeedbackDefaultMs);
             return;
@@ -336,9 +323,7 @@ void handle_display_settings_action(
             set_settings_feedback(kPomodoroRunningFeedback, kSettingsFeedbackInstructionMs);
             return;
         }
-        work_page_enabled_mask_store(next_mask);
-        if (!save_work_page_settings()) {
-            work_page_enabled_mask_store(previous_mask);
+        if (!set_work_page_enabled_mask_setting(next_mask)) {
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
@@ -379,16 +364,13 @@ void handle_display_settings_action(
         return;
     }
     if (selected == kDisplaySettingsXiaozhiAutoReturnItem) {
-        const bool previous = xiaozhi_auto_return_enabled_load();
-        xiaozhi_auto_return_enabled_store(!previous);
-        if (!save_xiaozhi_auto_return_setting()) {
-            xiaozhi_auto_return_enabled_store(previous);
+        const bool enabled = !xiaozhi_auto_return_enabled_load();
+        if (!set_xiaozhi_auto_return_setting(enabled)) {
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        set_settings_feedback(xiaozhi_auto_return_enabled_load()
-                                  ? kXiaozhiAutoReturnEnabledFeedback
-                                  : kXiaozhiAutoReturnDisabledFeedback,
+        set_settings_feedback(enabled ? kXiaozhiAutoReturnEnabledFeedback
+                                      : kXiaozhiAutoReturnDisabledFeedback,
                               kSettingsFeedbackDefaultMs);
         return;
     }
@@ -398,11 +380,9 @@ void handle_display_settings_action(
                                   kSettingsFeedbackInstructionMs);
             return;
         }
-        const uint8_t previous = gallery_rotation_period_load();
-        const uint8_t next = next_gallery_rotation_period(previous);
-        gallery_rotation_period_store(next);
-        if (!save_gallery_rotation_setting()) {
-            gallery_rotation_period_store(previous);
+        const uint8_t next =
+            next_gallery_rotation_period(gallery_rotation_period_load());
+        if (!set_gallery_rotation_period_setting(next)) {
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
@@ -452,7 +432,6 @@ void handle_system_settings_action(
             set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        begin_settings_sync(kSettingsSyncNetworkDiag, kNetworkDiagSyncFeedback);
         ESP_LOGI(TAG, "%s", MANUAL_NETWORK_DIAG_REQUESTED_LOG);
         network_diag_reset();
         settings_page_clear();
@@ -462,7 +441,9 @@ void handle_system_settings_action(
         navigation.selection = 0;
         settings_navigation_store(navigation);
         info_page_hold_until_store(0);
-        app_event_group_set_bits(kNetworkDiagBit);
+        begin_settings_sync(kSettingsSyncNetworkDiag,
+                            kNetworkDiagSyncFeedback,
+                            kNetworkDiagBit);
     } else if (selected == kSystemSettingsFactoryResetItem) {
         if (!settings_confirmation_pending(SettingsConfirmation::kFactoryReset)) {
             settings_confirmation_request(SettingsConfirmation::kFactoryReset);

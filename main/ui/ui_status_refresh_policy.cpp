@@ -4,10 +4,20 @@
 static_assert(kUiStatusFallbackRefreshMs > 0,
               "UI status fallback refresh interval must be positive");
 
+bool ui_weather_network_status_required(bool weather_clock_visible,
+                                        bool low_battery_mode,
+                                        bool setup_portal_active)
+{
+    return weather_clock_visible &&
+           !low_battery_mode &&
+           !setup_portal_active;
+}
+
 bool ui_status_refresh_inputs_changed(const UiStatusRefreshSnapshot &current,
                                       const UiStatusRefreshSnapshot &previous)
 {
     return current.sensor_version != previous.sensor_version ||
+           current.weather_network_bits != previous.weather_network_bits ||
            current.chime_enabled != previous.chime_enabled ||
            current.wifi_radio_on != previous.wifi_radio_on ||
            current.alarm_enabled != previous.alarm_enabled;

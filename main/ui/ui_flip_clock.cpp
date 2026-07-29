@@ -14,6 +14,7 @@
 #include "ui_page_state.h"
 #include "ui_progress.h"
 #include "ui_widgets.h"
+#include "ui_work_page_layout.h"
 #include "ui_work_status.h"
 #include "work_page_ids.h"
 
@@ -34,10 +35,6 @@ static constexpr int kCardY = inverted_clock_card::kY;
 static constexpr const int (&kCardX)[kCardCount] = inverted_clock_card::kX;
 static constexpr int kHourCardIndex = 0;
 static constexpr int kMinuteCardIndex = 1;
-static constexpr int kFlipTopLineX = 18;
-static constexpr int kFlipTopLineY = 54;
-static constexpr int kFlipTopLineW = 364;
-static constexpr int kFlipTopLineH = 4;
 static constexpr int kFlipSensorPanelX = kCardX[kHourCardIndex];
 static constexpr int kFlipSensorPanelY = 198;
 static constexpr int kFlipSensorPanelW = kCardX[kMinuteCardIndex] + kCardW - kFlipSensorPanelX;
@@ -83,8 +80,6 @@ static_assert(array_count(kCardX) == kCardCount,
               "flip clock card X table must match card count");
 static_assert(kFlipClockObjectCardCount == kCardCount,
               "flip clock object registry must match inverted card count");
-static_assert(kFlipTopLineW > 0 && kFlipTopLineH > 0,
-              "flip clock top separator size must be positive");
 static_assert(kFlipSensorPanelX == kCardX[kHourCardIndex] &&
                   kFlipSensorPanelX + kFlipSensorPanelW == kCardX[kMinuteCardIndex] + kCardW &&
                   kFlipDatePanelW == kCardW,
@@ -386,10 +381,10 @@ void build_flip_clock_page()
                                false);
 
     lv_obj_t *top_line = make_bar(screen,
-                                  kFlipTopLineX,
-                                  kFlipTopLineY,
-                                  kFlipTopLineW,
-                                  kFlipTopLineH);
+                                  ui_work_page_layout::kTopSeparatorX,
+                                  ui_work_page_layout::kTopSeparatorY,
+                                  ui_work_page_layout::kTopSeparatorWidth,
+                                  ui_work_page_layout::kTopSeparatorHeight);
     set_obj_black(top_line, true);
     build_work_page_day_progress(screen, kWorkPageFlipClock);
 

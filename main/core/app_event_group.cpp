@@ -1,5 +1,5 @@
 // 私有持有应用事件组控制块和句柄，并保护初始化前的调用。
-#include "app_event_group.h"
+#include "app_event_group_internal.h"
 
 namespace {
 StaticEventGroup_t s_event_group_storage = {};

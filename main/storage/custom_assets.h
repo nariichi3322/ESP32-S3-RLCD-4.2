@@ -39,7 +39,6 @@ struct CustomAssetEntry {
 
 void custom_assets_init();
 bool custom_assets_available();
-bool custom_assets_has_main_gif();
 int custom_assets_gallery_count();
 bool custom_assets_read_main_gif_frame(int frame, uint8_t *out, size_t out_len);
 bool custom_assets_read_gallery_image(int index, uint8_t *out, size_t out_len);

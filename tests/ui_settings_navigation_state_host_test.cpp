@@ -1,5 +1,5 @@
 // 验证设置页导航状态始终以完整快照跨任务发布。
-#include "ui_settings_navigation_state.h"
+#include "ui_settings_navigation_state_internal.h"
 
 #include <atomic>
 #include <cassert>

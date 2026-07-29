@@ -10,19 +10,30 @@ inline constexpr int kBatteryChargingStopSamples = 5;
 inline constexpr int kBatteryChargingAnimationStopPercent = 96;
 inline constexpr int kBatteryChargingAnimationIdleMs = 10 * 60 * 1000;
 inline constexpr int kBatteryChargingSampleMs = 1000;
+inline constexpr int kBatteryIdleReadFailureGraceSamples = 1;
 inline constexpr int kBatteryChargingReadFailureGraceSamples = 5;
+inline constexpr int kBatteryReadFailureMaxGraceSamples =
+    kBatteryChargingReadFailureGraceSamples > kBatteryIdleReadFailureGraceSamples
+        ? kBatteryChargingReadFailureGraceSamples
+        : kBatteryIdleReadFailureGraceSamples;
 
 constexpr bool battery_charging_requires_fast_sampling(bool charging)
 {
     return charging;
 }
 
-constexpr bool battery_charging_read_failure_within_grace(bool charging,
-                                                           int consecutive_failures)
+constexpr int battery_read_failure_grace_samples(bool charging)
 {
-    return charging &&
-           consecutive_failures > 0 &&
-           consecutive_failures <= kBatteryChargingReadFailureGraceSamples;
+    return charging
+               ? kBatteryChargingReadFailureGraceSamples
+               : kBatteryIdleReadFailureGraceSamples;
+}
+
+constexpr bool battery_read_failure_within_grace(bool charging,
+                                                  int consecutive_failures)
+{
+    return consecutive_failures > 0 &&
+           consecutive_failures <= battery_read_failure_grace_samples(charging);
 }
 
 static_assert(kLowBatteryEnterPercent >= 0,
@@ -42,5 +53,12 @@ static_assert(kBatteryChargingAnimationIdleMs > 0,
               "charging animation idle timeout must be positive");
 static_assert(kBatteryChargingSampleMs > 0,
               "charging sample interval must be positive");
+static_assert(kBatteryIdleReadFailureGraceSamples > 0,
+              "idle ADC read failure grace must be positive");
 static_assert(kBatteryChargingReadFailureGraceSamples > 0,
               "charging ADC read failure grace must be positive");
+static_assert(kBatteryReadFailureMaxGraceSamples >=
+                  kBatteryIdleReadFailureGraceSamples &&
+                  kBatteryReadFailureMaxGraceSamples >=
+                      kBatteryChargingReadFailureGraceSamples,
+              "battery ADC failure counter must cover every grace window");

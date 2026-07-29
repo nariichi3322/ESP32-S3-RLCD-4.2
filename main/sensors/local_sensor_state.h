@@ -12,13 +12,6 @@ struct LocalSensorStateSnapshot {
     bool available = false;
 };
 
-bool init_local_sensor_state();
-bool local_sensor_state_publish_sample(float temperature,
-                                       float humidity,
-                                       int temperature_trend,
-                                       int humidity_trend,
-                                       bool *state_changed = nullptr);
-bool local_sensor_state_publish_unavailable(bool *state_changed = nullptr);
 // 读取失败时返回 false，并把非空输出重置为不可用的安全快照。
 bool local_sensor_state_snapshot_load(LocalSensorStateSnapshot *snapshot);
 // 互斥不可用时返回 false 并清零非空输出；状态可读但样本暂不可用时保留最近值。

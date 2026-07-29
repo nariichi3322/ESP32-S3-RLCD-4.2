@@ -165,7 +165,7 @@ void update_battery_segments(lv_obj_t **segments, int percent, bool charging, bo
 
 lv_obj_t **battery_segments_for_page(int page)
 {
-    if (page < 0 || page >= kWorkPageCount) {
+    if (!is_valid_work_page_id(page)) {
         return nullptr;
     }
     return s_battery_segments[page];

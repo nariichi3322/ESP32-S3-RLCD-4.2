@@ -63,7 +63,7 @@ int main()
     NetworkSyncAvailability availability =
         capture_network_runtime_availability();
     assert(availability.have_wifi_creds);
-    assert(availability.have_weather_key);
+    assert(availability.have_weather_config);
     assert(!availability.offline_mode);
     assert(!availability.low_battery_mode);
     assert(!network_sync_start_context_changed(availability, availability));
@@ -77,14 +77,14 @@ int main()
     availability = capture_network_runtime_availability();
     g_weather_api_host_configured = false;
     changed = capture_network_runtime_availability();
-    assert(!changed.have_weather_key);
+    assert(!changed.have_weather_config);
     assert(network_sync_start_context_changed(availability, changed));
 
     reset_runtime();
     availability = capture_network_runtime_availability();
     g_weather_api_key_configured = false;
     changed = capture_network_runtime_availability();
-    assert(!changed.have_weather_key);
+    assert(!changed.have_weather_config);
     assert(network_sync_start_context_changed(availability, changed));
 
     reset_runtime();

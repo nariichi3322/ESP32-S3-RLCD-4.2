@@ -1,5 +1,5 @@
 // 使用静态任务互斥发布每日文字和同步时间，避免字符串复制关闭中断。
-#include "daily_saying_state.h"
+#include "daily_saying_state_internal.h"
 
 #include "app_text_format.h"
 #include "daily_saying_contract.h"
@@ -40,7 +40,7 @@ bool daily_saying_state_init()
     return s_daily_saying_mutex.init();
 }
 
-void load_daily_saying_cache()
+void reset_daily_saying_cache()
 {
     (void)daily_saying_state_publish("", 0);
 }

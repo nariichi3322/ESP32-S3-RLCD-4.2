@@ -14,7 +14,6 @@ bool alarm_services_init();
 void alarm_task(void *);
 void alarm_get_snapshot(AlarmSnapshot *out);
 bool alarm_is_enabled();
-bool alarm_set_once(int hour, int minute);
 bool alarm_disable();
 bool alarm_stop_ringing_from_button();
 void alarm_notify_time_changed();

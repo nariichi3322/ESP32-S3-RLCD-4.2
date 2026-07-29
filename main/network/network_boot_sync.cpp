@@ -16,12 +16,14 @@
 
 #include <esp_log.h>
 #include <esp_timer.h>
+#include <freertos/FreeRTOS.h>
 
 #include <stdio.h>
 #include <string.h>
 
 namespace {
-int64_t s_boot_sync_deadline_us = 0;
+static portMUX_TYPE s_boot_sync_deadline_mux = portMUX_INITIALIZER_UNLOCKED;
+static int64_t s_boot_sync_deadline_us = 0;
 constexpr int64_t kMicrosecondsPerMillisecond = 1000;
 constexpr uint32_t kBootScreenShortDelayMs = 200;
 constexpr uint32_t kBootScreenOfflineDelayMs = 600;
@@ -41,18 +43,34 @@ constexpr const char *kBootRtcInvalidNtpPriorityLog =
 constexpr const char *kBootPageDataDeferredLog =
     "boot page HTTPS deferred to staggered background sync";
 
+static int64_t load_boot_sync_deadline_us()
+{
+    portENTER_CRITICAL(&s_boot_sync_deadline_mux);
+    const int64_t deadline_us = s_boot_sync_deadline_us;
+    portEXIT_CRITICAL(&s_boot_sync_deadline_mux);
+    return deadline_us;
+}
+
+static void store_boot_sync_deadline_us(int64_t deadline_us)
+{
+    portENTER_CRITICAL(&s_boot_sync_deadline_mux);
+    s_boot_sync_deadline_us = deadline_us;
+    portEXIT_CRITICAL(&s_boot_sync_deadline_mux);
+}
+
 class BootSyncDeadlineGuard {
 public:
     BootSyncDeadlineGuard()
     {
-        s_boot_sync_deadline_us = esp_timer_get_time() +
-                                  static_cast<int64_t>(kBootStartupBudgetMs) *
-                                      kMicrosecondsPerMillisecond;
+        store_boot_sync_deadline_us(
+            esp_timer_get_time() +
+            static_cast<int64_t>(kBootStartupBudgetMs) *
+                kMicrosecondsPerMillisecond);
     }
 
     ~BootSyncDeadlineGuard()
     {
-        s_boot_sync_deadline_us = 0;
+        store_boot_sync_deadline_us(0);
     }
 
     BootSyncDeadlineGuard(const BootSyncDeadlineGuard &) = delete;
@@ -91,7 +109,7 @@ void finish_boot_network_session(NetworkAwakeLockGuard &awake_lock)
 
 int boot_sync_remaining_ms()
 {
-    return network_boot_budget_remaining_ms(s_boot_sync_deadline_us,
+    return network_boot_budget_remaining_ms(load_boot_sync_deadline_us(),
                                             esp_timer_get_time());
 }
 

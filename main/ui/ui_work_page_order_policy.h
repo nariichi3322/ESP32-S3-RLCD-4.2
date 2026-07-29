@@ -14,6 +14,14 @@ bool index_found(int index);
 bool order_is_valid(const uint8_t *order, size_t order_size);
 bool page_is_enabled(int page, uint8_t page_mask);
 bool mask_has_valid_home(uint8_t page_mask);
+bool order_has_valid_home(const uint8_t *order,
+                          size_t order_size,
+                          uint8_t page_mask);
+bool swap_entries_preserving_home(uint8_t *order,
+                                  size_t order_size,
+                                  uint8_t page_mask,
+                                  int first_index,
+                                  int second_index);
 int index_of(const uint8_t *order, size_t order_size, int page);
 int first_enabled_index(const uint8_t *order,
                         size_t order_size,

@@ -1,5 +1,5 @@
 // 使用静态任务互斥发布小智天气城市待保存快照，避免在临界区复制 UTF-8。
-#include "weather_city_pending_state.h"
+#include "weather_city_pending_state_internal.h"
 
 #include "scoped_semaphore_lock.h"
 

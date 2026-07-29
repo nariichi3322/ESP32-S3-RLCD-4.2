@@ -1,5 +1,5 @@
 // 验证配网页会话状态、Wi-Fi 断线原因、AP 名称和本地 IP 的跨任务快照。
-#include "wifi_portal_state.h"
+#include "wifi_portal_state_internal.h"
 #include "app_event_group.h"
 
 #include <atomic>
@@ -34,6 +34,11 @@ EventBits_t app_event_group_clear_bits(EventBits_t bits)
 int main()
 {
     assert(!setup_portal_active_load());
+    s_event_bits = 0;
+    setup_portal_active_store(false);
+    assert(!setup_portal_active_load());
+    assert(s_event_bits == 0);
+
     setup_portal_active_store(true);
     assert(setup_portal_active_load());
     setup_portal_active_store(false);
@@ -80,6 +85,43 @@ int main()
     assert(!wifi_portal_save_feedback_seen_load());
     assert((s_event_bits & kProvisioningFeedbackBit) == 0);
 
+    wifi_portal_save_result_store(WifiPortalSaveResult::kSuccess);
+    const WifiPortalSaveSnapshot stale_success =
+        wifi_portal_save_snapshot_load();
+    assert(stale_success.result == WifiPortalSaveResult::kSuccess);
+    assert(!stale_success.feedback_seen);
+    s_event_bits = 0;
+    const WifiPortalSaveSnapshot next_attempt =
+        wifi_portal_begin_save_attempt();
+    assert(next_attempt.result == WifiPortalSaveResult::kNone);
+    assert(!next_attempt.feedback_seen);
+    assert(next_attempt.generation != stale_success.generation);
+    assert((s_event_bits & kProvisioningFeedbackBit) != 0);
+    assert(!wifi_portal_mark_save_feedback_seen(stale_success));
+    assert(!wifi_portal_save_feedback_seen_load());
+
+    wifi_portal_save_result_store(WifiPortalSaveResult::kSuccess);
+    const WifiPortalSaveSnapshot current_success =
+        wifi_portal_save_snapshot_load();
+    assert(current_success.generation == next_attempt.generation);
+    WifiPortalSaveSnapshot ignored_publish = {};
+    assert(!wifi_portal_save_result_store_if_generation(
+        stale_success.generation,
+        WifiPortalSaveResult::kWeatherApiFailed,
+        &ignored_publish));
+    assert(wifi_portal_save_result_load() == WifiPortalSaveResult::kSuccess);
+    assert(wifi_portal_mark_save_feedback_seen(current_success));
+    assert(wifi_portal_save_feedback_seen_load());
+    WifiPortalSaveSnapshot current_publish = {};
+    assert(wifi_portal_save_result_store_if_generation(
+        current_success.generation,
+        WifiPortalSaveResult::kWeatherApiFailed,
+        &current_publish));
+    assert(current_publish.generation == current_success.generation);
+    assert(current_publish.result == WifiPortalSaveResult::kWeatherApiFailed);
+    assert(!current_publish.feedback_seen);
+    wifi_portal_save_feedback_seen_store(false);
+
     wifi_portal_session_reset();
     setup_portal_active_store(true);
     assert(wifi_portal_should_restart_dhcp());
@@ -114,7 +156,9 @@ int main()
     wifi_portal_ap_channel_transition_begin();
     wifi_portal_save_result_store(WifiPortalSaveResult::kSuccess);
     wifi_portal_save_feedback_seen_store(true);
+    s_event_bits = 0;
     wifi_portal_session_reset();
+    assert((s_event_bits & kProvisioningFeedbackBit) == 0);
     setup_portal_active_store(true);
     assert(wifi_portal_should_restart_dhcp());
     assert(wifi_portal_save_result_load() == WifiPortalSaveResult::kNone);

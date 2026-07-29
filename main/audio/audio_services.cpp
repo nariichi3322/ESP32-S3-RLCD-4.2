@@ -3,11 +3,13 @@
 
 #include "app_hardware.h"
 #include "app_metadata.h"
+#include "app_tick_time.h"
 #include "chime_runtime_state.h"
 #include "audio_power_lock_ownership.h"
 #include "audio_services_internal.h"
 #include "atomic_ownership_gate.h"
 #include "checked_size.h"
+#include "power_services_internal.h"
 
 #include <atomic>
 #include <cstddef>
@@ -190,10 +192,8 @@ bool wait_for_audio_playback_idle(uint32_t timeout_ms,
         const uint32_t remaining_ms = timeout_ms - waited_ms;
         const uint32_t delay_ms =
             poll_interval_ms < remaining_ms ? poll_interval_ms : remaining_ms;
-        TickType_t delay_ticks = pdMS_TO_TICKS(delay_ms);
-        if (delay_ticks == 0) {
-            delay_ticks = 1;
-        }
+        const TickType_t delay_ticks =
+            app_tick_nonzero_delay(pdMS_TO_TICKS(delay_ms));
         vTaskDelay(delay_ticks);
         waited_ms += delay_ms;
     }

@@ -12,7 +12,7 @@
 #include "provisioning_form_fields.h"
 #include "qweather_api_host.h"
 #include "rtc_services.h"
-#include "wifi_portal_state.h"
+#include "wifi_portal_state_internal.h"
 
 #include <esp_attr.h>
 #include <esp_log.h>

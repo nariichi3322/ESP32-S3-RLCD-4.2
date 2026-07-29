@@ -8,23 +8,21 @@
 #include "sdl_preview_weather.h"
 #include "sdl_preview_widgets.h"
 #include "status_gif_60.h"
+#include "ui_clock_layout.h"
 #include "ui_icons.h"
 
 LV_FONT_DECLARE(qweather_icons_36);
 LV_FONT_DECLARE(zh_font_16);
 
 namespace {
+using namespace ui_clock_layout;
+
 using sdl_preview_widgets::draw_1bit_icon;
 using sdl_preview_widgets::make_bar;
 using sdl_preview_widgets::make_label;
 using sdl_preview_widgets::make_label_with_font;
 using sdl_preview_widgets::set_label_text_if_changed;
 using sdl_preview_widgets::set_obj_black;
-
-constexpr int kTimeCanvasW = 292;
-constexpr int kTimeCanvasH = 92;
-constexpr int kSecondCanvasW = 60;
-constexpr int kSecondCanvasH = 40;
 
 const DsegGlyph *find_dseg_glyph(const DsegFont &font, char ch)
 {
@@ -63,8 +61,8 @@ int draw_dseg_text(lv_obj_t *canvas,
 
 SdlPreviewClock::SdlPreviewClock(sdl_preview_work_status::Bar &work_status)
     : work_status_(work_status),
-      time_canvas_pixels_(kTimeCanvasW * kTimeCanvasH),
-      second_canvas_pixels_(kSecondCanvasW * kSecondCanvasH),
+      time_canvas_pixels_(kClockTimeCanvasWidth * kClockTimeCanvasHeight),
+      second_canvas_pixels_(kClockSecondCanvasWidth * kClockSecondCanvasHeight),
       status_gif_canvas_pixels_(STATUS_GIF_WIDTH * STATUS_GIF_HEIGHT),
       alert_icon_canvas_pixels_(WARNING_ICON_WIDTH * WARNING_ICON_HEIGHT),
       low_battery_icon_canvas_pixels_(LOW_BATTERY_ICON_WIDTH * LOW_BATTERY_ICON_HEIGHT),
@@ -201,18 +199,24 @@ void SdlPreviewClock::build_status_header(lv_obj_t *screen)
 
     alert_pill_ = lv_obj_create(screen);
     lv_obj_clear_flag(alert_pill_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(alert_pill_, 64, 11);
-    lv_obj_set_size(alert_pill_, 128, 26);
+    lv_obj_set_pos(alert_pill_, kClockAlertPillX, kClockAlertPillY);
+    lv_obj_set_size(alert_pill_,
+                    kClockAlertPillWidth,
+                    kClockAlertPillHeight);
     lv_obj_set_style_bg_color(alert_pill_, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(alert_pill_, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(alert_pill_, 0, LV_PART_MAIN);
-    lv_obj_set_style_radius(alert_pill_, 13, LV_PART_MAIN);
+    lv_obj_set_style_radius(alert_pill_,
+                            kClockAlertPillRadius,
+                            LV_PART_MAIN);
     lv_obj_set_style_pad_all(alert_pill_, 0, LV_PART_MAIN);
     lv_obj_add_flag(alert_pill_, LV_OBJ_FLAG_HIDDEN);
 
     alert_icon_canvas_ = lv_canvas_create(alert_pill_);
     lv_obj_clear_flag(alert_icon_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(alert_icon_canvas_, 4, 4);
+    lv_obj_set_pos(alert_icon_canvas_,
+                   kClockAlertIconX,
+                   kClockAlertIconY);
     lv_obj_set_size(alert_icon_canvas_, WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT);
     lv_obj_set_style_border_width(alert_icon_canvas_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(alert_icon_canvas_, 0, LV_PART_MAIN);
@@ -228,7 +232,13 @@ void SdlPreviewClock::build_status_header(lv_obj_t *screen)
                    warning_icon_bits,
                    lv_color_white(),
                    lv_color_black());
-    alert_label_ = make_label_with_font(alert_pill_, 24, 4, 94, 18, "大风蓝色预警", &zh_font_16);
+    alert_label_ = make_label_with_font(alert_pill_,
+                                        kClockAlertLabelX,
+                                        kClockAlertLabelY,
+                                        kClockAlertLabelWidth,
+                                        kClockAlertLabelHeight,
+                                        "大风蓝色预警",
+                                        &zh_font_16);
     lv_obj_set_style_text_color(alert_label_, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_text_align(alert_label_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_long_mode(alert_label_, LV_LABEL_LONG_CLIP);
@@ -236,21 +246,46 @@ void SdlPreviewClock::build_status_header(lv_obj_t *screen)
 
 void SdlPreviewClock::build_weather_summary(lv_obj_t *screen)
 {
-    weather_city_label_ = make_label(screen, 14, 196, 76, 20, "--");
+    weather_city_label_ = make_label(screen,
+                                     kClockWeatherCityLabelX,
+                                     kClockWeatherCityLabelY,
+                                     kClockWeatherCityLabelWidth,
+                                     kClockWeatherCityLabelHeight,
+                                     "--");
     remember_lower_panel_object(weather_city_label_);
     lv_obj_set_style_text_align(weather_city_label_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    weather_icon_label_ = make_label(screen, 91, 194, 34, 38, "");
+    weather_icon_label_ = make_label(screen,
+                                     kClockWeatherIconLabelX,
+                                     kClockWeatherIconLabelY,
+                                     kClockWeatherIconLabelWidth,
+                                     kClockWeatherIconLabelHeight,
+                                     "");
     remember_lower_panel_object(weather_icon_label_);
     lv_obj_set_style_text_font(weather_icon_label_, &qweather_icons_36, LV_PART_MAIN);
     lv_obj_set_style_border_width(weather_icon_label_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(weather_icon_label_, 0, LV_PART_MAIN);
     lv_obj_set_style_text_align(weather_icon_label_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    weather_info_label_ = make_label(screen, 14, 218, 76, 20, "等待数据");
+    weather_info_label_ = make_label(screen,
+                                     kClockWeatherInfoLabelX,
+                                     kClockWeatherInfoLabelY,
+                                     kClockWeatherInfoLabelWidth,
+                                     kClockWeatherInfoLabelHeight,
+                                     "等待数据");
     remember_lower_panel_object(weather_info_label_);
     lv_label_set_long_mode(weather_info_label_, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(weather_info_label_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    weather_temp_label_ = make_label(screen, 20, 242, 68, 20, "--℃");
-    weather_humi_label_ = make_label(screen, 20, 264, 68, 20, "--%");
+    weather_temp_label_ = make_label(screen,
+                                     kClockWeatherMetricLabelX,
+                                     kClockWeatherTempLabelY,
+                                     kClockWeatherMetricLabelWidth,
+                                     kClockWeatherMetricLabelHeight,
+                                     "--℃");
+    weather_humi_label_ = make_label(screen,
+                                     kClockWeatherMetricLabelX,
+                                     kClockWeatherHumiLabelY,
+                                     kClockWeatherMetricLabelWidth,
+                                     kClockWeatherMetricLabelHeight,
+                                     "--%");
     remember_lower_panel_object(weather_temp_label_);
     remember_lower_panel_object(weather_humi_label_);
     lv_obj_set_style_text_align(weather_temp_label_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -261,7 +296,7 @@ void SdlPreviewClock::build_sensor_summary(lv_obj_t *screen)
 {
     temp_icon_canvas_ = lv_canvas_create(screen);
     lv_obj_clear_flag(temp_icon_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(temp_icon_canvas_, 153, 215);
+    lv_obj_set_pos(temp_icon_canvas_, kClockTempIconX, kClockTempIconY);
     lv_obj_set_size(temp_icon_canvas_, TEMP_ICON_WIDTH, TEMP_ICON_HEIGHT);
     lv_obj_set_style_border_width(temp_icon_canvas_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(temp_icon_canvas_, 0, LV_PART_MAIN);
@@ -279,7 +314,7 @@ void SdlPreviewClock::build_sensor_summary(lv_obj_t *screen)
                    lv_color_white());
     humi_icon_canvas_ = lv_canvas_create(screen);
     lv_obj_clear_flag(humi_icon_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(humi_icon_canvas_, 151, 245);
+    lv_obj_set_pos(humi_icon_canvas_, kClockHumiIconX, kClockHumiIconY);
     lv_obj_set_size(humi_icon_canvas_, HUMI_ICON_WIDTH, HUMI_ICON_HEIGHT);
     lv_obj_set_style_border_width(humi_icon_canvas_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(humi_icon_canvas_, 0, LV_PART_MAIN);
@@ -295,8 +330,18 @@ void SdlPreviewClock::build_sensor_summary(lv_obj_t *screen)
                    humi_icon_bits,
                    lv_color_black(),
                    lv_color_white());
-    temp_label_ = make_label(screen, 174, 214, 62, 28, "--.-℃");
-    humi_label_ = make_label(screen, 174, 246, 62, 28, "--.-%");
+    temp_label_ = make_label(screen,
+                             kClockLocalMetricLabelX,
+                             kClockLocalTempLabelY,
+                             kClockLocalMetricLabelWidth,
+                             kClockLocalMetricLabelHeight,
+                             "--.-℃");
+    humi_label_ = make_label(screen,
+                             kClockLocalMetricLabelX,
+                             kClockLocalHumiLabelY,
+                             kClockLocalMetricLabelWidth,
+                             kClockLocalMetricLabelHeight,
+                             "--.-%");
     remember_lower_panel_object(temp_icon_canvas_);
     remember_lower_panel_object(humi_icon_canvas_);
     remember_lower_panel_object(temp_label_);
@@ -305,7 +350,9 @@ void SdlPreviewClock::build_sensor_summary(lv_obj_t *screen)
     lv_obj_set_style_text_align(humi_label_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     temp_trend_canvas_ = lv_canvas_create(screen);
     lv_obj_clear_flag(temp_trend_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(temp_trend_canvas_, 239, 215);
+    lv_obj_set_pos(temp_trend_canvas_,
+                   kClockTrendCanvasX,
+                   kClockTempTrendCanvasY);
     lv_obj_set_size(temp_trend_canvas_, TREND_ICON_WIDTH, TREND_ICON_HEIGHT);
     lv_obj_set_style_border_width(temp_trend_canvas_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(temp_trend_canvas_, 0, LV_PART_MAIN);
@@ -317,7 +364,9 @@ void SdlPreviewClock::build_sensor_summary(lv_obj_t *screen)
     update_trend_icon(temp_trend_canvas_, 1);
     humi_trend_canvas_ = lv_canvas_create(screen);
     lv_obj_clear_flag(humi_trend_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(humi_trend_canvas_, 239, 248);
+    lv_obj_set_pos(humi_trend_canvas_,
+                   kClockTrendCanvasX,
+                   kClockHumiTrendCanvasY);
     lv_obj_set_size(humi_trend_canvas_, TREND_ICON_WIDTH, TREND_ICON_HEIGHT);
     lv_obj_set_style_border_width(humi_trend_canvas_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(humi_trend_canvas_, 0, LV_PART_MAIN);
@@ -335,34 +384,42 @@ void SdlPreviewClock::build_time_and_progress(lv_obj_t *screen)
 {
     time_canvas_ = lv_canvas_create(screen);
     lv_obj_clear_flag(time_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(time_canvas_, 18, 76);
-    lv_obj_set_size(time_canvas_, kTimeCanvasW, kTimeCanvasH);
+    lv_obj_set_pos(time_canvas_, kClockTimeCanvasX, kClockTimeCanvasY);
+    lv_obj_set_size(time_canvas_,
+                    kClockTimeCanvasWidth,
+                    kClockTimeCanvasHeight);
     lv_obj_set_style_border_width(time_canvas_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(time_canvas_, 0, LV_PART_MAIN);
     lv_canvas_set_buffer(time_canvas_,
                          time_canvas_pixels_.data(),
-                         kTimeCanvasW,
-                         kTimeCanvasH,
+                         kClockTimeCanvasWidth,
+                         kClockTimeCanvasHeight,
                          LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(time_canvas_, lv_color_white(), LV_OPA_COVER);
 
     second_canvas_ = lv_canvas_create(screen);
     lv_obj_clear_flag(second_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(second_canvas_, 320, 124);
-    lv_obj_set_size(second_canvas_, kSecondCanvasW, kSecondCanvasH);
+    lv_obj_set_pos(second_canvas_,
+                   kClockSecondCanvasX,
+                   kClockSecondCanvasY);
+    lv_obj_set_size(second_canvas_,
+                    kClockSecondCanvasWidth,
+                    kClockSecondCanvasHeight);
     lv_obj_set_style_border_width(second_canvas_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(second_canvas_, 0, LV_PART_MAIN);
     lv_canvas_set_buffer(second_canvas_,
                          second_canvas_pixels_.data(),
-                         kSecondCanvasW,
-                         kSecondCanvasH,
+                         kClockSecondCanvasWidth,
+                         kClockSecondCanvasHeight,
                          LV_IMG_CF_TRUE_COLOR);
     lv_canvas_fill_bg(second_canvas_, lv_color_white(), LV_OPA_COVER);
 
     status_gif_canvas_ = lv_canvas_create(screen);
     remember_lower_panel_object(status_gif_canvas_);
     lv_obj_clear_flag(status_gif_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(status_gif_canvas_, 279, 196);
+    lv_obj_set_pos(status_gif_canvas_,
+                   kClockStatusGifCanvasX,
+                   kClockStatusGifCanvasY);
     lv_obj_set_size(status_gif_canvas_, STATUS_GIF_WIDTH, STATUS_GIF_HEIGHT);
     lv_obj_set_style_border_width(status_gif_canvas_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(status_gif_canvas_, 0, LV_PART_MAIN);
@@ -374,12 +431,29 @@ void SdlPreviewClock::build_time_and_progress(lv_obj_t *screen)
     lv_canvas_fill_bg(status_gif_canvas_, lv_color_white(), LV_OPA_COVER);
     draw_status_gif_frame(0);
 
-    lv_obj_t *top_line = make_bar(screen, 18, 54, 364, 4);
-    lv_obj_t *bottom_line = make_bar(screen, 18, 184, 364, 4);
+    lv_obj_t *top_line = make_bar(
+        screen,
+        kClockDividerX,
+        kClockTopDividerY,
+        kClockDividerWidth,
+        kClockDividerHeight);
+    lv_obj_t *bottom_line = make_bar(screen,
+                                     kClockDividerX,
+                                     kClockBottomDividerY,
+                                     kClockDividerWidth,
+                                     kClockDividerHeight);
     day_progress_.build(screen, 59);
-    second_progress_.build(screen, 180);
-    panel_sep_a_ = make_bar(screen, 139, 188, 2, 102);
-    panel_sep_b_ = make_bar(screen, 260, 188, 2, 102);
+    second_progress_.build(screen, kClockSecondProgressCanvasY);
+    panel_sep_a_ = make_bar(screen,
+                            kClockLowerPanelSeparatorAX,
+                            kClockLowerPanelSeparatorY,
+                            kClockLowerPanelSeparatorWidth,
+                            kClockLowerPanelSeparatorHeight);
+    panel_sep_b_ = make_bar(screen,
+                            kClockLowerPanelSeparatorBX,
+                            kClockLowerPanelSeparatorY,
+                            kClockLowerPanelSeparatorWidth,
+                            kClockLowerPanelSeparatorHeight);
     remember_lower_panel_object(panel_sep_a_);
     remember_lower_panel_object(panel_sep_b_);
     set_obj_black(top_line, true);
@@ -389,7 +463,9 @@ void SdlPreviewClock::build_time_and_progress(lv_obj_t *screen)
 
     low_battery_icon_canvas_ = lv_canvas_create(screen);
     lv_obj_clear_flag(low_battery_icon_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(low_battery_icon_canvas_, 156, 214);
+    lv_obj_set_pos(low_battery_icon_canvas_,
+                   kClockLowBatteryIconX,
+                   kClockLowBatteryIconY);
     lv_obj_set_size(low_battery_icon_canvas_, LOW_BATTERY_ICON_WIDTH, LOW_BATTERY_ICON_HEIGHT);
     lv_obj_set_style_border_width(low_battery_icon_canvas_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(low_battery_icon_canvas_, 0, LV_PART_MAIN);

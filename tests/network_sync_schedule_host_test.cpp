@@ -11,7 +11,7 @@ NetworkSyncScheduleInput base_input()
 {
     NetworkSyncScheduleInput input = {};
     input.now = kNow;
-    input.have_weather_key = true;
+    input.have_weather_config = true;
     input.boot_weather_due_at = kNow + 8;
     input.boot_saying_due_at = kNow + 16;
     return input;
@@ -71,12 +71,6 @@ int main()
     assert(!network_visible_auto_sync_allowed(29LL * 1000 * 1000));
     assert(network_visible_auto_sync_allowed(30LL * 1000 * 1000));
     assert(network_visible_auto_sync_allowed(-1));
-    assert(!network_request_snapshot_canceled(0, 0));
-    assert(!network_request_snapshot_canceled(0x03, 0x03));
-    assert(!network_request_snapshot_canceled(0x03, 0x07));
-    assert(network_request_snapshot_canceled(0x01, 0));
-    assert(network_request_snapshot_canceled(0x03, 0x02));
-    assert(network_request_snapshot_canceled(0x1f, 0x0f));
     assert(network_startup_followup_https_allowed(true,
                                                   48 * 1024,
                                                   24 * 1024,
@@ -101,13 +95,6 @@ int main()
                                                 0,
                                                 0,
                                                 0));
-    assert(!network_boot_weather_due_after_update(false, false, false));
-    assert(!network_boot_weather_due_after_update(false, false, true));
-    assert(network_boot_weather_due_after_update(true, false, false));
-    assert(network_boot_weather_due_after_update(true, false, true));
-    assert(!network_boot_weather_due_after_update(true, true, false));
-    assert(network_boot_weather_due_after_update(true, true, true));
-
     NetworkSyncSchedule boot_https_schedule = {};
     boot_https_schedule.boot_weather_ready = true;
     boot_https_schedule.boot_saying_ready = true;
@@ -303,7 +290,7 @@ int main()
     input = base_input();
     input.manual_weather_due = true;
     input.manual_saying_due = true;
-    input.have_weather_key = false;
+    input.have_weather_config = false;
     schedule = calculate_network_sync_schedule(input);
     assert(!schedule.weather_due);
     assert(schedule.saying_due);

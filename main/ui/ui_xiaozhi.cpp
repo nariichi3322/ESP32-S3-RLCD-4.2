@@ -5,6 +5,7 @@
 #include "app_metadata.h"
 #include "ui_battery.h"
 #include "ui_fonts.h"
+#include "ui_work_page_layout.h"
 #include "ui_xiaozhi_face.h"
 #include "ui_xiaozhi_subtitle.h"
 #include "pomodoro_services.h"
@@ -14,10 +15,6 @@
 
 namespace {
 constexpr int kClockCardCount = 3;
-constexpr int kTopLineX = 18;
-constexpr int kTopLineY = 54;
-constexpr int kTopLineW = 364;
-constexpr int kTopLineH = 4;
 constexpr int kInteractionPanelX = 18;
 constexpr int kInteractionPanelY = 188;
 constexpr int kInteractionPanelW = 364;
@@ -242,7 +239,11 @@ void build_xiaozhi_page()
                                true,
                                true);
     set_obj_visible(get_work_page_status_labels(kWorkPageXiaozhiAI).time, false);
-    lv_obj_t *top_line = make_bar(root, kTopLineX, kTopLineY, kTopLineW, kTopLineH);
+    lv_obj_t *top_line = make_bar(root,
+                                  ui_work_page_layout::kTopSeparatorX,
+                                  ui_work_page_layout::kTopSeparatorY,
+                                  ui_work_page_layout::kTopSeparatorWidth,
+                                  ui_work_page_layout::kTopSeparatorHeight);
     set_obj_black(top_line, true);
     build_work_page_day_progress(root, kWorkPageXiaozhiAI);
     build_inverted_clock_cards(root, s_clock_cards, s_clock_card_buffers);

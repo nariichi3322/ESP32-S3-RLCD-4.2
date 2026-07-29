@@ -1,8 +1,8 @@
 // 解析配网页字段别名并规范化需要去除空白的文本。
 #include "provisioning_form_fields.h"
 
+#include "ascii_text.h"
 #include "network_form.h"
-#include "network_text.h"
 
 namespace {
 constexpr size_t max_size(size_t a, size_t b)
@@ -34,7 +34,7 @@ void form_value_fallback_trimmed(const char *body,
                                  size_t out_len)
 {
     form_value_fallback(body, primary_key, fallback_key, out, out_len);
-    trim_ascii(out);
+    trim_ascii_whitespace(out);
 }
 
 static_assert(kNetworkFormEncodedBufferSize >= kMaxProvisioningFormFieldSize,

@@ -2,9 +2,6 @@
 #pragma once
 #include "lvgl.h"
 
-#include <stddef.h>
-#include <time.h>
-
 #include "ui_bitmap.h"
 #include "ui_boot_screen.h"
 #include "ui_canvas_primitives.h"
@@ -27,6 +24,3 @@
 #include "ui_work_page_catalog.h"
 #include "ui_work_pages.h"
 #include "ui_work_status.h"
-
-void format_axis_hour(time_t value, char *out, size_t out_len);
-int value_to_plot_y(float value, float min_value, float max_value, int y, int h);

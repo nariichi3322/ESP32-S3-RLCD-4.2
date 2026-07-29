@@ -1,5 +1,5 @@
 // 验证手动天气城市在并发读写时始终提供完整字符串快照。
-#include "manual_weather_city_state.h"
+#include "manual_weather_city_state_internal.h"
 
 #include <assert.h>
 #include <atomic>

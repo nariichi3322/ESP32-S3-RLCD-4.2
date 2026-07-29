@@ -4,8 +4,8 @@
 #include "app_metadata.h"
 #include "app_runtime_timing.h"
 #include "network_diagnostics_state.h"
+#include "network_sync_request_generation.h"
 #include "ui_settings_activity_state.h"
-#include "ui_settings_sync_state.h"
 
 #include <assert.h>
 #include <atomic>
@@ -19,13 +19,12 @@ namespace {
 TickType_t s_now = 0;
 EventBits_t s_event_bits = 0;
 int s_notify_count = 0;
+int s_network_state_notify_count = 0;
 NetworkDiagState s_network_diag_state = kNetworkDiagIdle;
 
-SettingsSyncStateSnapshot sync_state()
+SettingsUiTimingSnapshot sync_timing()
 {
-    SettingsSyncStateSnapshot state;
-    settings_sync_state_load(&state);
-    return state;
+    return settings_ui_timing_snapshot_load();
 }
 
 void expect_active_feedback(TickType_t now, const char *expected)
@@ -40,29 +39,36 @@ void reset_state()
     clear_settings_feedback();
     settings_page_request();
     settings_activity_record(0);
-    settings_sync_state_begin(kSettingsSyncNone, 0);
     s_network_diag_state = kNetworkDiagIdle;
+    assert(!sync_timing().sync_busy);
     s_now = 100;
-    s_event_bits = kManualNtpSyncBit | kManualWeatherSyncBit | kManualSayingSyncBit;
+    s_event_bits = 0;
     s_notify_count = 0;
+    s_network_state_notify_count = 0;
 }
 
 void expect_timeout(SettingsSyncOp op, EventBits_t bit, const char *feedback)
 {
     reset_state();
-    settings_sync_state_begin(op, 120);
-    assert(!finish_settings_sync_if_timed_out(119));
-    assert(sync_state().operation == op);
+    constexpr TickType_t kStartTick = 100;
+    constexpr TickType_t kDeadlineTick =
+        kStartTick + kSettingsManualSyncTimeoutMs;
+    s_now = kStartTick;
+    begin_settings_sync(op, "同步中", bit);
+    assert(!finish_settings_sync_if_timed_out(kDeadlineTick - 1));
+    assert(sync_timing().sync_busy);
+    assert(sync_timing().sync_deadline_tick == kDeadlineTick);
     assert((s_event_bits & bit) != 0);
 
-    s_now = 120;
-    assert(finish_settings_sync_if_timed_out(120));
-    assert(sync_state().operation == kSettingsSyncNone);
-    assert(sync_state().deadline_tick == 0);
+    s_now = kDeadlineTick;
+    assert(finish_settings_sync_if_timed_out(kDeadlineTick));
+    assert(!sync_timing().sync_busy);
+    assert(sync_timing().sync_deadline_tick == 0);
     assert((s_event_bits & bit) == 0);
-    expect_active_feedback(120, feedback);
-    assert(settings_activity_last_tick() == 120);
-    assert(s_notify_count == 1);
+    expect_active_feedback(kDeadlineTick, feedback);
+    assert(settings_activity_last_tick() == kDeadlineTick);
+    assert(s_notify_count == 2);
+    assert(s_network_state_notify_count == 1);
 }
 } // namespace
 
@@ -81,6 +87,33 @@ EventBits_t app_event_group_clear_bits(EventBits_t bits)
     EventBits_t previous = s_event_bits;
     s_event_bits &= ~bits;
     return previous;
+}
+
+EventBits_t app_event_group_get_bits()
+{
+    return s_event_bits;
+}
+
+EventBits_t app_event_group_set_bits(EventBits_t bits)
+{
+    s_event_bits |= bits;
+    return s_event_bits;
+}
+
+void notify_network_sync_runtime_state_changed()
+{
+    ++s_network_state_notify_count;
+}
+
+bool cancel_pending_network_sync_requests(uint32_t request_bits)
+{
+    const EventBits_t previous_bits =
+        app_event_group_clear_bits(request_bits);
+    if ((previous_bits & request_bits) == 0) {
+        return false;
+    }
+    notify_network_sync_runtime_state_changed();
+    return true;
 }
 
 void notify_ui_task()
@@ -106,6 +139,7 @@ int main()
                                           uninitialized_feedback,
                                           sizeof(uninitialized_feedback)));
     assert(uninitialized_feedback[0] == '\0');
+    assert(init_network_sync_request_generation());
     assert(settings_activity_state_init());
     assert(settings_feedback_state_init());
     assert(settings_feedback_state_init());
@@ -124,36 +158,98 @@ int main()
     assert(s_notify_count == 1);
 
     reset_state();
-    begin_settings_sync(kSettingsSyncWeather, "同步中");
+    begin_settings_sync(kSettingsSyncWeather,
+                        "同步中",
+                        kManualWeatherSyncBit);
+    const SettingsSyncRequestSnapshot weather_request =
+        settings_sync_request_snapshot_load();
     timing = settings_ui_timing_snapshot_load();
     assert(timing.feedback_until_tick == 100 + kSettingsManualSyncTimeoutMs);
     assert(timing.sync_deadline_tick == 100 + kSettingsManualSyncTimeoutMs);
     assert(timing.sync_busy);
-    assert(sync_state().operation == kSettingsSyncWeather);
-    assert(sync_state().deadline_tick == 100 + kSettingsManualSyncTimeoutMs);
     expect_active_feedback(100, "同步中");
-    finish_settings_sync(kSettingsSyncNtp, "错误操作");
-    assert(sync_state().operation == kSettingsSyncWeather);
+    finish_settings_sync(kSettingsSyncNtp,
+                         weather_request.generation,
+                         "错误操作");
+    timing = sync_timing();
+    assert(timing.sync_busy);
+    assert(timing.sync_deadline_tick == 100 + kSettingsManualSyncTimeoutMs);
+    finish_settings_sync(kSettingsSyncWeather,
+                         weather_request.generation,
+                         "同步完成");
+    assert(!sync_timing().sync_busy);
 
     expect_timeout(kSettingsSyncNtp, kManualNtpSyncBit, "时间同步超时");
     expect_timeout(kSettingsSyncWeather, kManualWeatherSyncBit, "天气同步超时");
     expect_timeout(kSettingsSyncSaying, kManualSayingSyncBit, "一言更新超时");
 
     reset_state();
-    settings_sync_state_begin(kSettingsSyncNtp, UINT32_MAX - 4);
-    assert(!finish_settings_sync_if_timed_out(UINT32_MAX - 5));
-    s_now = 1;
-    assert(finish_settings_sync_if_timed_out(1));
+    s_now = 100;
+    begin_settings_sync(kSettingsSyncWeather,
+                        "同步中",
+                        kManualWeatherSyncBit);
+    s_event_bits &= ~kManualWeatherSyncBit;
+    const TickType_t settled_request_deadline =
+        100 + kSettingsManualSyncTimeoutMs;
+    assert(finish_settings_sync_if_timed_out(settled_request_deadline));
+    assert(s_network_state_notify_count == 0);
 
     reset_state();
-    settings_sync_state_begin(kSettingsSyncNetworkDiag, 100);
-    assert(finish_settings_sync_if_timed_out(100));
-    assert(sync_state().operation == kSettingsSyncNone);
-    assert(sync_state().deadline_tick == 0);
+    s_now = UINT32_MAX - 4 - kSettingsManualSyncTimeoutMs;
+    begin_settings_sync(kSettingsSyncNtp,
+                        "同步中",
+                        kManualNtpSyncBit);
+    const TickType_t wrap_deadline = sync_timing().sync_deadline_tick;
+    assert(wrap_deadline == UINT32_MAX - 4);
+    assert(!finish_settings_sync_if_timed_out(wrap_deadline - 1));
+    s_now = 1;
+    assert(finish_settings_sync_if_timed_out(wrap_deadline));
+
+    reset_state();
+    s_now = 100;
+    begin_settings_sync(kSettingsSyncNetworkDiag,
+                        "检测中",
+                        kNetworkDiagBit);
+    const TickType_t network_diag_deadline =
+        100 + kSettingsManualSyncTimeoutMs;
+    assert(finish_settings_sync_if_timed_out(network_diag_deadline));
+    assert(!sync_timing().sync_busy);
+    assert(sync_timing().sync_deadline_tick == 0);
     char feedback[kSettingsFeedbackTextLen] = {};
-    assert(!settings_feedback_copy_active(100, feedback, sizeof(feedback)));
+    assert(!settings_feedback_copy_active(network_diag_deadline,
+                                          feedback,
+                                          sizeof(feedback)));
     assert(feedback[0] == '\0');
-    assert(s_notify_count == 0);
+    assert(s_notify_count == 1);
+    assert(s_network_state_notify_count == 0);
+
+    reset_state();
+    s_now = 100;
+    begin_settings_sync(kSettingsSyncWeather,
+                        "旧同步",
+                        kManualWeatherSyncBit);
+    const SettingsSyncRequestSnapshot old_weather =
+        settings_sync_request_snapshot_load();
+    s_now = 100 + kSettingsManualSyncTimeoutMs;
+    assert(finish_settings_sync_if_timed_out(s_now));
+    begin_settings_sync(kSettingsSyncWeather,
+                        "新同步",
+                        kManualWeatherSyncBit);
+    const SettingsSyncRequestSnapshot new_weather =
+        settings_sync_request_snapshot_load();
+    assert(new_weather.generation != old_weather.generation);
+    assert(new_weather.request_generation !=
+           old_weather.request_generation);
+    finish_settings_sync(kSettingsSyncWeather,
+                         old_weather.generation,
+                         "旧完成");
+    assert(sync_timing().sync_busy);
+    assert(settings_sync_request_snapshot_load().generation ==
+           new_weather.generation);
+    expect_active_feedback(s_now, "新同步");
+    finish_settings_sync(kSettingsSyncWeather,
+                         new_weather.generation,
+                         "新完成");
 
     reset_state();
     s_now = 100;

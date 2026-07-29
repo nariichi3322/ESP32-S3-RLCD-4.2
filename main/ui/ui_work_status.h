@@ -19,10 +19,8 @@ void build_work_page_status_bar(lv_obj_t *screen,
                                 bool show_time);
 WorkPageStatusLabels get_work_page_status_labels(int page);
 bool update_work_page_status_time(int page, const struct tm &local);
-bool update_work_page_sensor_summary(lv_obj_t *label);
 bool update_non_clock_work_page_sensor_status(int page);
 bool update_weather_clock_sensor_status();
-void style_work_page_sensor_summary(lv_obj_t *label);
 bool update_work_page_status_icons(int page,
                                    const UiStatusRefreshSnapshot &status,
                                    bool low_battery_mode,

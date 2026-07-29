@@ -1,10 +1,13 @@
 // 统一网络同步请求快照、用户反馈和事件位清理顺序。
 #include "network_sync_requests.h"
+#include "network_sync_requests_internal.h"
 
 #include "app_event_group.h"
 #include "network_config_internal.h"
-#include "network_diagnostics_catalog.h"
-#include "network_diagnostics.h"
+#include "network_diagnostics_internal.h"
+#include "network_provisioning_session_internal.h"
+#include "network_runtime_events.h"
+#include "network_sync_request_generation.h"
 #include "ui_settings_feedback.h"
 #include "ui_task_notify.h"
 #include "wifi_portal_state.h"
@@ -32,15 +35,7 @@ static_assert((kNetworkRequestClearBits & kNetworkStateChangedBit) == 0,
               "network runtime state notification is not a sync request");
 constexpr const char *kNetworkStatusOfflineModeEnabled = "离线模式已开启";
 constexpr const char *kNetworkStatusWifiNotConfigured = "未配置 WiFi";
-constexpr const char *kNetworkDiagLocalIpPlaceholder = "本地IP: --";
-constexpr const char *kNetworkDiagPublicIpPlaceholder = "公网IP: --";
 constexpr const char *kNetworkDiagIpLocationWifiNotConfigured = "IP定位: WiFi未配置";
-constexpr const char *kNetworkDiagDnsUnchecked = "DNS: 未检测";
-constexpr const char *kNetworkDiagWeatherUnchecked = "天气: 未检测";
-constexpr const char *kNetworkDiagNtpUnchecked = "NTP: 未检测";
-constexpr const char *kNetworkDiagSayingUnchecked = "一言: 未检测";
-constexpr const char *kNetworkDiagInternetUnchecked = "公网: 未检测";
-constexpr const char *kNetworkDiagOtaSourceUnchecked = "OTA源: 未检测";
 constexpr const char *kNetworkSyncTimeComplete = "时间同步完成";
 constexpr const char *kNetworkSyncWeatherComplete = "天气同步完成";
 constexpr const char *kNetworkSyncSayingComplete = "一言更新完成";
@@ -49,23 +44,22 @@ constexpr const char *kNetworkSyncTimeFailed = "时间同步失败";
 constexpr const char *kNetworkSyncWeatherFailed = "天气同步失败";
 constexpr const char *kNetworkSyncSayingFailed = "一言更新失败";
 constexpr const char *kNetworkSyncLowBatterySkipped = "电量低，已跳过";
-
+constexpr const char *kNetworkSyncNetworkDiagCanceled = "网络检测已取消";
 void finish_requested_settings_sync(bool requested,
                                     SettingsSyncOp op,
                                     const char *status,
                                     EventBits_t bit,
-                                    bool clear_bit)
+                                    uint32_t request_generation,
+                                    uint32_t settings_generation,
+                                    bool retire_request)
 {
     if (!requested) {
         return;
     }
-    if (clear_bit) {
-        // Retire the old request before publishing an idle settings state.
-        // Otherwise the UI can enqueue the same operation while this bit is
-        // still set, and the cleanup below would erase that new request.
-        app_event_group_clear_bits(bit);
+    if (retire_request) {
+        (void)retire_network_sync_request(bit, request_generation);
     }
-    finish_settings_sync(op, status);
+    finish_settings_sync(op, settings_generation, status);
 }
 
 void finish_requested_manual_syncs(const NetworkSyncRequestSnapshot &requests,
@@ -76,17 +70,56 @@ void finish_requested_manual_syncs(const NetworkSyncRequestSnapshot &requests,
                                    kSettingsSyncNtp,
                                    status,
                                    kManualNtpSyncBit,
+                                   requests.manual_ntp_generation,
+                                   requests.manual_ntp_settings_generation,
                                    clear_bits);
     finish_requested_settings_sync(requests.manual_weather,
                                    kSettingsSyncWeather,
                                    status,
                                    kManualWeatherSyncBit,
+                                   requests.manual_weather_generation,
+                                   requests.manual_weather_settings_generation,
                                    clear_bits);
     finish_requested_settings_sync(requests.manual_saying,
                                    kSettingsSyncSaying,
                                    status,
                                    kManualSayingSyncBit,
+                                   requests.manual_saying_generation,
+                                   requests.manual_saying_settings_generation,
                                    clear_bits);
+}
+
+bool request_generations_equal(
+    const NetworkSyncRequestGenerationSnapshot &lhs,
+    const NetworkSyncRequestGenerationSnapshot &rhs)
+{
+    return lhs.manual_ntp == rhs.manual_ntp &&
+           lhs.manual_weather == rhs.manual_weather &&
+           lhs.manual_saying == rhs.manual_saying &&
+           lhs.diagnostics == rhs.diagnostics;
+}
+
+bool settings_sync_requests_equal(
+    const SettingsSyncRequestSnapshot &lhs,
+    const SettingsSyncRequestSnapshot &rhs)
+{
+    return lhs.operation == rhs.operation &&
+           lhs.generation == rhs.generation &&
+           lhs.request_bit == rhs.request_bit &&
+           lhs.request_generation == rhs.request_generation;
+}
+
+uint32_t matching_settings_generation(
+    const SettingsSyncRequestSnapshot &settings,
+    SettingsSyncOp operation,
+    EventBits_t request_bit,
+    uint32_t request_generation)
+{
+    return settings.operation == operation &&
+                   settings.request_bit == request_bit &&
+                   settings.request_generation == request_generation
+               ? settings.generation
+               : 0;
 }
 
 void clear_requested_visible_syncs(const NetworkSyncRequestSnapshot &requests)
@@ -109,16 +142,93 @@ NetworkSyncRequestSnapshot snapshot_network_sync_requests()
 {
     // A loop must schedule and finish the same event snapshot even if another
     // task raises a new request while HTTPS is in progress.
-    EventBits_t bits = app_event_group_get_bits();
+    WifiPortalSaveSnapshot portal_before;
+    WifiPortalSaveSnapshot portal_after;
+    NetworkSyncRequestGenerationSnapshot generations_before;
+    NetworkSyncRequestGenerationSnapshot generations_after;
+    SettingsSyncRequestSnapshot settings_before;
+    SettingsSyncRequestSnapshot settings_after;
+    EventBits_t bits = 0;
+    do {
+        portal_before = wifi_portal_save_snapshot_load();
+        generations_before =
+            network_sync_request_generation_snapshot();
+        settings_before = settings_sync_request_snapshot_load();
+        bits = app_event_group_get_bits();
+        settings_after = settings_sync_request_snapshot_load();
+        generations_after =
+            network_sync_request_generation_snapshot();
+        portal_after = wifi_portal_save_snapshot_load();
+    } while (portal_before.generation != portal_after.generation ||
+             portal_before.result != portal_after.result ||
+             !request_generations_equal(generations_before,
+                                        generations_after) ||
+             !settings_sync_requests_equal(settings_before,
+                                            settings_after));
+
     NetworkSyncRequestSnapshot requests;
-    requests.provisioning = (bits & kProvisioningSyncBit) != 0;
+    requests.provisioning =
+        (bits & kProvisioningSyncBit) != 0 &&
+        portal_after.result == WifiPortalSaveResult::kValidating;
+    if (requests.provisioning) {
+        requests.provisioning_generation = portal_after.generation;
+    }
     requests.manual_ntp = (bits & kManualNtpSyncBit) != 0;
+    if (requests.manual_ntp) {
+        requests.manual_ntp_generation =
+            generations_after.manual_ntp;
+        requests.manual_ntp_settings_generation =
+            matching_settings_generation(
+                settings_after,
+                kSettingsSyncNtp,
+                kManualNtpSyncBit,
+                requests.manual_ntp_generation);
+    }
     requests.manual_weather = (bits & kManualWeatherSyncBit) != 0;
+    if (requests.manual_weather) {
+        requests.manual_weather_generation =
+            generations_after.manual_weather;
+        requests.manual_weather_settings_generation =
+            matching_settings_generation(
+                settings_after,
+                kSettingsSyncWeather,
+                kManualWeatherSyncBit,
+                requests.manual_weather_generation);
+    }
     requests.manual_saying = (bits & kManualSayingSyncBit) != 0;
+    if (requests.manual_saying) {
+        requests.manual_saying_generation =
+            generations_after.manual_saying;
+        requests.manual_saying_settings_generation =
+            matching_settings_generation(
+                settings_after,
+                kSettingsSyncSaying,
+                kManualSayingSyncBit,
+                requests.manual_saying_generation);
+    }
     requests.visible_weather = (bits & kVisibleWeatherSyncBit) != 0;
     requests.visible_saying = (bits & kVisibleSayingSyncBit) != 0;
     requests.diagnostics = (bits & kNetworkDiagBit) != 0;
+    if (requests.diagnostics) {
+        requests.diagnostics_generation =
+            generations_after.diagnostics;
+        requests.diagnostics_settings_generation =
+            matching_settings_generation(
+                settings_after,
+                kSettingsSyncNetworkDiag,
+                kNetworkDiagBit,
+                requests.diagnostics_generation);
+    }
     return requests;
+}
+
+bool network_sync_request_snapshot_still_current(
+    const NetworkSyncRequestSnapshot &scheduled)
+{
+    if (network_sync_request_bits(scheduled) == 0) {
+        return true;
+    }
+    return scheduled.still_owned_by(snapshot_network_sync_requests());
 }
 
 EventBits_t network_sync_request_bits(const NetworkSyncRequestSnapshot &requests)
@@ -150,28 +260,24 @@ EventBits_t network_sync_request_bits(const NetworkSyncRequestSnapshot &requests
 
 void clear_network_request_bits()
 {
+    invalidate_network_sync_requests(kNetworkRequestClearBits);
     clear_config_event_bits(kNetworkRequestClearBits,
                             kNetworkRequestResetReason);
 }
 
 void finish_settings_sync_and_clear_bit(SettingsSyncOp op,
                                         const char *status,
-                                        EventBits_t bit)
+                                        EventBits_t bit,
+                                        uint32_t request_generation,
+                                        uint32_t settings_generation)
 {
-    finish_requested_settings_sync(true, op, status, bit, true);
-}
-
-void set_network_diag_unavailable(const char *ip_location_text)
-{
-    network_diag_set_line(kNetworkDiagLocalIpLine, kNetworkDiagLocalIpPlaceholder);
-    network_diag_set_line(kNetworkDiagPublicIpLine, kNetworkDiagPublicIpPlaceholder);
-    network_diag_set_line(kNetworkDiagIpLocationLine, ip_location_text);
-    network_diag_set_line(kNetworkDiagDnsLine, kNetworkDiagDnsUnchecked);
-    network_diag_set_line(kNetworkDiagWeatherLine, kNetworkDiagWeatherUnchecked);
-    network_diag_set_line(kNetworkDiagNtpLine, kNetworkDiagNtpUnchecked);
-    network_diag_set_line(kNetworkDiagSayingLine, kNetworkDiagSayingUnchecked);
-    network_diag_set_line(kNetworkDiagInternetLine, kNetworkDiagInternetUnchecked);
-    network_diag_set_line(kNetworkDiagOtaLine, kNetworkDiagOtaSourceUnchecked);
+    finish_requested_settings_sync(true,
+                                   op,
+                                   status,
+                                   bit,
+                                   request_generation,
+                                   settings_generation,
+                                   true);
 }
 
 void finish_offline_network_requests(const NetworkSyncRequestSnapshot &requests)
@@ -180,14 +286,16 @@ void finish_offline_network_requests(const NetworkSyncRequestSnapshot &requests)
         stop_wifi_radio(true);
     }
     clear_network_request_bits();
+    if (requests.provisioning) {
+        complete_provisioning_sync_request(
+            requests.provisioning_generation);
+    }
     finish_requested_manual_syncs(requests, kNetworkStatusOfflineModeEnabled, false);
     if (requests.diagnostics) {
-        network_diag_begin();
-        for (int i = 0; i < kNetworkDiagLineCount; ++i) {
-            network_diag_set_line(i, kNetworkStatusOfflineModeEnabled);
-        }
-        network_diag_finish();
-        finish_settings_sync(kSettingsSyncNetworkDiag, kNetworkStatusOfflineModeEnabled);
+        network_diag_finish_with_status(kNetworkStatusOfflineModeEnabled);
+        finish_settings_sync(kSettingsSyncNetworkDiag,
+                             requests.diagnostics_settings_generation,
+                             kNetworkStatusOfflineModeEnabled);
     }
 }
 
@@ -196,13 +304,12 @@ void finish_unconfigured_network_requests(const NetworkSyncRequestSnapshot &requ
     finish_requested_manual_syncs(requests, kNetworkStatusWifiNotConfigured, true);
     clear_requested_visible_syncs(requests);
     if (requests.provisioning) {
-        app_event_group_clear_bits(kProvisioningSyncBit);
+        complete_provisioning_sync_request(
+            requests.provisioning_generation);
     }
     if (requests.diagnostics) {
-        network_diag_begin();
-        set_network_diag_unavailable(kNetworkDiagIpLocationWifiNotConfigured);
-        network_diag_finish();
-        finish_network_diagnostics_sync();
+        network_diag_finish_unavailable(kNetworkDiagIpLocationWifiNotConfigured);
+        finish_network_diagnostics_sync(requests);
     }
 }
 
@@ -216,44 +323,53 @@ void finish_low_battery_network_requests(const NetworkSyncRequestSnapshot &reque
                                    kSettingsSyncWeather,
                                    kNetworkSyncLowBatterySkipped,
                                    kManualWeatherSyncBit,
+                                   requests.manual_weather_generation,
+                                   requests.manual_weather_settings_generation,
                                    true);
     finish_requested_settings_sync(requests.manual_saying,
                                    kSettingsSyncSaying,
                                    kNetworkSyncLowBatterySkipped,
                                    kManualSayingSyncBit,
+                                   requests.manual_saying_generation,
+                                   requests.manual_saying_settings_generation,
                                    true);
     clear_requested_visible_syncs(requests);
     if (requests.diagnostics) {
-        network_diag_begin();
-        for (int i = 0; i < kNetworkDiagLineCount; ++i) {
-            network_diag_set_line(i, kNetworkSyncLowBatterySkipped);
-        }
-        network_diag_finish();
+        network_diag_finish_with_status(kNetworkSyncLowBatterySkipped);
         finish_settings_sync_and_clear_bit(kSettingsSyncNetworkDiag,
                                            kNetworkSyncLowBatterySkipped,
-                                           kNetworkDiagBit);
+                                           kNetworkDiagBit,
+                                           requests.diagnostics_generation,
+                                           requests.diagnostics_settings_generation);
     }
 }
 
 void finish_failed_sync_requests(const NetworkSyncRequestSnapshot &requests)
 {
     if (requests.provisioning) {
-        app_event_group_clear_bits(kProvisioningSyncBit);
+        complete_provisioning_sync_request(
+            requests.provisioning_generation);
     }
     if (requests.manual_ntp) {
         finish_settings_sync_and_clear_bit(kSettingsSyncNtp,
                                            kNetworkSyncTimeFailed,
-                                           kManualNtpSyncBit);
+                                           kManualNtpSyncBit,
+                                           requests.manual_ntp_generation,
+                                           requests.manual_ntp_settings_generation);
     }
     if (requests.manual_weather) {
         finish_settings_sync_and_clear_bit(kSettingsSyncWeather,
                                            kNetworkSyncWeatherFailed,
-                                           kManualWeatherSyncBit);
+                                           kManualWeatherSyncBit,
+                                           requests.manual_weather_generation,
+                                           requests.manual_weather_settings_generation);
     }
     if (requests.manual_saying) {
         finish_settings_sync_and_clear_bit(kSettingsSyncSaying,
                                            kNetworkSyncSayingFailed,
-                                           kManualSayingSyncBit);
+                                           kManualSayingSyncBit,
+                                           requests.manual_saying_generation,
+                                           requests.manual_saying_settings_generation);
     }
     clear_requested_visible_syncs(requests);
 }
@@ -264,17 +380,22 @@ void finish_successful_sync_requests(const NetworkSyncRequestSnapshot &requests,
                                      bool saying_ok)
 {
     if (requests.provisioning) {
-        app_event_group_clear_bits(kProvisioningSyncBit);
+        complete_provisioning_sync_request(
+            requests.provisioning_generation);
     }
     if (requests.manual_ntp) {
         finish_settings_sync_and_clear_bit(kSettingsSyncNtp,
                                            ntp_ok ? kNetworkSyncTimeComplete : kNetworkSyncTimeFailed,
-                                           kManualNtpSyncBit);
+                                           kManualNtpSyncBit,
+                                           requests.manual_ntp_generation,
+                                           requests.manual_ntp_settings_generation);
     }
     if (requests.manual_weather) {
         finish_settings_sync_and_clear_bit(kSettingsSyncWeather,
                                            weather_ok ? kNetworkSyncWeatherComplete : kNetworkSyncWeatherFailed,
-                                           kManualWeatherSyncBit);
+                                           kManualWeatherSyncBit,
+                                           requests.manual_weather_generation,
+                                           requests.manual_weather_settings_generation);
     }
     // Manual completion already wakes the settings UI through
     // finish_settings_sync(). Automatic boot success and visible-page
@@ -287,7 +408,9 @@ void finish_successful_sync_requests(const NetworkSyncRequestSnapshot &requests,
     if (requests.manual_saying) {
         finish_settings_sync_and_clear_bit(kSettingsSyncSaying,
                                            saying_ok ? kNetworkSyncSayingComplete : kNetworkSyncSayingFailed,
-                                           kManualSayingSyncBit);
+                                           kManualSayingSyncBit,
+                                           requests.manual_saying_generation,
+                                           requests.manual_saying_settings_generation);
     }
     // A successful saying publication wakes the UI in daily_saying.cpp.
     // Preserve the failure wake so a visible page can leave its pending state.
@@ -297,9 +420,32 @@ void finish_successful_sync_requests(const NetworkSyncRequestSnapshot &requests,
     clear_requested_visible_syncs(requests);
 }
 
-void finish_network_diagnostics_sync()
+bool network_diagnostics_request_pending()
+{
+    return (app_event_group_get_bits() & kNetworkDiagBit) != 0;
+}
+
+void cancel_network_diagnostics_sync()
+{
+    if (!network_diagnostics_request_pending()) {
+        return;
+    }
+    const SettingsSyncRequestSnapshot settings =
+        settings_sync_request_snapshot_load();
+    invalidate_network_sync_requests(kNetworkDiagBit);
+    network_diag_reset();
+    finish_settings_sync(kSettingsSyncNetworkDiag,
+                         settings.generation,
+                         kNetworkSyncNetworkDiagCanceled);
+    notify_network_sync_runtime_state_changed();
+}
+
+void finish_network_diagnostics_sync(
+    const NetworkSyncRequestSnapshot &requests)
 {
     finish_settings_sync_and_clear_bit(kSettingsSyncNetworkDiag,
                                        kNetworkSyncNetworkDiagComplete,
-                                       kNetworkDiagBit);
+                                       kNetworkDiagBit,
+                                       requests.diagnostics_generation,
+                                       requests.diagnostics_settings_generation);
 }

@@ -92,6 +92,13 @@ const char *audio_text_or_default(const char *text, const char *fallback)
     return text ? text : fallback;
 }
 
+bool asynchronous_chime_blocked_by_system()
+{
+    return audio_playback_blocked_by_system(
+        battery_low_mode_load(),
+        ota_runtime_state_load() == kOtaUpdating);
+}
+
 void settings_confirmation_chime_task(void *);
 
 bool create_audio_task(TaskFunction_t task_fn,
@@ -145,6 +152,10 @@ void create_settings_chime_retry_task()
 
 void run_hourly_chime(int sound_index)
 {
+    if (asynchronous_chime_blocked_by_system()) {
+        audio_finish_playback();
+        return;
+    }
     const int volume_percent = chime_runtime_volume_percent();
     CodecPort *codec = audio_prepare_codec_for_playback();
     if (codec && codec->CodecPort_PlayChimeSound(sound_index, volume_percent)) {
@@ -167,7 +178,9 @@ void run_setup_prompt()
             return;
         }
         if (attempt > 0 && !audio_try_mark_playing()) {
-            vTaskDelay(kSetupPromptRetryDelay);
+            if (attempt + 1 < kSetupPromptPlaybackAttempts) {
+                vTaskDelay(kSetupPromptRetryDelay);
+            }
             continue;
         }
         CodecPort *codec = audio_prepare_codec_for_playback();
@@ -235,10 +248,15 @@ namespace {
 void run_settings_confirmation_chime()
 {
     for (int attempt = 0; attempt < kSettingsChimeRetryAttempts; ++attempt) {
+        if (asynchronous_chime_blocked_by_system()) {
+            return;
+        }
         if (start_chime_playback(chime_runtime_sound_index())) {
             return;
         }
-        vTaskDelay(kSettingsChimeRetryDelay);
+        if (attempt + 1 < kSettingsChimeRetryAttempts) {
+            vTaskDelay(kSettingsChimeRetryDelay);
+        }
     }
     ESP_LOGW(TAG, "%s", kSettingsChimeBusyLog);
 }
@@ -253,7 +271,8 @@ void settings_confirmation_chime_task(void *)
 
 bool start_chime_playback(int source_slot)
 {
-    if (!audio_try_mark_playing()) {
+    if (asynchronous_chime_blocked_by_system() ||
+        !audio_try_mark_playing()) {
         return false;
     }
     if (!create_audio_task(hourly_chime_task,
@@ -303,8 +322,7 @@ void request_setup_prompt_once()
 
 void request_settings_confirmation_chime()
 {
-    if (audio_playback_blocked_by_system(battery_low_mode_load(),
-                                         ota_runtime_state_load() == kOtaUpdating)) {
+    if (asynchronous_chime_blocked_by_system()) {
         return;
     }
     if (start_chime_playback(chime_runtime_sound_index())) {

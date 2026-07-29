@@ -5,11 +5,14 @@
 
 #include "core/app_constexpr.h"
 #include "sdl_preview_widgets.h"
+#include "ui_weather_board_layout.h"
 
 LV_FONT_DECLARE(qweather_icons_36);
 LV_FONT_DECLARE(zh_font_16);
 
 namespace {
+using namespace ui_weather_board_layout;
+
 using sdl_preview_widgets::make_bar;
 using sdl_preview_widgets::make_label;
 using sdl_preview_widgets::make_label_with_font;
@@ -63,14 +66,46 @@ void build_weather_board_preview_body(lv_obj_t *screen)
         return;
     }
 
-    make_label(screen, 20, 66, 135, 24, "杭州");
-    make_label_with_font(screen, 20, 86, 88, 54, "26", &lv_font_montserrat_48);
-    make_label_with_font(screen, 88, 96, 24, 32, "C", &lv_font_montserrat_24);
-    lv_obj_t *icon = make_label(screen, 20, 143, 42, 40, preview_weather_icon_text("100"));
+    make_label(screen,
+               kWeatherBoardCurrentCityX,
+               kWeatherBoardCurrentCityY,
+               kWeatherBoardCurrentCityW,
+               kWeatherBoardCurrentCityH,
+               "杭州");
+    make_label_with_font(screen,
+                         kWeatherBoardCurrentTempX,
+                         kWeatherBoardCurrentTempY,
+                         kWeatherBoardCurrentTempW,
+                         kWeatherBoardCurrentTempH,
+                         "26",
+                         &lv_font_montserrat_48);
+    make_label_with_font(screen,
+                         kWeatherBoardCurrentUnitX,
+                         kWeatherBoardCurrentUnitY,
+                         kWeatherBoardCurrentUnitW,
+                         kWeatherBoardCurrentUnitH,
+                         "C",
+                         &lv_font_montserrat_24);
+    lv_obj_t *icon = make_label(screen,
+                                kWeatherBoardCurrentIconX,
+                                kWeatherBoardCurrentIconY,
+                                kWeatherBoardCurrentIconW,
+                                kWeatherBoardCurrentIconH,
+                                preview_weather_icon_text("100"));
     lv_obj_set_style_text_font(icon, &qweather_icons_36, LV_PART_MAIN);
     lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    make_label(screen, 62, 151, 92, 24, "晴");
-    make_label(screen, 20, 179, 134, 22, "今日 22/29C");
+    make_label(screen,
+               kWeatherBoardCurrentTextX,
+               kWeatherBoardCurrentTextY,
+               kWeatherBoardCurrentTextW,
+               kWeatherBoardCurrentTextH,
+               "晴");
+    make_label(screen,
+               kWeatherBoardTodayRangeX,
+               kWeatherBoardTodayRangeY,
+               kWeatherBoardTodayRangeW,
+               kWeatherBoardTodayRangeH,
+               "今日 22/29C");
 
     static constexpr const char *kDays[] = {
         "周二\n23日", "周三\n24日", "周四\n25日", "周五\n26日", "周六\n27日", "周日\n28日",
@@ -78,51 +113,106 @@ void build_weather_board_preview_body(lv_obj_t *screen)
     static constexpr const char *kTexts[] = {"晴", "多云转晴", "小到中雨", "阴", "雨夹雪", "大到暴雨"};
     static constexpr const char *kIcons[] = {"100", "101", "305", "104", "404", "306"};
     static constexpr const char *kRanges[] = {"22/29", "23/30", "-3/2", "22/28", "-8/-2", "18/24"};
-    static constexpr int kCardX[] = {138, 180, 222, 264, 306, 348};
     static_assert(array_count(kDays) == array_count(kTexts) &&
                       array_count(kDays) == array_count(kIcons) &&
                       array_count(kDays) == array_count(kRanges) &&
-                      array_count(kDays) == array_count(kCardX),
+                      array_count(kDays) == array_count(kForecastCardX),
                   "weather preview forecast columns must stay aligned");
-    constexpr int kCardY = 66;
     for (size_t i = 0; i < array_count(kDays); ++i) {
-        int x = kCardX[i];
+        int x = kForecastCardX[i];
         lv_obj_t *card = lv_obj_create(screen);
-        lv_obj_set_pos(card, x, kCardY);
-        lv_obj_set_size(card, 34, 126);
+        lv_obj_set_pos(card, x, kForecastCardY);
+        lv_obj_set_size(card, kForecastCardW, kForecastCardH);
         style_weather_preview_card(card);
-        lv_obj_t *date = make_label_with_font(screen, x, kCardY, 34, 30, kDays[i], &zh_font_16);
+        lv_obj_t *date = make_label_with_font(screen,
+                                              x,
+                                              kForecastCardY,
+                                              kForecastCardW,
+                                              kForecastCardDateH,
+                                              kDays[i],
+                                              &zh_font_16);
         lv_label_set_long_mode(date, LV_LABEL_LONG_WRAP);
         lv_obj_set_style_text_align(date, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_t *small_icon = make_label(screen,
                                           x,
-                                          kCardY + 35,
-                                          34,
-                                          36,
+                                          kForecastCardY + kForecastCardIconY,
+                                          kForecastCardW,
+                                          kForecastCardIconH,
                                           preview_weather_icon_text(kIcons[i]));
         lv_obj_set_style_text_font(small_icon, &qweather_icons_36, LV_PART_MAIN);
         lv_obj_set_style_text_align(small_icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-        lv_obj_t *text = make_label_with_font(screen, x, kCardY + 72, 34, 34, kTexts[i], &zh_font_16);
+        lv_obj_t *text = make_label_with_font(screen,
+                                              x,
+                                              kForecastCardY + kForecastCardTextY,
+                                              kForecastCardW,
+                                              kForecastCardTextH,
+                                              kTexts[i],
+                                              &zh_font_16);
         lv_label_set_long_mode(text, LV_LABEL_LONG_WRAP);
         lv_obj_set_style_text_align(text, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_t *range = make_label_with_font(screen,
                                                x,
-                                               kCardY + 108,
-                                               34,
-                                               16,
+                                               kForecastCardY + kForecastCardRangeY,
+                                               kForecastCardW,
+                                               kForecastCardRangeH,
                                                kRanges[i],
                                                &lv_font_montserrat_12);
         lv_obj_set_style_text_align(range, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     }
 
-    lv_obj_t *detail_line = make_bar(screen, 20, 196, 360, 2);
+    lv_obj_t *detail_line = make_bar(screen,
+                                     kWeatherBoardDetailLineX,
+                                     kWeatherBoardDetailLineY,
+                                     kWeatherBoardDetailLineW,
+                                     kWeatherBoardDetailLineH);
     set_obj_black(detail_line, true);
-    make_label(screen, 20, 202, 110, 22, "AQI 42 优");
-    make_label(screen, 132, 202, 86, 22, "湿度 58%");
-    make_label(screen, 228, 202, 152, 22, "东北风 3级");
-    make_label(screen, 20, 224, 110, 20, "日出 05:01");
-    make_label(screen, 132, 224, 120, 20, "日落 19:06");
-    make_label(screen, 20, 246, 360, 22, "预警 大风蓝 / 暴雨黄 / 雷电橙");
-    lv_obj_t *advice = make_label(screen, 20, 272, 360, 20, "天气平稳，适合轻装出行。");
+    make_label(screen,
+               kWeatherBoardLeftColumnX,
+               kWeatherBoardDetailTopY,
+               kWeatherBoardAirLabelW,
+               kWeatherBoardDetailLabelH,
+               "AQI 42 优");
+    make_label(screen,
+               kWeatherBoardMiddleColumnX,
+               kWeatherBoardDetailTopY,
+               kWeatherBoardHumidityLabelW,
+               kWeatherBoardDetailLabelH,
+               "湿度 58%");
+    make_label(screen,
+               kWeatherBoardRightColumnX,
+               kWeatherBoardDetailTopY,
+               kWeatherBoardWindLabelW,
+               kWeatherBoardDetailLabelH,
+               "东北风 3级");
+    make_label(screen,
+               kWeatherBoardLeftColumnX,
+               kWeatherBoardDetailBottomY,
+               kWeatherBoardSunriseLabelW,
+               kWeatherBoardSunLabelH,
+               "日出 05:01");
+    make_label(screen,
+               kWeatherBoardMiddleColumnX,
+               kWeatherBoardDetailBottomY,
+               kWeatherBoardSunsetLabelW,
+               kWeatherBoardSunLabelH,
+               "日落 19:06");
+    make_label(screen,
+               kWeatherBoardRightColumnX,
+               kWeatherBoardDetailBottomY,
+               kWeatherBoardSunCountdownLabelW,
+               kWeatherBoardSunLabelH,
+               "距日落 01:05");
+    make_label(screen,
+               kWeatherBoardAlertX,
+               kWeatherBoardAlertY,
+               kWeatherBoardAlertW,
+               kWeatherBoardAlertH,
+               "预警 大风蓝 / 暴雨黄 / 雷电橙");
+    lv_obj_t *advice = make_label(screen,
+                                  kWeatherBoardAdviceX,
+                                  kWeatherBoardAdviceY,
+                                  kWeatherBoardAdviceW,
+                                  kWeatherBoardAdviceH,
+                                  "天气平稳，适合轻装出行。");
     lv_label_set_long_mode(advice, LV_LABEL_LONG_WRAP);
 }

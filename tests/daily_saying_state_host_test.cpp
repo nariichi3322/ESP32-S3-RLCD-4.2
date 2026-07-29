@@ -1,5 +1,5 @@
 // 验证每日文字与同步时间在并发读写中始终来自同一发布批次。
-#include "daily_saying_state.h"
+#include "daily_saying_state_internal.h"
 
 #include "daily_saying_contract.h"
 
@@ -14,7 +14,7 @@ int main()
     assert(daily_saying_state_version_load() == 0);
     assert(daily_saying_state_init());
     assert(daily_saying_state_init());
-    load_daily_saying_cache();
+    reset_daily_saying_cache();
     assert(daily_saying_state_version_load() == 1);
 
     char text[kDailySayingLen] = {};

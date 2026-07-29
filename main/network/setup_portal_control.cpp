@@ -1,5 +1,6 @@
 // 负责配网热点启停请求的跨任务发布、查询和日志。
 #include "setup_portal_control.h"
+#include "setup_portal_control_internal.h"
 
 #include "app_event_group.h"
 #include "app_metadata.h"

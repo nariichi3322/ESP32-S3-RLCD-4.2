@@ -222,6 +222,9 @@ bool format_clock_sensor_status_text(char *temp,
 
 } // namespace
 
+static bool update_work_page_sensor_summary(lv_obj_t *label);
+static void style_work_page_sensor_summary(lv_obj_t *label);
+
 void invalidate_work_status_draw_cache()
 {
     s_last_temp_trend_drawn = kTrendDrawCacheInvalid;
@@ -377,7 +380,7 @@ bool update_work_page_status_time(int page, const struct tm &local)
     return changed;
 }
 
-bool update_work_page_sensor_summary(lv_obj_t *label)
+static bool update_work_page_sensor_summary(lv_obj_t *label)
 {
     if (!label) {
         return false;
@@ -430,7 +433,7 @@ bool update_weather_clock_sensor_status()
     return changed;
 }
 
-void style_work_page_sensor_summary(lv_obj_t *label)
+static void style_work_page_sensor_summary(lv_obj_t *label)
 {
     if (!label) {
         return;

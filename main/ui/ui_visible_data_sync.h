@@ -18,10 +18,10 @@ struct ActiveWorkPageState {
     bool xiaozhi = false;
     bool weather_clock = false;
     bool uses_weather_data = false;
+    bool uses_extended_weather_data = false;
     bool uses_daily_saying = false;
 };
 
-ActiveWorkPageState active_work_page_state(int active_page);
 ActiveWorkPageState active_work_page_state_for_mode(int active_page,
                                                     bool normal_mode);
 void update_visible_weather_sync(const ActiveWorkPageState &state,

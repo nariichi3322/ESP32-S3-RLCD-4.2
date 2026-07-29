@@ -28,6 +28,10 @@ constexpr int kCaptiveDnsSocketTimeoutSec = 1;
 constexpr int kCaptiveDnsStopWaitAttempts = 15;
 constexpr uint32_t kCaptiveDnsStopWaitDelayMs = 100;
 constexpr TickType_t kCaptiveDnsStopWaitDelay = pdMS_TO_TICKS(kCaptiveDnsStopWaitDelayMs);
+constexpr int kCaptiveDnsRunAttempts = 3;
+constexpr uint32_t kCaptiveDnsRunRetryDelayMs = 100;
+constexpr TickType_t kCaptiveDnsRunRetryDelay =
+    pdMS_TO_TICKS(kCaptiveDnsRunRetryDelayMs);
 constexpr uint32_t kCaptiveDnsTaskStack = 2560;
 constexpr UBaseType_t kCaptiveDnsTaskPriority = 3;
 constexpr BaseType_t kCaptiveDnsTaskCore = 0;
@@ -49,12 +53,22 @@ constexpr const char *kCaptiveDnsTaskName = "captive_dns";
 #define CAPTIVE_DHCPS_LEASE_RESET_LOG "captive dhcp leases reset"
 #define CAPTIVE_DNS_TASK_STILL_STOPPING_LOG "previous captive dns task still stopping"
 #define CAPTIVE_DNS_TASK_START_FAILED_LOG "captive dns task start failed"
+#define CAPTIVE_DNS_TASK_RETRY_FORMAT \
+    "captive dns runtime failed; retrying attempt=%d/%d"
+#define CAPTIVE_DNS_TASK_RETRY_EXHAUSTED_LOG \
+    "captive dns runtime retry exhausted"
 
 static_assert(kCaptiveDnsPort > 0, "captive DNS port must be positive");
 static_assert(kCaptiveDnsSocketTimeoutSec > 0, "captive DNS socket timeout must be positive");
 static_assert(kCaptiveDnsStopWaitAttempts > 0, "captive DNS stop wait attempts must be positive");
 static_assert(kCaptiveDnsStopWaitDelayMs > 0, "captive DNS stop wait delay must be positive");
 static_assert(kCaptiveDnsStopWaitDelay > 0, "captive DNS stop wait delay must be positive");
+static_assert(kCaptiveDnsRunAttempts > 1,
+              "captive DNS runtime must retain a recovery attempt");
+static_assert(kCaptiveDnsRunRetryDelayMs > 0,
+              "captive DNS runtime retry delay must be positive");
+static_assert(kCaptiveDnsRunRetryDelay > 0,
+              "captive DNS runtime retry tick delay must be positive");
 static_assert(kCaptiveDnsTaskStack > 0, "captive DNS task stack must be positive");
 static_assert(kCaptiveDnsTaskPriority > tskIDLE_PRIORITY, "captive DNS task priority must exceed idle");
 static_assert(kCaptiveDnsTaskCore >= 0, "captive DNS task core must be non-negative");
@@ -165,10 +179,30 @@ bool run_captive_dns_server()
 
 void captive_dns_task(void *)
 {
-    bool started = run_captive_dns_server();
+    bool stopped_cleanly = false;
+    for (int attempt = 0; attempt < kCaptiveDnsRunAttempts; ++attempt) {
+        if (s_captive_dns_task.stop_requested()) {
+            stopped_cleanly = true;
+            break;
+        }
+        const bool run_stopped = run_captive_dns_server();
+        if (run_stopped || s_captive_dns_task.stop_requested()) {
+            stopped_cleanly = true;
+            break;
+        }
+        if (attempt + 1 < kCaptiveDnsRunAttempts) {
+            ESP_LOGW(TAG,
+                     CAPTIVE_DNS_TASK_RETRY_FORMAT,
+                     attempt + 2,
+                     kCaptiveDnsRunAttempts);
+            vTaskDelay(kCaptiveDnsRunRetryDelay);
+        }
+    }
     s_captive_dns_task.mark_stopped();
-    if (started) {
+    if (stopped_cleanly) {
         ESP_LOGI(TAG, CAPTIVE_DNS_STOPPED_LOG);
+    } else {
+        ESP_LOGW(TAG, CAPTIVE_DNS_TASK_RETRY_EXHAUSTED_LOG);
     }
     vTaskDelete(nullptr);
 }

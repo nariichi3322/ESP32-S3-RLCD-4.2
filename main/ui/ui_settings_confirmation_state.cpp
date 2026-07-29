@@ -1,5 +1,5 @@
 // 私有保存设置页二次确认状态，避免确认标志泄漏到全局应用状态。
-#include "ui_settings_confirmation_state.h"
+#include "ui_settings_confirmation_state_internal.h"
 
 #include <atomic>
 

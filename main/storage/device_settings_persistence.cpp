@@ -2,14 +2,15 @@
 #include "device_settings_persistence.h"
 
 #include "app_metadata.h"
-#include "chime_runtime_state.h"
+#include "chime_runtime_state_internal.h"
 #include "network_chime_storage.h"
 #include "network_config_keys.h"
 #include "network_config_nvs.h"
 #include "network_page_storage.h"
-#include "ui_work_page_catalog.h"
-#include "ui_gallery_rotation_state.h"
-#include "xiaozhi_auto_return_state.h"
+#include "ui_gallery_rotation_state_internal.h"
+#include "ui_work_page_catalog_internal.h"
+#include "ui_work_page_order_policy.h"
+#include "xiaozhi_auto_return_state_internal.h"
 
 #include <esp_log.h>
 
@@ -39,6 +40,28 @@ constexpr uint8_t bool_to_nvs_u8(bool value)
     return value ? 1 : 0;
 }
 
+bool save_chime_setting_snapshot(const ChimeRuntimeSnapshot &runtime)
+{
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingHourlyReminder);
+    if (err != ESP_OK) {
+        return false;
+    }
+    network_chime_storage::StoredChimeSettings settings = {};
+    settings.enabled = bool_to_nvs_u8(runtime.hourly_enabled);
+    settings.all_day = bool_to_nvs_u8(runtime.all_day);
+    settings.volume = runtime.volume_percent;
+    settings.sound = runtime.sound_index;
+    bool changed = false;
+    err = network_chime_storage::write_if_changed(nvs.get(), err, settings, &changed);
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
+    if (!nvs.close_save_ok(err)) {
+        ESP_LOGW(TAG, NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT, esp_err_to_name(err));
+        return false;
+    }
+    return true;
+}
+
 bool save_changed_u8_setting(const char *action,
                              const char *failure_context,
                              const char *key,
@@ -65,30 +88,21 @@ bool save_changed_u8_setting(const char *action,
 
 bool save_hourly_chime_setting()
 {
-    ScopedNvsHandle nvs;
-    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingHourlyReminder);
-    if (err != ESP_OK) {
+    return save_chime_setting_snapshot(chime_runtime_snapshot_load());
+}
+
+bool set_chime_setting(const ChimeRuntimeSnapshot &settings)
+{
+    if (!save_chime_setting_snapshot(settings)) {
         return false;
     }
-    const ChimeRuntimeSnapshot runtime = chime_runtime_snapshot_load();
-    network_chime_storage::StoredChimeSettings settings = {};
-    settings.enabled = bool_to_nvs_u8(runtime.hourly_enabled);
-    settings.all_day = bool_to_nvs_u8(runtime.all_day);
-    settings.volume = runtime.volume_percent;
-    settings.sound = runtime.sound_index;
-    bool changed = false;
-    err = network_chime_storage::write_if_changed(nvs.get(), err, settings, &changed);
-    err = commit_nvs_if_changed(nvs.get(), err, changed);
-    if (!nvs.close_save_ok(err)) {
-        ESP_LOGW(TAG, NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT, esp_err_to_name(err));
-        return false;
-    }
+    chime_runtime_snapshot_store(settings);
     return true;
 }
 
-bool save_work_page_settings()
+bool set_work_page_enabled_mask_setting(uint8_t page_mask)
 {
-    uint8_t mask = normalize_work_page_enabled_mask(work_page_enabled_mask_load());
+    const uint8_t mask = normalize_work_page_enabled_mask(page_mask);
     if (!save_changed_u8_setting(kNvsActionSavingPageSettings,
                                  kNvsFailureContextPageSettings,
                                  kPageMaskV5Key,
@@ -99,10 +113,13 @@ bool save_work_page_settings()
     return true;
 }
 
-bool save_work_page_order()
+bool set_work_page_order_setting(const uint8_t *page_order,
+                                 size_t page_order_size)
 {
-    uint8_t page_order[kWorkPageCount] = {};
-    if (!work_page_order_normalize_and_copy(page_order, sizeof(page_order))) {
+    const uint8_t page_mask = work_page_enabled_mask_load();
+    if (!work_page_order_policy::order_is_valid(page_order, page_order_size) ||
+        !work_page_order_policy::order_has_valid_home(
+            page_order, page_order_size, page_mask)) {
         return false;
     }
     ScopedNvsHandle nvs;
@@ -114,29 +131,38 @@ bool save_work_page_order()
     err = write_work_page_order_nvs(nvs.get(),
                                     err,
                                     page_order,
-                                    sizeof(page_order),
+                                    page_order_size,
                                     &changed);
     err = commit_nvs_if_changed(nvs.get(), err, changed);
     if (!nvs.close_save_ok(err)) {
         ESP_LOGW(TAG, NVS_SAVE_PAGE_ORDER_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
+    work_page_order_replace(page_order, page_order_size);
     return true;
 }
 
-bool save_xiaozhi_auto_return_setting()
+bool set_xiaozhi_auto_return_setting(bool enabled)
 {
-    return save_changed_u8_setting(
-        kNvsActionSavingXiaozhiAutoReturn,
-        kNvsFailureContextXiaozhiAutoReturn,
-        kXiaozhiAutoReturnKey,
-        bool_to_nvs_u8(xiaozhi_auto_return_enabled_load()));
+    if (!save_changed_u8_setting(kNvsActionSavingXiaozhiAutoReturn,
+                                 kNvsFailureContextXiaozhiAutoReturn,
+                                 kXiaozhiAutoReturnKey,
+                                 bool_to_nvs_u8(enabled))) {
+        return false;
+    }
+    xiaozhi_auto_return_enabled_store(enabled);
+    return true;
 }
 
-bool save_gallery_rotation_setting()
+bool set_gallery_rotation_period_setting(uint8_t period)
 {
-    return save_changed_u8_setting(kNvsActionSavingGalleryRotation,
-                                   kNvsFailureContextGalleryRotation,
-                                   kGalleryRotationKey,
-                                   gallery_rotation_period_load());
+    const uint8_t normalized = normalize_gallery_rotation_period(period);
+    if (!save_changed_u8_setting(kNvsActionSavingGalleryRotation,
+                                 kNvsFailureContextGalleryRotation,
+                                 kGalleryRotationKey,
+                                 normalized)) {
+        return false;
+    }
+    gallery_rotation_period_store(normalized);
+    return true;
 }

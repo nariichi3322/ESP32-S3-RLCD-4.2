@@ -1,5 +1,5 @@
 // 集中维护 Wi-Fi 凭据、天气 API Key 及其可用状态。
-#include "network_credentials_state.h"
+#include "network_credentials_state_internal.h"
 
 #include "scoped_semaphore_lock.h"
 
@@ -181,16 +181,6 @@ void network_credentials_clear()
 bool network_wifi_credentials_configured()
 {
     return network_credentials_availability().wifi_configured;
-}
-
-bool network_weather_api_key_configured()
-{
-    return network_credentials_availability().weather_api_key_configured;
-}
-
-bool network_weather_api_host_configured()
-{
-    return network_credentials_availability().weather_api_host_configured;
 }
 
 bool network_weather_configuration_configured()

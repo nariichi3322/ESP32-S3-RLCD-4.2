@@ -38,11 +38,13 @@ int main()
     assert(!ui_xiaozhi_activation_update_due(true, true, true, false));
     assert(ui_xiaozhi_activation_update_due(false, true, true, false));
 
-    assert(ui_next_minute_delay_ms(0) == 60005);
-    assert(ui_next_minute_delay_ms(1) == 59005);
-    assert(ui_next_minute_delay_ms(59) == 1005);
-    assert(ui_next_minute_delay_ms(60) == 60005);
-    assert(ui_next_minute_delay_ms(-1) == 60005);
+    assert(ui_next_minute_delay_ms(0, 0) == 60005);
+    assert(ui_next_minute_delay_ms(1, 1000000) == 59005);
+    assert(ui_next_minute_delay_ms(1, 1500000) == 58505);
+    assert(ui_next_minute_delay_ms(59, 59999000) == 10);
+    assert(ui_next_minute_delay_ms(60, 60000000) == 60005);
+    assert(ui_next_minute_delay_ms(0, 1000000) == 10);
+    assert(ui_next_minute_delay_ms(0, -1) == 10);
 
     assert(ui_pomodoro_boundary_delay_ms(0) == 0);
     assert(ui_pomodoro_boundary_delay_ms(995) == 1000);
@@ -53,8 +55,6 @@ int main()
     assert(ui_lvgl_lock_retry_delay_ms(4) == 800);
     assert(ui_lvgl_lock_retry_delay_ms(5) == 1000);
     assert(ui_lvgl_lock_retry_delay_ms(255) == 1000);
-    assert(ui_nonzero_delay_ticks(0) == 1);
-    assert(ui_nonzero_delay_ticks(25) == 25);
 
     const uint32_t candidates[] = {250, 0, 50, 75, 0};
     assert(ui_shortest_delay_ticks(candidates, 5) == 50);

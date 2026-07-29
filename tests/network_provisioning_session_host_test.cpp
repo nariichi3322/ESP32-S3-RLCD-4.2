@@ -1,5 +1,5 @@
 // 验证配网热点三态启动、结果反馈等待和失败门户保留事务。
-#include "network_provisioning_session.h"
+#include "network_provisioning_session_internal.h"
 
 #include "app_event_group.h"
 #include "app_metadata.h"
@@ -15,6 +15,8 @@ bool s_start_requested = false;
 bool s_start_wifi_result = false;
 int s_start_wifi_calls = 0;
 EventBits_t s_cleared_bits = 0;
+EventBits_t s_event_bits = 0;
+EventBits_t s_set_bits = 0;
 int s_settings_clear_calls = 0;
 int s_diag_clear_calls = 0;
 int s_info_clear_calls = 0;
@@ -27,12 +29,18 @@ int s_complete_stop_calls = 0;
 
 bool s_portal_active = false;
 bool s_feedback_seen = false;
+uint32_t s_save_generation = 1;
+uint32_t s_generation_after_wait = 0;
+uint32_t s_generation_after_delay = 0;
 TickType_t s_ticks = 0;
 int s_delay_calls = 0;
 TickType_t s_last_delay = 0;
 int s_wait_calls = 0;
 EventBits_t s_wait_bits = 0;
+EventBits_t s_wait_result = 0;
+EventBits_t s_wait_result_after_first = 0;
 TickType_t s_wait_timeout = 0;
+TickType_t s_wait_elapsed_on_first_result = 0;
 bool s_event_group_ready = true;
 
 bool s_prepare_result = false;
@@ -49,6 +57,8 @@ void reset_start_state()
     s_start_wifi_result = false;
     s_start_wifi_calls = 0;
     s_cleared_bits = 0;
+    s_event_bits = 0;
+    s_set_bits = 0;
     s_settings_clear_calls = 0;
     s_diag_clear_calls = 0;
     s_info_clear_calls = 0;
@@ -67,14 +77,23 @@ void reset_stop_state()
 
 void reset_feedback_state()
 {
+    s_cleared_bits = 0;
+    s_event_bits = 0;
+    s_set_bits = 0;
     s_portal_active = false;
     s_feedback_seen = false;
+    s_save_generation = 1;
+    s_generation_after_wait = 0;
+    s_generation_after_delay = 0;
     s_ticks = 0;
     s_delay_calls = 0;
     s_last_delay = 0;
     s_wait_calls = 0;
     s_wait_bits = 0;
+    s_wait_result = 0;
+    s_wait_result_after_first = 0;
     s_wait_timeout = 0;
+    s_wait_elapsed_on_first_result = 0;
     s_event_group_ready = true;
 }
 
@@ -121,7 +140,16 @@ void complete_setup_portal_stop_request()
 EventBits_t app_event_group_clear_bits(EventBits_t bits)
 {
     s_cleared_bits |= bits;
-    return s_cleared_bits;
+    const EventBits_t previous = s_event_bits;
+    s_event_bits &= ~bits;
+    return previous;
+}
+
+EventBits_t app_event_group_set_bits(EventBits_t bits)
+{
+    s_set_bits |= bits;
+    s_event_bits |= bits;
+    return s_event_bits;
 }
 
 void settings_page_clear()
@@ -169,13 +197,23 @@ EventBits_t app_event_group_wait_bits(EventBits_t bits,
                                       BaseType_t wait_for_all,
                                       TickType_t timeout)
 {
-    assert(clear_on_exit == pdTRUE);
+    assert(clear_on_exit == pdFALSE);
     assert(wait_for_all == pdFALSE);
     ++s_wait_calls;
     s_wait_bits = bits;
     s_wait_timeout = timeout;
-    s_ticks += timeout;
-    return 0;
+    const EventBits_t result = s_wait_calls == 1
+                                   ? s_wait_result
+                                   : s_wait_result_after_first;
+    if (result == 0) {
+        s_ticks += timeout;
+    } else if (s_wait_calls == 1) {
+        s_ticks += s_wait_elapsed_on_first_result;
+    }
+    if (s_generation_after_wait != 0) {
+        s_save_generation = s_generation_after_wait;
+    }
+    return result;
 }
 
 void vTaskDelay(TickType_t ticks)
@@ -183,6 +221,9 @@ void vTaskDelay(TickType_t ticks)
     s_last_delay = ticks;
     s_ticks += ticks;
     ++s_delay_calls;
+    if (s_generation_after_delay != 0) {
+        s_save_generation = s_generation_after_delay;
+    }
 }
 
 bool prepare_setup_portal_result_delivery()
@@ -191,10 +232,26 @@ bool prepare_setup_portal_result_delivery()
     return s_prepare_result;
 }
 
-void wifi_portal_save_result_store(WifiPortalSaveResult result)
+WifiPortalSaveSnapshot wifi_portal_save_snapshot_load()
 {
+    return {s_stored_result, s_feedback_seen, s_save_generation};
+}
+
+bool wifi_portal_save_result_store_if_generation(
+    uint32_t generation,
+    WifiPortalSaveResult result,
+    WifiPortalSaveSnapshot *updated)
+{
+    if (generation != s_save_generation) {
+        return false;
+    }
     s_stored_result = result;
+    s_feedback_seen = false;
     ++s_store_calls;
+    if (updated) {
+        *updated = {result, false, s_save_generation};
+    }
+    return true;
 }
 
 bool acquire_network_awake_lock()
@@ -257,23 +314,41 @@ int main()
     assert(s_complete_stop_calls == 1);
 
     reset_feedback_state();
-    wait_for_provisioning_result_feedback();
+    assert(wait_for_provisioning_result_feedback(1));
     assert(s_delay_calls == 0);
     assert(s_ticks == 0);
 
     reset_feedback_state();
     s_portal_active = true;
-    wait_for_provisioning_result_feedback();
+    assert(wait_for_provisioning_result_feedback(1));
     assert(s_wait_calls == 1);
-    assert(s_wait_bits == kProvisioningFeedbackBit);
+    assert(s_wait_bits ==
+           (kProvisioningFeedbackBit | kProvisioningSyncBit));
     assert(s_wait_timeout == pdMS_TO_TICKS(30000));
     assert(s_delay_calls == 0);
     assert(s_ticks == pdMS_TO_TICKS(30000));
 
     reset_feedback_state();
     s_portal_active = true;
+    s_wait_result = kProvisioningFeedbackBit;
+    s_wait_elapsed_on_first_result = pdMS_TO_TICKS(29950);
+    assert(wait_for_provisioning_result_feedback(1));
+    assert(s_wait_calls == 2);
+    assert(s_wait_timeout == pdMS_TO_TICKS(50));
+    assert(s_ticks == pdMS_TO_TICKS(30000));
+
+    reset_feedback_state();
+    s_portal_active = true;
+    s_wait_result = kProvisioningFeedbackBit;
+    assert(wait_for_provisioning_result_feedback(1));
+    assert(s_wait_calls == 2);
+    assert(s_delay_calls == 0);
+    assert(s_ticks == pdMS_TO_TICKS(30000));
+
+    reset_feedback_state();
+    s_portal_active = true;
     s_feedback_seen = true;
-    wait_for_provisioning_result_feedback();
+    assert(wait_for_provisioning_result_feedback(1));
     assert(s_wait_calls == 0);
     assert(s_delay_calls == 1);
     assert(s_ticks == pdMS_TO_TICKS(750));
@@ -282,7 +357,7 @@ int main()
     reset_feedback_state();
     s_portal_active = true;
     s_event_group_ready = false;
-    wait_for_provisioning_result_feedback();
+    assert(wait_for_provisioning_result_feedback(1));
     assert(s_wait_calls == 0);
     assert(s_delay_calls == 1);
     assert(s_ticks == pdMS_TO_TICKS(30000));
@@ -293,11 +368,62 @@ int main()
     s_prepare_calls = 0;
     s_stored_result = WifiPortalSaveResult::kNone;
     s_store_calls = 0;
-    publish_setup_portal_result(WifiPortalSaveResult::kWeatherApiFailed);
+    assert(publish_setup_portal_result(
+        WifiPortalSaveResult::kWeatherApiFailed,
+        1));
     assert(s_prepare_calls == 1);
     assert(s_delay_calls == 0);
     assert(s_store_calls == 1);
     assert(s_stored_result == WifiPortalSaveResult::kWeatherApiFailed);
+
+    reset_feedback_state();
+    s_prepare_result = true;
+    s_prepare_calls = 0;
+    s_store_calls = 0;
+    s_save_generation = 2;
+    assert(!publish_setup_portal_result(
+        WifiPortalSaveResult::kSuccess,
+        1));
+    assert(s_prepare_calls == 0);
+    assert(s_store_calls == 0);
+
+    reset_feedback_state();
+    s_event_bits = kProvisioningSyncBit;
+    complete_provisioning_sync_request(1);
+    assert((s_event_bits & kProvisioningSyncBit) == 0);
+    assert((s_set_bits & kProvisioningSyncBit) == 0);
+
+    reset_feedback_state();
+    s_event_bits = kProvisioningSyncBit;
+    s_save_generation = 2;
+    s_stored_result = WifiPortalSaveResult::kValidating;
+    complete_provisioning_sync_request(1);
+    assert((s_event_bits & kProvisioningSyncBit) != 0);
+    assert((s_set_bits & kProvisioningSyncBit) != 0);
+
+    reset_feedback_state();
+    s_event_bits = kProvisioningSyncBit;
+    s_save_generation = 2;
+    s_stored_result = WifiPortalSaveResult::kInvalidInput;
+    complete_provisioning_sync_request(1);
+    assert((s_event_bits & kProvisioningSyncBit) == 0);
+    assert((s_set_bits & kProvisioningSyncBit) == 0);
+
+    reset_feedback_state();
+    s_portal_active = true;
+    s_wait_result = kProvisioningFeedbackBit;
+    s_generation_after_wait = 2;
+    assert(!wait_for_provisioning_result_feedback(1));
+    assert(s_wait_calls == 1);
+    assert(s_delay_calls == 0);
+    assert(s_ticks == 0);
+
+    reset_feedback_state();
+    s_portal_active = true;
+    s_feedback_seen = true;
+    s_generation_after_delay = 2;
+    assert(!wait_for_provisioning_result_feedback(1));
+    assert(s_delay_calls == 1);
 
     reset_feedback_state();
     s_prepare_result = true;
@@ -311,7 +437,8 @@ int main()
         assert(awake_lock.locked());
         keep_setup_portal_after_provisioning_failure(
             awake_lock,
-            WifiPortalSaveResult::kWeatherApiFailed);
+            WifiPortalSaveResult::kWeatherApiFailed,
+            1);
         assert(!awake_lock.locked());
     }
     assert(s_prepare_calls == 1);
@@ -329,7 +456,8 @@ int main()
         assert(!awake_lock.locked());
         keep_setup_portal_after_provisioning_failure(
             awake_lock,
-            WifiPortalSaveResult::kWifiConnectionFailed);
+            WifiPortalSaveResult::kWifiConnectionFailed,
+            1);
     }
     assert(s_awake_acquire_calls == 1);
     assert(s_awake_release_calls == 0);

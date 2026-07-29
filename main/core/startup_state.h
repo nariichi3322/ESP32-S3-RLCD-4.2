@@ -2,4 +2,3 @@
 #pragma once
 
 bool startup_screen_active();
-void startup_screen_mark_finished();

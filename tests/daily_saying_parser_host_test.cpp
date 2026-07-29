@@ -1,6 +1,6 @@
 // 验证每日文字 JSON/纯文本解析、字段优先级和 UTF-8 字符限制。
+#include "ascii_text.h"
 #include "daily_saying_parser.h"
-#include "network_text.h"
 
 #include <assert.h>
 #include <string.h>
@@ -29,9 +29,9 @@ std::string nested_data_json(int levels)
 int main()
 {
     char trim_text[] = " \t  保留中间 空格 \r\n";
-    trim_ascii(trim_text);
+    trim_ascii_whitespace(trim_text);
     assert(strcmp(trim_text, "保留中间 空格") == 0);
-    trim_ascii(nullptr);
+    trim_ascii_whitespace(nullptr);
 
     expect_text("  今日宜从容  \n", "今日宜从容");
     expect_text("{\"content\":\"  山高水长  \"}", "山高水长");

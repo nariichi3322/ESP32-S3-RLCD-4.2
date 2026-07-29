@@ -20,16 +20,8 @@ struct BatteryRuntimeStatusSnapshot {
     bool low_battery_mode = false;
 };
 
-bool battery_runtime_state_init();
 void battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out);
-void battery_runtime_snapshot_store(const BatteryRuntimeSnapshot &snapshot);
 BatteryRuntimeStatusSnapshot battery_runtime_status_load();
 uint32_t battery_runtime_version_load();
 int battery_percent_load();
-bool battery_charging_load();
 bool battery_low_mode_load();
-bool battery_low_mode_for_percent(bool current_mode,
-                                  int percent,
-                                  int enter_percent,
-                                  int exit_percent);
-bool battery_runtime_low_mode_update(int enter_percent, int exit_percent);

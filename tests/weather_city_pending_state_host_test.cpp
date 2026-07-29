@@ -1,5 +1,5 @@
 // 验证小智天气城市待保存快照的并发完整性与代次清理语义。
-#include "weather_city_pending_state.h"
+#include "weather_city_pending_state_internal.h"
 
 #include <assert.h>
 #include <atomic>

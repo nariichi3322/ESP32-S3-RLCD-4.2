@@ -4,4 +4,3 @@
 inline constexpr bool kDefaultXiaozhiAutoReturnEnabled = true;
 
 bool xiaozhi_auto_return_enabled_load();
-void xiaozhi_auto_return_enabled_store(bool enabled);

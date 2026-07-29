@@ -1,5 +1,6 @@
 // 获取自定义、GitHub 与 Gitee OTA manifest，并维护安装前的运行态清单缓存。
 #include "ota_manifest_client.h"
+#include "ota_manifest_client_internal.h"
 
 #include "app_constexpr.h"
 #include "app_metadata.h"

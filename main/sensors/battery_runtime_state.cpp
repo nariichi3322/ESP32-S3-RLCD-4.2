@@ -1,5 +1,5 @@
 // 集中发布电池相关字段，避免采样任务与消费者读取到混合状态。
-#include "battery_runtime_state.h"
+#include "battery_runtime_state_internal.h"
 
 #include "scoped_semaphore_lock.h"
 
@@ -94,11 +94,6 @@ int battery_percent_load()
     return battery_runtime_status_load().percent;
 }
 
-bool battery_charging_load()
-{
-    return battery_runtime_status_load().charging;
-}
-
 bool battery_low_mode_load()
 {
     return battery_runtime_status_load().low_battery_mode;
@@ -119,27 +114,4 @@ bool battery_low_mode_for_percent(bool current_mode,
         return false;
     }
     return current_mode;
-}
-
-bool battery_runtime_low_mode_update(int enter_percent, int exit_percent)
-{
-    ScopedSemaphoreLock lock(s_battery_runtime_mutex.handle());
-    if (!lock) {
-        return false;
-    }
-    bool next_mode = battery_low_mode_for_percent(s_battery_runtime.low_battery_mode,
-                                                  s_battery_runtime.percent,
-                                                  enter_percent,
-                                                  exit_percent);
-    bool changed = next_mode != s_battery_runtime.low_battery_mode;
-    s_battery_runtime.low_battery_mode = next_mode;
-    if (changed) {
-        ++s_battery_runtime.version;
-    }
-    s_battery_status.store(pack_battery_status(s_battery_runtime.percent,
-                                               s_battery_runtime.charging,
-                                               next_mode),
-                           std::memory_order_release);
-    s_battery_version.store(s_battery_runtime.version, std::memory_order_release);
-    return changed;
 }

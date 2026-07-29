@@ -5,7 +5,7 @@
 #include "xiaozhi_mcp_request_parser.h"
 #include "xiaozhi_mcp_schema.h"
 #include "xiaozhi_json_owner.h"
-#include "chime_runtime_state.h"
+#include "chime_runtime_state_internal.h"
 
 #ifdef XIAOZHI_MCP_HOST_TEST
 #include "xiaozhi_mcp_host_port.h"
