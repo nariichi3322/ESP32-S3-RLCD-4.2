@@ -1,7 +1,7 @@
 {
-  "version": "v1.5.32",
-  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.32/weather_clock_v1.5.32.bin",
-  "sha256": "913e0b9f24ba2be3fffe82c2045ae6799bdc524aa1989571b15551a0b7f1e53b",
-  "size": 6259200,
-  "notes": "v1.5.32：共 12 项更新。\n1. 修复冷启动天气、每日文字和 NTP 补拉在内存紧张、失败重试或请求交错时可能长期等待的…\n2. 修复手动同步、网络检测和可见页联网在切页、超时、离线、低电量或 OTA 阻断后可能残留…\n3. 修复配网连续提交、结果反馈、热点启停失败和 Captive DNS 瞬时故障下的恢复与…\n4. 修复 Wi-Fi 部分启动或停机失败、PM 锁驱动状态失配及启动异常时可能遗留射频、热…\n5. 修复设置试听和异步提示音可能在低电量或 OTA 保护状态下竞态启动，以及重试耗尽后仍短…\n其余 7 项见源码仓库同版本 Release。"
+  "version": "v1.5.33",
+  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.33/weather_clock_v1.5.33.bin",
+  "sha256": "d2f667b041163311097df4438787608367f77e302fd5b8ce369c97d8c863ad26",
+  "size": 6259264,
+  "notes": "v1.5.33：共 3 项更新。\n1. 修复启动联网、OTA 或离线模式收尾遇到 Wi-Fi 生命周期锁暂时繁忙时，射频可能未…\n2. 收紧 OTA、联网凭据、网络检测、关于本机、配网门户、工作页目录、天气城市、设置活动与…\n3. 保持现有页面、交互、OTA 协议、NVS、同步频率和正常联网流程不变，并继续使用有界重…\n完整说明见源码仓库同版本 Release。"
 }
