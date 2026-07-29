@@ -28,7 +28,6 @@ struct OtaRuntimeFlagsSnapshot {
     bool reboot_pending = false;
 };
 
-bool ota_runtime_state_init();
 void ota_runtime_snapshot_load(OtaRuntimeSnapshot *snapshot);
 void ota_runtime_timing_snapshot_load(OtaRuntimeTimingSnapshot *snapshot);
 OtaRuntimeFlagsSnapshot ota_runtime_flags_load();

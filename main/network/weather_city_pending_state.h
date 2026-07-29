@@ -11,6 +11,5 @@ struct WeatherCityPendingSnapshot {
     uint32_t generation;
 };
 
-bool weather_city_pending_state_init();
 bool weather_city_pending_snapshot(WeatherCityPendingSnapshot *out);
 bool weather_city_pending_exists();

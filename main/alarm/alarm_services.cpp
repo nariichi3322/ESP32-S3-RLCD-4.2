@@ -1,5 +1,5 @@
 // 实现单个、单次有效的本地闹钟；设置入口由小智 MCP 提供。
-#include "alarm_services.h"
+#include "alarm_services_internal.h"
 
 #include "alarm_replacement_policy.h"
 #include "alarm_runtime_state_internal.h"

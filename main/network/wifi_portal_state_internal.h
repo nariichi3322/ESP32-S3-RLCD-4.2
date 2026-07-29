@@ -3,6 +3,7 @@
 
 #include "wifi_portal_state.h"
 
+bool wifi_portal_state_init();
 void setup_portal_active_store(bool active);
 void record_wifi_disconnect_reason(int reason);
 void clear_wifi_last_disconnect_reason();

@@ -10,7 +10,6 @@ struct AlarmSnapshot {
     uint8_t minute;
 };
 
-bool alarm_services_init();
 void alarm_task(void *);
 void alarm_get_snapshot(AlarmSnapshot *out);
 bool alarm_is_enabled();

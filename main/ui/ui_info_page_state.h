@@ -9,7 +9,6 @@ struct InfoPageStateSnapshot {
     uint32_t revision = 0;
 };
 
-bool info_page_state_init();
 void info_page_state_load(InfoPageStateSnapshot *out);
 bool info_page_requested();
 void info_page_request(uint32_t hold_until_tick);

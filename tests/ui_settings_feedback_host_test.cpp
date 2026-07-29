@@ -1,11 +1,11 @@
 // 直接验证设置页反馈和手动同步超时收尾的生产实现。
-#include "ui_settings_feedback.h"
+#include "ui_settings_feedback_internal.h"
 #include "app_event_group.h"
 #include "app_metadata.h"
 #include "app_runtime_timing.h"
 #include "network_diagnostics_state.h"
 #include "network_sync_request_generation.h"
-#include "ui_settings_activity_state.h"
+#include "ui_settings_activity_state_internal.h"
 
 #include <assert.h>
 #include <atomic>

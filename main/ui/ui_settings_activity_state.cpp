@@ -1,5 +1,5 @@
 // 集中管理设置页跨任务活动状态，避免输入、UI 和 OTA 间的数据竞争。
-#include "ui_settings_activity_state.h"
+#include "ui_settings_activity_state_internal.h"
 
 #include "scoped_semaphore_lock.h"
 

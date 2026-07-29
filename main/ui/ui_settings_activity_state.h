@@ -9,7 +9,6 @@ struct SettingsActivitySnapshot {
     uint32_t revision = 0;
 };
 
-bool settings_activity_state_init();
 bool settings_page_requested();
 void settings_page_request();
 void settings_page_clear();

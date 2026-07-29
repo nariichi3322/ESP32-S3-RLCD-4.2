@@ -1,5 +1,5 @@
 // 验证设置页活动状态在并发发布和读取时保持动作与时间的先后关系。
-#include "ui_settings_activity_state.h"
+#include "ui_settings_activity_state_internal.h"
 
 #include <atomic>
 #include <cassert>

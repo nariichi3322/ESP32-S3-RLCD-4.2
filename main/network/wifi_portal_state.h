@@ -30,7 +30,6 @@ inline constexpr bool wifi_portal_result_preserves_client_lease(
            result == WifiPortalSaveResult::kSuccess;
 }
 
-bool wifi_portal_state_init();
 bool setup_portal_active_load();
 int wifi_last_disconnect_reason();
 bool wifi_setup_ap_ssid_snapshot(char *out, size_t out_len);

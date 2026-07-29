@@ -3,6 +3,7 @@
 
 #include "ota_runtime_state.h"
 
+bool ota_runtime_state_init();
 void ota_runtime_publish_status(int state,
                                 const char *status,
                                 int progress,

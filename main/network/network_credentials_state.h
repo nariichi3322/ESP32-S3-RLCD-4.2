@@ -15,7 +15,6 @@ struct NetworkCredentialsAvailability {
     bool weather_api_host_configured = false;
 };
 
-bool network_credentials_state_init();
 // ESP-IDF STA-sized outputs use all bytes for maximum-length fields and are
 // therefore not NUL-terminated in that one valid boundary case.
 bool network_wifi_credentials_copy(char *ssid,

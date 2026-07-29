@@ -1,6 +1,7 @@
 // 负责联网、离线和天气城市配置读写，以及恢复出厂运行态重置。
 #include "network_config.h"
 #include "wifi_radio_services.h"
+#include "wifi_radio_state.h"
 #include "wifi_portal_state_internal.h"
 
 #include "active_work_page_state_internal.h"
@@ -128,6 +129,9 @@ bool set_offline_mode_enabled(bool enabled)
         clear_network_request_bits();
         if (!setup_portal_active_load()) {
             stop_wifi_radio(true);
+            if (wifi_radio_on_load()) {
+                request_wifi_radio_stop_when_idle();
+            }
         }
     }
     notify_network_runtime_state_changed();

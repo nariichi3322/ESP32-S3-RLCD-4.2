@@ -284,6 +284,9 @@ void finish_offline_network_requests(const NetworkSyncRequestSnapshot &requests)
 {
     if (wifi_radio_on_load() && !setup_portal_active_load()) {
         stop_wifi_radio(true);
+        if (wifi_radio_on_load()) {
+            request_wifi_radio_stop_when_idle();
+        }
     }
     clear_network_request_bits();
     if (requests.provisioning) {

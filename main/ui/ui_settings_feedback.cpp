@@ -1,5 +1,5 @@
 // 维护设置页反馈文本和手动网络同步状态，不承担设置页绘制。
-#include "ui_settings_feedback.h"
+#include "ui_settings_feedback_internal.h"
 
 #include "app_event_group.h"
 #include "app_metadata.h"

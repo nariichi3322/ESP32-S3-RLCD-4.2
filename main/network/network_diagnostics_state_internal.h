@@ -5,6 +5,7 @@
 
 #include <stddef.h>
 
+bool network_diagnostics_state_init();
 void network_diag_state_clear(NetworkDiagState state);
 bool network_diag_state_begin(const char *const *line_formats,
                               size_t format_count,

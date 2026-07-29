@@ -25,7 +25,6 @@ struct SettingsSyncRequestSnapshot {
     uint32_t request_generation = 0;
 };
 
-bool settings_feedback_state_init();
 void set_settings_feedback(const char *text, uint32_t duration_ms);
 void clear_settings_feedback();
 bool settings_feedback_copy_active(TickType_t now, char *out, size_t out_len);

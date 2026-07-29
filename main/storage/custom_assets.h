@@ -37,7 +37,6 @@ struct CustomAssetEntry {
     uint32_t crc32;
 } __attribute__((packed));
 
-void custom_assets_init();
 bool custom_assets_available();
 int custom_assets_gallery_count();
 bool custom_assets_read_main_gif_frame(int frame, uint8_t *out, size_t out_len);

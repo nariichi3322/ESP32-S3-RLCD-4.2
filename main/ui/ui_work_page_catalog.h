@@ -12,7 +12,6 @@ struct WorkPageDataRequirements {
     bool daily_saying = false;
 };
 
-bool work_page_catalog_init();
 bool is_work_page_enabled(int page);
 uint8_t work_page_enabled_mask_load();
 bool work_page_requires_network(int page);

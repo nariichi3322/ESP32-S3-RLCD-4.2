@@ -1,5 +1,5 @@
 // 读取并校验上位机写入 assets 分区的自定义图片资源包。
-#include "custom_assets.h"
+#include "custom_assets_internal.h"
 
 #include "app_constexpr.h"
 #include "ascii_text.h"

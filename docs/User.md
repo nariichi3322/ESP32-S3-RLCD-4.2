@@ -604,6 +604,8 @@ If the shared I2C master bus itself cannot be created, startup stops before RTC,
 
 When a desktop-provisioned custom asset package is present, startup still validates the complete package with header and payload CRC checks. The optional four-frame image-density diagnostic now runs only when DEBUG logging is enabled and continues to use fixed-size chunked reads. Normal startup, the wire format, rendering, and fallback to built-in assets after corruption remain unchanged.
 
+The custom asset catalog is loaded once before work tasks start. Pages, weather-city selection, and OTA configuration then use the validated catalog as read-only data. This maintenance does not change the WCA1 format, asset priority, built-in fallback, or desktop workflow.
+
 During normal operation, a temporary SPI display allocation or timeout error is retried within a fixed limit. If it still fails, only that frame is skipped and `RLCD command/data tx failed` is logged instead of rebooting the device. The network/OTA DMA protection mode uses an allocation-free atomic snapshot, so display transfers no longer disable cross-core interrupts merely to read the active protection tier; chunk sizes, retry counts, and rendered output are unchanged. Repeated messages warrant checking power stability and the logged DMA headroom.
 
 Shared bitmap, label, and font declarations use lightweight internal interfaces. This maintenance does not change Chinese glyphs, icon pixels, page coordinates, trend arrows, or partial-refresh behavior.
@@ -649,7 +651,7 @@ Weather and Daily Saying data requirements for Weather Clock, Weather Board, and
 ## 12. Safety and Use Restrictions
 
 - Before release, the project runs host tests, sanitizers, SDL pixel regression, an ESP-IDF build, and a real ESP32-S3 core-board smoke test when that optional board is online. The core board does not replace full-device display, audio, sensor, or power validation.
-- Development-time optimization scanning prioritizes production firmware and never runs on the clock itself. It recognizes JavaScript `typeof` type results by context while retaining identical business text as a maintenance candidate; this does not change pages, controls, networking, storage, or power behavior.
+- Development-time optimization scanning prioritizes production firmware, excludes local virtual environments and generated builds, and classifies tests, SDL, tools, and experiments separately. It never runs on the clock itself and does not change pages, controls, networking, storage, or power behavior.
 - Never expose Wi-Fi passwords, QWeather keys, Xiaozhi credentials, or private OTA endpoints in public logs or repositories.
 - Keep stable power during OTA or full flashing.
 - Xiaozhi AI draws much more current and warms the PCB; leave the page or enable auto-return when battery runtime matters.
@@ -888,7 +890,7 @@ Every routine code-optimization validation now runs both the normal host suite a
 
 If an automatic startup weather request is postponed by temporary memory pressure, an earlier time-synchronization deadline can now wake the network task first. Weather retry timing, Wi-Fi behavior, manual synchronization, cached data, and normal user operation remain unchanged.
 
-The project maintenance tools can now inspect production code, tooling, and tests as separate optimization scopes while excluding their own classification labels from duplicate-text candidates. Machine-readable JSON output also remains free of command diagnostics. This improves maintenance accuracy only and does not change device features, UI, configuration, networking, or operation.
+The project maintenance tools can inspect production code, tooling, and tests as separate optimization scopes. Even a repository-wide scan no longer reports Python virtual environments, HIL build output, SDL, or host tests as production firmware. Classification labels and machine-readable JSON output remain protected by tests. This improves maintenance accuracy only and does not change device features, UI, configuration, networking, or operation.
 
 Loading the saved temperature and humidity history at startup now uses substantially less task-stack memory. Saved 48-slot history, migration from the older 24-slot format, sampling cadence, trend arrows, charts, and all controls remain unchanged.
 
@@ -1181,3 +1183,27 @@ If an internal resource error interrupts startup, the device now shuts down any 
 If a network or audio power-management lock temporarily disagrees with the driver state, the device now reconciles the state so the next session reacquires the correct performance protection. Normal pages, networking, audio, and light-sleep policies are unchanged.
 
 Provisioning hotspot startup, validation-result delivery, feedback waiting, and failure cleanup now share one internal transaction owner. This prevents unrelated features from ending setup or releasing its network power lock early. Successful setup still exits automatically, while failed validation keeps the hotspot available for correction.
+
+The global OTA runtime state is now initialized only during startup, while normal pages, networking, audio, and sensor services retain read-only access. This prevents future maintenance from accidentally resetting an active update state. Update checks, download progress, failure messages, successful reboot, and controls are unchanged.
+
+The runtime state for saved Wi-Fi credentials, the QWeather API key, and the API Host is now also initialized only during startup. Weather, pages, OTA, and Xiaozhi retain read-only access. Provisioning, automatic reconnection, weather updates, factory reset, NVS data, and controls are unchanged.
+
+The global runtime state used by Network Diagnostics is now initialized only during device startup. Settings and other features still use request and read-only result interfaces. The nine checks, display order, 30-second return, Wi-Fi behavior, and controls are unchanged.
+
+The global runtime state used by the About Device page is now initialized only during device startup. Page entry, the 30-second automatic return, key return, OTA result hold timing, and controls are unchanged.
+
+The global runtime state used by the provisioning portal is now initialized only during device startup. The hotspot name, local IP, credential validation, result feedback, correction after failure, and hotspot shutdown after success are unchanged.
+
+The global work-page catalog state is now initialized only during device startup. Page names, toggles, ordering, the home page, BOOT navigation, Offline Mode restrictions, and network-trigger behavior are unchanged.
+
+The pending weather-city state used by Xiaozhi is now initialized only by the internal weather-city tool owner. Voice city changes, automatic IP location, online validation, NVS storage, and the weather refresh after saving are unchanged.
+
+The Settings activity state is now initialized only during device startup. Key controls, the 30-second automatic return, secondary-menu navigation, Network Diagnostics result timing, and OTA page notices are unchanged.
+
+Settings feedback and manual synchronization state are now also initialized only during device startup. Time, weather, and Daily Saying synchronization, timeout messages, immediate retries, and network-request cleanup are unchanged.
+
+The alarm service now loads saved state and registers voice controls only during device startup. Setting, replacing, disabling, ringing, stopping with any key, and restoring after reboot are unchanged.
+
+Startup networking and OTA now preserve a deferred Wi-Fi shutdown request if a temporary lifecycle conflict prevents the first stop attempt. The resident network service completes that cleanup after the session releases its power lock, reducing the chance of Wi-Fi remaining powered after startup or an update failure. Update controls, network timing, and user-visible behavior are unchanged.
+
+Enabling Offline Mode now also preserves a deferred Wi-Fi shutdown request when the first stop attempt is temporarily blocked. The resident network service completes the shutdown instead of entering its offline wait with the radio still powered. Offline page restrictions, setup access, saved settings, and controls are unchanged.

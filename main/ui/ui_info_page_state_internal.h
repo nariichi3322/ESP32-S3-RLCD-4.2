@@ -3,4 +3,5 @@
 
 #include "ui_info_page_state.h"
 
+bool info_page_state_init();
 void info_page_hold_until_store(uint32_t hold_until_tick);

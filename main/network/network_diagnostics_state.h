@@ -21,7 +21,6 @@ struct NetworkDiagPageRequestSnapshot {
     uint32_t revision = 0;
 };
 
-bool network_diagnostics_state_init();
 NetworkDiagState network_diag_state_load();
 void network_diag_snapshot_load(NetworkDiagnosticsSnapshot *snapshot);
 bool network_diag_page_requested();

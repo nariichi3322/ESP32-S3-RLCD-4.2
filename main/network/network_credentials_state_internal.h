@@ -3,6 +3,7 @@
 
 #include "network_credentials_state.h"
 
+bool network_credentials_state_init();
 void network_credentials_store(const char *ssid,
                                const char *password,
                                const char *weather_api_key,
