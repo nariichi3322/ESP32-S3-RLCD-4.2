@@ -1,5 +1,5 @@
 // 直接验证 HTTP/WSS 全局事务锁生产实现的初始化、争用和释放语义。
-#include "network_http_transaction_lock.h"
+#include "network_http_transaction_lock_internal.h"
 
 #include <assert.h>
 #include <atomic>

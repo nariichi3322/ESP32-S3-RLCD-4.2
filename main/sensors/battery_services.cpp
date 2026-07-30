@@ -325,7 +325,9 @@ bool sample_battery()
     static BatteryChargingTracker charging_tracker;
     static int consecutive_read_failures = 0;
     BatteryRuntimeSnapshot previous;
-    battery_runtime_snapshot_load(&previous);
+    if (!battery_runtime_snapshot_load(&previous)) {
+        return false;
+    }
     BatteryRuntimeSnapshot next = previous;
     BatteryReading reading;
     if (read_battery_reading(&reading)) {

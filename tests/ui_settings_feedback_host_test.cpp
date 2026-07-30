@@ -4,7 +4,7 @@
 #include "app_metadata.h"
 #include "app_runtime_timing.h"
 #include "network_diagnostics_state.h"
-#include "network_sync_request_generation.h"
+#include "network_sync_request_generation_internal.h"
 #include "ui_settings_activity_state_internal.h"
 
 #include <assert.h>
@@ -14,6 +14,7 @@
 #include <thread>
 
 const char *const TAG = "Test";
+std::atomic<bool> g_fail_mutex_take{false};
 
 namespace {
 TickType_t s_now = 0;
@@ -29,9 +30,10 @@ SettingsUiTimingSnapshot sync_timing()
 
 void expect_active_feedback(TickType_t now, const char *expected)
 {
-    char feedback[kSettingsFeedbackTextLen] = {};
-    assert(settings_feedback_copy_active(now, feedback, sizeof(feedback)));
-    assert(strcmp(feedback, expected) == 0);
+    SettingsFeedbackSnapshot feedback;
+    assert(settings_feedback_snapshot_load(now, &feedback));
+    assert(feedback.active);
+    assert(strcmp(feedback.text, expected) == 0);
 }
 
 void reset_state()
@@ -134,11 +136,14 @@ extern "C" size_t strlcpy(char *dst, const char *src, size_t size)
 
 int main()
 {
-    char uninitialized_feedback[kSettingsFeedbackTextLen] = "stale";
-    assert(!settings_feedback_copy_active(100,
-                                          uninitialized_feedback,
-                                          sizeof(uninitialized_feedback)));
-    assert(uninitialized_feedback[0] == '\0');
+    SettingsFeedbackSnapshot uninitialized_feedback = {};
+    uninitialized_feedback.active = true;
+    strlcpy(uninitialized_feedback.text,
+            "stale",
+            sizeof(uninitialized_feedback.text));
+    assert(!settings_feedback_snapshot_load(100, &uninitialized_feedback));
+    assert(uninitialized_feedback.active);
+    assert(strcmp(uninitialized_feedback.text, "stale") == 0);
     assert(init_network_sync_request_generation());
     assert(settings_activity_state_init());
     assert(settings_feedback_state_init());
@@ -151,11 +156,21 @@ int main()
     assert(timing.sync_deadline_tick == 0);
     assert(!timing.sync_busy);
     expect_active_feedback(2599, "测试");
-    char expired_feedback[kSettingsFeedbackTextLen] = {};
-    assert(!settings_feedback_copy_active(2600, expired_feedback, sizeof(expired_feedback)));
-    assert(expired_feedback[0] == '\0');
+    SettingsFeedbackSnapshot expired_feedback;
+    assert(settings_feedback_snapshot_load(2600, &expired_feedback));
+    assert(!expired_feedback.active);
+    assert(expired_feedback.text[0] == '\0');
     assert(settings_activity_last_tick() == 100);
     assert(s_notify_count == 1);
+
+    set_settings_feedback("保留反馈", 2500);
+    SettingsFeedbackSnapshot preserved_feedback;
+    assert(settings_feedback_snapshot_load(100, &preserved_feedback));
+    g_fail_mutex_take.store(true, std::memory_order_release);
+    assert(!settings_feedback_snapshot_load(100, &preserved_feedback));
+    g_fail_mutex_take.store(false, std::memory_order_release);
+    assert(preserved_feedback.active);
+    assert(strcmp(preserved_feedback.text, "保留反馈") == 0);
 
     reset_state();
     begin_settings_sync(kSettingsSyncWeather,
@@ -215,11 +230,10 @@ int main()
     assert(finish_settings_sync_if_timed_out(network_diag_deadline));
     assert(!sync_timing().sync_busy);
     assert(sync_timing().sync_deadline_tick == 0);
-    char feedback[kSettingsFeedbackTextLen] = {};
-    assert(!settings_feedback_copy_active(network_diag_deadline,
-                                          feedback,
-                                          sizeof(feedback)));
-    assert(feedback[0] == '\0');
+    SettingsFeedbackSnapshot feedback;
+    assert(settings_feedback_snapshot_load(network_diag_deadline, &feedback));
+    assert(!feedback.active);
+    assert(feedback.text[0] == '\0');
     assert(s_notify_count == 1);
     assert(s_network_state_notify_count == 0);
 
@@ -262,11 +276,9 @@ int main()
     });
     std::thread reader([&] {
         for (int i = 0; i < 10000; ++i) {
-            char current[kSettingsFeedbackTextLen] = {};
-            bool active = settings_feedback_copy_active(2000,
-                                                         current,
-                                                         sizeof(current));
-            if (active && strcmp(current, "反馈乙") != 0) {
+            SettingsFeedbackSnapshot current;
+            assert(settings_feedback_snapshot_load(2000, &current));
+            if (current.active && strcmp(current.text, "反馈乙") != 0) {
                 inconsistent.store(true, std::memory_order_relaxed);
                 break;
             }

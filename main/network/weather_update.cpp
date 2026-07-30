@@ -3,6 +3,7 @@
 
 #include "ip_geolocation_client.h"
 #include "network_https_resources.h"
+#include "network_https_resources_internal.h"
 #include "network_credentials_state.h"
 #include "qweather_client.h"
 

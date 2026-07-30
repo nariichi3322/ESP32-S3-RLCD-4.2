@@ -53,3 +53,25 @@ void OtaTaskWatchdogGuard::reset()
         esp_task_wdt_reset();
     }
 }
+
+OtaWriteHandleGuard::OtaWriteHandleGuard(esp_ota_handle_t handle)
+    : handle_(handle)
+{
+}
+
+OtaWriteHandleGuard::~OtaWriteHandleGuard()
+{
+    if (handle_ != 0) {
+        esp_ota_abort(handle_);
+    }
+}
+
+esp_err_t OtaWriteHandleGuard::finish()
+{
+    const esp_ota_handle_t handle = handle_;
+    handle_ = 0;
+    if (handle == 0) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return esp_ota_end(handle);
+}

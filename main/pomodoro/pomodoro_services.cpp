@@ -1,5 +1,5 @@
 // 实现不依赖墙钟时间的番茄钟，并在完成后安全播放两次声音选择 4。
-#include "pomodoro_services.h"
+#include "pomodoro_services_internal.h"
 
 #include "alarm_services.h"
 #include "app_metadata.h"

@@ -1,5 +1,5 @@
 // 在启动阶段读取 NVS，并一次发布联网凭据和普通设备设置运行态。
-#include "saved_config_loader.h"
+#include "saved_config_loader_internal.h"
 
 #include "active_work_page_state_internal.h"
 #include "app_metadata.h"

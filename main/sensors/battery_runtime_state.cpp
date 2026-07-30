@@ -51,17 +51,17 @@ bool battery_runtime_state_init()
     return s_battery_runtime_mutex.init();
 }
 
-void battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out)
+bool battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out)
 {
     if (!out) {
-        return;
+        return false;
     }
     ScopedSemaphoreLock lock(s_battery_runtime_mutex.handle());
     if (!lock) {
-        *out = BatteryRuntimeSnapshot{};
-        return;
+        return false;
     }
     *out = s_battery_runtime;
+    return true;
 }
 
 void battery_runtime_snapshot_store(const BatteryRuntimeSnapshot &snapshot)

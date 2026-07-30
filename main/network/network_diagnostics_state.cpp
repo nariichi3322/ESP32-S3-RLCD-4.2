@@ -142,18 +142,18 @@ void network_diag_line_store(int index, const char *text)
     copy_line(s_network_diag_lines[index], text);
 }
 
-void network_diag_snapshot_load(NetworkDiagnosticsSnapshot *snapshot)
+bool network_diag_snapshot_load(NetworkDiagnosticsSnapshot *snapshot)
 {
     if (!snapshot) {
-        return;
+        return false;
     }
-    memset(snapshot, 0, sizeof(*snapshot));
     ScopedSemaphoreLock lock(s_network_diag_mutex);
     if (!lock) {
-        return;
+        return false;
     }
     snapshot->state = s_network_diag_state;
     memcpy(snapshot->lines, s_network_diag_lines, sizeof(snapshot->lines));
+    return true;
 }
 
 bool network_diag_page_requested()

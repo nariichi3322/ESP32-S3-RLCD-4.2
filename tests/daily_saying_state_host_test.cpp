@@ -9,6 +9,8 @@
 #include <string.h>
 #include <thread>
 
+bool g_fail_daily_saying_mutex_take = false;
+
 int main()
 {
     assert(daily_saying_state_version_load() == 0);
@@ -18,12 +20,18 @@ int main()
     assert(daily_saying_state_version_load() == 1);
 
     char text[kDailySayingLen] = {};
-    time_t synced_at = 99;
-    assert(!get_daily_saying_snapshot(text, sizeof(text), &synced_at));
+    DailySayingCacheSnapshot text_snapshot = {true, 99, 99};
+    assert(daily_saying_text_snapshot_load(text,
+                                           sizeof(text),
+                                           &text_snapshot));
     assert(text[0] == '\0');
-    assert(synced_at == 0);
-    assert(!get_daily_saying_snapshot(nullptr, sizeof(text), &synced_at));
-    assert(!get_daily_saying_snapshot(text, 0, &synced_at));
+    assert(!text_snapshot.available);
+    assert(text_snapshot.last_sync_time == 0);
+    assert(text_snapshot.version == 1);
+    assert(!daily_saying_text_snapshot_load(nullptr,
+                                            sizeof(text),
+                                            &text_snapshot));
+    assert(!daily_saying_text_snapshot_load(text, 0, &text_snapshot));
     DailySayingCacheSnapshot cache = {true, 99, 99};
     assert(daily_saying_cache_snapshot_load(&cache));
     assert(!cache.available);
@@ -33,22 +41,28 @@ int main()
 
     assert(daily_saying_state_publish("今日宜保持耐心", 1234));
     assert(daily_saying_state_version_load() == 2);
-    assert(get_daily_saying_snapshot(text, sizeof(text), &synced_at));
+    assert(daily_saying_text_snapshot_load(text,
+                                           sizeof(text),
+                                           &text_snapshot));
     assert(strcmp(text, "今日宜保持耐心") == 0);
-    assert(synced_at == 1234);
+    assert(text_snapshot.available);
+    assert(text_snapshot.last_sync_time == 1234);
+    assert(text_snapshot.version == 2);
     assert(daily_saying_cache_snapshot_load(&cache));
     assert(cache.available);
     assert(cache.last_sync_time == 1234);
     assert(cache.version == 2);
 
     char short_text[5] = {};
-    assert(get_daily_saying_snapshot(short_text, sizeof(short_text), nullptr));
+    assert(daily_saying_text_snapshot_load(short_text,
+                                           sizeof(short_text),
+                                           nullptr));
     assert(strlen(short_text) == sizeof(short_text) - 1);
 
     char oversized_output[kDailySayingLen + 64] = {};
-    assert(get_daily_saying_snapshot(oversized_output,
-                                     sizeof(oversized_output),
-                                     nullptr));
+    assert(daily_saying_text_snapshot_load(oversized_output,
+                                           sizeof(oversized_output),
+                                           nullptr));
     assert(strcmp(oversized_output, "今日宜保持耐心") == 0);
 
     char long_text[kDailySayingLen + 32];
@@ -56,9 +70,23 @@ int main()
     long_text[sizeof(long_text) - 1] = '\0';
     assert(daily_saying_state_publish(long_text, 5678));
     assert(daily_saying_state_version_load() == 3);
-    assert(get_daily_saying_snapshot(text, sizeof(text), &synced_at));
+    assert(daily_saying_text_snapshot_load(text,
+                                           sizeof(text),
+                                           &text_snapshot));
     assert(strlen(text) == kDailySayingLen - 1);
-    assert(synced_at == 5678);
+    assert(text_snapshot.last_sync_time == 5678);
+
+    memset(text, 'x', sizeof(text));
+    text_snapshot = {true, 99, 99};
+    g_fail_daily_saying_mutex_take = true;
+    assert(!daily_saying_text_snapshot_load(text,
+                                            sizeof(text),
+                                            &text_snapshot));
+    g_fail_daily_saying_mutex_take = false;
+    assert(text[0] == '\0');
+    assert(!text_snapshot.available);
+    assert(text_snapshot.last_sync_time == 0);
+    assert(text_snapshot.version == 0);
 
     constexpr const char *kTextA = "A-每日文字批次";
     constexpr const char *kTextB = "B-每日文字批次";
@@ -76,9 +104,15 @@ int main()
         writer_done.store(true, std::memory_order_release);
     });
     do {
-        assert(get_daily_saying_snapshot(text, sizeof(text), &synced_at));
-        const bool is_a = strcmp(text, kTextA) == 0 && synced_at == kTimeA;
-        const bool is_b = strcmp(text, kTextB) == 0 && synced_at == kTimeB;
+        assert(daily_saying_text_snapshot_load(text,
+                                               sizeof(text),
+                                               &text_snapshot));
+        const bool is_a =
+            strcmp(text, kTextA) == 0 &&
+            text_snapshot.last_sync_time == kTimeA;
+        const bool is_b =
+            strcmp(text, kTextB) == 0 &&
+            text_snapshot.last_sync_time == kTimeB;
         assert(is_a || is_b);
         assert(daily_saying_cache_snapshot_load(&cache));
         assert(cache.available);
@@ -93,9 +127,12 @@ int main()
 
     assert(daily_saying_state_publish(nullptr, 0));
     assert(daily_saying_state_version_load() > last_version);
-    assert(!get_daily_saying_snapshot(text, sizeof(text), &synced_at));
+    assert(daily_saying_text_snapshot_load(text,
+                                           sizeof(text),
+                                           &text_snapshot));
     assert(text[0] == '\0');
-    assert(synced_at == 0);
+    assert(!text_snapshot.available);
+    assert(text_snapshot.last_sync_time == 0);
     assert(daily_saying_cache_snapshot_load(&cache));
     assert(!cache.available);
     assert(cache.last_sync_time == 0);

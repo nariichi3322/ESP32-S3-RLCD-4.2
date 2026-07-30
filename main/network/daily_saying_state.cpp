@@ -33,6 +33,15 @@ void copy_daily_saying_snapshot(char *out,
     memcpy(out, source, copy_len);
     out[copy_len] = '\0';
 }
+
+DailySayingCacheSnapshot daily_saying_cache_snapshot_locked()
+{
+    return {
+        s_daily_saying[0] != '\0',
+        s_last_saying_sync_time,
+        s_daily_saying_version.load(std::memory_order_relaxed),
+    };
+}
 } // namespace
 
 bool daily_saying_state_init()
@@ -60,34 +69,32 @@ bool daily_saying_cache_snapshot_load(DailySayingCacheSnapshot *out)
     if (!lock) {
         return false;
     }
-    out->available = s_daily_saying[0] != '\0';
-    out->last_sync_time = s_last_saying_sync_time;
-    out->version = s_daily_saying_version.load(std::memory_order_acquire);
+    *out = daily_saying_cache_snapshot_locked();
     return true;
 }
 
-bool get_daily_saying_snapshot(char *out,
-                               size_t out_len,
-                               time_t *last_sync_time)
+bool daily_saying_text_snapshot_load(char *out,
+                                     size_t out_len,
+                                     DailySayingCacheSnapshot *metadata)
 {
+    if (metadata) {
+        *metadata = {};
+    }
     if (!app_text::output_buffer_available(out, out_len)) {
         return false;
     }
+    out[0] = '\0';
 
     ScopedSemaphoreLock lock(s_daily_saying_mutex);
     if (!lock) {
-        out[0] = '\0';
-        if (last_sync_time) {
-            *last_sync_time = 0;
-        }
         return false;
     }
 
     copy_daily_saying_snapshot(out, out_len, s_daily_saying);
-    if (last_sync_time) {
-        *last_sync_time = s_last_saying_sync_time;
+    if (metadata) {
+        *metadata = daily_saying_cache_snapshot_locked();
     }
-    return out[0] != '\0';
+    return true;
 }
 
 bool daily_saying_state_publish(const char *text, time_t synced_at)

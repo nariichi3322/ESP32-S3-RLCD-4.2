@@ -590,11 +590,13 @@ bool update_settings_feedback_label()
         return false;
     }
     TickType_t now = xTaskGetTickCount();
-    char feedback[kSettingsFeedbackTextLen] = {};
-    if (settings_feedback_copy_active(now, feedback, sizeof(feedback))) {
-        return set_label_text_if_changed(s_settings_feedback_label, feedback);
+    SettingsFeedbackSnapshot feedback;
+    if (!settings_feedback_snapshot_load(now, &feedback)) {
+        return false;
     }
-    return set_label_text_if_changed(s_settings_feedback_label, "");
+    return set_label_text_if_changed(
+        s_settings_feedback_label,
+        feedback.active ? feedback.text : "");
 }
 } // namespace
 

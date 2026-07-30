@@ -26,6 +26,13 @@ lv_obj_t *make_bar(lv_obj_t *parent, int x, int y, int w, int h)
     return bar;
 }
 
+lv_obj_t *make_black_bar(lv_obj_t *parent, int x, int y, int w, int h)
+{
+    lv_obj_t *bar = make_bar(parent, x, y, w, h);
+    set_obj_black(bar, true);
+    return bar;
+}
+
 lv_obj_t *make_label_with_font(lv_obj_t *parent,
                                int x,
                                int y,

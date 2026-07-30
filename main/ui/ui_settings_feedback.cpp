@@ -139,31 +139,33 @@ void clear_settings_feedback()
     s_settings_feedback_until_tick = 0;
 }
 
-bool settings_feedback_copy_active(TickType_t now, char *out, size_t out_len)
+bool settings_feedback_snapshot_load(TickType_t now,
+                                     SettingsFeedbackSnapshot *out)
 {
-    if (!ui_text::output_buffer_available(out, out_len)) {
+    if (!out) {
         return false;
     }
-    out[0] = '\0';
-    char snapshot[kSettingsFeedbackTextLen] = {};
-    bool active = false;
+    SettingsFeedbackSnapshot snapshot;
     {
         ScopedSemaphoreLock lock(s_settings_feedback_mutex.handle());
         if (!lock) {
             return false;
         }
-        active = s_settings_feedback_text[0] != '\0' &&
-                 s_settings_feedback_until_tick != 0 &&
-                 app_tick_deadline_pending(now, s_settings_feedback_until_tick);
-        if (active) {
-            memcpy(snapshot, s_settings_feedback_text, sizeof(snapshot));
+        snapshot.active =
+            s_settings_feedback_text[0] != '\0' &&
+            s_settings_feedback_until_tick != 0 &&
+            app_tick_deadline_pending(now, s_settings_feedback_until_tick);
+        if (snapshot.active) {
+            memcpy(snapshot.text,
+                   s_settings_feedback_text,
+                   sizeof(snapshot.text));
         } else {
             s_settings_feedback_text[0] = '\0';
             s_settings_feedback_until_tick = 0;
         }
     }
-    ui_text::copy(out, out_len, snapshot);
-    return active;
+    *out = snapshot;
+    return true;
 }
 
 SettingsUiTimingSnapshot settings_ui_timing_snapshot_load()

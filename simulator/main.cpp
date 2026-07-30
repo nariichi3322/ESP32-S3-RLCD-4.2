@@ -22,9 +22,8 @@
 #include "sdl_preview_xiaozhi.h"
 #include "ui_work_page_layout.h"
 
-using sdl_preview_widgets::make_bar;
+using sdl_preview_widgets::make_black_bar;
 using sdl_preview_widgets::make_label_with_font;
-using sdl_preview_widgets::set_obj_black;
 
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
@@ -49,13 +48,12 @@ static void build_history_preview_ui()
     struct tm local = {};
     localtime_r(&now, &local);
     g_work_status.build(screen, local);
-    lv_obj_t *history_top_line = make_bar(
+    make_black_bar(
         screen,
         ui_work_page_layout::kTopSeparatorX,
         ui_work_page_layout::kTopSeparatorY,
         ui_work_page_layout::kTopSeparatorWidth,
         ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(history_top_line, true);
     g_work_page_day_progress.build_day(screen, local, 59);
 
     build_history_preview_body(screen, &local);
@@ -75,13 +73,12 @@ static void build_gallery_preview_ui()
     g_work_status.build(screen, local, false);
     g_work_status.update_date(local);
 
-    lv_obj_t *top_line = make_bar(
+    make_black_bar(
         screen,
         ui_work_page_layout::kTopSeparatorX,
         ui_work_page_layout::kTopSeparatorY,
         ui_work_page_layout::kTopSeparatorWidth,
         ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(top_line, true);
     g_work_page_day_progress.build_day(screen, local, 59);
 
     build_gallery_preview_body(screen, &local);
@@ -100,13 +97,12 @@ static void build_calendar_preview_ui()
     struct tm local = {};
     localtime_r(&now, &local);
     g_work_status.build(screen, local);
-    lv_obj_t *top_line = make_bar(
+    make_black_bar(
         screen,
         ui_work_page_layout::kTopSeparatorX,
         ui_work_page_layout::kTopSeparatorY,
         ui_work_page_layout::kTopSeparatorWidth,
         ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(top_line, true);
     g_work_page_day_progress.build_day(screen, local, 59);
 
     build_calendar_preview_body(screen, &local);
@@ -124,13 +120,12 @@ static void build_weather_board_preview_ui()
     struct tm local = {};
     localtime_r(&now, &local);
     g_work_status.build(screen, local);
-    lv_obj_t *top_line = make_bar(
+    make_black_bar(
         screen,
         ui_work_page_layout::kTopSeparatorX,
         ui_work_page_layout::kTopSeparatorY,
         ui_work_page_layout::kTopSeparatorWidth,
         ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(top_line, true);
     g_work_page_day_progress.build_day(screen, local, 59);
 
     build_weather_board_preview_body(screen);
@@ -150,13 +145,12 @@ static void build_flip_clock_preview_ui()
     g_work_status.build(screen, local, false, false);
     g_work_status.update_date(local);
 
-    lv_obj_t *top_line = make_bar(
+    make_black_bar(
         screen,
         ui_work_page_layout::kTopSeparatorX,
         ui_work_page_layout::kTopSeparatorY,
         ui_work_page_layout::kTopSeparatorWidth,
         ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(top_line, true);
     g_work_page_day_progress.build_day(screen, local, 59);
     build_flip_clock_preview_body(screen, &local);
 }
@@ -174,13 +168,12 @@ static void build_xiaozhi_preview_ui(const char *preview_mode)
     XiaozhiPreviewMode mode = classify_xiaozhi_preview_mode(preview_mode);
     g_work_status.build(screen, local, mode.pomodoro_visible(), true);
 
-    lv_obj_t *top_line = make_bar(
+    make_black_bar(
         screen,
         ui_work_page_layout::kTopSeparatorX,
         ui_work_page_layout::kTopSeparatorY,
         ui_work_page_layout::kTopSeparatorWidth,
         ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(top_line, true);
     g_work_page_day_progress.build_day(screen, local, 59);
     build_xiaozhi_preview_body(screen, &local, mode);
 }
@@ -195,8 +188,7 @@ static void build_info_preview_ui()
     lv_obj_t *title = make_label_with_font(screen, 24, 18, 352, 26, "SYSTEM INFO", &lv_font_montserrat_16);
     lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 
-    lv_obj_t *top_line = make_bar(screen, 24, 50, 352, 3);
-    set_obj_black(top_line, true);
+    make_black_bar(screen, 24, 50, 352, 3);
 
     static const char *const info_lines[] = {
         "Last NTP: 2026-07-01 09:30",
@@ -221,8 +213,7 @@ static void build_info_preview_ui()
         }
     }
 
-    lv_obj_t *bottom_line = make_bar(screen, 24, 238, 352, 3);
-    set_obj_black(bottom_line, true);
+    make_black_bar(screen, 24, 238, 352, 3);
     lv_obj_t *return_label = make_label_with_font(screen, 24, 252, 352, 22, "Hold KEY to return", &lv_font_montserrat_14);
     lv_obj_set_style_text_align(return_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 }

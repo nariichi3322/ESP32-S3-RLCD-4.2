@@ -8,7 +8,6 @@
 #include <stddef.h>
 
 void html_append(char *html, size_t html_len, const char *fmt, ...);
-void html_escape(const char *src, char *dst, size_t dst_len);
 void append_wifi_scan_list(char *html, size_t html_len);
 esp_err_t root_get_handler(httpd_req_t *req);
 esp_err_t send_save_result_page(httpd_req_t *req,

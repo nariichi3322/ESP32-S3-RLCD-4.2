@@ -5,6 +5,8 @@
 #include <cassert>
 #include <thread>
 
+std::atomic<bool> g_fail_mutex_take{false};
+
 namespace {
 constexpr uint32_t kFirstDeadline = 300;
 constexpr uint32_t kSecondDeadline = 600;
@@ -14,23 +16,23 @@ constexpr int kIterations = 100000;
 int main()
 {
     InfoPageStateSnapshot state = {true, 99, 42};
-    info_page_state_load(&state);
-    assert(!state.requested);
-    assert(state.hold_until_tick == 0);
-    assert(state.revision == 0);
+    assert(!info_page_state_load(&state));
+    assert(state.requested);
+    assert(state.hold_until_tick == 99);
+    assert(state.revision == 42);
     info_page_request(kFirstDeadline);
     assert(!info_page_requested());
     assert(info_page_state_init());
     assert(info_page_state_init());
 
-    info_page_state_load(&state);
+    assert(info_page_state_load(&state));
     assert(!state.requested);
     assert(state.hold_until_tick == 0);
     assert(state.revision == 0);
     assert(!info_page_requested());
 
     info_page_hold_until_store(77);
-    info_page_state_load(&state);
+    assert(info_page_state_load(&state));
     assert(!state.requested);
     assert(state.hold_until_tick == 77);
     const uint32_t idle_hold_revision = state.revision;
@@ -39,13 +41,21 @@ int main()
 
     info_page_request(kFirstDeadline);
     assert(info_page_requested());
-    info_page_state_load(&state);
+    assert(info_page_state_load(&state));
     assert(state.hold_until_tick == kFirstDeadline);
     assert(state.revision != idle_hold_revision);
     const InfoPageStateSnapshot stale_deadline = state;
 
+    InfoPageStateSnapshot preserved = state;
+    g_fail_mutex_take.store(true, std::memory_order_release);
+    assert(!info_page_state_load(&preserved));
+    g_fail_mutex_take.store(false, std::memory_order_release);
+    assert(preserved.requested);
+    assert(preserved.hold_until_tick == stale_deadline.hold_until_tick);
+    assert(preserved.revision == stale_deadline.revision);
+
     info_page_hold_until_store(kSecondDeadline);
-    info_page_state_load(&state);
+    assert(info_page_state_load(&state));
     assert(state.requested);
     assert(state.hold_until_tick == kSecondDeadline);
     assert(state.revision != stale_deadline.revision);
@@ -56,7 +66,7 @@ int main()
     assert(!info_page_clear_if_current(state));
 
     info_page_request(kFirstDeadline);
-    info_page_state_load(&state);
+    assert(info_page_state_load(&state));
     const InfoPageStateSnapshot stale_request = state;
     info_page_request(kSecondDeadline);
     assert(!info_page_clear_if_current(stale_request));
@@ -71,7 +81,7 @@ int main()
     std::thread reader([&] {
         for (int i = 0; i < kIterations; ++i) {
             InfoPageStateSnapshot snapshot;
-            info_page_state_load(&snapshot);
+            assert(info_page_state_load(&snapshot));
             if (!snapshot.requested ||
                 (snapshot.hold_until_tick != kFirstDeadline &&
                  snapshot.hold_until_tick != kSecondDeadline)) {
@@ -85,7 +95,7 @@ int main()
     assert(!invalid_snapshot_seen.load(std::memory_order_relaxed));
     info_page_clear();
     assert(!info_page_requested());
-    info_page_state_load(&state);
+    assert(info_page_state_load(&state));
     assert(!state.requested);
     assert(state.hold_until_tick == 0);
     assert(state.revision != 0);

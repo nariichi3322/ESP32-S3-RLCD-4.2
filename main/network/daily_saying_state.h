@@ -13,6 +13,9 @@ struct DailySayingCacheSnapshot {
 
 uint32_t daily_saying_state_version_load();
 bool daily_saying_cache_snapshot_load(DailySayingCacheSnapshot *out);
-bool get_daily_saying_snapshot(char *out,
-                               size_t out_len,
-                               time_t *last_sync_time = nullptr);
+// 成功取得锁并交付同一发布批次的正文和元数据时返回 true；
+// 空缓存仍是一次成功快照，由 metadata->available 区分。
+bool daily_saying_text_snapshot_load(
+    char *out,
+    size_t out_len,
+    DailySayingCacheSnapshot *metadata = nullptr);

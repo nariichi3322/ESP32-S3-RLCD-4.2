@@ -9,6 +9,7 @@
 #include "housekeeping_schedule_notify.h"
 #include "housekeeping_wait_policy.h"
 #include "local_sensor_state.h"
+#include "local_sensor_state_internal.h"
 #include "ota_runtime_state.h"
 #include "sensor_time.h"
 #include "task_notification_target.h"
@@ -20,6 +21,10 @@
 
 namespace {
 #define SENSOR_INTERVAL_INVALID_LOG_FORMAT "sensor interval invalid: %d"
+constexpr const char *kHourlySensorHistoryStateInitFailedLog =
+    "hourly sensor history state initialization failed";
+constexpr const char *kLocalSensorStateInitFailedLog =
+    "local sensor state initialization failed";
 constexpr int kMillisecondsPerSecond = 1000;
 constexpr int kSecondsPerMinute = 60;
 constexpr int kUnknownTimeSensorSampleMs = kSecondsPerMinute * kMillisecondsPerSecond;
@@ -126,7 +131,15 @@ void notify_housekeeping_schedule_changed()
 
 bool init_sensor_services_state()
 {
-    return init_hourly_sensor_history_state();
+    if (!init_hourly_sensor_history_state()) {
+        ESP_LOGE(TAG, "%s", kHourlySensorHistoryStateInitFailedLog);
+        return false;
+    }
+    if (!init_local_sensor_state()) {
+        ESP_LOGE(TAG, "%s", kLocalSensorStateInitFailedLog);
+        return false;
+    }
+    return true;
 }
 
 void housekeeping_task(void *)

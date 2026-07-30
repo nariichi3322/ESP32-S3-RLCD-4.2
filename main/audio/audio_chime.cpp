@@ -6,6 +6,7 @@
 #include "audio_services_internal.h"
 #include "battery_runtime_state.h"
 #include "chime_runtime_state.h"
+#include "codec_bsp.h"
 #include "ota_runtime_state.h"
 #include "single_pending_task_gate.h"
 #include "wifi_portal_state.h"

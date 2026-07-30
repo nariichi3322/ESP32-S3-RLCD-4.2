@@ -227,12 +227,11 @@ static void build_history_chart_area(lv_obj_t *screen)
     if (!screen) {
         return;
     }
-    lv_obj_t *history_top_line = make_bar(screen,
-                                          ui_work_page_layout::kTopSeparatorX,
-                                          ui_work_page_layout::kTopSeparatorY,
-                                          ui_work_page_layout::kTopSeparatorWidth,
-                                          ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(history_top_line, true);
+    make_black_bar(screen,
+                   ui_work_page_layout::kTopSeparatorX,
+                   ui_work_page_layout::kTopSeparatorY,
+                   ui_work_page_layout::kTopSeparatorWidth,
+                   ui_work_page_layout::kTopSeparatorHeight);
     lv_obj_t *temp_title = make_history_title(screen,
                                               kTempTitleY,
                                               kTempTitle,

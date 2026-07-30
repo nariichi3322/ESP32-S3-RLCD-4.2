@@ -153,11 +153,11 @@ int main()
     WeatherAlertData alert = {};
     WeatherForecastData forecast = {};
     WeatherAirData air = {};
-    get_weather_full_snapshot(&weather, &alert, &forecast, &air);
+    assert(get_weather_full_snapshot(&weather, &alert, &forecast, &air));
     assert_snapshot_marker('B', weather, alert, forecast, air);
 
     commit_marker('C', false);
-    get_weather_full_snapshot(&weather, &alert, &forecast, &air);
+    assert(get_weather_full_snapshot(&weather, &alert, &forecast, &air));
     assert(weather.city[0] == 'C');
     assert(alert.titles[0][0] == 'B');
     assert(forecast.days[0].date[0] == 'C');
@@ -176,9 +176,9 @@ int main()
     assert(g_event_set_count.load() == 2);
     cache_status = {1, 1, true};
     assert(!weather_cache_status_snapshot_load(&cache_status));
-    assert(cache_status.last_sync_time == 0);
-    assert(cache_status.version == 0);
-    assert(!cache_status.extended_data_ready);
+    assert(cache_status.last_sync_time == 1);
+    assert(cache_status.version == 1);
+    assert(cache_status.extended_data_ready);
     WeatherAlertStatusSnapshot failed_status =
         weather_alert_status_snapshot_load();
     assert(failed_status.version == alert_status.version);
@@ -188,13 +188,10 @@ int main()
                                              sizeof(alert_title)));
     assert(alert_title[0] == '\0');
     fill_snapshot('Z', &weather, &alert, &forecast, &air);
-    get_weather_full_snapshot(&weather, &alert, &forecast, &air);
-    assert(weather.city[0] == '\0');
-    assert(!alert.active && alert.count == 0);
-    assert(!forecast.ready && forecast.count == 0);
-    assert(!air.ready && air.aqi[0] == '\0');
+    assert(!get_weather_full_snapshot(&weather, &alert, &forecast, &air));
+    assert_snapshot_marker('Z', weather, alert, forecast, air);
     g_fail_weather_mutex_take.store(false, std::memory_order_release);
-    get_weather_full_snapshot(&weather, &alert, &forecast, &air);
+    assert(get_weather_full_snapshot(&weather, &alert, &forecast, &air));
     assert(weather.city[0] == 'C');
     assert(alert.titles[0][0] == 'B');
     assert(forecast.days[0].date[0] == 'C');
@@ -210,7 +207,7 @@ int main()
     });
     uint32_t last_alert_version = failed_status.version;
     do {
-        get_weather_full_snapshot(&weather, &alert, &forecast, &air);
+        assert(get_weather_full_snapshot(&weather, &alert, &forecast, &air));
         assert(weather.city[0] == 'A' || weather.city[0] == 'B');
         assert_snapshot_marker(weather.city[0], weather, alert, forecast, air);
         WeatherAlertStatusSnapshot current_status =

@@ -150,33 +150,22 @@ bool init_weather_state()
     return s_weather_state_mutex.init();
 }
 
-void get_weather_full_snapshot(WeatherData *weather,
+bool get_weather_full_snapshot(WeatherData *weather,
                                WeatherAlertData *alert,
                                WeatherForecastData *forecast,
                                WeatherAirData *air)
 {
     ScopedSemaphoreLock lock(s_weather_state_mutex);
     if (!lock) {
-        if (weather) {
-            *weather = {};
-        }
-        if (alert) {
-            *alert = {};
-        }
-        if (forecast) {
-            *forecast = {};
-        }
-        if (air) {
-            *air = {};
-        }
-        return;
+        return false;
     }
     weather_snapshot_store_read(s_weather_store, weather, alert, forecast, air);
+    return true;
 }
 
-void get_weather_snapshot(WeatherData *weather)
+bool get_weather_snapshot(WeatherData *weather)
 {
-    get_weather_full_snapshot(weather, nullptr, nullptr, nullptr);
+    return get_weather_full_snapshot(weather, nullptr, nullptr, nullptr);
 }
 
 WeatherAlertStatusSnapshot weather_alert_status_snapshot_load()
@@ -201,7 +190,6 @@ bool weather_cache_status_snapshot_load(WeatherCacheStatusSnapshot *out)
     if (!out) {
         return false;
     }
-    *out = {};
     ScopedSemaphoreLock lock(s_weather_state_mutex);
     if (!lock) {
         return false;

@@ -17,11 +17,24 @@ namespace {
 constexpr int kDashedLineRunPixels = 5;
 constexpr int kDashedLinePeriodPixels = kDashedLineRunPixels * 2;
 constexpr int kBresenhamErrorScale = 2;
+constexpr size_t kCanvasInternalFallbackMaxBytes = 12U * 1024U;
 
 static_assert(kDashedLineRunPixels > 0, "dashed line run length must be positive");
 static_assert(kDashedLinePeriodPixels > kDashedLineRunPixels,
               "dashed line period must be longer than the drawn segment");
 static_assert(kBresenhamErrorScale == 2, "Bresenham error scale must stay doubled");
+
+constexpr bool canvas_internal_fallback_allowed(size_t buffer_bytes)
+{
+    return buffer_bytes > 0 &&
+           buffer_bytes <= kCanvasInternalFallbackMaxBytes;
+}
+
+static_assert(canvas_internal_fallback_allowed(1),
+              "small canvas buffers must retain an internal-RAM fallback");
+static_assert(!canvas_internal_fallback_allowed(
+                  kCanvasInternalFallbackMaxBytes + 1),
+              "large canvas buffers must remain PSRAM-only");
 
 bool canvas_size_valid(int w, int h)
 {
@@ -63,12 +76,16 @@ int square_int(int value)
     return value * value;
 }
 
-bool canvas_pixel_count(int width, int height, size_t *pixel_count)
+bool canvas_pixel_count(int width,
+                        int height,
+                        size_t *pixel_count,
+                        size_t *buffer_bytes)
 {
-    if (!pixel_count) {
+    if (!pixel_count || !buffer_bytes) {
         return false;
     }
     *pixel_count = 0;
+    *buffer_bytes = 0;
     if (width <= 0 || height <= 0) {
         ESP_LOGW(TAG, UI_CANVAS_BUFFER_INVALID_SIZE_FORMAT, width, height);
         return false;
@@ -83,6 +100,7 @@ bool canvas_pixel_count(int width, int height, size_t *pixel_count)
         return false;
     }
     *pixel_count = count;
+    *buffer_bytes = bytes;
     return true;
 }
 } // namespace
@@ -90,13 +108,17 @@ bool canvas_pixel_count(int width, int height, size_t *pixel_count)
 lv_color_t *alloc_canvas_buffer(int width, int height)
 {
     size_t pixel_count = 0;
-    if (!canvas_pixel_count(width, height, &pixel_count)) {
+    size_t buffer_bytes = 0;
+    if (!canvas_pixel_count(width,
+                            height,
+                            &pixel_count,
+                            &buffer_bytes)) {
         return nullptr;
     }
     lv_color_t *buf = (lv_color_t *)heap_caps_calloc(pixel_count,
                                                      sizeof(lv_color_t),
                                                      MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!buf) {
+    if (!buf && canvas_internal_fallback_allowed(buffer_bytes)) {
         buf = (lv_color_t *)calloc(pixel_count, sizeof(lv_color_t));
     }
     if (!buf) {

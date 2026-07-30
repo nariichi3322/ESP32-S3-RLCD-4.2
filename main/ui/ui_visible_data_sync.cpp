@@ -175,7 +175,8 @@ void update_visible_weather_sync(const ActiveWorkPageState &state,
     if (cache_fresh && retry.idle()) {
         return;
     }
-    if (!network_weather_configuration_configured() ||
+    if (!network_wifi_credentials_configured() ||
+        !network_weather_configuration_configured() ||
         offline_mode_enabled_load()) {
         cancel_visible_sync_request(retry,
                                     tick_now,
@@ -232,6 +233,22 @@ void update_visible_daily_saying_sync(const ActiveWorkPageState &state,
     if (cache_fresh && retry.idle()) {
         return;
     }
+    if (cache_fresh) {
+        cancel_visible_sync_request(retry,
+                                    tick_now,
+                                    kVisibleSayingSyncBit,
+                                    true);
+        return;
+    }
+    if (!network_wifi_credentials_configured() ||
+        offline_mode_enabled_load()) {
+        cancel_visible_sync_request(retry,
+                                    tick_now,
+                                    kVisibleSayingSyncBit,
+                                    false);
+        return;
+    }
+
     const bool ota_active = ota_flow_active();
     if (ota_active) {
         cancel_visible_sync_request(retry,
@@ -240,16 +257,6 @@ void update_visible_daily_saying_sync(const ActiveWorkPageState &state,
                                     false);
         return;
     }
-    const bool needs_sync = !offline_mode_enabled_load() &&
-                            !cache_fresh;
-    if (!needs_sync) {
-        cancel_visible_sync_request(retry,
-                                    tick_now,
-                                    kVisibleSayingSyncBit,
-                                    true);
-        return;
-    }
-
     EventBits_t sync_bits = app_event_group_get_bits();
     bool sync_in_flight =
         (sync_bits & (kManualSayingSyncBit |
@@ -277,7 +284,9 @@ bool update_weather_clock_network_status(EventBits_t bits)
 {
     if (bits & kWeatherReadyBit) {
         WeatherData weather = {};
-        get_weather_snapshot(&weather);
+        if (!get_weather_snapshot(&weather)) {
+            return false;
+        }
         char city[kWeatherCityTextSize] = {};
         char weather_temp[kWeatherValueTextSize] = {};
         char weather_humi[kWeatherValueTextSize] = {};

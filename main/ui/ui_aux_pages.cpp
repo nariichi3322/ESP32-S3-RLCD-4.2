@@ -184,7 +184,9 @@ bool set_info_string_label(size_t index, const char *format, const char *value)
 bool set_info_battery_label()
 {
     BatteryRuntimeSnapshot battery;
-    battery_runtime_snapshot_load(&battery);
+    if (!battery_runtime_snapshot_load(&battery)) {
+        return false;
+    }
     char line[kInfoLineTextSize] = {};
     char charge_time[kInfoTimeTextSize] = {};
     format_time_or_dash(battery.last_charge_time, charge_time, sizeof(charge_time));
@@ -248,16 +250,19 @@ bool update_boot_info_page()
     char wifi_ssid[kNetworkWifiSsidLen] = {};
     WeatherCacheStatusSnapshot weather_cache = {};
     (void)network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid));
-    (void)weather_cache_status_snapshot_load(&weather_cache);
+    const bool weather_cache_loaded =
+        weather_cache_status_snapshot_load(&weather_cache);
     changed |= set_info_time_label(kInfoNtpLabelIndex,
                                    kInfoLastNtpFormat,
                                    get_last_ntp_sync_time());
     changed |= set_info_string_label(kInfoWifiLabelIndex,
                                      kInfoWifiFormat,
                                      wifi_ssid[0] ? wifi_ssid : "--");
-    changed |= set_info_time_label(kInfoWeatherLabelIndex,
-                                   kInfoLastWeatherFormat,
-                                   weather_cache.last_sync_time);
+    if (weather_cache_loaded) {
+        changed |= set_info_time_label(kInfoWeatherLabelIndex,
+                                       kInfoLastWeatherFormat,
+                                       weather_cache.last_sync_time);
+    }
     changed |= set_info_battery_label();
     changed |= set_info_version_label();
     changed |= set_info_string_label(kInfoSourceLabelIndex,
@@ -306,7 +311,9 @@ bool update_network_diag_page()
 {
     bool changed = false;
     NetworkDiagnosticsSnapshot &snapshot = s_network_diag_render_snapshot;
-    network_diag_snapshot_load(&snapshot);
+    if (!network_diag_snapshot_load(&snapshot)) {
+        return false;
+    }
     char summary[kNetworkDiagSummaryTextSize] = {};
     if (snapshot.state == kNetworkDiagRunning) {
         ui_text::copy(summary, sizeof(summary), kNetworkDiagSummaryRunning);

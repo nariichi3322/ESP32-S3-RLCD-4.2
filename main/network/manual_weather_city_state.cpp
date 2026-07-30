@@ -33,7 +33,7 @@ bool manual_weather_city_snapshot(char *out, size_t out_len)
         return false;
     }
     memcpy(out, s_manual_weather_city_text, sizeof(s_manual_weather_city_text));
-    return s_manual_weather_city_text[0] != '\0';
+    return out[0] != '\0';
 }
 
 void manual_weather_city_store(const char *city)

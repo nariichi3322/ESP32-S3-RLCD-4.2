@@ -14,9 +14,8 @@ using namespace ui_gallery_layout;
 
 using sdl_preview_widgets::canvas_fill_rect;
 using sdl_preview_widgets::draw_1bit_icon;
-using sdl_preview_widgets::make_bar;
+using sdl_preview_widgets::make_black_bar;
 using sdl_preview_widgets::make_label;
-using sdl_preview_widgets::set_obj_black;
 
 constexpr const char *kSayingPreview = "今日无事，适合慢慢来。";
 
@@ -84,12 +83,11 @@ void build_gallery_preview_body(lv_obj_t *screen, const struct tm *local)
                    lv_color_black(),
                    lv_color_white());
 
-    lv_obj_t *divider = make_bar(screen,
-                                 kGalleryDividerX,
-                                 kGalleryDividerY,
-                                 kGalleryDividerW,
-                                 kGalleryDividerH);
-    set_obj_black(divider, true);
+    make_black_bar(screen,
+                   kGalleryDividerX,
+                   kGalleryDividerY,
+                   kGalleryDividerW,
+                   kGalleryDividerH);
 
     lv_obj_t *time_canvas = lv_canvas_create(screen);
     lv_obj_clear_flag(time_canvas, LV_OBJ_FLAG_SCROLLABLE);

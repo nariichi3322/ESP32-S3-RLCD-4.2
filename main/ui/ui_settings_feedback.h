@@ -11,6 +11,11 @@
 
 inline constexpr size_t kSettingsFeedbackTextLen = 48;
 
+struct SettingsFeedbackSnapshot {
+    char text[kSettingsFeedbackTextLen] = {};
+    bool active = false;
+};
+
 struct SettingsUiTimingSnapshot {
     TickType_t feedback_until_tick = 0;
     TickType_t sync_deadline_tick = 0;
@@ -27,7 +32,9 @@ struct SettingsSyncRequestSnapshot {
 
 void set_settings_feedback(const char *text, uint32_t duration_ms);
 void clear_settings_feedback();
-bool settings_feedback_copy_active(TickType_t now, char *out, size_t out_len);
+// 读取成功才改写输出；互斥读取失败时保留调用方已有反馈。
+bool settings_feedback_snapshot_load(TickType_t now,
+                                     SettingsFeedbackSnapshot *out);
 SettingsUiTimingSnapshot settings_ui_timing_snapshot_load();
 SettingsSyncRequestSnapshot settings_sync_request_snapshot_load();
 bool is_settings_sync_busy();

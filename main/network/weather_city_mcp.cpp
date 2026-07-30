@@ -1,5 +1,5 @@
 // 通过小智 MCP 校验并保存手动天气城市，复用现有 QWeather 和 NVS 配置路径。
-#include "weather_city_mcp.h"
+#include "weather_city_mcp_internal.h"
 
 #include "app_event_group.h"
 #include "network_config.h"

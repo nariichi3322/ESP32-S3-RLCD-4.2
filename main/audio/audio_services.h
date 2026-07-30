@@ -21,7 +21,6 @@ bool wait_for_audio_playback_idle(uint32_t timeout_ms,
                                   uint32_t poll_interval_ms,
                                   AudioStopRequestedCallback stop_requested);
 bool audio_codec_active();
-void park_unused_audio_peripherals();
 void request_setup_prompt_once();
 void request_settings_confirmation_chime();
 void play_hourly_chime(int hour, bool enforce_quiet_hours = true);

@@ -90,35 +90,22 @@ bool get_local_sensor_snapshot(float *temperature,
                                int *temperature_trend,
                                int *humidity_trend)
 {
+    LocalSensorStateSnapshot snapshot = {};
+    const bool snapshot_loaded =
+        local_sensor_state_snapshot_load(&snapshot);
     if (temperature) {
-        *temperature = 0.0f;
+        *temperature = snapshot.temperature;
     }
     if (humidity) {
-        *humidity = 0.0f;
+        *humidity = snapshot.humidity;
     }
     if (temperature_trend) {
-        *temperature_trend = 0;
+        *temperature_trend = snapshot.temperature_trend;
     }
     if (humidity_trend) {
-        *humidity_trend = 0;
+        *humidity_trend = snapshot.humidity_trend;
     }
-    ScopedSemaphoreLock lock(s_local_sensor_mutex.handle());
-    if (!lock) {
-        return false;
-    }
-    if (temperature) {
-        *temperature = s_local_sensor.temperature;
-    }
-    if (humidity) {
-        *humidity = s_local_sensor.humidity;
-    }
-    if (temperature_trend) {
-        *temperature_trend = s_local_sensor.temperature_trend;
-    }
-    if (humidity_trend) {
-        *humidity_trend = s_local_sensor.humidity_trend;
-    }
-    return s_local_sensor.available;
+    return snapshot_loaded && snapshot.available;
 }
 
 uint32_t local_sensor_state_version()

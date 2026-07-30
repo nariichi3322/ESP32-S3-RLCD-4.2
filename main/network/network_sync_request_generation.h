@@ -12,8 +12,6 @@ struct NetworkSyncRequestGenerationSnapshot {
     uint32_t diagnostics = 0;
 };
 
-bool init_network_sync_request_generation();
-
 NetworkSyncRequestGenerationSnapshot
 network_sync_request_generation_snapshot();
 

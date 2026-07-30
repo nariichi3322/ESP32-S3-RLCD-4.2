@@ -3,4 +3,5 @@
 
 #include "power_services.h"
 
+void init_power_management();
 void set_audio_performance_mode(bool enabled);

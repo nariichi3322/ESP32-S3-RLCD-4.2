@@ -11,6 +11,8 @@ constexpr int kEnterPercent = 10;
 constexpr int kExitPercent = 13;
 }
 
+std::atomic<bool> g_fail_battery_mutex_take{false};
+
 int main()
 {
     BatteryRuntimeSnapshot snapshot;
@@ -21,12 +23,12 @@ int main()
     assert(battery_percent_load() == -1);
     assert(!battery_low_mode_load());
     assert(battery_runtime_version_load() == 0);
-    battery_runtime_snapshot_load(&snapshot);
+    assert(!battery_runtime_snapshot_load(&snapshot));
     assert(snapshot.percent == -1);
 
     assert(battery_runtime_state_init());
     assert(battery_runtime_state_init());
-    battery_runtime_snapshot_load(&snapshot);
+    assert(battery_runtime_snapshot_load(&snapshot));
     assert(snapshot.percent == -1);
     assert(snapshot.voltage == -1.0f);
     assert(!snapshot.charging);
@@ -60,6 +62,17 @@ int main()
     assert(status.charging == snapshot.charging);
     assert(status.low_battery_mode == snapshot.low_battery_mode);
 
+    BatteryRuntimeSnapshot preserved = snapshot;
+    preserved.percent = 42;
+    preserved.voltage = 4.2f;
+    preserved.version = 42;
+    g_fail_battery_mutex_take.store(true, std::memory_order_release);
+    assert(!battery_runtime_snapshot_load(&preserved));
+    g_fail_battery_mutex_take.store(false, std::memory_order_release);
+    assert(preserved.percent == 42);
+    assert(preserved.voltage == 4.2f);
+    assert(preserved.version == 42);
+
     snapshot.charging = false;
     snapshot.animation_complete = false;
     snapshot.last_charge_time = 50;
@@ -83,8 +96,8 @@ int main()
     std::thread reader([&] {
         for (int i = 0; i < kIterations; ++i) {
             BatteryRuntimeSnapshot current;
-            battery_runtime_snapshot_load(&current);
-            if (current.voltage != static_cast<float>(current.percent) ||
+            if (!battery_runtime_snapshot_load(&current) ||
+                current.voltage != static_cast<float>(current.percent) ||
                 current.animation_complete != current.charging ||
                 current.last_charge_time != current.percent) {
                 inconsistent.store(true, std::memory_order_relaxed);
@@ -108,7 +121,7 @@ int main()
     assert(!inconsistent.load(std::memory_order_relaxed));
     assert(!status_inconsistent.load(std::memory_order_relaxed));
 
-    battery_runtime_snapshot_load(&snapshot);
+    assert(battery_runtime_snapshot_load(&snapshot));
     assert(battery_percent_load() == snapshot.percent);
     assert(battery_low_mode_load() == snapshot.low_battery_mode);
     assert(battery_runtime_version_load() == snapshot.version);

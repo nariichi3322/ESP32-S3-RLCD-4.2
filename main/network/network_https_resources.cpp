@@ -1,5 +1,6 @@
 // 实现 HTTPS 期间的显示 DMA 保护和内存余量采样。
 #include "network_https_resources.h"
+#include "network_https_resources_internal.h"
 
 #include "network_sync_schedule.h"
 

@@ -9,6 +9,7 @@
 #include "ota_runtime_state.h"
 
 #include "network_https_resources.h"
+#include "network_https_resources_internal.h"
 #include "network_boot_refresh_state.h"
 #include "network_cache_policy.h"
 #include "network_diagnostics_internal.h"
@@ -31,7 +32,7 @@
 #include "weather_update.h"
 #include "wifi_idle_stop_policy.h"
 #include "wifi_portal_state.h"
-#include "wifi_radio_services.h"
+#include "wifi_radio_services_internal.h"
 #include "wifi_radio_state.h"
 
 #include <esp_log.h>

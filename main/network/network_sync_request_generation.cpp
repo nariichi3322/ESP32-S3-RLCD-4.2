@@ -1,5 +1,5 @@
 // 实现用户触发联网请求的独立代次和条件结算。
-#include "network_sync_request_generation.h"
+#include "network_sync_request_generation_internal.h"
 
 #include "app_event_group.h"
 #include "scoped_semaphore_lock.h"

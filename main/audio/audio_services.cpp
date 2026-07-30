@@ -9,6 +9,7 @@
 #include "audio_services_internal.h"
 #include "atomic_ownership_gate.h"
 #include "checked_size.h"
+#include "codec_bsp.h"
 #include "power_services_internal.h"
 
 #include <atomic>

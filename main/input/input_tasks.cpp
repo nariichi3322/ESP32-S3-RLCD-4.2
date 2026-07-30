@@ -53,8 +53,8 @@ static_assert(kButtonInputPinMask == (kBootButtonPinMask | kKeyButtonPinMask),
               "button input pin mask must include BOOT and KEY");
 static_assert(kButtonLongPressTicks > kButtonDebounceTicks,
               "button long-press tick duration must be longer than debounce duration");
-static_assert(kButtonLowRefreshIdlePollMs <= kButtonIdlePollMs,
-              "low-refresh button polling must stay at least as responsive as idle polling");
+static_assert(kButtonIdlePollMs <= kButtonLowRefreshIdlePollMs,
+              "low-refresh fallback polling must not wake more often than idle polling");
 static_assert(kButtonActivePollMs <= kButtonIdlePollMs,
               "active button polling must stay at least as responsive as idle polling");
 static_assert(kButtonPressedPollMs <= kButtonActivePollMs,
@@ -318,22 +318,24 @@ void button_task(void *)
             continue;
         }
 
-        int delay_ms = kButtonIdlePollMs;
-        if (boot_pressed || key_pressed) {
-            delay_ms = kButtonPressedPollMs;
-        } else {
+        const bool any_button_pressed = boot_pressed || key_pressed;
+        bool interactive_surface = false;
+        bool low_refresh_surface = false;
+        if (!any_button_pressed) {
             const int active_page = active_work_page_load();
             const bool low_battery_mode = battery_low_mode_load();
             const UiRuntimeSurfaceSnapshot interactive_surfaces =
                 ui_runtime_surface_snapshot_load();
-            if (interactive_surfaces.interactive_surface_requested()) {
-                delay_ms = kButtonActivePollMs;
-            } else if (low_battery_mode ||
-                       (is_work_page_enabled(active_page) &&
-                        work_page_uses_low_refresh_idle(active_page))) {
-                delay_ms = kButtonLowRefreshIdlePollMs;
-            }
+            interactive_surface =
+                interactive_surfaces.interactive_surface_requested();
+            low_refresh_surface =
+                low_battery_mode ||
+                (is_work_page_enabled(active_page) &&
+                 work_page_uses_low_refresh_idle(active_page));
         }
+        const int delay_ms = button_task_poll_delay_ms(any_button_pressed,
+                                                       interactive_surface,
+                                                       low_refresh_surface);
         vTaskDelay(pdMS_TO_TICKS(delay_ms));
     }
 }

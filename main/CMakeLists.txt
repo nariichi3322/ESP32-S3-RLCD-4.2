@@ -103,6 +103,7 @@ idf_component_register(
         "network/wifi_portal.cpp"
         "network/wifi_portal_http.cpp"
         "network/wifi_portal_dns.cpp"
+        "network/wifi_portal_html_text.cpp"
         "network/wifi_portal_pages.cpp"
         "network/ntp_runtime_state.cpp"
         "network/ntp_services.cpp"

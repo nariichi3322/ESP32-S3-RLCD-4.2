@@ -7,6 +7,27 @@
 #include <string.h>
 #include <type_traits>
 
+#if defined(ESP_PLATFORM)
+namespace {
+bool s_psram_allocation_available = false;
+size_t s_psram_allocation_attempts = 0;
+}
+
+void *heap_caps_malloc(size_t size, uint32_t caps)
+{
+    (void)caps;
+    ++s_psram_allocation_attempts;
+    return s_psram_allocation_available ? malloc(size) : nullptr;
+}
+
+void *heap_caps_calloc(size_t count, size_t size, uint32_t caps)
+{
+    (void)caps;
+    ++s_psram_allocation_attempts;
+    return s_psram_allocation_available ? calloc(count, size) : nullptr;
+}
+#endif
+
 static_assert(!std::is_copy_constructible<ScopedHeapBuffer<char>>::value,
               "heap buffer ownership must not be copied");
 static_assert(!std::is_copy_assignable<ScopedHeapBuffer<char>>::value,
@@ -53,6 +74,32 @@ int main()
             assert(buffer.data()[i] == '\0');
         }
     }
+
+#if defined(ESP_PLATFORM)
+    {
+        s_psram_allocation_available = false;
+        s_psram_allocation_attempts = 0;
+        ScopedHeapBuffer<char> buffer(12,
+                                      HeapBufferInit::kZeroed,
+                                      HeapBufferStorage::kPsramRequired);
+        assert(!buffer);
+        assert(s_psram_allocation_attempts == 1);
+    }
+
+    {
+        s_psram_allocation_available = true;
+        s_psram_allocation_attempts = 0;
+        ScopedHeapBuffer<char> buffer(12,
+                                      HeapBufferInit::kZeroed,
+                                      HeapBufferStorage::kPsramRequired);
+        assert(buffer);
+        assert(buffer.size() == 12);
+        assert(s_psram_allocation_attempts == 1);
+        for (size_t i = 0; i < buffer.size(); ++i) {
+            assert(buffer.data()[i] == '\0');
+        }
+    }
+#endif
 
     {
         ScopedHeapBuffer<char> buffer(0, HeapBufferInit::kCString);

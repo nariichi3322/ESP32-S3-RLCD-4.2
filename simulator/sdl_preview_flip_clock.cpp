@@ -52,8 +52,7 @@ void build_flip_clock_preview_body(lv_obj_t *screen, const struct tm *local)
         sdl_preview_flip_cards::draw_preview_flip_card(card, values[index]);
     }
 
-    lv_obj_t *sensor_panel = sdl_preview_widgets::make_bar(screen, 18, 198, 238, 88);
-    sdl_preview_widgets::set_obj_black(sensor_panel, true);
+    lv_obj_t *sensor_panel = sdl_preview_widgets::make_black_bar(screen, 18, 198, 238, 88);
     lv_obj_set_style_radius(sensor_panel, 18, LV_PART_MAIN);
     lv_obj_set_style_clip_corner(sensor_panel, true, LV_PART_MAIN);
     lv_obj_t *temp = sdl_preview_widgets::make_label_with_font(
@@ -106,8 +105,7 @@ void build_flip_clock_preview_body(lv_obj_t *screen, const struct tm *local)
                                         lv_color_white(),
                                         lv_color_black());
 
-    lv_obj_t *date_panel = sdl_preview_widgets::make_bar(screen, 270, 198, 112, 88);
-    sdl_preview_widgets::set_obj_black(date_panel, true);
+    lv_obj_t *date_panel = sdl_preview_widgets::make_black_bar(screen, 270, 198, 112, 88);
     lv_obj_set_style_radius(date_panel, 18, LV_PART_MAIN);
     lv_obj_set_style_clip_corner(date_panel, true, LV_PART_MAIN);
     char day_text[8];

@@ -32,17 +32,17 @@ bool info_page_state_init()
     return s_info_page_mutex.init();
 }
 
-void info_page_state_load(InfoPageStateSnapshot *out)
+bool info_page_state_load(InfoPageStateSnapshot *out)
 {
     if (!out) {
-        return;
+        return false;
     }
-    *out = {};
     ScopedSemaphoreLock lock(s_info_page_mutex);
     if (!lock) {
-        return;
+        return false;
     }
     *out = s_info_page_state;
+    return true;
 }
 
 bool info_page_requested()

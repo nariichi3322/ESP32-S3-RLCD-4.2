@@ -20,7 +20,8 @@ struct BatteryRuntimeStatusSnapshot {
     bool low_battery_mode = false;
 };
 
-void battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out);
+// 读取失败时返回 false，并保留调用方已有内容。
+bool battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out);
 BatteryRuntimeStatusSnapshot battery_runtime_status_load();
 uint32_t battery_runtime_version_load();
 int battery_percent_load();

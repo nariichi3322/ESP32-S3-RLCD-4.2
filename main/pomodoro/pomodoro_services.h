@@ -31,7 +31,6 @@ constexpr uint32_t pomodoro_next_display_boundary_ms(uint32_t remaining_ms)
     return remainder == 0 ? 1000U : remainder;
 }
 
-bool pomodoro_services_init();
 void pomodoro_task(void *);
 void pomodoro_get_snapshot(PomodoroSnapshot *out);
 bool pomodoro_is_running();

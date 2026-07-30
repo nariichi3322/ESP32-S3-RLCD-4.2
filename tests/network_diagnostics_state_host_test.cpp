@@ -6,6 +6,8 @@
 #include <string.h>
 #include <thread>
 
+std::atomic<bool> g_fail_mutex_take{false};
+
 int main()
 {
     static_assert(sizeof(NetworkDiagnosticsSnapshot) >=
@@ -40,8 +42,8 @@ int main()
     assert(!network_diag_page_clear_if_current(second_page));
 
     NetworkDiagnosticsSnapshot snapshot;
-    network_diag_snapshot_load(nullptr);
-    network_diag_snapshot_load(&snapshot);
+    assert(!network_diag_snapshot_load(nullptr));
+    assert(network_diag_snapshot_load(&snapshot));
     assert(snapshot.state == kNetworkDiagIdle);
     for (int index = 0; index < kNetworkDiagLineCount; ++index) {
         assert(snapshot.lines[index][0] == '\0');
@@ -67,7 +69,7 @@ int main()
     assert(network_diag_state_begin(waiting_formats,
                                     kNetworkDiagLineCount,
                                     "waiting"));
-    network_diag_snapshot_load(&snapshot);
+    assert(network_diag_snapshot_load(&snapshot));
     assert(snapshot.state == kNetworkDiagRunning);
     for (int index = 0; index < kNetworkDiagLineCount; ++index) {
         char expected[kNetworkDiagLineLen] = {};
@@ -102,17 +104,26 @@ int main()
     assert(network_diag_state_publish(terminal_lines,
                                       kNetworkDiagLineCount,
                                       kNetworkDiagDone));
-    network_diag_snapshot_load(&snapshot);
+    assert(network_diag_snapshot_load(&snapshot));
     assert(snapshot.state == kNetworkDiagDone);
     for (int index = 0; index < kNetworkDiagLineCount; ++index) {
         assert(strcmp(snapshot.lines[index], terminal_lines[index]) == 0);
+    }
+
+    NetworkDiagnosticsSnapshot preserved = snapshot;
+    g_fail_mutex_take.store(true, std::memory_order_release);
+    assert(!network_diag_snapshot_load(&preserved));
+    g_fail_mutex_take.store(false, std::memory_order_release);
+    assert(preserved.state == kNetworkDiagDone);
+    for (int index = 0; index < kNetworkDiagLineCount; ++index) {
+        assert(strcmp(preserved.lines[index], terminal_lines[index]) == 0);
     }
 
     network_diag_state_store(kNetworkDiagRunning);
     network_diag_line_store(kNetworkDiagLocalIpLine, "本地IP: 192.168.1.10");
     network_diag_line_store(-1, "ignored");
     network_diag_line_store(kNetworkDiagLineCount, "ignored");
-    network_diag_snapshot_load(&snapshot);
+    assert(network_diag_snapshot_load(&snapshot));
     assert(snapshot.state == kNetworkDiagRunning);
     assert(strcmp(snapshot.lines[kNetworkDiagLocalIpLine],
                   "本地IP: 192.168.1.10") == 0);
@@ -122,7 +133,7 @@ int main()
     long_text[sizeof(long_text) - 1] = '\0';
     network_diag_line_store(kNetworkDiagOtaLine, long_text);
     NetworkDiagnosticsSnapshot truncated;
-    network_diag_snapshot_load(&truncated);
+    assert(network_diag_snapshot_load(&truncated));
     assert(strlen(truncated.lines[kNetworkDiagOtaLine]) ==
            kNetworkDiagLineLen - 1);
 
@@ -132,7 +143,7 @@ int main()
 
     network_diag_line_store(kNetworkDiagLocalIpLine, nullptr);
     network_diag_state_clear(kNetworkDiagDone);
-    network_diag_snapshot_load(&snapshot);
+    assert(network_diag_snapshot_load(&snapshot));
     assert(snapshot.state == kNetworkDiagDone);
     for (int index = 0; index < kNetworkDiagLineCount; ++index) {
         assert(snapshot.lines[index][0] == '\0');
@@ -171,7 +182,7 @@ int main()
         start.store(true, std::memory_order_release);
         for (int iteration = 0; iteration < 1000; ++iteration) {
             NetworkDiagnosticsSnapshot current = {};
-            network_diag_snapshot_load(&current);
+            assert(network_diag_snapshot_load(&current));
             const char *line = current.lines[kNetworkDiagWeatherLine];
             assert(line[0] == '\0' ||
                    strcmp(line, "weather-ok-a") == 0 ||
@@ -208,7 +219,7 @@ int main()
         start.store(true, std::memory_order_release);
         for (int iteration = 0; iteration < 1000; ++iteration) {
             NetworkDiagnosticsSnapshot current = {};
-            network_diag_snapshot_load(&current);
+            assert(network_diag_snapshot_load(&current));
             const char prefix = current.lines[0][0];
             assert(prefix == 'a' || prefix == 'b' ||
                    current.lines[0][0] == '\0');
@@ -245,7 +256,7 @@ int main()
         start.store(true, std::memory_order_release);
         for (int iteration = 0; iteration < 1000; ++iteration) {
             NetworkDiagnosticsSnapshot current = {};
-            network_diag_snapshot_load(&current);
+            assert(network_diag_snapshot_load(&current));
             const char prefix = current.lines[0][0];
             assert(prefix == 'a' || prefix == 'b');
             assert(current.state ==

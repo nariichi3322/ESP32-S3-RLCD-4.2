@@ -292,12 +292,11 @@ void build_calendar_page()
                                true,
                                true);
 
-    lv_obj_t *top_line = make_bar(screen,
-                                  ui_work_page_layout::kTopSeparatorX,
-                                  ui_work_page_layout::kTopSeparatorY,
-                                  ui_work_page_layout::kTopSeparatorWidth,
-                                  ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(top_line, true);
+    make_black_bar(screen,
+                   ui_work_page_layout::kTopSeparatorX,
+                   ui_work_page_layout::kTopSeparatorY,
+                   ui_work_page_layout::kTopSeparatorWidth,
+                   ui_work_page_layout::kTopSeparatorHeight);
     build_work_page_day_progress(screen, kWorkPageCalendar);
 
     if (!s_calendar_canvas_buffer) {

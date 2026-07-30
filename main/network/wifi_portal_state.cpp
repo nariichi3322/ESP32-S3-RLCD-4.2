@@ -91,7 +91,7 @@ bool portal_text_snapshot(const char (&source)[N], char *out, size_t out_len)
         return false;
     }
     memcpy(out, source, N);
-    return source[0] != '\0';
+    return out[0] != '\0';
 }
 
 template <size_t N>

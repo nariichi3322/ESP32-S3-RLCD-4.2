@@ -12,11 +12,12 @@
 #include "scoped_semaphore_lock.h"
 #include "setup_portal_control.h"
 #include "setup_portal_control_internal.h"
+#include "wifi_driver_init_policy.h"
 #include "wifi_idle_stop_policy.h"
 #include "wifi_portal_dns.h"
 #include "wifi_portal_http.h"
 #include "wifi_portal_state_internal.h"
-#include "wifi_radio_services.h"
+#include "wifi_radio_services_internal.h"
 #include "wifi_radio_state_internal.h"
 
 #include "audio_services.h"
@@ -49,6 +50,8 @@ esp_event_handler_instance_t s_ip_event_handler_instance = nullptr;
 std::atomic<bool> s_wifi_stop_requested{false};
 std::atomic<bool> s_wifi_stop_when_idle_requested{false};
 StaticTaskMutex s_wifi_lifecycle_mutex;
+WifiDriverInitState s_wifi_driver_init_state =
+    WifiDriverInitState::kRetryable;
 constexpr uint8_t kSetupApChannel = 1;
 constexpr uint8_t kSetupApMaxConnections = 4;
 constexpr const char *kSetupApSsidFormat = "WeatherClock-%02X%02X";
@@ -468,6 +471,42 @@ bool initialize_wifi_driver_once(bool *retry_safe)
     return true;
 }
 
+bool initialize_wifi_driver_with_retry()
+{
+    if (wifi_driver_init_ready(s_wifi_driver_init_state)) {
+        return true;
+    }
+    if (!wifi_driver_init_retry_allowed(s_wifi_driver_init_state)) {
+        return false;
+    }
+
+    for (unsigned attempt = 1;
+         attempt <= kWifiInitializationAttempts;
+         ++attempt) {
+        bool retry_safe = true;
+        const bool initialized =
+            initialize_wifi_driver_once(&retry_safe);
+        s_wifi_driver_init_state =
+            wifi_driver_init_state_after_attempt(initialized, retry_safe);
+        if (initialized) {
+            return true;
+        }
+        if (!retry_safe) {
+            ESP_LOGW(TAG, "%s", WIFI_INIT_RETRY_ABORTED_LOG);
+            return false;
+        }
+        if (attempt < kWifiInitializationAttempts) {
+            ESP_LOGW(TAG,
+                     WIFI_INIT_RETRY_FORMAT,
+                     attempt + 1,
+                     kWifiInitializationAttempts);
+            vTaskDelay(kWifiInitializationRetryDelay);
+        }
+    }
+    ESP_LOGW(TAG, "%s", WIFI_INIT_RETRY_EXHAUSTED_LOG);
+    return false;
+}
+
 } // namespace
 
 static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt);
@@ -672,6 +711,9 @@ bool start_wifi_radio(bool enable_setup_portal)
         ESP_LOGI(TAG, WIFI_START_SKIPPED_OFFLINE_LOG);
         return false;
     }
+    if (!initialize_wifi_driver_with_retry()) {
+        return false;
+    }
     bool entering_setup_portal = enable_setup_portal && !setup_portal_active_load();
     if (entering_setup_portal) {
         wifi_portal_session_reset();
@@ -711,6 +753,11 @@ bool wait_for_wifi_connected(uint32_t timeout_ms, uint32_t cancel_bits)
 
 bool prepare_setup_portal_result_delivery()
 {
+    ScopedSemaphoreLock lifecycle_lock(s_wifi_lifecycle_mutex);
+    if (!lifecycle_lock) {
+        ESP_LOGW(TAG, "%s", WIFI_LIFECYCLE_MUTEX_UNAVAILABLE_LOG);
+        return false;
+    }
     if (!wifi_radio_on_load() || !setup_portal_active_load()) {
         return false;
     }
@@ -957,28 +1004,15 @@ void init_wifi()
     format_setup_ap_ssid(mac[4], mac[5]);
 
     bool initialized = false;
-    for (unsigned attempt = 1;
-         attempt <= kWifiInitializationAttempts;
-         ++attempt) {
-        bool retry_safe = true;
-        if (initialize_wifi_driver_once(&retry_safe)) {
-            initialized = true;
-            break;
+    {
+        ScopedSemaphoreLock lifecycle_lock(s_wifi_lifecycle_mutex);
+        if (!lifecycle_lock) {
+            ESP_LOGW(TAG, "%s", WIFI_LIFECYCLE_MUTEX_UNAVAILABLE_LOG);
+            return;
         }
-        if (!retry_safe) {
-            ESP_LOGW(TAG, "%s", WIFI_INIT_RETRY_ABORTED_LOG);
-            break;
-        }
-        if (attempt < kWifiInitializationAttempts) {
-            ESP_LOGW(TAG,
-                     WIFI_INIT_RETRY_FORMAT,
-                     attempt + 1,
-                     kWifiInitializationAttempts);
-            vTaskDelay(kWifiInitializationRetryDelay);
-        }
+        initialized = initialize_wifi_driver_with_retry();
     }
     if (!initialized) {
-        ESP_LOGW(TAG, "%s", WIFI_INIT_RETRY_EXHAUSTED_LOG);
         return;
     }
 

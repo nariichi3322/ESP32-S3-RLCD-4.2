@@ -17,6 +17,12 @@ constexpr uint8_t kWorkPageTraitLowRefreshIdle = 1U << 1;
 constexpr uint8_t kWorkPageTraitWeatherData = 1U << 2;
 constexpr uint8_t kWorkPageTraitDailySaying = 1U << 3;
 constexpr uint8_t kWorkPageTraitExtendedWeatherData = 1U << 4;
+constexpr uint8_t kKnownWorkPageTraits =
+    kWorkPageTraitRequiresNetwork |
+    kWorkPageTraitLowRefreshIdle |
+    kWorkPageTraitWeatherData |
+    kWorkPageTraitDailySaying |
+    kWorkPageTraitExtendedWeatherData;
 
 struct WorkPageDescriptor {
     uint8_t page;
@@ -140,6 +146,9 @@ constexpr bool work_page_descriptor_traits_are_valid()
         kWorkPageTraitWeatherData | kWorkPageTraitDailySaying |
         kWorkPageTraitExtendedWeatherData;
     for (const WorkPageDescriptor &descriptor : kWorkPageDescriptors) {
+        if ((descriptor.traits & ~kKnownWorkPageTraits) != 0) {
+            return false;
+        }
         if ((descriptor.traits & kNetworkDataTraits) != 0 &&
             (descriptor.traits & kWorkPageTraitRequiresNetwork) == 0) {
             return false;

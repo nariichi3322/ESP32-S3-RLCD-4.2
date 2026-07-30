@@ -1,4 +1,4 @@
-// 提供默认堆或 PSRAM 优先分配、兼容 heap_caps 接管与 free 的不可复制字节缓冲区所有权。
+// 提供默认堆、PSRAM 优先或 PSRAM 必需分配，并兼容 heap_caps 接管与 free 的不可复制字节缓冲区所有权。
 #pragma once
 
 #include <stddef.h>
@@ -18,6 +18,7 @@ enum class HeapBufferInit {
 enum class HeapBufferStorage {
     kDefault,
     kPsramPreferred,
+    kPsramRequired,
 };
 
 template <typename Byte>
@@ -103,13 +104,17 @@ private:
         }
         void *memory = nullptr;
 #if defined(ESP_PLATFORM)
-        if (storage == HeapBufferStorage::kPsramPreferred) {
+        if (storage == HeapBufferStorage::kPsramPreferred ||
+            storage == HeapBufferStorage::kPsramRequired) {
             memory = init == HeapBufferInit::kZeroed
                          ? heap_caps_calloc(size,
                                             sizeof(Byte),
                                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT)
                          : heap_caps_malloc(size * sizeof(Byte),
                                             MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+            if (!memory && storage == HeapBufferStorage::kPsramRequired) {
+                return nullptr;
+            }
         }
 #else
         (void)storage;

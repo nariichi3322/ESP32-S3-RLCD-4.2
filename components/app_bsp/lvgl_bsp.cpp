@@ -25,6 +25,8 @@ static constexpr const char *kLvglLockBeforeInitLog = "LVGL lock requested befor
 static constexpr const char *kLvglUnlockBeforeInitLog = "LVGL unlock requested before init";
 static constexpr const char *kLvglMutexCreateFailedLog = "LVGL mutex creation failed";
 static constexpr const char *kLvglDisplayRegisterFailedLog = "LVGL display registration failed";
+static constexpr const char *kLvglRefreshTimerUnavailableLog =
+    "LVGL display refresh timer unavailable";
 static constexpr const char *kLvglRegisterDisplayLog = "Register display driver to LVGL";
 static constexpr const char *kLvglTaskCreateFailedLog = "LVGL task creation failed";
 static constexpr uint32_t kLvglTaskStackBytes = 8 * 1024;
@@ -37,6 +39,8 @@ static_assert(kLvglLockBeforeInitLog[0] != '\0', "LVGL lock-before-init log must
 static_assert(kLvglUnlockBeforeInitLog[0] != '\0', "LVGL unlock-before-init log must not be empty");
 static_assert(kLvglMutexCreateFailedLog[0] != '\0', "LVGL mutex failure log must not be empty");
 static_assert(kLvglDisplayRegisterFailedLog[0] != '\0', "LVGL display failure log must not be empty");
+static_assert(kLvglRefreshTimerUnavailableLog[0] != '\0',
+              "LVGL refresh-timer failure log must not be empty");
 static_assert(kLvglRegisterDisplayLog[0] != '\0', "LVGL register-display log must not be empty");
 static_assert(kLvglTaskCreateFailedLog[0] != '\0', "LVGL task failure log must not be empty");
 static_assert(kLvglTaskStackBytes > 0, "LVGL task stack size must be positive");
@@ -213,6 +217,16 @@ bool Lvgl_PortInit(int width, int height,DispFlushCb flush_cb) {
         ReleaseLvglInitResources(NULL, buffer1, buffer2);
         return false;
     }
+    lv_timer_t *display_refresh_timer = _lv_disp_get_refr_timer(display);
+    if (display_refresh_timer == NULL) {
+        ESP_LOGE(TAG, "%s", kLvglRefreshTimerUnavailableLog);
+        ReleaseLvglInitResources(display, buffer1, buffer2);
+        return false;
+    }
+    // All project UI owners explicitly refresh after changing LVGL objects.
+    // Pause LVGL's periodic display timer so static pages do not wake once per
+    // second merely to inspect an empty invalidation list.
+    lv_timer_pause(display_refresh_timer);
 
     lvgl_tick_last_us = esp_timer_get_time();
 

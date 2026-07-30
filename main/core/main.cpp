@@ -8,26 +8,26 @@
 #include "lvgl_bsp.h"
 #include "alarm_services_internal.h"
 #include "battery_runtime_state_internal.h"
-#include "pomodoro_services.h"
-#include "weather_city_mcp.h"
+#include "pomodoro_services_internal.h"
+#include "weather_city_mcp_internal.h"
 #include "audio_services.h"
+#include "audio_services_internal.h"
 #include "custom_assets_internal.h"
 #include "daily_saying_state_internal.h"
 #include "input_tasks.h"
-#include "manual_weather_city_state.h"
+#include "manual_weather_city_state_internal.h"
 #include "network_credentials_state_internal.h"
 #include "network_diagnostics_state_internal.h"
 #include "network_boot_sync.h"
-#include "network_http_transaction_lock.h"
-#include "network_sync_request_generation.h"
+#include "network_http_transaction_lock_internal.h"
+#include "network_sync_request_generation_internal.h"
 #include "network_sync_task.h"
-#include "saved_config_loader.h"
-#include "wifi_radio_services.h"
+#include "saved_config_loader_internal.h"
+#include "wifi_radio_services_internal.h"
 #include "ntp_runtime_state_internal.h"
 #include "ota_runtime_state_internal.h"
 #include "ota_services.h"
-#include "local_sensor_state_internal.h"
-#include "power_services.h"
+#include "power_services_internal.h"
 #include "rtc_services.h"
 #include "sensor_services_internal.h"
 #include "startup_state_internal.h"
@@ -72,8 +72,7 @@
 #define MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT "network diagnostics state initialization failed"
 #define MAIN_NETWORK_REQUEST_GENERATION_INIT_FAILED_LOG_FORMAT "network request generation initialization failed"
 #define MAIN_NTP_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT "NTP runtime state initialization failed"
-#define MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT "hourly sensor history state initialization failed"
-#define MAIN_LOCAL_SENSOR_STATE_INIT_FAILED_LOG_FORMAT "local sensor state initialization failed"
+#define MAIN_SENSOR_SERVICES_STATE_INIT_FAILED_LOG_FORMAT "sensor services state initialization failed"
 #define MAIN_OTA_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT "OTA runtime state initialization failed"
 #define MAIN_DAILY_SAYING_STATE_INIT_FAILED_LOG_FORMAT "daily saying state initialization failed"
 #define MAIN_MANUAL_WEATHER_CITY_STATE_INIT_FAILED_LOG_FORMAT "manual weather city state initialization failed"
@@ -165,8 +164,7 @@ constexpr AppInitializerSpec kCoreRuntimeStateInitializers[] = {
     {network_credentials_state_init, MAIN_NETWORK_CREDENTIALS_STATE_INIT_FAILED_LOG_FORMAT},
     {network_diagnostics_state_init, MAIN_NETWORK_DIAG_STATE_INIT_FAILED_LOG_FORMAT},
     {ntp_runtime_state_init, MAIN_NTP_RUNTIME_STATE_INIT_FAILED_LOG_FORMAT},
-    {init_sensor_services_state, MAIN_HOURLY_SENSOR_HISTORY_STATE_INIT_FAILED_LOG_FORMAT},
-    {init_local_sensor_state, MAIN_LOCAL_SENSOR_STATE_INIT_FAILED_LOG_FORMAT},
+    {init_sensor_services_state, MAIN_SENSOR_SERVICES_STATE_INIT_FAILED_LOG_FORMAT},
     {daily_saying_state_init, MAIN_DAILY_SAYING_STATE_INIT_FAILED_LOG_FORMAT},
     {init_manual_weather_city_state, MAIN_MANUAL_WEATHER_CITY_STATE_INIT_FAILED_LOG_FORMAT},
     {wifi_portal_state_init, MAIN_WIFI_PORTAL_STATE_INIT_FAILED_LOG_FORMAT},
@@ -194,6 +192,34 @@ constexpr bool app_task_specs_valid()
         }
     }
     return true;
+}
+
+constexpr bool app_task_specs_are_unique()
+{
+    for (size_t i = 0; i < array_count(kRegularAppTasks); ++i) {
+        for (size_t j = i + 1; j < array_count(kRegularAppTasks); ++j) {
+            if (kRegularAppTasks[i].task == kRegularAppTasks[j].task ||
+                cstr_equal(kRegularAppTasks[i].name,
+                           kRegularAppTasks[j].name)) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+constexpr bool app_task_specs_have_single_ui_owner()
+{
+    size_t ui_owner_count = 0;
+    for (const AppTaskSpec &spec : kRegularAppTasks) {
+        if (spec.register_ui_handle) {
+            ++ui_owner_count;
+            if (spec.task != ui_task) {
+                return false;
+            }
+        }
+    }
+    return ui_owner_count == 1;
 }
 
 template <size_t Count>
@@ -234,6 +260,10 @@ static_assert(kBootScreenFinishRetryDelayMs > 0,
 static_assert(kBootScreenFinishMaxAttempts > 1,
               "boot screen finish must retain a retry opportunity");
 static_assert(app_task_specs_valid(), "regular app task specs must be valid");
+static_assert(app_task_specs_are_unique(),
+              "regular app task functions and names must be unique");
+static_assert(app_task_specs_have_single_ui_owner(),
+              "regular app task table must register exactly one UI owner");
 static_assert(array_count(kCoreRuntimeStateInitializers) > 0,
               "core runtime initializer table must not be empty");
 static_assert(array_count(kFeatureRuntimeInitializers) > 0,

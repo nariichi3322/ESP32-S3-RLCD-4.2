@@ -96,6 +96,13 @@ RLCD 屏幕适合长时间显示，因此固件尽量只刷新变化区域：
 
 两份 Markdown 手册随用户可见功能同步维护，并在每次公开源码发布时一并更新。手册覆盖首次配网、七个工作页、设置、离线模式、小智 AI、闹钟与番茄钟、OTA、DIY 资源和故障排查。
 
+## 参与贡献与安全
+
+- [贡献指南 / Contributing Guide](CONTRIBUTING.md)
+- [安全政策 / Security Policy](SECURITY.md)
+
+贡献指南说明问题报告、开发环境、修改边界、验证和 Pull Request 要求；安全政策说明受支持范围、私密漏洞报告方式和敏感信息处理规则。两份文件均提供中文和英文版本。
+
 ## OTA 与资源
 
 设备端通过固件内置的 OTA 清单地址获取最新版本信息，再下载对应 app 固件。每次公开源码发布新版本标签后，GitHub Actions 会使用固定 ESP-IDF 工具链自动构建，并在同版本 Release 中追加两个附件：`weather_clock_vX.X.X.bin` 是 OTA App 固件，`weather_clock_vX.X.X_merged.bin` 是包含 bootloader、分区表、OTA data、语音模型和 App 的完整刷写固件。Actions 只追加或覆盖这两个附件，不修改既有中文发布说明。

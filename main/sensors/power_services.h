@@ -8,7 +8,6 @@ struct PowerLockDepthSnapshot {
     int audio_cpu = 0;
 };
 
-void init_power_management();
 [[nodiscard]] bool acquire_network_awake_lock();
 void release_network_awake_lock();
 bool network_awake_lock_active();

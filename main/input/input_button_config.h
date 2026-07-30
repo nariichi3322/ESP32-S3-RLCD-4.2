@@ -6,7 +6,7 @@
 inline constexpr gpio_num_t kBootButtonGpio = GPIO_NUM_0;
 inline constexpr gpio_num_t kKeyButtonGpio = GPIO_NUM_18;
 
-inline constexpr int kButtonIdlePollMs = 60;
-inline constexpr int kButtonLowRefreshIdlePollMs = 50;
+inline constexpr int kButtonIdlePollMs = 250;
+inline constexpr int kButtonLowRefreshIdlePollMs = 500;
 inline constexpr int kButtonActivePollMs = 50;
 inline constexpr int kButtonPressedPollMs = 20;

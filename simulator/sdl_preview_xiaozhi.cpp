@@ -112,8 +112,7 @@ void build_xiaozhi_preview_body(lv_obj_t *screen,
         }
     }
 
-    lv_obj_t *panel = sdl_preview_widgets::make_bar(screen, 18, 188, 364, 102);
-    sdl_preview_widgets::set_obj_black(panel, true);
+    lv_obj_t *panel = sdl_preview_widgets::make_black_bar(screen, 18, 188, 364, 102);
     lv_obj_set_style_radius(panel, 18, LV_PART_MAIN);
     lv_obj_set_style_clip_corner(panel, true, LV_PART_MAIN);
 

@@ -118,11 +118,6 @@ static uint8_t *ensure_custom_gallery_image_buffer()
         kCustomGalleryImageBufferSize,
         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT));
     if (!s_gallery_runtime.custom_image) {
-        s_gallery_runtime.custom_image = static_cast<uint8_t *>(heap_caps_malloc(
-            kCustomGalleryImageBufferSize,
-            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
-    }
-    if (!s_gallery_runtime.custom_image) {
         ESP_LOGW(TAG, "%s", GALLERY_CUSTOM_IMAGE_BUFFER_ALLOC_FAILED_LOG);
     }
     return s_gallery_runtime.custom_image;
@@ -250,8 +245,16 @@ static bool update_gallery_saying_label()
         return false;
     }
     char saying[kDailySayingLen] = {};
-    get_daily_saying_snapshot(saying, sizeof(saying));
-    s_gallery_runtime.last_saying_version = version;
+    DailySayingCacheSnapshot snapshot = {};
+    if (!daily_saying_text_snapshot_load(saying,
+                                         sizeof(saying),
+                                         &snapshot)) {
+        return false;
+    }
+    if (snapshot.version == s_gallery_runtime.last_saying_version) {
+        return false;
+    }
+    s_gallery_runtime.last_saying_version = snapshot.version;
     return set_label_text_if_changed(s_gallery_runtime.saying_label, saying);
 }
 
@@ -411,12 +414,11 @@ void build_gallery_page()
                                true,
                                false);
 
-    lv_obj_t *top_line = make_bar(screen,
-                                  ui_work_page_layout::kTopSeparatorX,
-                                  ui_work_page_layout::kTopSeparatorY,
-                                  ui_work_page_layout::kTopSeparatorWidth,
-                                  ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(top_line, true);
+    make_black_bar(screen,
+                   ui_work_page_layout::kTopSeparatorX,
+                   ui_work_page_layout::kTopSeparatorY,
+                   ui_work_page_layout::kTopSeparatorWidth,
+                   ui_work_page_layout::kTopSeparatorHeight);
     build_work_page_day_progress(screen, kWorkPageGallery);
 
     build_gallery_canvas(screen,
@@ -428,12 +430,11 @@ void build_gallery_page()
                          CLOCK_GALLERY_IMAGE_HEIGHT,
                          GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG);
 
-    lv_obj_t *divider = make_bar(screen,
-                                 kGalleryDividerX,
-                                 kGalleryDividerY,
-                                 kGalleryDividerW,
-                                 kGalleryDividerH);
-    set_obj_black(divider, true);
+    make_black_bar(screen,
+                   kGalleryDividerX,
+                   kGalleryDividerY,
+                   kGalleryDividerW,
+                   kGalleryDividerH);
     build_gallery_canvas(screen,
                          &s_gallery_runtime.time_canvas,
                          &s_gallery_runtime.time_canvas_buffer,

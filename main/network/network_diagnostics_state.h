@@ -22,7 +22,8 @@ struct NetworkDiagPageRequestSnapshot {
 };
 
 NetworkDiagState network_diag_state_load();
-void network_diag_snapshot_load(NetworkDiagnosticsSnapshot *snapshot);
+// 读取成功才改写输出；互斥读取失败时保留调用方已有快照。
+bool network_diag_snapshot_load(NetworkDiagnosticsSnapshot *snapshot);
 bool network_diag_page_requested();
 NetworkDiagPageRequestSnapshot network_diag_page_snapshot_load();
 void network_diag_page_request();

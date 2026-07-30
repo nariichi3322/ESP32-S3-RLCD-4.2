@@ -264,12 +264,11 @@ void build_flip_trend_canvas(lv_obj_t *screen,
 
 void build_flip_sensor_panel(lv_obj_t *screen, FlipClockObjectRefs &objects)
 {
-    lv_obj_t *sensor_panel = make_bar(screen,
-                                      kFlipSensorPanelX,
-                                      kFlipSensorPanelY,
-                                      kFlipSensorPanelW,
-                                      kFlipSensorPanelH);
-    set_obj_black(sensor_panel, true);
+    lv_obj_t *sensor_panel = make_black_bar(screen,
+                                            kFlipSensorPanelX,
+                                            kFlipSensorPanelY,
+                                            kFlipSensorPanelW,
+                                            kFlipSensorPanelH);
     if (sensor_panel) {
         lv_obj_set_style_radius(sensor_panel, kFlipSensorPanelRadius, LV_PART_MAIN);
         lv_obj_set_style_clip_corner(sensor_panel, true, LV_PART_MAIN);
@@ -314,12 +313,11 @@ void build_flip_sensor_panel(lv_obj_t *screen, FlipClockObjectRefs &objects)
 
 void build_flip_date_panel(lv_obj_t *screen, FlipClockObjectRefs &objects)
 {
-    lv_obj_t *date_panel = make_bar(screen,
-                                    kFlipDatePanelX,
-                                    kFlipDatePanelY,
-                                    kFlipDatePanelW,
-                                    kFlipDatePanelH);
-    set_obj_black(date_panel, true);
+    lv_obj_t *date_panel = make_black_bar(screen,
+                                          kFlipDatePanelX,
+                                          kFlipDatePanelY,
+                                          kFlipDatePanelW,
+                                          kFlipDatePanelH);
     if (date_panel) {
         lv_obj_set_style_radius(date_panel, kFlipDatePanelRadius, LV_PART_MAIN);
         lv_obj_set_style_clip_corner(date_panel, true, LV_PART_MAIN);
@@ -380,12 +378,11 @@ void build_flip_clock_page()
                                false,
                                false);
 
-    lv_obj_t *top_line = make_bar(screen,
-                                  ui_work_page_layout::kTopSeparatorX,
-                                  ui_work_page_layout::kTopSeparatorY,
-                                  ui_work_page_layout::kTopSeparatorWidth,
-                                  ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(top_line, true);
+    make_black_bar(screen,
+                   ui_work_page_layout::kTopSeparatorX,
+                   ui_work_page_layout::kTopSeparatorY,
+                   ui_work_page_layout::kTopSeparatorWidth,
+                   ui_work_page_layout::kTopSeparatorHeight);
     build_work_page_day_progress(screen, kWorkPageFlipClock);
 
     build_inverted_clock_cards(screen,

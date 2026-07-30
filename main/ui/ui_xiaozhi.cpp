@@ -239,12 +239,11 @@ void build_xiaozhi_page()
                                true,
                                true);
     set_obj_visible(get_work_page_status_labels(kWorkPageXiaozhiAI).time, false);
-    lv_obj_t *top_line = make_bar(root,
-                                  ui_work_page_layout::kTopSeparatorX,
-                                  ui_work_page_layout::kTopSeparatorY,
-                                  ui_work_page_layout::kTopSeparatorWidth,
-                                  ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(top_line, true);
+    make_black_bar(root,
+                   ui_work_page_layout::kTopSeparatorX,
+                   ui_work_page_layout::kTopSeparatorY,
+                   ui_work_page_layout::kTopSeparatorWidth,
+                   ui_work_page_layout::kTopSeparatorHeight);
     build_work_page_day_progress(root, kWorkPageXiaozhiAI);
     build_inverted_clock_cards(root, s_clock_cards, s_clock_card_buffers);
     s_pomodoro_title_label = make_pomodoro_card_label(s_clock_cards[0],
@@ -275,12 +274,11 @@ void build_xiaozhi_page()
     s_last_clock_values[1] = -1;
     s_last_clock_values[2] = -1;
 
-    lv_obj_t *interaction_panel = make_bar(root,
-                                           kInteractionPanelX,
-                                           kInteractionPanelY,
-                                           kInteractionPanelW,
-                                           kInteractionPanelH);
-    set_obj_black(interaction_panel, true);
+    lv_obj_t *interaction_panel = make_black_bar(root,
+                                                 kInteractionPanelX,
+                                                 kInteractionPanelY,
+                                                 kInteractionPanelW,
+                                                 kInteractionPanelH);
     if (interaction_panel) {
         lv_obj_set_style_radius(interaction_panel, kInteractionPanelRadius, LV_PART_MAIN);
         lv_obj_set_style_clip_corner(interaction_panel, true, LV_PART_MAIN);

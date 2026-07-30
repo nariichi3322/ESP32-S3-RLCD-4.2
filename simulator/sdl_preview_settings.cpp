@@ -9,9 +9,8 @@
 namespace {
 namespace settings_layout = ui_settings_layout;
 
-using sdl_preview_widgets::make_bar;
+using sdl_preview_widgets::make_black_bar;
 using sdl_preview_widgets::make_label;
-using sdl_preview_widgets::set_obj_black;
 
 bool settings_preview_mode_is(const char *mode, const char *expected)
 {
@@ -130,10 +129,8 @@ void build_settings_preview_page(const char *mode)
 
     lv_obj_t *title = make_label(screen, 24, 18, 352, 28, "设置");
     lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_t *top_line = make_bar(screen, 24, 52, 352, 3);
-    set_obj_black(top_line, true);
-    lv_obj_t *separator = make_bar(screen, 136, 62, 2, 174);
-    set_obj_black(separator, true);
+    make_black_bar(screen, 24, 52, 352, 3);
+    make_black_bar(screen, 136, 62, 2, 174);
 
     int primary = 0;
     if (settings_preview_mode_is(mode, "settings_sound")) {

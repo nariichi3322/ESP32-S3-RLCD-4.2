@@ -12,7 +12,7 @@
 #include "sensor_time.h"
 #include "ui_boot_screen.h"
 #include "wifi_portal_state.h"
-#include "wifi_radio_services.h"
+#include "wifi_radio_services_internal.h"
 #include "wifi_radio_state.h"
 
 #include <esp_log.h>

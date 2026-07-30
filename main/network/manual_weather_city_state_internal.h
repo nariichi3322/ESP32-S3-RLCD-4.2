@@ -3,4 +3,5 @@
 
 #include "manual_weather_city_state.h"
 
+bool init_manual_weather_city_state();
 void manual_weather_city_store(const char *city);

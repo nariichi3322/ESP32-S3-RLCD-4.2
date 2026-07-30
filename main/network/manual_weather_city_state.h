@@ -5,6 +5,5 @@
 
 #include <stddef.h>
 
-bool init_manual_weather_city_state();
 bool manual_weather_city_snapshot(char *out, size_t out_len);
 bool manual_weather_city_is_configured();

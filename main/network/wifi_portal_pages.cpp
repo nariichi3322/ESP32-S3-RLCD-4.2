@@ -8,6 +8,7 @@
 #include "manual_weather_city_state.h"
 #include "network_credentials_state.h"
 #include "scoped_heap_buffer.h"
+#include "wifi_portal_html_text.h"
 #include "wifi_portal_ui_assets.h"
 #include "wifi_portal_state_internal.h"
 
@@ -23,8 +24,11 @@ namespace {
 constexpr uint16_t kMaxListedApCount = 32;
 constexpr size_t kPortalSubmitSsidFieldSize = 33;
 constexpr size_t kPortalWeatherCityNameSize = 32;
-constexpr size_t kPortalEscapedSsidSize = 80;
-constexpr size_t kPortalEscapedCitySize = 80;
+constexpr size_t kPortalLongestHtmlEntitySize = sizeof("&quot;") - 1;
+constexpr size_t kPortalEscapedSsidSize =
+    (kPortalSubmitSsidFieldSize - 1) * kPortalLongestHtmlEntitySize + 1;
+constexpr size_t kPortalEscapedCitySize =
+    (kPortalWeatherCityNameSize - 1) * kPortalLongestHtmlEntitySize + 1;
 constexpr size_t kPortalSaveExtraTextSize = 220;
 constexpr size_t kPortalRootHtmlSize = 24576;
 constexpr size_t kPortalSaveResultHtmlSize = 12288;
@@ -74,6 +78,8 @@ static_assert(kPortalEscapedSsidSize > kPortalSubmitSsidFieldSize,
               "escaped SSID buffer must exceed submitted SSID field size");
 static_assert(kPortalEscapedCitySize > kPortalWeatherCityNameSize,
               "escaped city buffer must exceed weather city name buffer");
+static_assert(kPortalWeatherCityNameSize == kManualWeatherCityLen,
+              "portal city escape capacity must follow the shared city contract");
 static_assert(kPortalRootHtmlSize > kPortalSaveResultHtmlSize,
               "portal root HTML buffer must exceed save result buffer");
 static_assert(kPortalRootHtmlSize > kPortalOfflineResultHtmlSize,
@@ -210,41 +216,6 @@ void html_append(char *html, size_t html_len, const char *fmt, ...)
     }
 }
 
-void html_escape(const char *src, char *dst, size_t dst_len)
-{
-    if (!app_text::output_buffer_available(dst, dst_len)) {
-        return;
-    }
-    if (!src) {
-        dst[0] = '\0';
-        return;
-    }
-    size_t di = 0;
-    for (size_t si = 0; src[si] != '\0' && di + 1 < dst_len; ++si) {
-        const char *rep = nullptr;
-        if (src[si] == '&') {
-            rep = "&amp;";
-        } else if (src[si] == '<') {
-            rep = "&lt;";
-        } else if (src[si] == '>') {
-            rep = "&gt;";
-        } else if (src[si] == '"') {
-            rep = "&quot;";
-        }
-        if (rep) {
-            size_t rep_len = strlen(rep);
-            if (di + rep_len >= dst_len) {
-                break;
-            }
-            memcpy(dst + di, rep, rep_len);
-            di += rep_len;
-        } else {
-            dst[di++] = src[si];
-        }
-    }
-    dst[di] = '\0';
-}
-
 esp_err_t send_portal_text_status(httpd_req_t *req, const char *status, const char *text)
 {
     if (!req || !status || !text) {
@@ -335,7 +306,10 @@ void append_wifi_scan_list(char *html, size_t html_len)
                 continue;
             }
             char ssid[kPortalEscapedSsidSize] = {};
-            html_escape((const char *)records[i].ssid, ssid, sizeof(ssid));
+            wifi_portal_html::escape_text(
+                reinterpret_cast<const char *>(records[i].ssid),
+                ssid,
+                sizeof(ssid));
             html_append(html, html_len,
                         "<button type='button' class='wifi' data-ssid=\"%s\" onclick=\"pick(this.dataset.ssid)\"><span>%s</span><b>%d dBm</b></button>",
                         ssid, ssid, records[i].rssi);
@@ -353,10 +327,11 @@ esp_err_t root_get_handler(httpd_req_t *req)
                                      sizeof(text.wifi_ssid));
     (void)wifi_setup_ap_ssid_snapshot(text.setup_ap_ssid,
                                       sizeof(text.setup_ap_ssid));
-    html_escape(text.wifi_ssid, text.safe_ssid, sizeof(text.safe_ssid));
-    html_escape(text.weather_city,
-                text.safe_weather_city,
-                sizeof(text.safe_weather_city));
+    wifi_portal_html::escape_text(
+        text.wifi_ssid, text.safe_ssid, sizeof(text.safe_ssid));
+    wifi_portal_html::escape_text(text.weather_city,
+                                  text.safe_weather_city,
+                                  sizeof(text.safe_weather_city));
     const WifiPortalSaveSnapshot save =
         wifi_portal_save_snapshot_load();
     const WifiPortalSaveResult save_result = save.result;
@@ -368,7 +343,7 @@ esp_err_t root_get_handler(httpd_req_t *req)
                                            : "<div class='feedback' role='alert'><strong>");
     ScopedHeapBuffer<char> html(kPortalRootHtmlSize,
                                 HeapBufferInit::kZeroed,
-                                HeapBufferStorage::kPsramPreferred);
+                                HeapBufferStorage::kPsramRequired);
     if (!html) {
         return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
     }
@@ -411,18 +386,19 @@ esp_err_t send_save_result_page(httpd_req_t *req,
         text.weather_city, sizeof(text.weather_city));
     (void)network_wifi_ssid_snapshot(text.wifi_ssid,
                                      sizeof(text.wifi_ssid));
-    html_escape(text.wifi_ssid,
-                text.safe_ssid,
-                sizeof(text.safe_ssid));
-    html_escape(have_weather_city ? text.weather_city : "自动定位",
-                text.safe_weather_city,
-                sizeof(text.safe_weather_city));
-    html_escape(extra_message ? extra_message : "",
-                text.safe_extra,
-                sizeof(text.safe_extra));
+    wifi_portal_html::escape_text(text.wifi_ssid,
+                                  text.safe_ssid,
+                                  sizeof(text.safe_ssid));
+    wifi_portal_html::escape_text(
+        have_weather_city ? text.weather_city : "自动定位",
+        text.safe_weather_city,
+        sizeof(text.safe_weather_city));
+    wifi_portal_html::escape_text(extra_message ? extra_message : "",
+                                  text.safe_extra,
+                                  sizeof(text.safe_extra));
     ScopedHeapBuffer<char> html(kPortalSaveResultHtmlSize,
                                 HeapBufferInit::kZeroed,
-                                HeapBufferStorage::kPsramPreferred);
+                                HeapBufferStorage::kPsramRequired);
     if (!html) {
         return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
     }
@@ -460,7 +436,7 @@ esp_err_t send_offline_result_page(httpd_req_t *req, bool saved)
 {
     ScopedHeapBuffer<char> html(kPortalOfflineResultHtmlSize,
                                 HeapBufferInit::kZeroed,
-                                HeapBufferStorage::kPsramPreferred);
+                                HeapBufferStorage::kPsramRequired);
     if (!html) {
         return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
     }

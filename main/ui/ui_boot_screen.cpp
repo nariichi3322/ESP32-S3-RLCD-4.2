@@ -105,6 +105,7 @@ void boot_anim_task(void *)
     while (s_boot_anim_running.load(std::memory_order_acquire)) {
         if (Lvgl_lock(kBootAnimLvglLockTimeoutMs)) {
             draw_boot_anim_frame_index(frame);
+            lv_refr_now(nullptr);
             Lvgl_unlock();
         }
         frame = (frame + 1) % BOOT_ANIM_FRAME_COUNT;

@@ -1,5 +1,5 @@
 // 独占 HTTPS/WSS 全局事务锁的应用期静态所有权和串行化接口。
-#include "network_http_transaction_lock.h"
+#include "network_http_transaction_lock_internal.h"
 
 #include "app_metadata.h"
 #include "scoped_semaphore_lock.h"

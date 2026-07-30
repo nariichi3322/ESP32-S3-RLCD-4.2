@@ -364,7 +364,7 @@ static void log_ota_download_start(const OtaManifest &manifest)
         rssi = ap_info.rssi;
     }
     BatteryRuntimeSnapshot battery;
-    battery_runtime_snapshot_load(&battery);
+    (void)battery_runtime_snapshot_load(&battery);
     ESP_LOGI(TAG,
              OTA_DOWNLOAD_START_FORMAT,
              (int)esp_reset_reason(),
@@ -533,13 +533,13 @@ static OtaInstallAttemptResult download_and_apply_ota(
         ota_set_failed_status(kOtaStatusUpdateFailed);
         return OtaInstallAttemptResult::kTerminalFailure;
     }
+    OtaWriteHandleGuard ota_writer(ota_handle);
 
     ScopedHeapBuffer<uint8_t> buffer(kOtaDownloadBufferSize);
     if (!buffer) {
         ESP_LOGW(TAG,
                  OTA_DOWNLOAD_BUFFER_ALLOC_FAILED_FORMAT,
                  static_cast<unsigned>(kOtaDownloadBufferSize));
-        esp_ota_abort(ota_handle);
         ota_set_failed_status(kOtaStatusNoMemory);
         return OtaInstallAttemptResult::kTerminalFailure;
     }
@@ -553,7 +553,7 @@ static OtaInstallAttemptResult download_and_apply_ota(
     OtaTaskWatchdogGuard wdt;
     OtaInstallAttemptResult stream_result =
         stream_ota_image(client,
-                         ota_handle,
+                         ota_writer.handle(),
                          manifest,
                          content_len,
                          buffer,
@@ -570,7 +570,6 @@ static OtaInstallAttemptResult download_and_apply_ota(
     http_session.close();
 
     if (!ota_install_attempt_succeeded(stream_result) || !complete) {
-        esp_ota_abort(ota_handle);
         ota_set_failed_status(kOtaStatusDownloadFailed);
         return ota_install_attempt_succeeded(stream_result)
                    ? OtaInstallAttemptResult::kRetryBackupSource
@@ -580,13 +579,12 @@ static OtaInstallAttemptResult download_and_apply_ota(
 
     ota_note_phase(4, total, 100);
     if (!verify_downloaded_ota_sha(hash, manifest)) {
-        esp_ota_abort(ota_handle);
         return OtaInstallAttemptResult::kRetryBackupSource;
     }
 
     wdt.reset();
     ota_note_phase(5, total, 100);
-    err = esp_ota_end(ota_handle);
+    err = ota_writer.finish();
     if (err != ESP_OK) {
         ESP_LOGW(TAG, OTA_END_FAILED_FORMAT, esp_err_to_name(err));
         ota_set_failed_status(kOtaStatusUpdateFailed);

@@ -1,5 +1,5 @@
 // 验证联网请求代次可阻止旧任务清除同类型新请求。
-#include "network_sync_request_generation.h"
+#include "network_sync_request_generation_internal.h"
 
 #include "app_event_group.h"
 #include "network_sync_requests.h"

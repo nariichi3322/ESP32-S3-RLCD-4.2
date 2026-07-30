@@ -286,12 +286,11 @@ void build_current_weather_panel(lv_obj_t *screen)
         return;
     }
     WeatherBoardObjectRefs &objects = s_weather_board_objects;
-    lv_obj_t *top_line = make_bar(screen,
-                                  ui_work_page_layout::kTopSeparatorX,
-                                  ui_work_page_layout::kTopSeparatorY,
-                                  ui_work_page_layout::kTopSeparatorWidth,
-                                  ui_work_page_layout::kTopSeparatorHeight);
-    set_obj_black(top_line, true);
+    make_black_bar(screen,
+                   ui_work_page_layout::kTopSeparatorX,
+                   ui_work_page_layout::kTopSeparatorY,
+                   ui_work_page_layout::kTopSeparatorWidth,
+                   ui_work_page_layout::kTopSeparatorHeight);
 
     objects.city_label = make_label(screen,
                                     kWeatherBoardCurrentCityX,
@@ -346,12 +345,11 @@ void build_weather_detail_panel(lv_obj_t *screen)
         return;
     }
     WeatherBoardObjectRefs &objects = s_weather_board_objects;
-    lv_obj_t *detail_line = make_bar(screen,
-                                     kWeatherBoardDetailLineX,
-                                     kWeatherBoardDetailLineY,
-                                     kWeatherBoardDetailLineW,
-                                     kWeatherBoardDetailLineH);
-    set_obj_black(detail_line, true);
+    make_black_bar(screen,
+                   kWeatherBoardDetailLineX,
+                   kWeatherBoardDetailLineY,
+                   kWeatherBoardDetailLineW,
+                   kWeatherBoardDetailLineH);
     objects.air_label = make_label(screen,
                                    kWeatherBoardLeftColumnX,
                                    kWeatherBoardDetailTopY,
@@ -506,14 +504,23 @@ bool update_weather_board_sun_countdown(const struct tm &local)
                                      sun_countdown_line);
 }
 
-bool update_weather_board_full_content(const struct tm &local, EventBits_t bits)
+bool update_weather_board_full_content(const struct tm &local,
+                                       EventBits_t bits,
+                                       bool *full_snapshot_loaded)
 {
-    memset(&s_weather_board_snapshot, 0, sizeof(s_weather_board_snapshot));
+    if (full_snapshot_loaded) {
+        *full_snapshot_loaded = false;
+    }
+    if (!get_weather_full_snapshot(&s_weather_board_snapshot.weather,
+                                   &s_weather_board_snapshot.alert,
+                                   &s_weather_board_snapshot.forecast,
+                                   &s_weather_board_snapshot.air)) {
+        return false;
+    }
+    if (full_snapshot_loaded) {
+        *full_snapshot_loaded = true;
+    }
     memset(&s_weather_board_text_workspace, 0, sizeof(s_weather_board_text_workspace));
-    get_weather_full_snapshot(&s_weather_board_snapshot.weather,
-                              &s_weather_board_snapshot.alert,
-                              &s_weather_board_snapshot.forecast,
-                              &s_weather_board_snapshot.air);
     const WeatherData &weather = s_weather_board_snapshot.weather;
     const WeatherAlertData &alert = s_weather_board_snapshot.alert;
     const WeatherForecastData &forecast = s_weather_board_snapshot.forecast;
@@ -587,14 +594,22 @@ bool update_weather_board_page(const struct tm &local)
     }
 
     bool changed = update_work_page_status_time(kWorkPageWeatherBoard, local);
+    bool full_snapshot_loaded = !full_refresh_due;
     if (full_refresh_due) {
-        changed |= update_weather_board_full_content(local, bits);
-    } else {
+        changed |= update_weather_board_full_content(local,
+                                                     bits,
+                                                     &full_snapshot_loaded);
+    }
+    if (minute_refresh_due && (!full_refresh_due || !full_snapshot_loaded)) {
         changed |= update_weather_board_sun_countdown(local);
     }
-    s_weather_board_refresh_cache.last_weather_state_version =
-        weather_version;
-    s_weather_board_refresh_cache.last_content_state = content_state;
-    s_weather_board_refresh_cache.last_minute_key = minute_key;
+    if (full_refresh_due && full_snapshot_loaded) {
+        s_weather_board_refresh_cache.last_weather_state_version =
+            weather_version;
+        s_weather_board_refresh_cache.last_content_state = content_state;
+    }
+    if (minute_refresh_due) {
+        s_weather_board_refresh_cache.last_minute_key = minute_key;
+    }
     return changed;
 }

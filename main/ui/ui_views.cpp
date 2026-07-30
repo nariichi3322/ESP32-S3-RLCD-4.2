@@ -140,7 +140,7 @@ void ui_task(void *)
     bool saying_cache_status_valid = false;
     TickType_t xiaozhi_last_activity_tick = 0;
     uint32_t last_xiaozhi_activity_sequence = 0;
-    BatteryRuntimeSnapshot battery;
+    BatteryRuntimeSnapshot battery = {};
     bool battery_snapshot_valid = false;
     time_t cached_local_second = 0;
     struct tm cached_local = {};
@@ -170,8 +170,9 @@ void ui_task(void *)
             ui_runtime_surface_snapshot_load();
         const uint32_t battery_version = battery_runtime_version_load();
         if (!battery_snapshot_valid || battery.version != battery_version) {
-            battery_runtime_snapshot_load(&battery);
-            battery_snapshot_valid = true;
+            if (battery_runtime_snapshot_load(&battery)) {
+                battery_snapshot_valid = true;
+            }
         }
         if (!battery.low_battery_mode && !runtime_surfaces.setup_portal_active) {
             ensure_active_work_page_enabled();
@@ -253,8 +254,9 @@ void ui_task(void *)
             bool info_ota_snapshot_valid = false;
             bool info_ota_flow_active = false;
             if (info_requested) {
-                info_page_state_load(&info_state);
-                info_requested = info_state.requested;
+                if (info_page_state_load(&info_state)) {
+                    info_requested = info_state.requested;
+                }
                 if (info_requested) {
                     ota_runtime_timing_snapshot_load(&info_ota);
                     info_ota_snapshot_valid = true;

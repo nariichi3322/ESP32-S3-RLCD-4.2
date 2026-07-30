@@ -13,10 +13,9 @@ LV_FONT_DECLARE(zh_font_16);
 namespace {
 using namespace ui_weather_board_layout;
 
-using sdl_preview_widgets::make_bar;
+using sdl_preview_widgets::make_black_bar;
 using sdl_preview_widgets::make_label;
 using sdl_preview_widgets::make_label_with_font;
-using sdl_preview_widgets::set_obj_black;
 
 uint32_t weather_icon_codepoint(const char *code)
 {
@@ -160,12 +159,11 @@ void build_weather_board_preview_body(lv_obj_t *screen)
         lv_obj_set_style_text_align(range, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     }
 
-    lv_obj_t *detail_line = make_bar(screen,
-                                     kWeatherBoardDetailLineX,
-                                     kWeatherBoardDetailLineY,
-                                     kWeatherBoardDetailLineW,
-                                     kWeatherBoardDetailLineH);
-    set_obj_black(detail_line, true);
+    make_black_bar(screen,
+                   kWeatherBoardDetailLineX,
+                   kWeatherBoardDetailLineY,
+                   kWeatherBoardDetailLineW,
+                   kWeatherBoardDetailLineH);
     make_label(screen,
                kWeatherBoardLeftColumnX,
                kWeatherBoardDetailTopY,

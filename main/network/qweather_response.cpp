@@ -58,7 +58,7 @@ QweatherResponseBuffer::QweatherResponseBuffer(const char *stage,
                                          request_url_size,
                                          staging_size),
             HeapBufferInit::kUninitialized,
-            HeapBufferStorage::kPsramPreferred),
+            HeapBufferStorage::kPsramRequired),
       size_(buffer_size),
       request_url_size_(request_url_size),
       staging_size_(staging_size)
