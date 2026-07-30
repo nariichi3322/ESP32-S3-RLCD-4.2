@@ -78,20 +78,39 @@ int main()
     xiaozhi_snapshot_get(&unavailable);
     assert(unavailable.state == kXiaozhiAiInactive);
     assert(strcmp(unavailable.status, kXiaozhiDefaultStatus) == 0);
+    uint32_t snapshot_version = 0;
+    XiaozhiAiSnapshot cached_snapshot = {};
+    assert(!xiaozhi_snapshot_get_if_changed(&snapshot_version,
+                                             &cached_snapshot));
+    assert(snapshot_version == 0);
 
     assert(xiaozhi_snapshot_state_init());
     assert(s_mutex_create_count == 1);
     assert(xiaozhi_snapshot_state_init());
     assert(s_mutex_create_count == 1);
+    assert(xiaozhi_snapshot_get_if_changed(&snapshot_version,
+                                            &cached_snapshot));
+    assert(snapshot_version != 0);
+    assert(cached_snapshot.state == kXiaozhiAiInactive);
+    const int take_count_after_initial_snapshot = s_mutex_take_count;
+    assert(!xiaozhi_snapshot_get_if_changed(&snapshot_version,
+                                             &cached_snapshot));
+    assert(s_mutex_take_count == take_count_after_initial_snapshot);
 
     xiaozhi_snapshot_set(kXiaozhiAiReady, "等待唤醒词", "请说你好，小智", "123456");
     assert(s_notify_count == 1);
+    assert(xiaozhi_snapshot_get_if_changed(&snapshot_version,
+                                            &cached_snapshot));
+    assert(cached_snapshot.state == kXiaozhiAiReady);
+    assert(strcmp(cached_snapshot.detail, "请说你好，小智") == 0);
     activity = xiaozhi_snapshot_activity_load();
     assert(activity.state == kXiaozhiAiReady);
     assert(activity.activity_sequence == 0);
     expect_mutex_released();
     xiaozhi_snapshot_set(kXiaozhiAiReady, "等待唤醒词", "请说你好，小智", "123456");
     assert(s_notify_count == 1);
+    assert(!xiaozhi_snapshot_get_if_changed(&snapshot_version,
+                                             &cached_snapshot));
     xiaozhi_snapshot_set_status_preserving_detail(kXiaozhiAiReady, "等待唤醒词");
     assert(s_notify_count == 1);
 
@@ -112,6 +131,9 @@ int main()
     activity = xiaozhi_snapshot_activity_load();
     assert(activity.state == kXiaozhiAiReady);
     assert(activity.activity_sequence == 2);
+    assert(xiaozhi_snapshot_get_if_changed(&snapshot_version,
+                                            &cached_snapshot));
+    assert(cached_snapshot.activity_sequence == 2);
 
     XiaozhiAiSnapshot snapshot = {};
     xiaozhi_snapshot_get(&snapshot);
@@ -122,6 +144,7 @@ int main()
     expect_mutex_released();
 
     const int notify_before_take_failure = s_notify_count;
+    uint32_t stale_snapshot_version = 0;
     s_fail_mutex_take = true;
     xiaozhi_snapshot_set(kXiaozhiAiError, "error", "ignored");
     xiaozhi_snapshot_set_status_preserving_detail(kXiaozhiAiError, "error");
@@ -129,10 +152,17 @@ int main()
     xiaozhi_snapshot_mark_user_activity();
     XiaozhiAiSnapshot failed_read = {};
     xiaozhi_snapshot_get(&failed_read);
+    assert(!xiaozhi_snapshot_get_if_changed(&stale_snapshot_version,
+                                             &cached_snapshot));
     s_fail_mutex_take = false;
     assert(s_notify_count == notify_before_take_failure);
     assert(failed_read.state == kXiaozhiAiInactive);
     assert(strcmp(failed_read.status, kXiaozhiDefaultStatus) == 0);
+    assert(stale_snapshot_version == 0);
+    assert(xiaozhi_snapshot_get_if_changed(&stale_snapshot_version,
+                                            &cached_snapshot));
+    assert(stale_snapshot_version == snapshot_version);
+    assert(cached_snapshot.activity_sequence == 2);
     activity = xiaozhi_snapshot_activity_load();
     assert(activity.state == kXiaozhiAiReady);
     assert(activity.activity_sequence == 2);

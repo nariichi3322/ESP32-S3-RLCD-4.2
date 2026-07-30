@@ -24,6 +24,7 @@ XiaozhiAiSnapshot s_snapshot = {
     kXiaozhiAiInactive, "小智准备中", "", "", "neutral", 0, 0};
 std::atomic<uint32_t> s_activity_snapshot{
     static_cast<uint32_t>(kXiaozhiAiInactive)};
+std::atomic<uint32_t> s_snapshot_version{1};
 
 static_assert(static_cast<uint32_t>(kXiaozhiAiError) <= kActivityStateMask,
               "Xiaozhi states must fit the activity snapshot state field");
@@ -40,6 +41,11 @@ void publish_activity_snapshot_locked()
     s_activity_snapshot.store(pack_activity_snapshot(s_snapshot.state,
                                                      s_snapshot.activity_sequence),
                               std::memory_order_release);
+}
+
+void publish_snapshot_version_locked()
+{
+    s_snapshot_version.fetch_add(1, std::memory_order_release);
 }
 
 void begin_state_update_locked(XiaozhiAiState state, const char *status)
@@ -100,6 +106,9 @@ void xiaozhi_snapshot_set(XiaozhiAiState state,
                                          binding_code);
         finish_state_update_locked(state);
         changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
+        if (changed) {
+            publish_snapshot_version_locked();
+        }
     }
     if (changed) {
         notify_ui_task();
@@ -119,6 +128,9 @@ void xiaozhi_snapshot_set_status_preserving_detail(XiaozhiAiState state,
         begin_state_update_locked(state, status);
         finish_state_update_locked(state);
         changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
+        if (changed) {
+            publish_snapshot_version_locked();
+        }
     }
     if (changed) {
         notify_ui_task();
@@ -141,6 +153,9 @@ void xiaozhi_snapshot_set_emotion(const char *emotion)
                                          sizeof(s_snapshot.emotion),
                                          emotion);
         changed = !xiaozhi_snapshot_content_equal(before, s_snapshot);
+        if (changed) {
+            publish_snapshot_version_locked();
+        }
     }
     if (changed) {
         notify_ui_task();
@@ -156,6 +171,7 @@ void xiaozhi_snapshot_mark_user_activity()
         }
         ++s_snapshot.activity_sequence;
         publish_activity_snapshot_locked();
+        publish_snapshot_version_locked();
     }
     notify_ui_task();
 }
@@ -173,6 +189,30 @@ void xiaozhi_snapshot_get(XiaozhiAiSnapshot *out)
         return;
     }
     *out = s_snapshot;
+}
+
+bool xiaozhi_snapshot_get_if_changed(uint32_t *version,
+                                     XiaozhiAiSnapshot *out)
+{
+    if (!version || !out) {
+        return false;
+    }
+    uint32_t current_version =
+        s_snapshot_version.load(std::memory_order_acquire);
+    if (*version == current_version) {
+        return false;
+    }
+    ScopedSemaphoreLock state_lock(s_snapshot_mutex, pdMS_TO_TICKS(50));
+    if (!state_lock) {
+        return false;
+    }
+    current_version = s_snapshot_version.load(std::memory_order_relaxed);
+    if (*version == current_version) {
+        return false;
+    }
+    *out = s_snapshot;
+    *version = current_version;
+    return true;
 }
 
 XiaozhiActivitySnapshot xiaozhi_snapshot_activity_load()

@@ -38,5 +38,7 @@ bool xiaozhi_ai_network_keepalive_active();
 void xiaozhi_ai_set_alarm_suspended(bool suspended);
 void xiaozhi_ai_set_pomodoro_audio_suspended(bool suspended);
 void xiaozhi_ai_get_snapshot(XiaozhiAiSnapshot *out);
+bool xiaozhi_ai_get_snapshot_if_changed(uint32_t *version,
+                                        XiaozhiAiSnapshot *out);
 XiaozhiActivitySnapshot xiaozhi_ai_activity_snapshot_load();
 void xiaozhi_ai_clear_activation();

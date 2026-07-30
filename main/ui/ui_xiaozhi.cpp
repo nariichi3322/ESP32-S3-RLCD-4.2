@@ -11,6 +11,7 @@
 #include "pomodoro_services.h"
 #include "xiaozhi_ai.h"
 
+#include <esp_attr.h>
 #include <esp_log.h>
 
 namespace {
@@ -70,6 +71,8 @@ lv_obj_t *s_preparing_dots_canvas = nullptr;
 lv_color_t *s_preparing_dots_buffer = nullptr;
 PomodoroState s_last_pomodoro_state = kPomodoroIdle;
 int s_last_preparing_dot_count = -1;
+EXT_RAM_BSS_ATTR XiaozhiAiSnapshot s_xiaozhi_snapshot_cache = {};
+uint32_t s_xiaozhi_snapshot_version = 0;
 
 struct PomodoroDisplayValues {
     int second_card;
@@ -337,8 +340,9 @@ bool update_xiaozhi_page(const struct tm &local)
     if (!work_page_root(kWorkPageXiaozhiAI)) {
         build_xiaozhi_page();
     }
-    XiaozhiAiSnapshot snapshot = {};
-    xiaozhi_ai_get_snapshot(&snapshot);
+    (void)xiaozhi_ai_get_snapshot_if_changed(&s_xiaozhi_snapshot_version,
+                                              &s_xiaozhi_snapshot_cache);
+    const XiaozhiAiSnapshot &snapshot = s_xiaozhi_snapshot_cache;
     PomodoroSnapshot pomodoro = {};
     pomodoro_get_snapshot(&pomodoro);
     s_animation_state = snapshot.state;
@@ -420,5 +424,7 @@ void clear_xiaozhi_page_object_refs()
     s_animation_state = kXiaozhiAiInactive;
     s_last_pomodoro_state = kPomodoroIdle;
     s_last_preparing_dot_count = -1;
+    s_xiaozhi_snapshot_cache = {};
+    s_xiaozhi_snapshot_version = 0;
     invalidate_xiaozhi_face_cache();
 }

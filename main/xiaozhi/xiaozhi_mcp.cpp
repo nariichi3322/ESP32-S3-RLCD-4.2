@@ -97,8 +97,7 @@ cJSON *create_device_status_result()
         cJSON_AddNullToObject(status.get(), "temperature_c");
         cJSON_AddNullToObject(status.get(), "humidity_percent");
     }
-    BatteryRuntimeSnapshot battery;
-    (void)battery_runtime_snapshot_load(&battery);
+    const BatteryRuntimeStatusSnapshot battery = battery_runtime_status_load();
     bool battery_available = battery.percent >= 0 && battery.percent <= 100;
     cJSON_AddBoolToObject(status.get(), "battery_available", battery_available);
     if (battery_available) {

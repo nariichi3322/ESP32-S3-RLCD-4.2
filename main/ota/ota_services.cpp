@@ -239,8 +239,8 @@ static void hold_ota_info_page(uint32_t hold_ms = kOtaFailureHoldMs)
 
 static bool ota_flow_active_at(TickType_t now)
 {
-    OtaRuntimeSnapshot runtime = {};
-    ota_runtime_snapshot_load(&runtime);
+    OtaRuntimeTimingSnapshot runtime = {};
+    ota_runtime_timing_snapshot_load(&runtime);
     return ota_flow_active_for_tick(
         runtime.state,
         runtime.status_hold_set,

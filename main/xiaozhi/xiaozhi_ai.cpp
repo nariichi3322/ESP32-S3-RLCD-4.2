@@ -748,6 +748,12 @@ void xiaozhi_ai_get_snapshot(XiaozhiAiSnapshot *out)
     xiaozhi_snapshot_get(out);
 }
 
+bool xiaozhi_ai_get_snapshot_if_changed(uint32_t *version,
+                                        XiaozhiAiSnapshot *out)
+{
+    return xiaozhi_snapshot_get_if_changed(version, out);
+}
+
 XiaozhiActivitySnapshot xiaozhi_ai_activity_snapshot_load()
 {
     return xiaozhi_snapshot_activity_load();

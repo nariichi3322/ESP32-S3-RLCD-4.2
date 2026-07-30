@@ -12,13 +12,9 @@
 
 const char *const APP_VERSION = "v-test";
 
-bool battery_runtime_snapshot_load(BatteryRuntimeSnapshot *out)
+BatteryRuntimeStatusSnapshot battery_runtime_status_load()
 {
-    if (out) {
-        out->percent = 73;
-        return true;
-    }
-    return false;
+    return {73, false, false};
 }
 
 namespace {
