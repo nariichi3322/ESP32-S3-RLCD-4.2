@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.33",
+  "latest": "v1.5.34",
   "items": [
+    {
+      "version": "v1.5.34",
+      "notes": "v1.5.34：共 11 项更新。\n1. 修复配网热点、Wi-Fi 初始化和联网结果切换在瞬时失败或并发操作后可能无法恢复、射频…\n2. 修复天气、每日文字、电池、设置反馈、关于本机和网络检测等跨任务快照在竞争或读取失败时可…\n3. 修复 RLCD/LVGL 初始化失败仍继续执行、异步颜色缓冲生命周期、像素查找表边界和…\n4. 修复闹钟延期保存与通知竞态、损坏记录清理失败，以及页面顺序持久化和农历、节气日期计算的…\n5. 修复电池 ADC 配置失败后的恢复、OTA 诊断快照未初始化、OTA 写入句柄收尾和小…\n其余 6 项见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.34/weather_clock_v1.5.34.bin",
+        "sha256": "b1ff52463e6892b67a21f52a6543b80612272e577491a24cb2ddc04d1285dcee",
+        "size": 6260560
+      },
+      "merged": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.34/weather_clock_v1.5.34_merged.bin",
+        "sha256": "281f556204ed8c977443d71199e4a89e0bc81e0b542dc5537db4d56a25266356",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.33",
       "notes": "v1.5.33：共 3 项更新。\n1. 修复启动联网、OTA 或离线模式收尾遇到 Wi-Fi 生命周期锁暂时繁忙时，射频可能未…\n2. 收紧 OTA、联网凭据、网络检测、关于本机、配网门户、工作页目录、天气城市、设置活动与…\n3. 保持现有页面、交互、OTA 协议、NVS、同步频率和正常联网流程不变，并继续使用有界重…\n完整说明见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.25_merged.bin",
         "sha256": "19b9919fd04d91ada7fd52f228d9042ebc4b07289e4f3c4866939f809713e858",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.24",
-      "notes": "v1.5.24：共 12 项更新。\n1. 修复恢复出厂和首次进入配网时提示音可能因 I2S DMA 初始化失败而缺失，并恢复 R…\n2. 修复手机离开后重新连接配网热点无法取得 IP，以及提交正确配置后结果页没有成功反馈的问…\n3. 配网现在串行验证 Wi-Fi、天气 API Key 和可选手动城市；错误配置会显示明确…\n4. 修复天气凭据验证占满 HTTP 任务栈导致设备重启；TLS、gzip 与 JSON 验…\n5. 修复恢复出厂进入配网时与后台 HTTPS 冲突导致异常，并将成功反馈与 NTP、天气、…\n6. 修复 APSTA 验证期间 SoftAP 跟随路由器切换信道后，手机无法重新进入强制门…\n其余 6 项见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.24.bin",
-        "sha256": "9bd56894e1bc6385f191a3e33cdaa153f40bf603d680170a3445e9df7236cc37",
-        "size": 6234720
-      },
-      "merged": {
-        "url": "https://rlcd-update.wickenzh.workers.dev/firmware/weather_clock_v1.5.24_merged.bin",
-        "sha256": "7dfdecaf22b9624ea7f5d1170ce62bfa460cd4d97087af99d40de708fd68d2a4",
         "size": 16509951
       }
     }
