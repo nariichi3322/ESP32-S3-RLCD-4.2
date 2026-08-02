@@ -14,6 +14,10 @@
 #include "wifi_radio_services.h"
 #include "wifi_radio_state.h"
 
+#include "freertos/task.h"
+
+#include <stdint.h>
+
 namespace {
 
 constexpr EventBits_t kNetworkRequestClearBits = kProvisioningSyncBit |
@@ -45,6 +49,10 @@ constexpr const char *kNetworkSyncWeatherFailed = "天气同步失败";
 constexpr const char *kNetworkSyncSayingFailed = "一言更新失败";
 constexpr const char *kNetworkSyncLowBatterySkipped = "电量低，已跳过";
 constexpr const char *kNetworkSyncNetworkDiagCanceled = "网络检测已取消";
+constexpr uint8_t kNetworkSnapshotYieldAttempts = 8;
+static_assert(kNetworkSnapshotYieldAttempts > 1,
+              "network snapshot contention must yield before sleeping");
+
 void finish_requested_settings_sync(bool requested,
                                     SettingsSyncOp op,
                                     const char *status,
@@ -149,7 +157,8 @@ NetworkSyncRequestSnapshot snapshot_network_sync_requests()
     SettingsSyncRequestSnapshot settings_before;
     SettingsSyncRequestSnapshot settings_after;
     EventBits_t bits = 0;
-    do {
+    uint8_t contention_attempts = 0;
+    for (;;) {
         portal_before = wifi_portal_save_snapshot_load();
         generations_before =
             network_sync_request_generation_snapshot();
@@ -159,12 +168,27 @@ NetworkSyncRequestSnapshot snapshot_network_sync_requests()
         generations_after =
             network_sync_request_generation_snapshot();
         portal_after = wifi_portal_save_snapshot_load();
-    } while (portal_before.generation != portal_after.generation ||
-             portal_before.result != portal_after.result ||
-             !request_generations_equal(generations_before,
-                                        generations_after) ||
-             !settings_sync_requests_equal(settings_before,
-                                            settings_after));
+        const bool snapshot_consistent =
+            portal_before.generation == portal_after.generation &&
+            portal_before.result == portal_after.result &&
+            request_generations_equal(generations_before,
+                                      generations_after) &&
+            settings_sync_requests_equal(settings_before,
+                                         settings_after);
+        if (snapshot_consistent) {
+            break;
+        }
+        // 配网保存、设置反馈和请求代次可能同时发布。保持一致快照语义，
+        // 先让出当前时间片；连续竞争时再睡眠一个 tick，避免常驻网络
+        // 任务在高频发布窗口内持续参与调度。
+        ++contention_attempts;
+        if (contention_attempts < kNetworkSnapshotYieldAttempts) {
+            taskYIELD();
+        } else {
+            vTaskDelay(1);
+            contention_attempts = 0;
+        }
+    }
 
     NetworkSyncRequestSnapshot requests;
     requests.provisioning =
@@ -284,9 +308,7 @@ void finish_offline_network_requests(const NetworkSyncRequestSnapshot &requests)
 {
     if (wifi_radio_on_load() && !setup_portal_active_load()) {
         stop_wifi_radio(true);
-        if (wifi_radio_on_load()) {
-            request_wifi_radio_stop_when_idle();
-        }
+        request_wifi_radio_stop_if_running();
     }
     clear_network_request_bits();
     if (requests.provisioning) {

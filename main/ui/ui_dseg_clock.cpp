@@ -1,13 +1,12 @@
-// 查找和绘制 DSEG 字形，并刷新天气时钟的时分与秒 canvas。
+// 格式化并刷新天气时钟的 DSEG 时分与秒 canvas。
 #include "ui_dseg_clock.h"
 
 #include "dseg_digits.h"
-#include "ui_bitmap.h"
 #include "ui_clock_surface_objects.h"
+#include "ui_dseg_render.h"
 #include "ui_text_format.h"
 
 #include <stdio.h>
-#include <string.h>
 
 namespace {
 constexpr int kDecimalBase = 10;
@@ -32,49 +31,6 @@ void format_hour_minute_text(char out[kHourMinuteTextSize], const struct tm &loc
         out[0] = '\0';
     }
 }
-}
-
-const DsegGlyph *find_dseg_glyph(const DsegFont &font, char ch)
-{
-    if (!font.chars || !font.glyphs) {
-        return nullptr;
-    }
-    const char *pos = strchr(font.chars, ch);
-    if (!pos) {
-        return nullptr;
-    }
-    return &font.glyphs[pos - font.chars];
-}
-
-int draw_dseg_text(lv_obj_t *canvas, const DsegFont &font, const char *text, int cursor_x, int baseline_y)
-{
-    int x_cursor = cursor_x;
-    if (!canvas || !text || !font.bitmap) {
-        return x_cursor;
-    }
-    lv_img_dsc_t *image = lv_canvas_get_img(canvas);
-    if (!image) {
-        return x_cursor;
-    }
-    for (const char *p = text; *p; ++p) {
-        const DsegGlyph *glyph = find_dseg_glyph(font, *p);
-        if (!glyph) {
-            continue;
-        }
-        uint32_t bit = 0;
-        for (int y = 0; y < glyph->height; ++y) {
-            for (int x = 0; x < glyph->width; ++x, ++bit) {
-                if (packed_1bit_bit_is_set(font.bitmap + glyph->bitmap_offset, bit)) {
-                    lv_img_buf_set_px_color(image,
-                                            x_cursor + glyph->x_offset + x,
-                                            baseline_y + glyph->y_offset + y,
-                                            lv_color_black());
-                }
-            }
-        }
-        x_cursor += glyph->x_advance;
-    }
-    return x_cursor;
 }
 
 void draw_time_canvas(const struct tm &local)

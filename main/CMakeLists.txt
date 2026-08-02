@@ -2,6 +2,7 @@
 idf_component_register(
     SRCS
         "core/main.cpp"
+        "core/app_task_startup.cpp"
         "core/app_metadata.cpp"
         "core/app_event_group.cpp"
         "core/app_hardware.cpp"
@@ -13,6 +14,7 @@ idf_component_register(
         "ui/ui_bitmap.cpp"
         "ui/ui_status_gif.cpp"
         "ui/ui_progress.cpp"
+        "ui/ui_dseg_render.cpp"
         "ui/ui_dseg_clock.cpp"
         "ui/ui_widgets.cpp"
         "ui/ui_time_format.cpp"
@@ -24,7 +26,7 @@ idf_component_register(
         "ui/ui_object_refs.cpp"
         "ui/ui_aux_pages.cpp"
         "ui/ui_boot_screen.cpp"
-        "ui/ui_boot_settings.cpp"
+        "ui/ui_settings_page.cpp"
         "ui/ui_settings_content.cpp"
         "ui/ui_battery.cpp"
         "ui/ui_battery_blink.cpp"
@@ -134,6 +136,7 @@ idf_component_register(
         "network/daily_saying_state.cpp"
         "network/daily_saying.cpp"
         "network/network_diagnostics.cpp"
+        "network/network_diagnostics_probe.cpp"
         "network/network_public_ip_parser.cpp"
         "network/network_diagnostics_state.cpp"
         "network/network_cache_policy.cpp"

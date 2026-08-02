@@ -1,4 +1,4 @@
-// 验证闹钟 NVS 三键记录的读取分类、无变化免写、顺序提交和清除错误语义。
+// 验证闹钟 NVS 三键记录的读取分类、逐键条件写入、顺序提交和清除错误语义。
 #include "alarm_storage.h"
 
 #include <assert.h>
@@ -142,10 +142,17 @@ int main()
     assert(g_commit_calls == 0 && g_close_calls == 1);
 
     reset_store();
+    populate(1, 7, 45);
+    write = alarm_storage::write(false, 7, 45);
+    assert(write.status == alarm_storage::WriteStatus::kSaved);
+    assert((g_set_keys == std::vector<std::string>{"enabled"}));
+    assert(g_commit_calls == 1 && g_close_calls == 1);
+
+    reset_store();
     g_values["enabled"] = 1;
     write = alarm_storage::write(true, 7, 45);
     assert(write.status == alarm_storage::WriteStatus::kSaved);
-    assert((g_set_keys == std::vector<std::string>{"enabled", "hour", "minute"}));
+    assert((g_set_keys == std::vector<std::string>{"hour", "minute"}));
     assert(g_commit_calls == 1 && g_close_calls == 1);
 
     reset_store();

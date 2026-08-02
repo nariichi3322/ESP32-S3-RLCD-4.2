@@ -2,7 +2,7 @@
 /*******************************************************************************
  * Size: 16 px
  * Bpp: 1
- * Opts: --font /private/tmp/hiragino_sans_gb_w6.ttf -r 0x20-0x7E,0x2103,0x3000-0x303F,0x4E00-0x9FFF,0xFF00-0xFFEF --size 16 --bpp 1 --format lvgl --lv-include lvgl.h --lv-font-name zh_font_16 --lv-fallback lv_font_montserrat_14 --output RLCD_CLOCK/main/zh_font_16.c
+ * Opts: --font <font-file> -r 0x20-0x7E,0x2103,0x3000-0x303F,0x4E00-0x9FFF,0xFF00-0xFFEF --size 16 --bpp 1 --format lvgl --lv-include lvgl.h --lv-font-name zh_font_16 --lv-fallback lv_font_montserrat_14 --output RLCD_CLOCK/main/assets/zh_font_16.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

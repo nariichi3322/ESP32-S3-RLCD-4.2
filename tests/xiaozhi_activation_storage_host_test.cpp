@@ -257,7 +257,6 @@ int main()
     root = parse_json("{\"url\":\"wss://example.test/ws\",\"token\":\"secret\",\"version\":2}");
     assert(xiaozhi_save_activation_config(root, "new-challenge"));
     assert((g_operations == std::vector<std::string>{
-        "str:ws_url", "str:ws_token", "i32:ws_ver", "u8:bound_v1",
         "str:act_chal", "commit"}));
     assert(g_strings["act_chal"] == "new-challenge");
     cJSON_Delete(root);

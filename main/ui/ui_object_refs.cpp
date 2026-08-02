@@ -3,7 +3,7 @@
 
 #include "ui_aux_pages.h"
 #include "ui_battery.h"
-#include "ui_boot_settings.h"
+#include "ui_settings_page.h"
 #include "ui_clock.h"
 #include "ui_draw_cache.h"
 #include "ui_flip_clock.h"

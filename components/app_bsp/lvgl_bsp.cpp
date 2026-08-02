@@ -6,10 +6,13 @@
 #include <esp_log.h>
 #include <esp_heap_caps.h>
 #include <esp_timer.h>
+#include <limits>
 #include "lvgl_bsp.h"
 
 #define LVGL_BUFFER_ALLOCATION_FAILED_FORMAT "%s allocation failed bytes=%u psram_free=%u psram_largest=%u internal_free=%u dma_largest=%u"
 #define LVGL_DRAW_BUFFER_LOG_FORMAT "LVGL draw buffer: %dx%d rows x2, %u bytes each"
+#define LVGL_INIT_INVALID_CONFIG_FORMAT \
+    "LVGL invalid init config width=%d height=%d flush_cb=%d"
 static lv_disp_draw_buf_t disp_buf; 		// contains internal graphic buffer(s) called draw buffer(s)
 static lv_disp_drv_t disp_drv;      		// contains callback functions
 static StaticSemaphore_t lvgl_mux_storage = {};
@@ -52,6 +55,38 @@ static_assert(kMicrosecondsPerMillisecond == 1000, "millisecond to microsecond c
 
 static StackType_t lvgl_task_stack[kLvglTaskStackBytes / sizeof(StackType_t)] = {};
 static StaticTask_t lvgl_task_storage = {};
+
+static bool ComputeLvglDrawBufferGeometry(int width,
+                                          int height,
+                                          DispFlushCb flush_cb,
+                                          int *buffer_rows_out,
+                                          size_t *buffer_pixels_out,
+                                          size_t *buffer_bytes_out)
+{
+    if (!buffer_rows_out || !buffer_pixels_out || !buffer_bytes_out) {
+        return false;
+    }
+    *buffer_rows_out = 0;
+    *buffer_pixels_out = 0;
+    *buffer_bytes_out = 0;
+    if (width <= 0 || height <= 0 || !flush_cb) {
+        return false;
+    }
+    const int buffer_rows = height < kDrawBufferRows ? height : kDrawBufferRows;
+    if (static_cast<size_t>(width) >
+        std::numeric_limits<size_t>::max() / static_cast<size_t>(buffer_rows)) {
+        return false;
+    }
+    const size_t pixels =
+        static_cast<size_t>(width) * static_cast<size_t>(buffer_rows);
+    if (pixels > std::numeric_limits<size_t>::max() / sizeof(lv_color_t)) {
+        return false;
+    }
+    *buffer_rows_out = buffer_rows;
+    *buffer_pixels_out = pixels;
+    *buffer_bytes_out = pixels * sizeof(lv_color_t);
+    return true;
+}
 
 static TaskHandle_t LoadLvglTaskHandle()
 {
@@ -176,23 +211,36 @@ bool Lvgl_PortInit(int width, int height,DispFlushCb flush_cb) {
     if (lvgl_mux != NULL) {
         return true;
     }
+    int buffer_rows = 0;
+    size_t buffer_pixels = 0;
+    size_t buffer_bytes = 0;
+    if (!ComputeLvglDrawBufferGeometry(width,
+                                       height,
+                                       flush_cb,
+                                       &buffer_rows,
+                                       &buffer_pixels,
+                                       &buffer_bytes)) {
+        ESP_LOGE(TAG,
+                 LVGL_INIT_INVALID_CONFIG_FORMAT,
+                 width,
+                 height,
+                 flush_cb ? 1 : 0);
+        return false;
+    }
     lvgl_mux = xSemaphoreCreateMutexStatic(&lvgl_mux_storage);
     if (lvgl_mux == NULL) {
         ESP_LOGE(TAG, "%s", kLvglMutexCreateFailedLog);
         return false;
     }
     lv_init();
-    int buffer_rows = height < kDrawBufferRows ? height : kDrawBufferRows;
-    size_t buffer_pixels = (size_t)width * buffer_rows;
-    size_t buffer_bytes = buffer_pixels * sizeof(lv_color_t);
-    lv_color_t *buffer1 = (lv_color_t *)heap_caps_malloc(buffer_pixels * sizeof(lv_color_t),
+    lv_color_t *buffer1 = (lv_color_t *)heap_caps_malloc(buffer_bytes,
                                                          MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (buffer1 == NULL) {
         LogLvglBufferAllocationFailure("LVGL draw buffer 1", buffer_bytes);
         ReleaseLvglInitResources(NULL, NULL, NULL);
         return false;
     }
-	lv_color_t *buffer2 = (lv_color_t *)heap_caps_malloc(buffer_pixels * sizeof(lv_color_t),
+	lv_color_t *buffer2 = (lv_color_t *)heap_caps_malloc(buffer_bytes,
                                                          MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (buffer2 == NULL) {
         LogLvglBufferAllocationFailure("LVGL draw buffer 2", buffer_bytes);

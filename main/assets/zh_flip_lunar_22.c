@@ -4,7 +4,7 @@
  * 文件名和字体符号保留 zh_flip_lunar_22 以降低引用改动，实际字形为 24px。
  * Size: 24 px
  * Bpp: 1
- * Opts: --font /System/Library/Fonts/Supplemental/Arial Unicode.ttf -r 0x20-0x7E --symbols 一二三四五六七八九十初廿正冬腊月小大寒立春雨水惊蛰分清明谷夏满芒种至暑秋处白露霜降雪元旦情人节妇女劳动儿童教师国庆圣诞宵端午夕中重阳闰 --size 24 --bpp 1 --format lvgl --lv-include lvgl.h --lv-font-name zh_flip_lunar_22 --lv-fallback lv_font_montserrat_14 --output RLCD_CLOCK/main/assets/zh_flip_lunar_22.c
+ * Opts: --font <font-file> -r 0x20-0x7E --symbols 一二三四五六七八九十初廿正冬腊月小大寒立春雨水惊蛰分清明谷夏满芒种至暑秋处白露霜降雪元旦情人节妇女劳动儿童教师国庆圣诞宵端午夕中重阳闰 --size 24 --bpp 1 --format lvgl --lv-include lvgl.h --lv-font-name zh_flip_lunar_22 --lv-fallback lv_font_montserrat_14 --output RLCD_CLOCK/main/assets/zh_flip_lunar_22.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

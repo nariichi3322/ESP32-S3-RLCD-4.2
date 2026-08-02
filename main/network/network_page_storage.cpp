@@ -13,9 +13,14 @@ bool saved_page_order_matches(nvs_handle_t nvs,
                               size_t page_order_size)
 {
     uint8_t saved_order[kWorkPageCount] = {};
+    size_t stored_len = sizeof(saved_order);
     return page_order &&
            page_order_size == sizeof(saved_order) &&
-           read_saved_page_order(nvs, saved_order, sizeof(saved_order)) &&
+           nvs_get_blob(nvs,
+                        kPageOrderV5Key,
+                        saved_order,
+                        &stored_len) == ESP_OK &&
+           stored_len == sizeof(saved_order) &&
            memcmp(saved_order, page_order, page_order_size) == 0;
 }
 } // namespace

@@ -1,4 +1,4 @@
-// 声明设置页的构建、刷新和对象引用清理接口。
+// 声明设置页面的构建、刷新和对象引用清理接口。
 #pragma once
 
 void build_settings_page();

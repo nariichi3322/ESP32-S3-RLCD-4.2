@@ -222,6 +222,38 @@ bool update_history_page(const struct tm &local)
     return changed;
 }
 
+static bool ensure_history_chart_canvas(lv_obj_t *screen)
+{
+    if (!screen) {
+        return false;
+    }
+    if (!s_history_chart_canvas_buffer) {
+        s_history_chart_canvas_buffer =
+            alloc_canvas_buffer(kCanvasWidth, kCanvasHeight);
+    }
+    if (!s_history_chart_canvas_buffer) {
+        return false;
+    }
+    if (!s_history_chart_canvas) {
+        s_history_chart_canvas = lv_canvas_create(screen);
+        if (!s_history_chart_canvas) {
+            ESP_LOGW(TAG, "%s", HISTORY_CHART_CANVAS_CREATE_FAILED_LOG);
+            return false;
+        }
+        configure_canvas_base(s_history_chart_canvas,
+                              s_history_chart_canvas_buffer,
+                              kCanvasX,
+                              kCanvasY,
+                              kCanvasWidth,
+                              kCanvasHeight);
+        lv_canvas_fill_bg(s_history_chart_canvas,
+                          lv_color_white(),
+                          LV_OPA_COVER);
+        invalidate_history_draw_cache();
+    }
+    return true;
+}
+
 static void build_history_chart_area(lv_obj_t *screen)
 {
     if (!screen) {
@@ -241,23 +273,7 @@ static void build_history_chart_area(lv_obj_t *screen)
                                               kHumiTitle,
                                               HISTORY_HUMI_TITLE_CREATE_FAILED_LOG);
 
-    if (!s_history_chart_canvas_buffer) {
-        s_history_chart_canvas_buffer = alloc_canvas_buffer(kCanvasWidth, kCanvasHeight);
-    }
-    if (s_history_chart_canvas_buffer) {
-        s_history_chart_canvas = lv_canvas_create(screen);
-        if (!s_history_chart_canvas) {
-            ESP_LOGW(TAG, "%s", HISTORY_CHART_CANVAS_CREATE_FAILED_LOG);
-        } else {
-            configure_canvas_base(s_history_chart_canvas,
-                                  s_history_chart_canvas_buffer,
-                                  kCanvasX,
-                                  kCanvasY,
-                                  kCanvasWidth,
-                                  kCanvasHeight);
-            lv_canvas_fill_bg(s_history_chart_canvas, lv_color_white(), LV_OPA_COVER);
-        }
-    }
+    ensure_history_chart_canvas(screen);
     if (temp_title) {
         lv_obj_move_foreground(temp_title);
     }
@@ -310,7 +326,9 @@ static void build_history_axis_labels(lv_obj_t *screen)
 
 void build_history_page()
 {
-    if (work_page_root(kWorkPageHistory)) {
+    lv_obj_t *existing_root = work_page_root(kWorkPageHistory);
+    if (existing_root) {
+        ensure_history_chart_canvas(existing_root);
         return;
     }
     lv_obj_t *screen = create_page_root();

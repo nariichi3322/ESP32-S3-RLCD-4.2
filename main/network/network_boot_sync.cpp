@@ -13,7 +13,6 @@
 #include "ui_boot_screen.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_services_internal.h"
-#include "wifi_radio_state.h"
 
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -103,9 +102,7 @@ void finish_boot_network_session(NetworkAwakeLockGuard &awake_lock)
 {
     stop_wifi_radio();
     awake_lock.release();
-    if (wifi_radio_on_load()) {
-        request_wifi_radio_stop_when_idle();
-    }
+    request_wifi_radio_stop_if_running();
 }
 
 } // namespace
@@ -150,9 +147,7 @@ void run_boot_connectivity_sync()
         // A running radio can fail while being reconfigured. Register a real
         // close request after releasing this session's PM lock so that rare
         // partial-start failures cannot leave Wi-Fi powered indefinitely.
-        if (wifi_radio_on_load()) {
-            request_wifi_radio_stop_when_idle();
-        }
+        request_wifi_radio_stop_if_running();
         vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
         return;
     }

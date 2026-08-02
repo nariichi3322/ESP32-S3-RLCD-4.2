@@ -200,15 +200,25 @@ constexpr uint32_t kWifiInitializationRetryMs = 100;
 constexpr unsigned kWifiInitializationAttempts = 3;
 constexpr TickType_t kWifiInitializationRetryDelay =
     pdMS_TO_TICKS(kWifiInitializationRetryMs);
+constexpr uint32_t kWifiPowerSaveRetryMs = 10;
+constexpr unsigned kWifiPowerSaveAttempts = 3;
+constexpr TickType_t kWifiPowerSaveRetryDelay =
+    pdMS_TO_TICKS(kWifiPowerSaveRetryMs);
 static_assert(kSetupResultDeliveryAttempts > 0,
               "setup result delivery needs at least one attempt");
 static_assert(kWifiInitializationAttempts > 1,
               "Wi-Fi initialization must retain a retry opportunity");
 static_assert(kWifiInitializationRetryDelay > 0,
               "Wi-Fi initialization retry delay must be positive");
+static_assert(kWifiPowerSaveAttempts > 1,
+              "Wi-Fi power-save setup must retain a retry opportunity");
+static_assert(kWifiPowerSaveRetryDelay > 0,
+              "Wi-Fi power-save retry delay must be positive");
 #define WIFI_INIT_RETRY_FORMAT "wifi initialization retry: attempt=%u/%u"
 #define WIFI_INIT_RETRY_EXHAUSTED_LOG "wifi initialization retry exhausted"
 #define WIFI_LIFECYCLE_MUTEX_UNAVAILABLE_LOG "wifi lifecycle mutex unavailable"
+#define WIFI_SETUP_START_RECOVERY_QUEUE_FAILED_LOG \
+    "setup portal startup retry queue unavailable"
 void format_sta_ip_or_clear(const esp_ip4_addr_t *ip)
 {
     if (!ip) {
@@ -542,10 +552,16 @@ static bool apply_station_config(bool reconnect)
 
 static void configure_wifi_power_save(bool enable_setup_portal)
 {
-    esp_err_t err = esp_wifi_set_ps(enable_setup_portal ? WIFI_PS_NONE
-                                                        : WIFI_PS_MAX_MODEM);
-    if (err == ESP_OK) {
-        return;
+    esp_err_t err = ESP_FAIL;
+    for (unsigned attempt = 0; attempt < kWifiPowerSaveAttempts; ++attempt) {
+        err = esp_wifi_set_ps(enable_setup_portal ? WIFI_PS_NONE
+                                                  : WIFI_PS_MAX_MODEM);
+        if (err == ESP_OK) {
+            return;
+        }
+        if (attempt + 1 < kWifiPowerSaveAttempts) {
+            vTaskDelay(kWifiPowerSaveRetryDelay);
+        }
     }
     if (enable_setup_portal) {
         ESP_LOGW(TAG,
@@ -874,6 +890,13 @@ static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt)
         clear_wifi_stop_when_idle_request();
         s_wifi_stop_requested.store(false, std::memory_order_release);
         clear_sta_connection_state();
+        if (!portal_stopped) {
+            // The radio is already off, but a failed httpd_stop() still owns
+            // its task and the display DMA guard. Hand that cleanup back to
+            // the serialized network task instead of waiting for a later
+            // portal start to discover the stale server.
+            (void)request_setup_portal_stop();
+        }
         notify_ui_task();
         ESP_LOGI(TAG, WIFI_RADIO_OFF_LOG);
         return portal_stopped;
@@ -906,6 +929,13 @@ void request_wifi_radio_stop_when_idle()
     // Calling the driver here lets Xiaozhi/OTA cleanup race a newly acquired
     // network window between its ownership check and esp_wifi_stop().
     notify_wifi_stop_retry_if_pending();
+}
+
+void request_wifi_radio_stop_if_running()
+{
+    if (wifi_radio_on_load()) {
+        request_wifi_radio_stop_when_idle();
+    }
 }
 
 WifiRadioIdleStopResult service_wifi_radio_stop_when_idle()
@@ -1018,6 +1048,8 @@ void init_wifi()
 
     if (!network_all_online_credentials_configured() &&
         !offline_mode_enabled_load()) {
-        start_wifi_radio(true);
+        if (!start_wifi_radio(true) && !request_setup_portal_start()) {
+            ESP_LOGW(TAG, "%s", WIFI_SETUP_START_RECOVERY_QUEUE_FAILED_LOG);
+        }
     }
 }

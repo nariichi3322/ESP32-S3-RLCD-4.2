@@ -81,8 +81,7 @@ constexpr const char *kNetworkDiagSyncFeedback = "正在网络检测...";
 constexpr const char *kFactoryResetConfirmFeedback = "再次按 BOOT 确认";
 constexpr const char *kFactoryResetFailedFeedback = "恢复失败";
 constexpr size_t kSettingsFeedbackTextSize = 32;
-#define HOURLY_CHIME_SETTING_LOG_FORMAT "hourly chime %s"
-#define ALL_DAY_CHIME_SETTING_LOG_FORMAT "hourly chime all-day %s"
+#define CHIME_BOOLEAN_SETTING_LOG_FORMAT "%s %s"
 #define CHIME_SETTING_ENABLED_LOG_VALUE "enabled"
 #define CHIME_SETTING_DISABLED_LOG_VALUE "disabled"
 #define MANUAL_WEATHER_CITY_CLEARED_SYNC_LOG "manual weather city cleared, requesting weather sync"
@@ -128,6 +127,31 @@ bool set_chime_setting_or_feedback(const ChimeRuntimeSnapshot &next)
     }
     set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
     return false;
+}
+
+void toggle_chime_boolean_setting(
+    bool ChimeRuntimeSnapshot::*field,
+    const char *enabled_feedback,
+    const char *disabled_feedback,
+    const char *log_name)
+{
+    const ChimeRuntimeSnapshot previous = chime_runtime_snapshot_load();
+    ChimeRuntimeSnapshot next = previous;
+    next.*field = !(previous.*field);
+    if (!set_chime_setting_or_feedback(next)) {
+        return;
+    }
+    const bool enabled = next.*field;
+    set_settings_feedback(enabled ? enabled_feedback : disabled_feedback,
+                          kSettingsFeedbackDefaultMs);
+    ESP_LOGI(TAG,
+             CHIME_BOOLEAN_SETTING_LOG_FORMAT,
+             log_name,
+             enabled ? CHIME_SETTING_ENABLED_LOG_VALUE
+                     : CHIME_SETTING_DISABLED_LOG_VALUE);
+    if (enabled) {
+        request_settings_confirmation_chime();
+    }
 }
 
 void queue_manual_settings_sync(SettingsSyncOp op,
@@ -253,37 +277,17 @@ void handle_sound_settings_action(int selected)
         set_formatted_settings_feedback(kSoundIndexFeedbackFormat, next.sound_index + 1);
         request_settings_confirmation_chime();
     } else if (selected == kSoundSettingsHourlyItem) {
-        const ChimeRuntimeSnapshot previous = chime_runtime_snapshot_load();
-        ChimeRuntimeSnapshot next = previous;
-        next.hourly_enabled = !previous.hourly_enabled;
-        if (!set_chime_setting_or_feedback(next)) {
-            return;
-        }
-        const bool enabled = next.hourly_enabled;
-        set_settings_feedback(enabled ? kHourlyChimeEnabledFeedback : kHourlyChimeDisabledFeedback,
-                              kSettingsFeedbackDefaultMs);
-        ESP_LOGI(TAG,
-                 HOURLY_CHIME_SETTING_LOG_FORMAT,
-                 enabled ? CHIME_SETTING_ENABLED_LOG_VALUE : CHIME_SETTING_DISABLED_LOG_VALUE);
-        if (enabled) {
-            request_settings_confirmation_chime();
-        }
+        toggle_chime_boolean_setting(
+            &ChimeRuntimeSnapshot::hourly_enabled,
+            kHourlyChimeEnabledFeedback,
+            kHourlyChimeDisabledFeedback,
+            "hourly chime");
     } else if (selected == kSoundSettingsAllDayItem) {
-        const ChimeRuntimeSnapshot previous = chime_runtime_snapshot_load();
-        ChimeRuntimeSnapshot next = previous;
-        next.all_day = !previous.all_day;
-        if (!set_chime_setting_or_feedback(next)) {
-            return;
-        }
-        const bool enabled = next.all_day;
-        set_settings_feedback(enabled ? kAllDayChimeEnabledFeedback : kAllDayChimeDisabledFeedback,
-                              kSettingsFeedbackDefaultMs);
-        ESP_LOGI(TAG,
-                 ALL_DAY_CHIME_SETTING_LOG_FORMAT,
-                 enabled ? CHIME_SETTING_ENABLED_LOG_VALUE : CHIME_SETTING_DISABLED_LOG_VALUE);
-        if (enabled) {
-            request_settings_confirmation_chime();
-        }
+        toggle_chime_boolean_setting(
+            &ChimeRuntimeSnapshot::all_day,
+            kAllDayChimeEnabledFeedback,
+            kAllDayChimeDisabledFeedback,
+            "hourly chime all-day");
     }
 }
 

@@ -8,6 +8,12 @@ namespace sdl_preview_widgets {
 void set_obj_black(lv_obj_t *obj, bool active);
 lv_obj_t *make_bar(lv_obj_t *parent, int x, int y, int w, int h);
 lv_obj_t *make_black_bar(lv_obj_t *parent, int x, int y, int w, int h);
+lv_obj_t *make_canvas(lv_obj_t *parent,
+                      int x,
+                      int y,
+                      int width,
+                      int height,
+                      lv_color_t *pixels);
 lv_obj_t *make_label_with_font(lv_obj_t *parent,
                                int x,
                                int y,

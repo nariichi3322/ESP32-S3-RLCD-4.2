@@ -4,7 +4,11 @@
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import tempfile
+from pathlib import Path
 from typing import NamedTuple
 
 
@@ -18,6 +22,7 @@ FIELD_SIZE = "size"
 LATEST_MAX_BYTES = 1800
 VERSIONS_KEEP = 10
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+VERSION_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
 class FirmwareArtifactSpec(NamedTuple):
@@ -30,6 +35,34 @@ FIRMWARE_ARTIFACTS = (
     FirmwareArtifactSpec("app", ".bin", "设备 OTA 升级固件。"),
     FirmwareArtifactSpec("merged", "_merged.bin", "包含分区表的完整刷写固件。"),
 )
+
+
+def version_key(value: str) -> tuple[int, int, int]:
+    match = VERSION_RE.fullmatch(value)
+    if not match:
+        raise ValueError(f"invalid version: {value}")
+    return tuple(int(part) for part in match.groups())
+
+
+def encode_json(value: object) -> bytes:
+    return (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+
+
+def atomic_write(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", dir=path.parent
+    )
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content)
+        os.replace(temporary_name, path)
+    except Exception:
+        try:
+            os.unlink(temporary_name)
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def normalize_artifact_metadata(

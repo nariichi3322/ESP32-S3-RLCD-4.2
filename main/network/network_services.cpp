@@ -33,7 +33,6 @@
 #include "wifi_idle_stop_policy.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_services_internal.h"
-#include "wifi_radio_state.h"
 
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -198,9 +197,7 @@ static void finish_network_radio_session(NetworkAwakeLockGuard &awake_lock,
     if (awake_lock.locked()) {
         stop_wifi_radio(force_setup_portal);
         awake_lock.release();
-        if (wifi_radio_on_load()) {
-            request_wifi_radio_stop_when_idle();
-        }
+        request_wifi_radio_stop_if_running();
     } else {
         // This caller never acquired session ownership, so it must not create a
         // new stop request; it may only service one left by an earlier owner.
@@ -491,7 +488,8 @@ static bool execute_network_diagnostics_window(
                 finish_network_radio_session(awake_lock);
                 return false;
             }
-            if (!run_network_diagnostic_checks()) {
+            if (!run_network_diagnostic_checks(
+                    requests.diagnostics_generation)) {
                 ESP_LOGI(TAG, "%s", kNetworkSyncContextChangedLog);
                 finish_network_radio_session(awake_lock);
                 return false;

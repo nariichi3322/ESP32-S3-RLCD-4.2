@@ -115,14 +115,7 @@ static void draw_calendar_text(lv_obj_t *canvas,
     dsc.color = color;
     dsc.font = font;
     dsc.align = align;
-    lv_area_t area = {
-        (lv_coord_t)x,
-        (lv_coord_t)y,
-        (lv_coord_t)(x + w - 1),
-        (lv_coord_t)(y + h - 1),
-    };
     lv_canvas_draw_text(canvas, x, y, w, &dsc, text);
-    lv_obj_invalidate_area(canvas, &area);
 }
 
 static void draw_calendar_weekday_header(lv_img_dsc_t *image)
@@ -275,9 +268,44 @@ bool update_calendar_page(const struct tm &local)
     return changed;
 }
 
+static bool ensure_calendar_canvas(lv_obj_t *screen)
+{
+    if (!screen) {
+        return false;
+    }
+    if (!s_calendar_canvas_buffer) {
+        s_calendar_canvas_buffer =
+            alloc_canvas_buffer(kCanvasWidth, kCanvasHeight);
+    }
+    if (!s_calendar_canvas_buffer) {
+        return false;
+    }
+    if (!s_calendar_canvas) {
+        s_calendar_canvas = lv_canvas_create(screen);
+        if (!s_calendar_canvas) {
+            ESP_LOGW(TAG, "%s", CALENDAR_CANVAS_CREATE_FAILED_LOG);
+            return false;
+        }
+        configure_canvas_base(s_calendar_canvas,
+                              s_calendar_canvas_buffer,
+                              kCanvasX,
+                              kCanvasY,
+                              kCanvasWidth,
+                              kCanvasHeight);
+        lv_canvas_fill_bg(s_calendar_canvas,
+                          lv_color_white(),
+                          LV_OPA_COVER);
+        s_last_calendar_drawn_month = -1;
+        s_last_calendar_drawn_day = -1;
+    }
+    return true;
+}
+
 void build_calendar_page()
 {
-    if (work_page_root(kWorkPageCalendar)) {
+    lv_obj_t *existing_root = work_page_root(kWorkPageCalendar);
+    if (existing_root) {
+        ensure_calendar_canvas(existing_root);
         return;
     }
     lv_obj_t *screen = create_page_root();
@@ -299,26 +327,7 @@ void build_calendar_page()
                    ui_work_page_layout::kTopSeparatorHeight);
     build_work_page_day_progress(screen, kWorkPageCalendar);
 
-    if (!s_calendar_canvas_buffer) {
-        s_calendar_canvas_buffer = alloc_canvas_buffer(kCanvasWidth, kCanvasHeight);
-    }
-    if (!s_calendar_canvas_buffer) {
-        lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
-        update_work_page_battery_icon(kWorkPageCalendar, battery_percent_load());
-        return;
-    }
-    s_calendar_canvas = lv_canvas_create(screen);
-    if (!s_calendar_canvas) {
-        ESP_LOGW(TAG, "%s", CALENDAR_CANVAS_CREATE_FAILED_LOG);
-    } else {
-        configure_canvas_base(s_calendar_canvas,
-                              s_calendar_canvas_buffer,
-                              kCanvasX,
-                              kCanvasY,
-                              kCanvasWidth,
-                              kCanvasHeight);
-        lv_canvas_fill_bg(s_calendar_canvas, lv_color_white(), LV_OPA_COVER);
-    }
+    ensure_calendar_canvas(screen);
 
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
     update_work_page_battery_icon(kWorkPageCalendar, battery_percent_load());

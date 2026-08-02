@@ -95,6 +95,24 @@ uint32_t publish_network_sync_request(EventBits_t request_bit)
     return generation;
 }
 
+bool network_sync_request_is_current(EventBits_t request_bit,
+                                     uint32_t expected_generation)
+{
+    TrackedNetworkRequest *request =
+        tracked_request_for_single_bit(request_bit);
+    if (!request || expected_generation == 0 ||
+        !s_request_lifecycle_mutex.handle()) {
+        return false;
+    }
+    ScopedSemaphoreLock lock(s_request_lifecycle_mutex);
+    if (!lock) {
+        return false;
+    }
+    return request->generation.load(std::memory_order_acquire) ==
+               expected_generation &&
+           (app_event_group_get_bits() & request_bit) != 0;
+}
+
 bool retire_network_sync_request(EventBits_t request_bit,
                                  uint32_t expected_generation)
 {

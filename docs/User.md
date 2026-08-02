@@ -120,6 +120,7 @@ Shows three high-contrast hour/minute/second cards plus local temperature, humid
 Shows the current month, weekday bar, lunar text, and holidays.
 
 - Manual date/time entry, RTC validity, and the lunar calendar currently share the supported range `2024–2035`; dates outside this range are not accepted as valid device time.
+- Lunar dates, leap months, and all 24 solar terms within this range are calibrated against the Hong Kong Observatory conversion tables.
 - The calendar body redraws only on page entry, date/month change, or a time correction that crosses a day boundary.
 - The first frame after a page rebuild always redraws the calendar instead of reusing the previous page's date cache.
 - The device calendar and desktop preview share the same weekday, date-cell, and today-highlight layout so future adjustments remain aligned.
@@ -370,7 +371,7 @@ Xiaozhi AI cannot be the first page because its high-power service is unsuitable
 ### 5.4 System
 
 - **Offline Mode**
-- **Network Diagnostics**: checks local IP, public IP, IP location, DNS, QWeather, NTP, Daily Saying, internet access, and the OTA manifest. The DNS item resolves the currently saved QWeather API Host and GitHub host instead of a retired public QWeather domain. The local IP and all nine results are published as one consistent snapshot and update without a reboot, so connection, lease, disconnection, or background updates never expose a partial address or status line. Public-IP responses are accepted only when they contain a valid four-part IPv4 address; service error text, host names, and out-of-range addresses are reported as failures instead of false successes.
+- **Network Diagnostics**: checks local IP, public IP, IP location, DNS, QWeather, NTP, Daily Saying, internet access, and the OTA manifest. The DNS item resolves the currently saved QWeather API Host and GitHub host instead of a retired public QWeather domain, and reports success only when the resolver actually returns an address. The local IP and all nine results are published as one consistent snapshot and update without a reboot, so connection, lease, disconnection, or background updates never expose a partial address or status line. Public-IP responses are accepted only when they contain a valid four-part IPv4 address; service error text, host names, and out-of-range addresses are reported as failures instead of false successes.
 - **Factory Reset** (requires confirmation)
 - **About Device** (version, battery, voltage, last-charge time, device information, and source repository)
 - **Check Update**
@@ -504,6 +505,7 @@ Because `v1.5.0` moved partition addresses, an old desktop client must be update
 - Once charging is confirmed, boot scheduling, OTA recovery, and network time recovery no longer create a temporary minute-level sampling gap. Charging and unplug detection retain their fast response.
 - Low-battery thresholds, charging detection, animation stopping, and fast charging sampling share one internal policy source. The animation state controls only the visible blink and no longer delays unplug detection; displayed percentage, low-battery behavior, and OTA protection are unchanged.
 - Each battery reading releases the ADC and calibration resources after publishing the result, so the measurement peripheral is not kept active between samples.
+- If ADC channel setup and resource release both fail in the same rare recovery path, a later sample reconfigures the retained channel before reading; no user restart is required, and normal sampling cadence and percentage calculation are unchanged.
 - Production firmware does not emit raw ADC, voltage, and percentage details for every sample. Sampling failures and charging start, animation completion, and unplug transitions remain logged. Sampling cadence, battery calculation, and displayed values are unchanged.
 - Percentage, charging state, and low-battery mode are published consistently from the same sample; pages, OTA, and Xiaozhi do not trigger an extra ADC conversion when reading battery status.
 - Low battery enters a minimal page and stops non-essential networking, animation, audio, and high-frequency refresh.
@@ -609,6 +611,8 @@ When a desktop-provisioned custom asset package is present, startup still valida
 The custom asset catalog is loaded once before work tasks start. Pages, weather-city selection, and OTA configuration then use the validated catalog as read-only data. This maintenance does not change the WCA1 format, asset priority, built-in fallback, or desktop workflow.
 
 During normal operation, a temporary SPI display allocation or timeout error is retried within a fixed limit. If it still fails, only that frame is skipped and `RLCD command/data tx failed` is logged instead of rebooting the device. The network/OTA DMA protection mode uses an allocation-free atomic snapshot, so display transfers no longer disable cross-core interrupts merely to read the active protection tier; chunk sizes, retry counts, and rendered output are unchanged. Repeated messages warrant checking power stability and the logged DMA headroom.
+
+The display driver's pixel lookup tables now use the actual screen height and reject geometries that cannot be represented safely before startup. This prevents row aliasing, out-of-bounds access, and corrupted output after future orientation or maintenance changes. The current device's 400x300 pixels, PSRAM use, page layout, and refresh behavior are unchanged, and no setting change is required.
 
 Shared bitmap, label, and font declarations use lightweight internal interfaces. This maintenance does not change Chinese glyphs, icon pixels, page coordinates, trend arrows, or partial-refresh behavior.
 
@@ -1158,6 +1162,8 @@ Power-management locks are now released more reliably when network or audio work
 
 You can long-press KEY to leave Network Diagnostics while it is running. The device now cancels all checks that have not started and powers down Wi-Fi after the current bounded check finishes, rather than completing the hidden diagnostics sequence in the background. Normal checks, order, and result display are unchanged.
 
+If Network Diagnostics is opened again immediately after that return, the new run uses an independent request generation. The older session stops after its current bounded check and cannot continue, write into the new page, or retire the new request, preventing a duplicate full diagnostics run. Entry, checks, order, and messages are unchanged.
+
 If a manual time, weather, or Daily Saying synchronization reaches its timeout, the device now also cancels any connection wait that has not completed and powers down Wi-Fi sooner. A single network request that has already started still finishes through its bounded cleanup path. Timeout duration, messages, and normal synchronization controls are unchanged.
 
 If you leave Weather Clock, Weather Board, or Gallery while an automatic data refresh is still waiting for a connection, or if Offline Mode or OTA takes over, the device now cancels that connection wait and powers down Wi-Fi sooner. A network request that has already started still completes its bounded cleanup. Page content, caches, retry rules, and controls are unchanged.
@@ -1275,3 +1281,11 @@ About Device now remains open if its internal page state is briefly unavailable,
 Settings feedback now remains visible if its internal state is briefly unavailable, instead of disappearing before its normal timeout. Synchronization, save and confirmation messages, settings timing, layout, and controls are unchanged.
 
 If button interrupt or Light Sleep wakeup setup fails during a rare hardware fault, the firmware now slows only the idle fallback polling: interactive screens remain responsive at 50 ms, ordinary work pages use 250 ms, and minute-level pages use 500 ms. A held button still uses 20 ms tracking. Normal devices continue to wake immediately from GPIO edges, so debounce, short and long presses, page controls, display timing, and normal Light Sleep behavior are unchanged.
+
+After startup networking, weather synchronization, OTA, or an Offline Mode transition finishes, the device now uses one internal path to check whether Wi-Fi is still running and registers deferred shutdown only when needed. Radio shutdown order, network data, retries, display behavior, and controls are unchanged. This maintenance reduces the chance that a future failure path omits low-power cleanup.
+
+The display layer now confirms that the SPI queue is empty after each full-screen or partial pixel transfer before the next refresh can modify the shared buffer. Already queued work is also drained after a transfer error. Page content, partial-refresh regions, refresh rates, and controls are unchanged; this reduces the risk of an occasional corrupted frame during rapid refreshes or network-memory pressure.
+
+Network Diagnostics now publishes the Weather or Daily Saying result as soon as that check finishes, before starting NTP or the Internet probe. Completed rows no longer remain at “Checking” while the next blocking operation runs. The nine checks, order, request count, timeouts, Wi-Fi use, and controls are unchanged.
+
+Network Diagnostics now distinguishes a successful public-IP HTTP response from successful IPv4 parsing. If the service responds but its payload format is temporarily unsupported, the Public IP row still reports failure while Internet access is accepted without opening a duplicate HTTPS request to the same endpoint. A real transport failure still runs the existing fallback probe.

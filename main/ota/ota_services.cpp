@@ -363,7 +363,7 @@ static void log_ota_download_start(const OtaManifest &manifest)
     if (esp_wifi_sta_get_ap_info(&ap_info) == ESP_OK) {
         rssi = ap_info.rssi;
     }
-    BatteryRuntimeSnapshot battery;
+    BatteryRuntimeSnapshot battery = {};
     (void)battery_runtime_snapshot_load(&battery);
     ESP_LOGI(TAG,
              OTA_DOWNLOAD_START_FORMAT,

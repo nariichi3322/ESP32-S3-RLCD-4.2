@@ -2,6 +2,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <time.h>
 #include <vector>
 
@@ -22,6 +23,8 @@ public:
     void update_battery(int percent);
 
 private:
+    static constexpr std::size_t kLowerPanelObjectCapacity = 12;
+
     void prepare_screen(lv_obj_t *screen);
     void build_status_header(lv_obj_t *screen);
     void build_weather_summary(lv_obj_t *screen);
@@ -58,7 +61,8 @@ private:
     lv_obj_t *time_canvas_ = nullptr;
     lv_obj_t *second_canvas_ = nullptr;
     lv_obj_t *status_gif_canvas_ = nullptr;
-    std::array<lv_obj_t *, 13> lower_panel_objects_{};
+    std::array<lv_obj_t *, kLowerPanelObjectCapacity> lower_panel_objects_{};
+    std::size_t lower_panel_object_count_ = 0;
     std::array<lv_obj_t *, 6> setup_status_labels_{};
     int last_status_gif_frame_ = -1;
     int last_second_ = -1;

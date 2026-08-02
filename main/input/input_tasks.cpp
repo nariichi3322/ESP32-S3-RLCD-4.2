@@ -26,6 +26,8 @@
 #include "freertos/task.h"
 
 #define BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT "button gpio config failed: %s"
+#define BUTTON_GPIO_CONFIG_RETRY_LOG_FORMAT \
+    "button gpio config failed: %s; retrying attempt=%u/%u"
 #define BUTTON_ISR_SERVICE_FAILED_LOG_FORMAT "button gpio isr service failed: %s; using polling fallback"
 #define BUTTON_ISR_HANDLER_FAILED_LOG_FORMAT "button gpio %d isr handler failed: %s; using polling fallback"
 #define BUTTON_WAKEUP_FAILED_LOG_FORMAT "button light sleep wakeup failed: %s; using polling fallback"
@@ -53,6 +55,10 @@ static_assert(kButtonInputPinMask == (kBootButtonPinMask | kKeyButtonPinMask),
               "button input pin mask must include BOOT and KEY");
 static_assert(kButtonLongPressTicks > kButtonDebounceTicks,
               "button long-press tick duration must be longer than debounce duration");
+static_assert(kButtonGpioConfigMaxAttempts > 1,
+              "button GPIO configuration must retain a retry opportunity");
+static_assert(kButtonGpioConfigRetryDelayMs > 0,
+              "button GPIO configuration retry delay must be positive");
 static_assert(kButtonIdlePollMs <= kButtonLowRefreshIdlePollMs,
               "low-refresh fallback polling must not wake more often than idle polling");
 static_assert(kButtonActivePollMs <= kButtonIdlePollMs,
@@ -123,6 +129,31 @@ void remove_button_isr_handlers(bool boot_registered, bool key_registered)
     disable_button_interrupts();
 }
 
+bool configure_button_gpio_with_retry(const gpio_config_t &config)
+{
+    for (unsigned attempt = 1;
+         attempt <= kButtonGpioConfigMaxAttempts;
+         ++attempt) {
+        const esp_err_t err = gpio_config(&config);
+        if (err == ESP_OK) {
+            return true;
+        }
+        if (!button_gpio_config_retry_due(attempt, err == ESP_OK)) {
+            ESP_LOGE(TAG,
+                     BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT,
+                     esp_err_to_name(err));
+            return false;
+        }
+        ESP_LOGW(TAG,
+                 BUTTON_GPIO_CONFIG_RETRY_LOG_FORMAT,
+                 esp_err_to_name(err),
+                 static_cast<unsigned>(attempt + 1U),
+                 kButtonGpioConfigMaxAttempts);
+        vTaskDelay(pdMS_TO_TICKS(kButtonGpioConfigRetryDelayMs));
+    }
+    return false;
+}
+
 bool setup_button_edge_wakeup()
 {
     esp_err_t err = gpio_install_isr_service(0);
@@ -178,9 +209,7 @@ void button_task(void *)
     button.pin_bit_mask = kButtonInputPinMask;
     button.pull_down_en = GPIO_PULLDOWN_DISABLE;
     button.pull_up_en = GPIO_PULLUP_ENABLE;
-    esp_err_t err = gpio_config(&button);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, BUTTON_GPIO_CONFIG_FAILED_LOG_FORMAT, esp_err_to_name(err));
+    if (!configure_button_gpio_with_retry(button)) {
         vTaskDelete(nullptr);
         return;
     }

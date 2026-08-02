@@ -24,5 +24,12 @@ int main()
     static_assert(kButtonActivePollMs == 50);
     static_assert(kButtonIdlePollMs == 250);
     static_assert(kButtonLowRefreshIdlePollMs == 500);
+
+    assert(button_gpio_config_retry_due(1, false));
+    assert(button_gpio_config_retry_due(2, false));
+    assert(!button_gpio_config_retry_due(3, false));
+    assert(!button_gpio_config_retry_due(1, true));
+    static_assert(kButtonGpioConfigMaxAttempts == 3);
+    static_assert(kButtonGpioConfigRetryDelayMs == 100);
     return 0;
 }

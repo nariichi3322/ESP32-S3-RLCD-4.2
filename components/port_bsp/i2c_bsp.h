@@ -11,6 +11,8 @@ private:
 public:
     I2cMasterBus(int scl_pin,int sda_pin,int i2c_port);
     ~I2cMasterBus();
+    I2cMasterBus(const I2cMasterBus &) = delete;
+    I2cMasterBus &operator=(const I2cMasterBus &) = delete;
 
     bool IsReady() const;
     int i2c_write_buff(i2c_master_dev_handle_t dev_handle,int reg,uint8_t *buf,uint8_t len);

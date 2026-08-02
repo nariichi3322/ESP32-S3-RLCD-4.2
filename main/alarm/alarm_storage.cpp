@@ -1,4 +1,4 @@
-// 实现闹钟 NVS 三键记录的读取、无变化免提交和整命名空间清除。
+// 实现闹钟 NVS 三键记录的读取、逐键条件写入和整命名空间清除。
 #include "alarm_storage.h"
 
 #include "scoped_nvs_handle.h"
@@ -30,16 +30,27 @@ esp_err_t first_read_error(esp_err_t enabled_err, esp_err_t hour_err, esp_err_t 
     return minute_err;
 }
 
-bool stored_alarm_matches(nvs_handle_t nvs, bool enabled, uint8_t hour, uint8_t minute)
+esp_err_t write_u8_if_changed(nvs_handle_t nvs,
+                              esp_err_t err,
+                              const char *key,
+                              uint8_t value,
+                              bool *changed)
 {
-    uint8_t stored_enabled = 0;
-    uint8_t stored_hour = 0;
-    uint8_t stored_minute = 0;
-    return nvs_get_u8(nvs, kEnabledKey, &stored_enabled) == ESP_OK &&
-           nvs_get_u8(nvs, kHourKey, &stored_hour) == ESP_OK &&
-           nvs_get_u8(nvs, kMinuteKey, &stored_minute) == ESP_OK &&
-           stored_enabled == (enabled ? 1 : 0) &&
-           stored_hour == hour && stored_minute == minute;
+    if (changed) {
+        *changed = false;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+    uint8_t stored = 0;
+    if (nvs_get_u8(nvs, key, &stored) == ESP_OK && stored == value) {
+        return ESP_OK;
+    }
+    err = nvs_set_u8(nvs, key, value);
+    if (err == ESP_OK && changed) {
+        *changed = true;
+    }
+    return err;
 }
 } // namespace
 
@@ -82,19 +93,18 @@ WriteResult write(bool enabled, uint8_t hour, uint8_t minute)
         return {WriteStatus::kOpenFailed, err};
     }
 
-    if (stored_alarm_matches(nvs.get(), enabled, hour, minute)) {
-        nvs.close();
-        return {WriteStatus::kSaved, ESP_OK};
-    }
-
-    err = nvs_set_u8(nvs.get(), kEnabledKey, enabled ? 1 : 0);
-    if (err == ESP_OK) {
-        err = nvs_set_u8(nvs.get(), kHourKey, hour);
-    }
-    if (err == ESP_OK) {
-        err = nvs_set_u8(nvs.get(), kMinuteKey, minute);
-    }
-    if (err == ESP_OK) {
+    bool any_changed = false;
+    bool item_changed = false;
+    err = write_u8_if_changed(
+        nvs.get(), err, kEnabledKey, enabled ? 1 : 0, &item_changed);
+    any_changed = any_changed || item_changed;
+    err = write_u8_if_changed(
+        nvs.get(), err, kHourKey, hour, &item_changed);
+    any_changed = any_changed || item_changed;
+    err = write_u8_if_changed(
+        nvs.get(), err, kMinuteKey, minute, &item_changed);
+    any_changed = any_changed || item_changed;
+    if (err == ESP_OK && any_changed) {
         err = nvs_commit(nvs.get());
     }
     nvs.close();

@@ -1,11 +1,11 @@
 // 实现温湿时钟与小智预览共用的反显数字牌创建和绘制。
 #include "sdl_preview_flip_cards.h"
 
-#include <cstring>
 #include <vector>
 
 #include "dseg_digits.h"
 #include "ui/ui_dseg_layout.h"
+#include "ui/ui_dseg_render.h"
 
 namespace sdl_preview_flip_cards {
 namespace {
@@ -17,12 +17,6 @@ std::vector<lv_color_t> g_flip_card_pixels[kFlipCardCount] = {
     std::vector<lv_color_t>(kFlipCardW * kFlipCardH),
     std::vector<lv_color_t>(kFlipCardW * kFlipCardH),
 };
-
-const DsegGlyph *find_dseg_glyph(const DsegFont &font, char ch)
-{
-    const char *pos = std::strchr(font.chars, ch);
-    return pos ? &font.glyphs[pos - font.chars] : nullptr;
-}
 
 } // namespace
 

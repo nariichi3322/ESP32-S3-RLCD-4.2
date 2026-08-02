@@ -6,8 +6,8 @@
 #include "dseg_digits.h"
 #include "ui_bitmap.h"
 #include "ui_canvas_primitives.h"
-#include "ui_dseg_clock.h"
 #include "ui_dseg_layout.h"
+#include "ui_dseg_render.h"
 
 #include <esp_log.h>
 

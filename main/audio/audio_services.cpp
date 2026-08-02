@@ -285,7 +285,9 @@ void stop_xiaozhi_audio_session()
     bool playback_marked = is_audio_playing();
     bool resources_active = s_xiaozhi_audio_session_owned ||
                             s_xiaozhi_speaker_open ||
-                            s_xiaozhi_speaker_stream_active;
+                            s_xiaozhi_speaker_stream_active ||
+                            (!playback_marked &&
+                             (s_audio_codec || s_audio_power_lock.active()));
     if (!resources_active) {
         return;
     }

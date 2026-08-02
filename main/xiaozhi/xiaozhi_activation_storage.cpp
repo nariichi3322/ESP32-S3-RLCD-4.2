@@ -59,24 +59,72 @@ bool nvs_string_equals(nvs_handle_t nvs, const char *key, const char *expected)
            strcmp(stored, expected) == 0;
 }
 
-bool activation_config_matches(nvs_handle_t nvs,
-                               const char *url,
-                               const char *token,
-                               int32_t version,
-                               const char *challenge)
+esp_err_t write_nvs_string_if_changed(nvs_handle_t nvs,
+                                      esp_err_t err,
+                                      const char *key,
+                                      const char *value,
+                                      bool *changed)
 {
-    int32_t stored_version = 0;
-    uint8_t stored_binding = 0;
-    if (!nvs_string_equals(nvs, kWebsocketUrlKey, url) ||
-        (token && !nvs_string_equals(nvs, kWebsocketTokenKey, token)) ||
-        nvs_get_i32(nvs, kWebsocketVersionKey, &stored_version) != ESP_OK ||
-        stored_version != version ||
-        nvs_get_u8(nvs, kBindingConfirmedKey, &stored_binding) != ESP_OK ||
-        stored_binding != 1) {
-        return false;
+    if (changed) {
+        *changed = false;
     }
-    return !challenge || challenge[0] == '\0' ||
-           nvs_string_equals(nvs, kActivationChallengeKey, challenge);
+    if (err != ESP_OK) {
+        return err;
+    }
+    if (nvs_string_equals(nvs, key, value)) {
+        return ESP_OK;
+    }
+    err = nvs_set_str(nvs, key, value);
+    if (err == ESP_OK && changed) {
+        *changed = true;
+    }
+    return err;
+}
+
+esp_err_t write_nvs_i32_if_changed(nvs_handle_t nvs,
+                                   esp_err_t err,
+                                   const char *key,
+                                   int32_t value,
+                                   bool *changed)
+{
+    if (changed) {
+        *changed = false;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+    int32_t stored = 0;
+    if (nvs_get_i32(nvs, key, &stored) == ESP_OK && stored == value) {
+        return ESP_OK;
+    }
+    err = nvs_set_i32(nvs, key, value);
+    if (err == ESP_OK && changed) {
+        *changed = true;
+    }
+    return err;
+}
+
+esp_err_t write_nvs_u8_if_changed(nvs_handle_t nvs,
+                                  esp_err_t err,
+                                  const char *key,
+                                  uint8_t value,
+                                  bool *changed)
+{
+    if (changed) {
+        *changed = false;
+    }
+    if (err != ESP_OK) {
+        return err;
+    }
+    uint8_t stored = 0;
+    if (nvs_get_u8(nvs, key, &stored) == ESP_OK && stored == value) {
+        return ESP_OK;
+    }
+    err = nvs_set_u8(nvs, key, value);
+    if (err == ESP_OK && changed) {
+        *changed = true;
+    }
+    return err;
 }
 } // namespace
 
@@ -126,28 +174,43 @@ bool xiaozhi_save_activation_config(cJSON *websocket, const char *challenge)
         ESP_LOGW(TAG, XIAOZHI_ACTIVATION_NVS_OPEN_FAILED_FORMAT, esp_err_to_name(err));
         return false;
     }
-    if (activation_config_matches(nvs.get(),
-                                  url->valuestring,
-                                  token_value,
-                                  version_value,
-                                  challenge)) {
-        nvs.close();
-        return true;
+    bool changed = false;
+    bool item_changed = false;
+    err = write_nvs_string_if_changed(nvs.get(),
+                                      err,
+                                      kWebsocketUrlKey,
+                                      url->valuestring,
+                                      &item_changed);
+    changed = changed || item_changed;
+    if (token_value) {
+        err = write_nvs_string_if_changed(nvs.get(),
+                                          err,
+                                          kWebsocketTokenKey,
+                                          token_value,
+                                          &item_changed);
+        changed = changed || item_changed;
     }
-    err = nvs_set_str(nvs.get(), kWebsocketUrlKey, url->valuestring);
-    if (err == ESP_OK && token_value) {
-        err = nvs_set_str(nvs.get(), kWebsocketTokenKey, token_value);
+    err = write_nvs_i32_if_changed(nvs.get(),
+                                   err,
+                                   kWebsocketVersionKey,
+                                   version_value,
+                                   &item_changed);
+    changed = changed || item_changed;
+    err = write_nvs_u8_if_changed(nvs.get(),
+                                  err,
+                                  kBindingConfirmedKey,
+                                  1,
+                                  &item_changed);
+    changed = changed || item_changed;
+    if (challenge && challenge[0] != '\0') {
+        err = write_nvs_string_if_changed(nvs.get(),
+                                          err,
+                                          kActivationChallengeKey,
+                                          challenge,
+                                          &item_changed);
+        changed = changed || item_changed;
     }
-    if (err == ESP_OK) {
-        err = nvs_set_i32(nvs.get(), kWebsocketVersionKey, version_value);
-    }
-    if (err == ESP_OK) {
-        err = nvs_set_u8(nvs.get(), kBindingConfirmedKey, 1);
-    }
-    if (err == ESP_OK && challenge && challenge[0] != '\0') {
-        err = nvs_set_str(nvs.get(), kActivationChallengeKey, challenge);
-    }
-    if (err == ESP_OK) {
+    if (err == ESP_OK && changed) {
         err = nvs_commit(nvs.get());
     }
     nvs.close();

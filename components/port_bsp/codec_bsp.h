@@ -20,6 +20,8 @@ public:
               const char *strName,
               bool microphone_enabled = true);
     ~CodecPort();
+    CodecPort(const CodecPort &) = delete;
+    CodecPort &operator=(const CodecPort &) = delete;
 
     void CodecPort_SetSpeakerVol(int vol);
     void CodecPort_SetMicGain(float db_value);

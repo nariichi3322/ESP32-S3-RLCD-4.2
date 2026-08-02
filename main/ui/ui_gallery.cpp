@@ -277,7 +277,8 @@ static void build_gallery_canvas(lv_obj_t *screen,
                                  int height,
                                  const char *failure_log)
 {
-    if (!screen || !canvas || !buffer || width <= 0 || height <= 0) {
+    if (!screen || !canvas || !buffer || *canvas ||
+        width <= 0 || height <= 0) {
         return;
     }
     if (!ensure_canvas_buffer(buffer, width, height)) {
@@ -290,6 +291,64 @@ static void build_gallery_canvas(lv_obj_t *screen,
     }
     configure_canvas_base(*canvas, *buffer, x, y, width, height);
     lv_canvas_fill_bg(*canvas, lv_color_white(), LV_OPA_COVER);
+}
+
+static void build_gallery_saying_label(lv_obj_t *screen)
+{
+    if (!screen || s_gallery_runtime.saying_label) {
+        return;
+    }
+    s_gallery_runtime.saying_label = make_label(screen,
+                                                kGallerySayingLabelX,
+                                                kGallerySayingLabelY,
+                                                kGallerySayingLabelW,
+                                                kGallerySayingLabelH,
+                                                "");
+    if (!s_gallery_runtime.saying_label) {
+        ESP_LOGW(TAG, "%s", GALLERY_SAYING_LABEL_CREATE_FAILED_LOG);
+        return;
+    }
+    style_gallery_saying_label(s_gallery_runtime.saying_label);
+}
+
+static bool ensure_gallery_page_objects(lv_obj_t *screen)
+{
+    if (!screen) {
+        return false;
+    }
+    bool recovered = false;
+    if (!s_gallery_runtime.image_canvas) {
+        build_gallery_canvas(screen,
+                             &s_gallery_runtime.image_canvas,
+                             &s_gallery_runtime.image_canvas_buffer,
+                             kGalleryImageCanvasX,
+                             kGalleryImageCanvasY,
+                             CLOCK_GALLERY_IMAGE_WIDTH,
+                             CLOCK_GALLERY_IMAGE_HEIGHT,
+                             GALLERY_IMAGE_CANVAS_CREATE_FAILED_LOG);
+        recovered |= s_gallery_runtime.image_canvas != nullptr;
+    }
+    if (!s_gallery_runtime.time_canvas) {
+        build_gallery_canvas(screen,
+                             &s_gallery_runtime.time_canvas,
+                             &s_gallery_runtime.time_canvas_buffer,
+                             kGalleryTimeCanvasX,
+                             kGalleryTimeCanvasY,
+                             kGalleryTimeCanvasW,
+                             kGalleryTimeCanvasH,
+                             GALLERY_TIME_CANVAS_CREATE_FAILED_LOG);
+        recovered |= s_gallery_runtime.time_canvas != nullptr;
+    }
+    if (!s_gallery_runtime.saying_label) {
+        build_gallery_saying_label(screen);
+        recovered |= s_gallery_runtime.saying_label != nullptr;
+    }
+    if (recovered) {
+        invalidate_gallery_draw_cache();
+    }
+    return s_gallery_runtime.image_canvas &&
+           s_gallery_runtime.time_canvas &&
+           s_gallery_runtime.saying_label;
 }
 
 static bool update_gallery_image_for_date(const struct tm &local)
@@ -399,7 +458,9 @@ bool update_gallery_page(const struct tm &local)
 
 void build_gallery_page()
 {
-    if (work_page_root(kWorkPageGallery)) {
+    lv_obj_t *existing_root = work_page_root(kWorkPageGallery);
+    if (existing_root) {
+        ensure_gallery_page_objects(existing_root);
         return;
     }
     lv_obj_t *screen = create_page_root();
@@ -444,17 +505,8 @@ void build_gallery_page()
                          kGalleryTimeCanvasH,
                          GALLERY_TIME_CANVAS_CREATE_FAILED_LOG);
 
-    s_gallery_runtime.saying_label = make_label(screen,
-                                                kGallerySayingLabelX,
-                                                kGallerySayingLabelY,
-                                                kGallerySayingLabelW,
-                                                kGallerySayingLabelH,
-                                                "");
-    if (!s_gallery_runtime.saying_label) {
-        ESP_LOGW(TAG, "%s", GALLERY_SAYING_LABEL_CREATE_FAILED_LOG);
-    } else {
-        style_gallery_saying_label(s_gallery_runtime.saying_label);
-    }
+    build_gallery_saying_label(screen);
+    ensure_gallery_page_objects(screen);
 
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
     update_work_page_battery_icon(kWorkPageGallery, battery_percent_load());

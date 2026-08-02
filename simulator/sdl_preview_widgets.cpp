@@ -33,6 +33,29 @@ lv_obj_t *make_black_bar(lv_obj_t *parent, int x, int y, int w, int h)
     return bar;
 }
 
+lv_obj_t *make_canvas(lv_obj_t *parent,
+                      int x,
+                      int y,
+                      int width,
+                      int height,
+                      lv_color_t *pixels)
+{
+    if (!parent || !pixels || width <= 0 || height <= 0) {
+        return nullptr;
+    }
+    lv_obj_t *canvas = lv_canvas_create(parent);
+    if (!canvas) {
+        return nullptr;
+    }
+    lv_obj_clear_flag(canvas, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_pos(canvas, x, y);
+    lv_obj_set_size(canvas, width, height);
+    lv_obj_set_style_border_width(canvas, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(canvas, 0, LV_PART_MAIN);
+    lv_canvas_set_buffer(canvas, pixels, width, height, LV_IMG_CF_TRUE_COLOR);
+    return canvas;
+}
+
 lv_obj_t *make_label_with_font(lv_obj_t *parent,
                                int x,
                                int y,

@@ -6,10 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
-import re
 import sys
-import tempfile
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -31,7 +28,10 @@ try:
         FIRMWARE_ARTIFACTS,
         LATEST_MAX_BYTES,
         VERSIONS_KEEP,
+        atomic_write,
+        encode_json,
         firmware_artifact_name,
+        version_key,
     )
 except ModuleNotFoundError:
     sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -46,11 +46,11 @@ except ModuleNotFoundError:
         FIRMWARE_ARTIFACTS,
         LATEST_MAX_BYTES,
         VERSIONS_KEEP,
+        atomic_write,
+        encode_json,
         firmware_artifact_name,
+        version_key,
     )
-
-
-VERSION_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -66,10 +66,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def require_version(value: str) -> tuple[int, int, int]:
-    match = VERSION_RE.fullmatch(value)
-    if not match:
-        raise ValueError(f"invalid version: {value}")
-    return tuple(int(part) for part in match.groups())
+    return version_key(value)
 
 
 def normalize_public_base(value: str) -> str:
@@ -101,10 +98,6 @@ def file_metadata(path: Path) -> tuple[str, int]:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest(), path.stat().st_size
-
-
-def encode_json(data: object) -> bytes:
-    return (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
 
 
 def fit_latest_notes(manifest: dict[str, object], notes: str) -> bytes:
@@ -147,21 +140,6 @@ def load_versions(path: Path) -> list[dict[str, object]]:
     return [item for item in items if isinstance(item, dict)]
 
 
-def atomic_write(path: Path, content: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    try:
-        with os.fdopen(fd, "wb") as handle:
-            handle.write(content)
-        os.replace(temp_name, path)
-    except Exception:
-        try:
-            os.unlink(temp_name)
-        except FileNotFoundError:
-            pass
-        raise
-
-
 def main() -> int:
     args = parse_args()
     require_version(args.version)
@@ -195,11 +173,11 @@ def main() -> int:
     ]
     for item in existing:
         version = str(item.get(FIELD_VERSION, ""))
-        if VERSION_RE.fullmatch(version):
-            item[FIELD_NOTES] = compact_ota_notes(
-                version,
-                str(item.get(FIELD_NOTES, "")),
-            )
+        require_version(version)
+        item[FIELD_NOTES] = compact_ota_notes(
+            version,
+            str(item.get(FIELD_NOTES, "")),
+        )
     sortable = [current, *existing]
     sortable.sort(
         key=lambda item: require_version(str(item.get(FIELD_VERSION, ""))),

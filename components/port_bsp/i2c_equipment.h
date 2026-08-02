@@ -43,6 +43,8 @@ private:
 public:
 	Shtc3Port(I2cMasterBus& i2cbus);
 	~Shtc3Port();
+	Shtc3Port(const Shtc3Port &) = delete;
+	Shtc3Port &operator=(const Shtc3Port &) = delete;
 
 	etError Shtc3_Wakeup();
 	etError Shtc3_Sleep();

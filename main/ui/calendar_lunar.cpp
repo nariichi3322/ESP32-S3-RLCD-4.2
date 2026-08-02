@@ -21,19 +21,19 @@ struct CalendarFestivalRule {
 };
 
 static constexpr LunarYearInfo kLunarYears[] = {
-    {2023, 0x0d2b2},
-    {2024, 0x0a950},
-    {2025, 0x0b557},
-    {2026, 0x056a0},
-    {2027, 0x0a5b0},
-    {2028, 0x152b5},
-    {2029, 0x052b0},
-    {2030, 0x0a930},
-    {2031, 0x07954},
-    {2032, 0x06aa0},
-    {2033, 0x0ad50},
-    {2034, 0x05b52},
-    {2035, 0x04b60},
+    {2023, 0x05b52},
+    {2024, 0x04b60},
+    {2025, 0x0a6e6},
+    {2026, 0x0a4e0},
+    {2027, 0x0d260},
+    {2028, 0x0ea65},
+    {2029, 0x0d530},
+    {2030, 0x05aa0},
+    {2031, 0x076a3},
+    {2032, 0x096d0},
+    {2033, 0x04afb},
+    {2034, 0x04ad0},
+    {2035, 0x0a4d0},
 };
 
 constexpr bool lunar_year_table_contiguous()
@@ -90,11 +90,7 @@ static constexpr int kLunarBaseYear = 2023;
 static constexpr int kLunarBaseMonth = 1;
 static constexpr int kLunarBaseDay = 22;
 static constexpr int kSolarTermsPerMonth = 2;
-static constexpr int kSolarTermBaseYear = 1900;
-static constexpr double kSolarTermYearMs = 31556925974.7;
-static constexpr double kSolarTermBaseMs = -2208491700000.0; // 1900-01-06 02:05 UTC
-static constexpr double kMsPerMinute = 60000.0;
-static constexpr double kMsPerDay = 86400000.0;
+static constexpr int kSolarTermsPerYear = kLastGregorianMonth * kSolarTermsPerMonth;
 static constexpr const char *kCalendarLunarPlaceholder = "--";
 static constexpr const char *kLunarMonthDisplayFormat = "%s%s";
 
@@ -102,11 +98,20 @@ static const int kGregorianMonthDays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31
 static_assert(array_count(kGregorianMonthDays) == kLastGregorianMonth,
               "gregorian month days must cover January through December");
 
-static const int kSolarTermMinutes[] = {
-    0, 21208, 42467, 63836, 85337, 107014,
-    128867, 150921, 173149, 195551, 218072, 240693,
-    263343, 285989, 308563, 331033, 353350, 375494,
-    397447, 419210, 440795, 462224, 483532, 504758,
+// 香港天文台公历与农历日期对照表中的节气日号，按小寒至冬至排列。
+static constexpr uint8_t kSolarTermDays[][kSolarTermsPerYear] = {
+    {6, 20, 4, 19, 5, 20, 4, 19, 5, 20, 5, 21, 6, 22, 7, 22, 7, 22, 8, 23, 7, 22, 6, 21}, // 2024
+    {5, 20, 3, 18, 5, 20, 4, 20, 5, 21, 5, 21, 7, 22, 7, 23, 7, 23, 8, 23, 7, 22, 7, 21}, // 2025
+    {5, 20, 4, 18, 5, 20, 5, 20, 5, 21, 5, 21, 7, 23, 7, 23, 7, 23, 8, 23, 7, 22, 7, 22}, // 2026
+    {5, 20, 4, 19, 6, 21, 5, 20, 6, 21, 6, 21, 7, 23, 8, 23, 8, 23, 8, 23, 7, 22, 7, 22}, // 2027
+    {6, 20, 4, 19, 5, 20, 4, 19, 5, 20, 5, 21, 6, 22, 7, 22, 7, 22, 8, 23, 7, 22, 6, 21}, // 2028
+    {5, 20, 3, 18, 5, 20, 4, 20, 5, 21, 5, 21, 7, 22, 7, 23, 7, 23, 8, 23, 7, 22, 7, 21}, // 2029
+    {5, 20, 4, 18, 5, 20, 5, 20, 5, 21, 5, 21, 7, 23, 7, 23, 7, 23, 8, 23, 7, 22, 7, 22}, // 2030
+    {5, 20, 4, 19, 6, 21, 5, 20, 6, 21, 6, 21, 7, 23, 8, 23, 8, 23, 8, 23, 7, 22, 7, 22}, // 2031
+    {6, 20, 4, 19, 5, 20, 4, 19, 5, 20, 5, 21, 6, 22, 7, 22, 7, 22, 8, 23, 7, 22, 6, 21}, // 2032
+    {5, 20, 3, 18, 5, 20, 4, 20, 5, 21, 5, 21, 7, 22, 7, 23, 7, 23, 8, 23, 7, 22, 7, 21}, // 2033
+    {5, 20, 4, 18, 5, 20, 5, 20, 5, 21, 5, 21, 7, 23, 7, 23, 7, 23, 8, 23, 7, 22, 7, 22}, // 2034
+    {5, 20, 4, 19, 6, 21, 5, 20, 5, 21, 6, 21, 7, 23, 7, 23, 8, 23, 8, 23, 7, 22, 7, 22}, // 2035
 };
 
 static const CalendarFestivalRule kGregorianFestivals[] = {
@@ -140,8 +145,11 @@ static_assert(array_count(kLunarMonthNames) == static_cast<size_t>(kLastLunarMon
               "lunar month names must cover month zero through month twelve");
 static_assert(array_count(kSolarTermNames) == kLastGregorianMonth * kSolarTermsPerMonth,
               "solar term names must cover two terms per month");
-static_assert(array_count(kSolarTermMinutes) == kLastGregorianMonth * kSolarTermsPerMonth,
-              "solar term minute offsets must cover two terms per month");
+static_assert(array_count(kSolarTermDays) ==
+                  static_cast<size_t>(kMaxValidYear - kMinValidYear + 1),
+              "solar term table must cover the supported calendar range");
+static_assert(array_count(kSolarTermDays[0]) == kSolarTermsPerYear,
+              "solar term table must cover all terms in each year");
 
 static int days_from_civil(int year, unsigned month, unsigned day)
 {
@@ -151,23 +159,6 @@ static int days_from_civil(int year, unsigned month, unsigned day)
     const unsigned doy = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1;
     const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     return era * 146097 + (int)doe - 719468;
-}
-
-static void civil_from_days(int z, int *year, unsigned *month, unsigned *day)
-{
-    z += 719468;
-    const int era = (z >= 0 ? z : z - 146096) / 146097;
-    const unsigned doe = (unsigned)(z - era * 146097);
-    const unsigned yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    int y = (int)yoe + era * 400;
-    const unsigned doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    const unsigned mp = (5 * doy + 2) / 153;
-    const unsigned d = doy - (153 * mp + 2) / 5 + 1;
-    const unsigned m = mp + (mp < 10 ? 3 : -9);
-    y += m <= 2;
-    *year = y;
-    *month = m;
-    *day = d;
 }
 
 static const LunarYearInfo *find_lunar_year(int year)
@@ -325,16 +316,10 @@ static const char *solar_term(int year, int month, int day)
         return nullptr;
     }
     int first = (month - kFirstGregorianMonth) * kSolarTermsPerMonth;
+    const uint8_t *year_days = kSolarTermDays[year - kMinValidYear];
     for (int i = 0; i < kSolarTermsPerMonth; ++i) {
         int term = first + i;
-        double ms = kSolarTermBaseMs + kSolarTermYearMs * (year - kSolarTermBaseYear) +
-                    (double)kSolarTermMinutes[term] * kMsPerMinute;
-        int days = (int)(ms / kMsPerDay);
-        int ty = 0;
-        unsigned tm = 0;
-        unsigned td = 0;
-        civil_from_days(days, &ty, &tm, &td);
-        if (ty == year && (int)tm == month && (int)td == day) {
+        if (year_days[term] == day) {
             return kSolarTermNames[term];
         }
     }

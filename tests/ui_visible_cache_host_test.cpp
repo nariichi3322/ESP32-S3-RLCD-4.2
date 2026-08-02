@@ -5,6 +5,23 @@
 #include <stdlib.h>
 
 namespace {
+struct CacheSnapshot {
+    uint32_t version = 0;
+    int value = 0;
+};
+
+bool g_snapshot_load_succeeds = false;
+CacheSnapshot g_snapshot_to_load = {};
+
+bool load_cache_snapshot(CacheSnapshot *out)
+{
+    if (!out || !g_snapshot_load_succeeds) {
+        return false;
+    }
+    *out = g_snapshot_to_load;
+    return true;
+}
+
 struct tm local_value(int year, int month, int day, int hour, int minute, int second)
 {
     struct tm value = {};
@@ -31,6 +48,38 @@ int main()
     assert(ui_visible_cache_status_refresh_due(false, 7, 7));
     assert(!ui_visible_cache_status_refresh_due(true, 7, 7));
     assert(ui_visible_cache_status_refresh_due(true, 7, 8));
+
+    CacheSnapshot cache = {7, 42};
+    bool cache_valid = true;
+    assert(!ui_visible_cache_snapshot_try_refresh(
+        &cache,
+        &cache_valid,
+        load_cache_snapshot));
+    assert(cache.version == 7);
+    assert(cache.value == 42);
+    assert(cache_valid);
+
+    g_snapshot_load_succeeds = true;
+    g_snapshot_to_load = {8, 84};
+    assert(ui_visible_cache_snapshot_try_refresh(
+        &cache,
+        &cache_valid,
+        load_cache_snapshot));
+    assert(cache.version == 8);
+    assert(cache.value == 84);
+    assert(cache_valid);
+    assert(!ui_visible_cache_snapshot_try_refresh<CacheSnapshot>(
+        nullptr,
+        &cache_valid,
+        load_cache_snapshot));
+    assert(!ui_visible_cache_snapshot_try_refresh(
+        &cache,
+        nullptr,
+        load_cache_snapshot));
+    assert(!ui_visible_cache_snapshot_try_refresh<CacheSnapshot>(
+        &cache,
+        &cache_valid,
+        nullptr));
 
     setenv("TZ", "Asia/Shanghai", 1);
     tzset();

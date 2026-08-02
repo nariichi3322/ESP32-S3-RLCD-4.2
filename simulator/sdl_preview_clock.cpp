@@ -2,13 +2,13 @@
 #include "sdl_preview_clock.h"
 
 #include <stdio.h>
-#include <string.h>
 
 #include "dseg_digits.h"
 #include "sdl_preview_weather.h"
 #include "sdl_preview_widgets.h"
 #include "status_gif_60.h"
 #include "ui_clock_layout.h"
+#include "ui_dseg_render.h"
 #include "ui_icons.h"
 
 LV_FONT_DECLARE(qweather_icons_36);
@@ -18,45 +18,12 @@ namespace {
 using namespace ui_clock_layout;
 
 using sdl_preview_widgets::draw_1bit_icon;
-using sdl_preview_widgets::make_bar;
+using sdl_preview_widgets::make_black_bar;
+using sdl_preview_widgets::make_canvas;
 using sdl_preview_widgets::make_label;
 using sdl_preview_widgets::make_label_with_font;
 using sdl_preview_widgets::set_label_text_if_changed;
-using sdl_preview_widgets::set_obj_black;
 
-const DsegGlyph *find_dseg_glyph(const DsegFont &font, char ch)
-{
-    const char *pos = strchr(font.chars, ch);
-    if (!pos) return nullptr;
-    return &font.glyphs[pos - font.chars];
-}
-
-int draw_dseg_text(lv_obj_t *canvas,
-                   const DsegFont &font,
-                   const char *text,
-                   int cursor_x,
-                   int baseline_y)
-{
-    int x_cursor = cursor_x;
-    for (const char *p = text; *p; ++p) {
-        const DsegGlyph *glyph = find_dseg_glyph(font, *p);
-        if (!glyph) continue;
-        uint32_t bit = 0;
-        for (int y = 0; y < glyph->height; ++y) {
-            for (int x = 0; x < glyph->width; ++x, ++bit) {
-                uint8_t byte = font.bitmap[glyph->bitmap_offset + bit / 8];
-                if (byte & (0x80 >> (bit & 7))) {
-                    lv_canvas_set_px_color(canvas,
-                                           x_cursor + glyph->x_offset + x,
-                                           baseline_y + glyph->y_offset + y,
-                                           lv_color_black());
-                }
-            }
-        }
-        x_cursor += glyph->x_advance;
-    }
-    return x_cursor;
-}
 } // namespace
 
 SdlPreviewClock::SdlPreviewClock(sdl_preview_work_status::Bar &work_status)
@@ -152,12 +119,14 @@ void SdlPreviewClock::draw_status_gif_frame(int frame)
 
 void SdlPreviewClock::remember_lower_panel_object(lv_obj_t *obj)
 {
-    for (lv_obj_t *&slot : lower_panel_objects_) {
-        if (!slot) {
-            slot = obj;
-            return;
-        }
+    if (!obj) {
+        return;
     }
+    if (lower_panel_object_count_ >= lower_panel_objects_.size()) {
+        fprintf(stderr, "SDL clock lower-panel object registry is full\n");
+        return;
+    }
+    lower_panel_objects_[lower_panel_object_count_++] = obj;
 }
 
 void SdlPreviewClock::set_lower_panel_visible(bool visible)
@@ -212,19 +181,12 @@ void SdlPreviewClock::build_status_header(lv_obj_t *screen)
     lv_obj_set_style_pad_all(alert_pill_, 0, LV_PART_MAIN);
     lv_obj_add_flag(alert_pill_, LV_OBJ_FLAG_HIDDEN);
 
-    alert_icon_canvas_ = lv_canvas_create(alert_pill_);
-    lv_obj_clear_flag(alert_icon_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(alert_icon_canvas_,
-                   kClockAlertIconX,
-                   kClockAlertIconY);
-    lv_obj_set_size(alert_icon_canvas_, WARNING_ICON_WIDTH, WARNING_ICON_HEIGHT);
-    lv_obj_set_style_border_width(alert_icon_canvas_, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(alert_icon_canvas_, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(alert_icon_canvas_,
-                         alert_icon_canvas_pixels_.data(),
-                         WARNING_ICON_WIDTH,
-                         WARNING_ICON_HEIGHT,
-                         LV_IMG_CF_TRUE_COLOR);
+    alert_icon_canvas_ = make_canvas(alert_pill_,
+                                     kClockAlertIconX,
+                                     kClockAlertIconY,
+                                     WARNING_ICON_WIDTH,
+                                     WARNING_ICON_HEIGHT,
+                                     alert_icon_canvas_pixels_.data());
     draw_1bit_icon(alert_icon_canvas_,
                    WARNING_ICON_WIDTH,
                    WARNING_ICON_HEIGHT,
@@ -294,17 +256,12 @@ void SdlPreviewClock::build_weather_summary(lv_obj_t *screen)
 
 void SdlPreviewClock::build_sensor_summary(lv_obj_t *screen)
 {
-    temp_icon_canvas_ = lv_canvas_create(screen);
-    lv_obj_clear_flag(temp_icon_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(temp_icon_canvas_, kClockTempIconX, kClockTempIconY);
-    lv_obj_set_size(temp_icon_canvas_, TEMP_ICON_WIDTH, TEMP_ICON_HEIGHT);
-    lv_obj_set_style_border_width(temp_icon_canvas_, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(temp_icon_canvas_, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(temp_icon_canvas_,
-                         temp_icon_canvas_pixels_.data(),
-                         TEMP_ICON_WIDTH,
-                         TEMP_ICON_HEIGHT,
-                         LV_IMG_CF_TRUE_COLOR);
+    temp_icon_canvas_ = make_canvas(screen,
+                                    kClockTempIconX,
+                                    kClockTempIconY,
+                                    TEMP_ICON_WIDTH,
+                                    TEMP_ICON_HEIGHT,
+                                    temp_icon_canvas_pixels_.data());
     draw_1bit_icon(temp_icon_canvas_,
                    TEMP_ICON_WIDTH,
                    TEMP_ICON_HEIGHT,
@@ -312,17 +269,12 @@ void SdlPreviewClock::build_sensor_summary(lv_obj_t *screen)
                    temp_icon_bits,
                    lv_color_black(),
                    lv_color_white());
-    humi_icon_canvas_ = lv_canvas_create(screen);
-    lv_obj_clear_flag(humi_icon_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(humi_icon_canvas_, kClockHumiIconX, kClockHumiIconY);
-    lv_obj_set_size(humi_icon_canvas_, HUMI_ICON_WIDTH, HUMI_ICON_HEIGHT);
-    lv_obj_set_style_border_width(humi_icon_canvas_, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(humi_icon_canvas_, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(humi_icon_canvas_,
-                         humi_icon_canvas_pixels_.data(),
-                         HUMI_ICON_WIDTH,
-                         HUMI_ICON_HEIGHT,
-                         LV_IMG_CF_TRUE_COLOR);
+    humi_icon_canvas_ = make_canvas(screen,
+                                    kClockHumiIconX,
+                                    kClockHumiIconY,
+                                    HUMI_ICON_WIDTH,
+                                    HUMI_ICON_HEIGHT,
+                                    humi_icon_canvas_pixels_.data());
     draw_1bit_icon(humi_icon_canvas_,
                    HUMI_ICON_WIDTH,
                    HUMI_ICON_HEIGHT,
@@ -348,33 +300,19 @@ void SdlPreviewClock::build_sensor_summary(lv_obj_t *screen)
     remember_lower_panel_object(humi_label_);
     lv_obj_set_style_text_align(temp_label_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_obj_set_style_text_align(humi_label_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    temp_trend_canvas_ = lv_canvas_create(screen);
-    lv_obj_clear_flag(temp_trend_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(temp_trend_canvas_,
-                   kClockTrendCanvasX,
-                   kClockTempTrendCanvasY);
-    lv_obj_set_size(temp_trend_canvas_, TREND_ICON_WIDTH, TREND_ICON_HEIGHT);
-    lv_obj_set_style_border_width(temp_trend_canvas_, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(temp_trend_canvas_, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(temp_trend_canvas_,
-                         temp_trend_canvas_pixels_.data(),
-                         TREND_ICON_WIDTH,
-                         TREND_ICON_HEIGHT,
-                         LV_IMG_CF_TRUE_COLOR);
+    temp_trend_canvas_ = make_canvas(screen,
+                                     kClockTrendCanvasX,
+                                     kClockTempTrendCanvasY,
+                                     TREND_ICON_WIDTH,
+                                     TREND_ICON_HEIGHT,
+                                     temp_trend_canvas_pixels_.data());
     update_trend_icon(temp_trend_canvas_, 1);
-    humi_trend_canvas_ = lv_canvas_create(screen);
-    lv_obj_clear_flag(humi_trend_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(humi_trend_canvas_,
-                   kClockTrendCanvasX,
-                   kClockHumiTrendCanvasY);
-    lv_obj_set_size(humi_trend_canvas_, TREND_ICON_WIDTH, TREND_ICON_HEIGHT);
-    lv_obj_set_style_border_width(humi_trend_canvas_, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(humi_trend_canvas_, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(humi_trend_canvas_,
-                         humi_trend_canvas_pixels_.data(),
-                         TREND_ICON_WIDTH,
-                         TREND_ICON_HEIGHT,
-                         LV_IMG_CF_TRUE_COLOR);
+    humi_trend_canvas_ = make_canvas(screen,
+                                     kClockTrendCanvasX,
+                                     kClockHumiTrendCanvasY,
+                                     TREND_ICON_WIDTH,
+                                     TREND_ICON_HEIGHT,
+                                     humi_trend_canvas_pixels_.data());
     update_trend_icon(humi_trend_canvas_, -1);
     remember_lower_panel_object(temp_trend_canvas_);
     remember_lower_panel_object(humi_trend_canvas_);
@@ -382,99 +320,69 @@ void SdlPreviewClock::build_sensor_summary(lv_obj_t *screen)
 
 void SdlPreviewClock::build_time_and_progress(lv_obj_t *screen)
 {
-    time_canvas_ = lv_canvas_create(screen);
-    lv_obj_clear_flag(time_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(time_canvas_, kClockTimeCanvasX, kClockTimeCanvasY);
-    lv_obj_set_size(time_canvas_,
-                    kClockTimeCanvasWidth,
-                    kClockTimeCanvasHeight);
-    lv_obj_set_style_border_width(time_canvas_, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(time_canvas_, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(time_canvas_,
-                         time_canvas_pixels_.data(),
-                         kClockTimeCanvasWidth,
-                         kClockTimeCanvasHeight,
-                         LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(time_canvas_, lv_color_white(), LV_OPA_COVER);
+    time_canvas_ = make_canvas(screen,
+                               kClockTimeCanvasX,
+                               kClockTimeCanvasY,
+                               kClockTimeCanvasWidth,
+                               kClockTimeCanvasHeight,
+                               time_canvas_pixels_.data());
+    if (time_canvas_) {
+        lv_canvas_fill_bg(time_canvas_, lv_color_white(), LV_OPA_COVER);
+    }
 
-    second_canvas_ = lv_canvas_create(screen);
-    lv_obj_clear_flag(second_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(second_canvas_,
-                   kClockSecondCanvasX,
-                   kClockSecondCanvasY);
-    lv_obj_set_size(second_canvas_,
-                    kClockSecondCanvasWidth,
-                    kClockSecondCanvasHeight);
-    lv_obj_set_style_border_width(second_canvas_, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(second_canvas_, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(second_canvas_,
-                         second_canvas_pixels_.data(),
-                         kClockSecondCanvasWidth,
-                         kClockSecondCanvasHeight,
-                         LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(second_canvas_, lv_color_white(), LV_OPA_COVER);
+    second_canvas_ = make_canvas(screen,
+                                 kClockSecondCanvasX,
+                                 kClockSecondCanvasY,
+                                 kClockSecondCanvasWidth,
+                                 kClockSecondCanvasHeight,
+                                 second_canvas_pixels_.data());
+    if (second_canvas_) {
+        lv_canvas_fill_bg(second_canvas_, lv_color_white(), LV_OPA_COVER);
+    }
 
-    status_gif_canvas_ = lv_canvas_create(screen);
+    status_gif_canvas_ = make_canvas(screen,
+                                     kClockStatusGifCanvasX,
+                                     kClockStatusGifCanvasY,
+                                     STATUS_GIF_WIDTH,
+                                     STATUS_GIF_HEIGHT,
+                                     status_gif_canvas_pixels_.data());
     remember_lower_panel_object(status_gif_canvas_);
-    lv_obj_clear_flag(status_gif_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(status_gif_canvas_,
-                   kClockStatusGifCanvasX,
-                   kClockStatusGifCanvasY);
-    lv_obj_set_size(status_gif_canvas_, STATUS_GIF_WIDTH, STATUS_GIF_HEIGHT);
-    lv_obj_set_style_border_width(status_gif_canvas_, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(status_gif_canvas_, 0, LV_PART_MAIN);
-    lv_canvas_set_buffer(status_gif_canvas_,
-                         status_gif_canvas_pixels_.data(),
-                         STATUS_GIF_WIDTH,
-                         STATUS_GIF_HEIGHT,
-                         LV_IMG_CF_TRUE_COLOR);
-    lv_canvas_fill_bg(status_gif_canvas_, lv_color_white(), LV_OPA_COVER);
+    if (status_gif_canvas_) {
+        lv_canvas_fill_bg(status_gif_canvas_, lv_color_white(), LV_OPA_COVER);
+    }
     draw_status_gif_frame(0);
 
-    lv_obj_t *top_line = make_bar(
+    lv_obj_t *top_line = make_black_bar(
         screen,
         kClockDividerX,
         kClockTopDividerY,
         kClockDividerWidth,
         kClockDividerHeight);
-    lv_obj_t *bottom_line = make_bar(screen,
-                                     kClockDividerX,
-                                     kClockBottomDividerY,
-                                     kClockDividerWidth,
-                                     kClockDividerHeight);
+    lv_obj_t *bottom_line = make_black_bar(screen,
+                                           kClockDividerX,
+                                           kClockBottomDividerY,
+                                           kClockDividerWidth,
+                                           kClockDividerHeight);
     day_progress_.build(screen, 59);
     second_progress_.build(screen, kClockSecondProgressCanvasY);
-    panel_sep_a_ = make_bar(screen,
-                            kClockLowerPanelSeparatorAX,
-                            kClockLowerPanelSeparatorY,
-                            kClockLowerPanelSeparatorWidth,
-                            kClockLowerPanelSeparatorHeight);
-    panel_sep_b_ = make_bar(screen,
-                            kClockLowerPanelSeparatorBX,
-                            kClockLowerPanelSeparatorY,
-                            kClockLowerPanelSeparatorWidth,
-                            kClockLowerPanelSeparatorHeight);
-    remember_lower_panel_object(panel_sep_a_);
-    remember_lower_panel_object(panel_sep_b_);
-    set_obj_black(top_line, true);
-    set_obj_black(bottom_line, true);
-    set_obj_black(panel_sep_a_, true);
-    set_obj_black(panel_sep_b_, true);
+    panel_sep_a_ = make_black_bar(screen,
+                                  kClockLowerPanelSeparatorAX,
+                                  kClockLowerPanelSeparatorY,
+                                  kClockLowerPanelSeparatorWidth,
+                                  kClockLowerPanelSeparatorHeight);
+    panel_sep_b_ = make_black_bar(screen,
+                                  kClockLowerPanelSeparatorBX,
+                                  kClockLowerPanelSeparatorY,
+                                  kClockLowerPanelSeparatorWidth,
+                                  kClockLowerPanelSeparatorHeight);
 
-    low_battery_icon_canvas_ = lv_canvas_create(screen);
-    lv_obj_clear_flag(low_battery_icon_canvas_, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_pos(low_battery_icon_canvas_,
-                   kClockLowBatteryIconX,
-                   kClockLowBatteryIconY);
-    lv_obj_set_size(low_battery_icon_canvas_, LOW_BATTERY_ICON_WIDTH, LOW_BATTERY_ICON_HEIGHT);
-    lv_obj_set_style_border_width(low_battery_icon_canvas_, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(low_battery_icon_canvas_, 0, LV_PART_MAIN);
-    lv_obj_add_flag(low_battery_icon_canvas_, LV_OBJ_FLAG_HIDDEN);
-    lv_canvas_set_buffer(low_battery_icon_canvas_,
-                         low_battery_icon_canvas_pixels_.data(),
-                         LOW_BATTERY_ICON_WIDTH,
-                         LOW_BATTERY_ICON_HEIGHT,
-                         LV_IMG_CF_TRUE_COLOR);
+    low_battery_icon_canvas_ = make_canvas(screen,
+                                           kClockLowBatteryIconX,
+                                           kClockLowBatteryIconY,
+                                           LOW_BATTERY_ICON_WIDTH,
+                                           LOW_BATTERY_ICON_HEIGHT,
+                                           low_battery_icon_canvas_pixels_.data());
+    set_object_visible(low_battery_icon_canvas_, false);
     draw_1bit_icon(low_battery_icon_canvas_,
                    LOW_BATTERY_ICON_WIDTH,
                    LOW_BATTERY_ICON_HEIGHT,
@@ -554,6 +462,8 @@ void SdlPreviewClock::show_setup_status()
 {
     set_lower_panel_visible(false);
     set_setup_panel_visible(true);
+    set_object_visible(panel_sep_a_, false);
+    set_object_visible(panel_sep_b_, false);
     work_status_.set_status_icons_visible(false);
 }
 

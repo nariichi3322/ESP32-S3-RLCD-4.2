@@ -6,6 +6,7 @@
 
 #include <atomic>
 #include <esp_attr.h>
+#include <freertos/task.h>
 #include <string.h>
 
 namespace {
@@ -73,6 +74,7 @@ WifiPortalSaveSnapshot begin_save_attempt(bool notify_waiters)
             }
             return unpack_save_state(next);
         }
+        taskYIELD();
     }
 }
 
@@ -200,6 +202,7 @@ void wifi_portal_save_result_store(WifiPortalSaveResult result)
                 std::memory_order_acquire)) {
             return;
         }
+        taskYIELD();
     }
 }
 
@@ -227,6 +230,7 @@ bool wifi_portal_save_result_store_if_generation(
             }
             return true;
         }
+        taskYIELD();
     }
 }
 

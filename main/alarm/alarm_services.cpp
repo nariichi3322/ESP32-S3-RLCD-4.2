@@ -11,6 +11,7 @@
 #include "audio_services.h"
 #include "pomodoro_services.h"
 #include "reminder_schedule.h"
+#include "scoped_semaphore_lock.h"
 #include "sensor_time.h"
 #include "task_notification_target.h"
 #include "ui_task_notify.h"
@@ -33,6 +34,7 @@ constexpr uint32_t kAlarmRepeatPauseMs = 5U * 1000U;
 constexpr uint32_t kAlarmAudioReleaseWaitMs = 3000U;
 constexpr uint32_t kAlarmAudioReleasePollMs = 20U;
 constexpr uint32_t kAlarmReplaceConfirmationTimeoutMs = 2U * 60U * 1000U;
+constexpr uint8_t kAlarmPendingSaveCatchUpLimit = 3;
 constexpr const char *kAlarmSetResultFormat =
     "{\"enabled\":true,\"hour\":%d,\"minute\":%d,\"single_use\":true}";
 constexpr const char *kAlarmDisabledResult =
@@ -45,8 +47,8 @@ constexpr const char *kAlarmReplaceConfirmationInvalidResult =
     "alarm replacement confirmation invalid or expired; ask the user again";
 
 TaskNotificationTarget s_alarm_task_target;
+StaticTaskMutex s_alarm_persistence_mutex;
 std::atomic<bool> s_stop_requested{false};
-std::atomic<bool> s_save_pending{false};
 std::atomic<bool> s_save_retry_pending{false};
 std::atomic<bool> s_auto_disable_save_pending{false};
 
@@ -89,7 +91,19 @@ void publish_alarm_state(bool enabled, bool ringing, int hour, int minute)
     }
 }
 
-bool persist_alarm(bool enabled, int hour, int minute)
+void publish_alarm_state_for_deferred_save(bool enabled,
+                                           bool ringing,
+                                           int hour,
+                                           int minute)
+{
+    if (alarm_runtime_publish_deferred_save(
+            enabled, ringing, hour, minute)) {
+        (void)s_alarm_task_target.notify();
+        notify_ui_task();
+    }
+}
+
+bool persist_alarm_unlocked(bool enabled, int hour, int minute)
 {
     alarm_storage::WriteResult result = alarm_storage::write(
         enabled, static_cast<uint8_t>(hour), static_cast<uint8_t>(minute));
@@ -102,6 +116,26 @@ bool persist_alarm(bool enabled, int hour, int minute)
         return false;
     }
     return true;
+}
+
+bool persist_alarm(bool enabled, int hour, int minute)
+{
+    ScopedSemaphoreLock lock(s_alarm_persistence_mutex);
+    if (!lock) {
+        ESP_LOGW(TAG, "alarm persistence lock unavailable");
+        return false;
+    }
+    return persist_alarm_unlocked(enabled, hour, minute);
+}
+
+alarm_storage::ClearResult clear_alarm_storage()
+{
+    ScopedSemaphoreLock lock(s_alarm_persistence_mutex);
+    if (!lock) {
+        return {alarm_storage::ClearStatus::kOpenFailed,
+                ESP_ERR_INVALID_STATE};
+    }
+    return alarm_storage::clear();
 }
 
 bool load_alarm()
@@ -117,8 +151,12 @@ bool load_alarm()
     if (loaded.status != alarm_storage::ReadStatus::kLoaded ||
         loaded.enabled > 1 || !alarm_time_valid(loaded.hour, loaded.minute)) {
         ESP_LOGW(TAG, "alarm NVS state invalid, disabling alarm");
-        (void)persist_alarm(false, 0, 0);
-        publish_alarm_state(false, false, 0, 0);
+        if (!persist_alarm(false, 0, 0)) {
+            s_save_retry_pending.store(true, std::memory_order_release);
+            publish_alarm_state_for_deferred_save(false, false, 0, 0);
+        } else {
+            publish_alarm_state(false, false, 0, 0);
+        }
         return false;
     }
     publish_alarm_state(loaded.enabled != 0, false, loaded.hour, loaded.minute);
@@ -140,24 +178,49 @@ void wake_alarm_task()
     (void)s_alarm_task_target.notify();
 }
 
+void request_alarm_save_retry(bool schedule_retry)
+{
+    if (!schedule_retry) {
+        return;
+    }
+    s_save_retry_pending.store(true, std::memory_order_release);
+    wake_alarm_task();
+}
+
 bool flush_alarm_pending_save(bool schedule_retry)
 {
-    if (!s_save_pending.load(std::memory_order_acquire)) {
-        s_save_retry_pending.store(false, std::memory_order_release);
-        return true;
-    }
-    AlarmSnapshot snapshot = {};
-    alarm_get_snapshot(&snapshot);
-    if (!persist_alarm(snapshot.enabled, snapshot.hour, snapshot.minute)) {
-        if (schedule_retry) {
-            s_save_retry_pending.store(true, std::memory_order_release);
-            wake_alarm_task();
-        }
+    ScopedSemaphoreLock persistence_lock(s_alarm_persistence_mutex);
+    if (!persistence_lock) {
+        request_alarm_save_retry(schedule_retry);
         return false;
     }
-    s_save_pending.store(false, std::memory_order_release);
-    s_save_retry_pending.store(false, std::memory_order_release);
-    return true;
+    // A newer MCP request may arrive during NVS I/O. Catch it up while the
+    // persistence transaction is still serialized, then fall back to retry.
+    for (uint8_t attempt = 0;
+         attempt < kAlarmPendingSaveCatchUpLimit;
+         ++attempt) {
+        AlarmPendingSaveSnapshot pending = {};
+        if (!alarm_runtime_pending_save_snapshot(&pending)) {
+            request_alarm_save_retry(schedule_retry);
+            return false;
+        }
+        if (!pending.pending) {
+            s_save_retry_pending.store(false, std::memory_order_release);
+            return true;
+        }
+        if (!persist_alarm_unlocked(pending.enabled,
+                                    pending.hour,
+                                    pending.minute)) {
+            request_alarm_save_retry(schedule_retry);
+            return false;
+        }
+        if (alarm_runtime_pending_save_clear(pending.generation)) {
+            s_save_retry_pending.store(false, std::memory_order_release);
+            return true;
+        }
+    }
+    request_alarm_save_retry(schedule_retry);
+    return false;
 }
 
 void request_alarm_stop()
@@ -227,7 +290,7 @@ void run_alarm_ring()
     alarm_get_snapshot(&snapshot);
     clear_pending_alarm_replacement();
     // 先关闭运行态，再释放小智音频后写 NVS；避免实时语音期间 Flash 写入。
-    s_save_pending.store(false);
+    (void)alarm_runtime_pending_save_discard();
     s_save_retry_pending.store(false, std::memory_order_release);
     s_auto_disable_save_pending.store(false, std::memory_order_release);
     publish_alarm_state(false, true, snapshot.hour, snapshot.minute);
@@ -328,8 +391,8 @@ bool mcp_set_alarm(const XiaozhiMcpAlarmRequest &request, char *result, size_t r
     mark_alarm_stop_requested();
     s_auto_disable_save_pending.store(false, std::memory_order_release);
     s_save_retry_pending.store(false, std::memory_order_release);
-    publish_alarm_state(true, false, request.hour, request.minute);
-    s_save_pending.store(true);
+    publish_alarm_state_for_deferred_save(
+        true, false, request.hour, request.minute);
     if (result && result_len > 0) {
         snprintf(result, result_len, kAlarmSetResultFormat, request.hour, request.minute);
     }
@@ -344,8 +407,8 @@ bool mcp_disable_alarm(char *result, size_t result_len)
     mark_alarm_stop_requested();
     s_auto_disable_save_pending.store(false, std::memory_order_release);
     s_save_retry_pending.store(false, std::memory_order_release);
-    publish_alarm_state(false, false, snapshot.hour, snapshot.minute);
-    s_save_pending.store(true);
+    publish_alarm_state_for_deferred_save(
+        false, false, snapshot.hour, snapshot.minute);
     if (result && result_len > 0) {
         strlcpy(result, kAlarmDisabledResult, result_len);
     }
@@ -355,7 +418,8 @@ bool mcp_disable_alarm(char *result, size_t result_len)
 
 bool alarm_services_init()
 {
-    if (!alarm_runtime_state_init()) {
+    if (!alarm_runtime_state_init() ||
+        !s_alarm_persistence_mutex.init()) {
         return false;
     }
     (void)load_alarm();
@@ -489,7 +553,7 @@ bool alarm_disable()
         wake_alarm_task();
         return false;
     }
-    s_save_pending.store(false);
+    (void)alarm_runtime_pending_save_discard();
     s_save_retry_pending.store(false, std::memory_order_release);
     s_auto_disable_save_pending.store(false, std::memory_order_release);
     publish_alarm_state(false, false, snapshot.hour, snapshot.minute);
@@ -517,9 +581,9 @@ bool alarm_clear_saved_state()
 {
     clear_pending_alarm_replacement();
     mark_alarm_stop_requested();
-    s_save_pending.store(false);
+    (void)alarm_runtime_pending_save_discard();
     s_save_retry_pending.store(false, std::memory_order_release);
-    alarm_storage::ClearResult result = alarm_storage::clear();
+    alarm_storage::ClearResult result = clear_alarm_storage();
     if (result.status == alarm_storage::ClearStatus::kAlreadyEmpty) {
         s_auto_disable_save_pending.store(false, std::memory_order_release);
         publish_alarm_state(false, false, 0, 0);
@@ -542,7 +606,7 @@ bool alarm_clear_saved_state()
 
 bool alarm_save_pending()
 {
-    return s_save_pending.load();
+    return alarm_runtime_pending_save_exists();
 }
 
 bool alarm_flush_pending_save()

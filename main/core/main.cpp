@@ -5,6 +5,7 @@
 #include "app_hardware.h"
 #include "app_constexpr.h"
 #include "app_metadata.h"
+#include "app_task_startup.h"
 #include "lvgl_bsp.h"
 #include "alarm_services_internal.h"
 #include "battery_runtime_state_internal.h"
@@ -14,14 +15,12 @@
 #include "audio_services_internal.h"
 #include "custom_assets_internal.h"
 #include "daily_saying_state_internal.h"
-#include "input_tasks.h"
 #include "manual_weather_city_state_internal.h"
 #include "network_credentials_state_internal.h"
 #include "network_diagnostics_state_internal.h"
 #include "network_boot_sync.h"
 #include "network_http_transaction_lock_internal.h"
 #include "network_sync_request_generation_internal.h"
-#include "network_sync_task.h"
 #include "saved_config_loader_internal.h"
 #include "wifi_radio_services_internal.h"
 #include "ntp_runtime_state_internal.h"
@@ -36,8 +35,6 @@
 #include "ui_info_page_state_internal.h"
 #include "ui_settings_feedback_internal.h"
 #include "ui_settings_activity_state_internal.h"
-#include "ui_task.h"
-#include "ui_task_notify.h"
 #include "ui_work_page_catalog_internal.h"
 #include "weather_state_internal.h"
 #include "wifi_portal_state_internal.h"
@@ -56,10 +53,6 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define MAIN_INVALID_TASK_CREATE_LOG_FORMAT "%s: invalid task create request"
-#define MAIN_TASK_CREATE_FAILED_LOG_FORMAT "%s task create failed"
-#define MAIN_TASK_CREATE_RETRY_LOG_FORMAT "regular task create retry: attempt=%u pending=0x%08lx"
-#define MAIN_TASK_CREATE_EXHAUSTED_LOG_FORMAT "regular task create incomplete: pending=0x%08lx"
 #define MAIN_NVS_INIT_REQUIRES_ERASE_LOG_FORMAT "nvs init requires erase: %s"
 #define MAIN_NVS_ERASE_FAILED_LOG_FORMAT "nvs erase failed: %s"
 #define MAIN_NVS_REINIT_FAILED_LOG_FORMAT "nvs re-init failed: %s"
@@ -100,62 +93,24 @@
 namespace {
 constexpr uint32_t kBootAnimTaskStack = 6144;
 constexpr uint32_t kBootSyncTaskStack = 20480;
-constexpr uint32_t kNetworkSyncTaskStack = 20480;
-constexpr uint32_t kOtaTaskStack = 16384;
-constexpr uint32_t kHousekeepingTaskStack = 5120;
-constexpr uint32_t kUiTaskStack = 8192;
-constexpr uint32_t kButtonTaskStack = 3072;
-constexpr uint32_t kAlarmTaskStack = 4096;
-constexpr uint32_t kPomodoroTaskStack = 4096;
-constexpr uint32_t kRegularTaskCreateRetryDelayMs = 100;
-constexpr uint32_t kRegularTaskCreateMaxAttempts = 3;
 constexpr uint32_t kBootSyncWaitMarginMs = 500;
 constexpr uint32_t kBootAnimStopWaitMs = 1500;
 constexpr uint32_t kBootScreenFinishRetryDelayMs = 50;
 constexpr uint32_t kBootScreenFinishMaxAttempts = 3;
 constexpr uint32_t kSetupPromptStartDelayMs = 350;
 constexpr UBaseType_t kHighServiceTaskPriority = 4;
-constexpr UBaseType_t kNormalServiceTaskPriority = 3;
-constexpr UBaseType_t kInputTaskPriority = 2;
 constexpr BaseType_t kNetworkTaskCore = 0;
 constexpr BaseType_t kUiTaskCore = 1;
-constexpr const char *kFallbackAppTaskName = "app_task";
 constexpr const char *kFallbackBootTaskName = "boot_task";
 constexpr const char *kBootAnimTaskName = "boot_anim_task";
 constexpr const char *kBootSyncTaskName = "boot_sync";
-constexpr const char *kNetworkSyncTaskName = "network_sync";
-constexpr const char *kOtaTaskName = "ota_task";
-constexpr const char *kHousekeepingTaskName = "housekeeping";
-constexpr const char *kUiTaskName = "ui_task";
-constexpr const char *kButtonTaskName = "button_task";
-constexpr const char *kAlarmTaskName = "alarm_task";
-constexpr const char *kPomodoroTaskName = "pomodoro_task";
 constexpr const char *kBootAnimTaskCreateFailed = "boot animation task create failed";
 constexpr const char *kBootConnectivityTaskCreateFailed = "boot connectivity task create failed";
 constexpr const char *kBootReadyStatus = "Ready";
 constexpr const char *kBootReadyDetail = "Starting clock";
-struct AppTaskSpec {
-    TaskFunction_t task;
-    const char *name;
-    uint32_t stack_depth;
-    UBaseType_t priority;
-    bool register_ui_handle;
-    BaseType_t core_id;
-};
-
 struct AppInitializerSpec {
     bool (*initialize)();
     const char *failure_log;
-};
-
-constexpr AppTaskSpec kRegularAppTasks[] = {
-    {network_sync_task, kNetworkSyncTaskName, kNetworkSyncTaskStack, kHighServiceTaskPriority, false, kNetworkTaskCore},
-    {ota_task, kOtaTaskName, kOtaTaskStack, kHighServiceTaskPriority, false, kNetworkTaskCore},
-    {housekeeping_task, kHousekeepingTaskName, kHousekeepingTaskStack, kNormalServiceTaskPriority, false, kUiTaskCore},
-    {ui_task, kUiTaskName, kUiTaskStack, kNormalServiceTaskPriority, true, kUiTaskCore},
-    {button_task, kButtonTaskName, kButtonTaskStack, kInputTaskPriority, false, kUiTaskCore},
-    {alarm_task, kAlarmTaskName, kAlarmTaskStack, kNormalServiceTaskPriority, false, kUiTaskCore},
-    {pomodoro_task, kPomodoroTaskName, kPomodoroTaskStack, kNormalServiceTaskPriority, false, kUiTaskCore},
 };
 
 constexpr AppInitializerSpec kCoreRuntimeStateInitializers[] = {
@@ -180,47 +135,6 @@ constexpr AppInitializerSpec kFeatureRuntimeInitializers[] = {
     {pomodoro_services_init, MAIN_POMODORO_STATE_INIT_FAILED_LOG_FORMAT},
     {weather_city_mcp_init, MAIN_WEATHER_CITY_MCP_STATE_INIT_FAILED_LOG_FORMAT},
 };
-
-constexpr bool app_task_specs_valid()
-{
-    for (const AppTaskSpec &spec : kRegularAppTasks) {
-        if (!spec.task || !spec.name || spec.name[0] == '\0' ||
-            spec.stack_depth == 0 || spec.priority >= configMAX_PRIORITIES ||
-            spec.core_id < 0 || spec.core_id >= portNUM_PROCESSORS ||
-            (spec.register_ui_handle && spec.task != ui_task)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-constexpr bool app_task_specs_are_unique()
-{
-    for (size_t i = 0; i < array_count(kRegularAppTasks); ++i) {
-        for (size_t j = i + 1; j < array_count(kRegularAppTasks); ++j) {
-            if (kRegularAppTasks[i].task == kRegularAppTasks[j].task ||
-                cstr_equal(kRegularAppTasks[i].name,
-                           kRegularAppTasks[j].name)) {
-                return false;
-            }
-        }
-    }
-    return true;
-}
-
-constexpr bool app_task_specs_have_single_ui_owner()
-{
-    size_t ui_owner_count = 0;
-    for (const AppTaskSpec &spec : kRegularAppTasks) {
-        if (spec.register_ui_handle) {
-            ++ui_owner_count;
-            if (spec.task != ui_task) {
-                return false;
-            }
-        }
-    }
-    return ui_owner_count == 1;
-}
 
 template <size_t Count>
 constexpr bool app_initializer_specs_valid(
@@ -247,23 +161,10 @@ bool initialize_app_states(const AppInitializerSpec (&specs)[Count])
     return true;
 }
 
-static_assert(array_count(kRegularAppTasks) > 0,
-              "regular task table must not be empty");
-static_assert(array_count(kRegularAppTasks) < 32,
-              "regular task retry mask must fit in uint32_t");
-static_assert(kRegularTaskCreateRetryDelayMs > 0,
-              "regular task retry delay must be positive");
-static_assert(kRegularTaskCreateMaxAttempts > 1,
-              "regular task creation must retain a retry opportunity");
 static_assert(kBootScreenFinishRetryDelayMs > 0,
               "boot screen finish retry delay must be positive");
 static_assert(kBootScreenFinishMaxAttempts > 1,
               "boot screen finish must retain a retry opportunity");
-static_assert(app_task_specs_valid(), "regular app task specs must be valid");
-static_assert(app_task_specs_are_unique(),
-              "regular app task functions and names must be unique");
-static_assert(app_task_specs_have_single_ui_owner(),
-              "regular app task table must register exactly one UI owner");
 static_assert(array_count(kCoreRuntimeStateInitializers) > 0,
               "core runtime initializer table must not be empty");
 static_assert(array_count(kFeatureRuntimeInitializers) > 0,
@@ -274,71 +175,6 @@ static_assert(app_initializer_specs_valid(kFeatureRuntimeInitializers),
               "feature runtime initializer specs must be valid");
 
 } // namespace
-
-static TaskHandle_t create_app_task(TaskFunction_t task,
-                                    const char *name,
-                                    uint32_t stack_depth,
-                                    UBaseType_t priority,
-                                    BaseType_t core_id)
-{
-    const char *task_name = name ? name : kFallbackAppTaskName;
-    if (!task || stack_depth == 0) {
-        ESP_LOGE(TAG, MAIN_INVALID_TASK_CREATE_LOG_FORMAT, task_name);
-        return nullptr;
-    }
-    TaskHandle_t handle = nullptr;
-    if (xTaskCreatePinnedToCore(task, task_name, stack_depth, nullptr, priority, &handle, core_id) != pdPASS) {
-        ESP_LOGE(TAG, MAIN_TASK_CREATE_FAILED_LOG_FORMAT, task_name);
-        return nullptr;
-    }
-    return handle;
-}
-
-static void create_regular_app_tasks()
-{
-    constexpr uint32_t kAllRegularTaskBits =
-        (uint32_t{1} << array_count(kRegularAppTasks)) - 1;
-    uint32_t pending = kAllRegularTaskBits;
-    for (uint32_t attempt = 1;
-         attempt <= kRegularTaskCreateMaxAttempts && pending != 0;
-         ++attempt) {
-        uint32_t failed = 0;
-        for (size_t index = 0; index < array_count(kRegularAppTasks); ++index) {
-            const uint32_t task_bit = uint32_t{1} << index;
-            if ((pending & task_bit) == 0) {
-                continue;
-            }
-            const AppTaskSpec &task = kRegularAppTasks[index];
-            TaskHandle_t handle = create_app_task(task.task,
-                                                  task.name,
-                                                  task.stack_depth,
-                                                  task.priority,
-                                                  task.core_id);
-            if (!handle) {
-                failed |= task_bit;
-                continue;
-            }
-            if (task.register_ui_handle) {
-                register_ui_task_handle(handle);
-            }
-        }
-        pending = failed;
-        if (pending != 0 && attempt < kRegularTaskCreateMaxAttempts) {
-            ESP_LOGW(TAG,
-                     MAIN_TASK_CREATE_RETRY_LOG_FORMAT,
-                     static_cast<unsigned>(attempt + 1),
-                     static_cast<unsigned long>(pending));
-            // Recently deleted boot tasks release dynamic stacks from the
-            // Idle task. Yield before retrying only the missing services.
-            vTaskDelay(pdMS_TO_TICKS(kRegularTaskCreateRetryDelayMs));
-        }
-    }
-    if (pending != 0) {
-        ESP_LOGE(TAG,
-                 MAIN_TASK_CREATE_EXHAUSTED_LOG_FORMAT,
-                 static_cast<unsigned long>(pending));
-    }
-}
 
 static bool init_nvs_storage()
 {

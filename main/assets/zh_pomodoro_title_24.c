@@ -2,7 +2,7 @@
 /*******************************************************************************
  * Size: 24 px
  * Bpp: 1
- * Opts: --font /System/Library/Fonts/Supplemental/Arial Unicode.ttf --symbols 番茄钟 --size 24 --bpp 1 --format lvgl --lv-include lvgl.h --lv-font-name zh_pomodoro_title_24 --lv-fallback lv_font_montserrat_14 --output RLCD_CLOCK/main/assets/zh_pomodoro_title_24.c
+ * Opts: --font <font-file> --symbols 番茄钟 --size 24 --bpp 1 --format lvgl --lv-include lvgl.h --lv-font-name zh_pomodoro_title_24 --lv-fallback lv_font_montserrat_14 --output RLCD_CLOCK/main/assets/zh_pomodoro_title_24.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

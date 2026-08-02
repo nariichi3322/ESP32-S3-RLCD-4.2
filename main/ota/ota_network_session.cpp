@@ -12,7 +12,6 @@
 #include "setup_portal_control.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_services.h"
-#include "wifi_radio_state.h"
 
 #include <esp_log.h>
 #include <esp_timer.h>
@@ -118,9 +117,7 @@ OtaNetworkSessionStartResult ota_network_session_start(uint32_t timeout_ms)
         release_network_awake_lock();
         // A failed radio reconfiguration may leave the driver active. Keep a
         // deferred close request after releasing this session's PM ownership.
-        if (wifi_radio_on_load()) {
-            request_wifi_radio_stop_when_idle();
-        }
+        request_wifi_radio_stop_if_running();
         return OtaNetworkSessionStartResult::kRadioStartFailed;
     }
 
@@ -130,9 +127,7 @@ OtaNetworkSessionStartResult ota_network_session_start(uint32_t timeout_ms)
     if (wait_result != OtaWifiConnectionWaitResult::kConnected) {
         stop_wifi_radio(true);
         release_network_awake_lock();
-        if (wifi_radio_on_load()) {
-            request_wifi_radio_stop_when_idle();
-        }
+        request_wifi_radio_stop_if_running();
         if (wait_result == OtaWifiConnectionWaitResult::kRuntimeBlocked) {
             return ota_network_session_start_result_for_block(
                 wait_block_reason);
@@ -147,8 +142,6 @@ void ota_network_session_finish(OtaWifiFinishPolicy policy)
     stop_wifi_radio(true);
     if (policy == OtaWifiFinishPolicy::kReleaseAwakeLock) {
         release_network_awake_lock();
-        if (wifi_radio_on_load()) {
-            request_wifi_radio_stop_when_idle();
-        }
+        request_wifi_radio_stop_if_running();
     }
 }

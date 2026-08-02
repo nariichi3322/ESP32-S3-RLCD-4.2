@@ -25,7 +25,7 @@
 #include "ui_battery.h"
 #include "ui_battery_blink.h"
 #include "ui_aux_pages.h"
-#include "ui_boot_settings.h"
+#include "ui_settings_page.h"
 #include "ui_draw_cache.h"
 #include "ui_info_page_state_internal.h"
 #include "ui_loop_schedule.h"
@@ -574,9 +574,10 @@ void ui_task(void *)
                             weather_cache_status_valid,
                             weather_cache_status.version,
                             weather_version)) {
-                        weather_cache_status_valid =
-                            weather_cache_status_snapshot_load(
-                                &weather_cache_status);
+                        (void)ui_visible_cache_snapshot_try_refresh(
+                            &weather_cache_status,
+                            &weather_cache_status_valid,
+                            weather_cache_status_snapshot_load);
                     }
                     if (weather_cache_status_valid) {
                         visible_weather_cache = &weather_cache_status;
@@ -589,9 +590,10 @@ void ui_task(void *)
                             saying_cache_status_valid,
                             saying_cache_status.version,
                             saying_version)) {
-                        saying_cache_status_valid =
-                            daily_saying_cache_snapshot_load(
-                                &saying_cache_status);
+                        (void)ui_visible_cache_snapshot_try_refresh(
+                            &saying_cache_status,
+                            &saying_cache_status_valid,
+                            daily_saying_cache_snapshot_load);
                     }
                     if (saying_cache_status_valid) {
                         visible_saying_cache = &saying_cache_status;

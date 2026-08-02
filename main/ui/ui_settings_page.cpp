@@ -1,5 +1,5 @@
 // 构建并刷新设置页及其菜单交互。
-#include "ui_boot_settings.h"
+#include "ui_settings_page.h"
 
 #include "alarm_services.h"
 #include "app_constexpr.h"

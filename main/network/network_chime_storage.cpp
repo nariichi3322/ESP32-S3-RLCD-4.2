@@ -44,15 +44,22 @@ esp_err_t write_if_changed(nvs_handle_t nvs,
     if (err != ESP_OK) {
         return err;
     }
-    if (matches(nvs, settings)) {
-        return ESP_OK;
-    }
-    err = network_config_nvs::set_nvs_u8_if_ok(nvs, err, kHourlyChimeKey, settings.enabled);
-    err = network_config_nvs::set_nvs_u8_if_ok(nvs, err, kHourlyAllDayKey, settings.all_day);
-    err = network_config_nvs::set_nvs_u8_if_ok(nvs, err, kChimeVolumeKey, settings.volume);
-    err = network_config_nvs::set_nvs_u8_if_ok(nvs, err, kChimeSoundKey, settings.sound);
-    if (err == ESP_OK && changed) {
-        *changed = true;
+    bool any_changed = false;
+    bool item_changed = false;
+    err = network_config_nvs::write_changed_nvs_u8(
+        nvs, err, kHourlyChimeKey, settings.enabled, &item_changed);
+    any_changed = any_changed || item_changed;
+    err = network_config_nvs::write_changed_nvs_u8(
+        nvs, err, kHourlyAllDayKey, settings.all_day, &item_changed);
+    any_changed = any_changed || item_changed;
+    err = network_config_nvs::write_changed_nvs_u8(
+        nvs, err, kChimeVolumeKey, settings.volume, &item_changed);
+    any_changed = any_changed || item_changed;
+    err = network_config_nvs::write_changed_nvs_u8(
+        nvs, err, kChimeSoundKey, settings.sound, &item_changed);
+    any_changed = any_changed || item_changed;
+    if (changed) {
+        *changed = err == ESP_OK && any_changed;
     }
     return err;
 }

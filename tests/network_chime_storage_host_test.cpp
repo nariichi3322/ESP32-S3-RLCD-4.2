@@ -77,7 +77,8 @@ int main()
     g_set_calls = 0;
     assert(network_chime_storage::write_if_changed(1, ESP_OK, expected, &changed) == ESP_OK);
     assert(changed);
-    assert(g_set_calls == 4);
+    assert(g_get_calls == 4);
+    assert(g_set_calls == 1);
     assert(network_chime_storage::matches(1, expected));
 
     g_get_calls = 0;
@@ -88,6 +89,7 @@ int main()
     assert(g_get_calls == 0);
     assert(g_set_calls == 0);
 
+    g_values[network_chime_storage::kHourlyChimeKey] = 0;
     g_values.erase(network_chime_storage::kChimeSoundKey);
     g_get_calls = 0;
     g_set_calls = 0;

@@ -100,6 +100,9 @@ int main()
     const uint32_t ntp_first =
         publish_network_sync_request(kManualNtpSyncBit);
     assert(ntp_first != 0);
+    assert(network_sync_request_is_current(kManualNtpSyncBit, ntp_first));
+    assert(!network_sync_request_is_current(kManualNtpSyncBit,
+                                            ntp_first + 1));
     assert((current_event_bits() & kManualNtpSyncBit) != 0);
     assert((current_event_bits() & kNetworkStateChangedBit) != 0);
 
@@ -111,6 +114,7 @@ int main()
     assert(snapshot.diagnostics == 0);
 
     assert(retire_network_sync_request(kManualNtpSyncBit, ntp_first));
+    assert(!network_sync_request_is_current(kManualNtpSyncBit, ntp_first));
     assert((current_event_bits() & kManualNtpSyncBit) == 0);
     assert(!retire_network_sync_request(kManualNtpSyncBit, ntp_first));
 
@@ -120,6 +124,10 @@ int main()
         publish_network_sync_request(kManualWeatherSyncBit);
     assert(weather_second != 0);
     assert(weather_second != weather_first);
+    assert(!network_sync_request_is_current(kManualWeatherSyncBit,
+                                            weather_first));
+    assert(network_sync_request_is_current(kManualWeatherSyncBit,
+                                           weather_second));
     assert(!retire_network_sync_request(kManualWeatherSyncBit,
                                         weather_first));
     assert((current_event_bits() & kManualWeatherSyncBit) != 0);
@@ -137,6 +145,8 @@ int main()
             (kManualSayingSyncBit | kNetworkDiagBit)) == 0);
     assert(!retire_network_sync_request(kManualSayingSyncBit, saying));
     assert(!retire_network_sync_request(kNetworkDiagBit, diagnostics));
+    assert(!network_sync_request_is_current(kManualSayingSyncBit, saying));
+    assert(!network_sync_request_is_current(kNetworkDiagBit, diagnostics));
 
     const uint32_t weather_before_race =
         publish_network_sync_request(kManualWeatherSyncBit);
@@ -189,6 +199,9 @@ int main()
 
     assert(publish_network_sync_request(
                kManualNtpSyncBit | kManualWeatherSyncBit) == 0);
+    assert(!network_sync_request_is_current(
+        kManualNtpSyncBit | kManualWeatherSyncBit, 1));
+    assert(!network_sync_request_is_current(kManualNtpSyncBit, 0));
     assert(!retire_network_sync_request(1U << 31, 1));
     return 0;
 }

@@ -36,6 +36,7 @@
 static adc_oneshot_unit_handle_t s_battery_adc = nullptr;
 static adc_cali_handle_t s_battery_adc_cali = nullptr;
 static bool s_battery_adc_ready = false;
+static bool s_battery_adc_channel_ready = false;
 static bool s_battery_adc_cali_ready = false;
 static constexpr float kBatteryVoltageDivider = 3.0f;
 static constexpr float kBatteryMillivoltsToVolts = 0.001f;
@@ -157,6 +158,26 @@ static void release_battery_gauge()
     }
     s_battery_adc = nullptr;
     s_battery_adc_ready = false;
+    s_battery_adc_channel_ready = false;
+}
+
+static bool configure_battery_adc_channel()
+{
+    if (!s_battery_adc) {
+        return false;
+    }
+    adc_oneshot_chan_cfg_t chan_config = {};
+    chan_config.bitwidth = kBatteryAdcBitwidth;
+    chan_config.atten = kBatteryAdcAtten;
+    esp_err_t err = adc_oneshot_config_channel(s_battery_adc,
+                                                kBatteryAdcChannel,
+                                                &chan_config);
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, BATTERY_ADC_CHANNEL_CONFIG_FAILED_LOG_FORMAT, esp_err_to_name(err));
+        return false;
+    }
+    s_battery_adc_channel_ready = true;
+    return true;
 }
 
 static bool init_battery_gauge()
@@ -166,6 +187,12 @@ static bool init_battery_gauge()
             ESP_LOGW(TAG, BATTERY_ADC_READY_WITHOUT_HANDLE_LOG_FORMAT);
             release_battery_gauge();
             return false;
+        }
+        if (!s_battery_adc_channel_ready) {
+            if (!configure_battery_adc_channel()) {
+                release_battery_gauge();
+                return false;
+            }
         }
         if (s_battery_adc_cali_ready && !s_battery_adc_cali) {
             ESP_LOGW(TAG, "%s", BATTERY_ADC_CALIBRATION_READY_WITHOUT_HANDLE_LOG);
@@ -183,12 +210,7 @@ static bool init_battery_gauge()
         return false;
     }
 
-    adc_oneshot_chan_cfg_t chan_config = {};
-    chan_config.bitwidth = kBatteryAdcBitwidth;
-    chan_config.atten = kBatteryAdcAtten;
-    err = adc_oneshot_config_channel(s_battery_adc, kBatteryAdcChannel, &chan_config);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, BATTERY_ADC_CHANNEL_CONFIG_FAILED_LOG_FORMAT, esp_err_to_name(err));
+    if (!configure_battery_adc_channel()) {
         release_battery_gauge();
         return false;
     }
