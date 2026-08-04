@@ -42,6 +42,16 @@ void reset_battery_charging_tracker(BatteryChargingTracker *tracker)
     }
 }
 
+bool battery_charging_session_elapsed(const BatteryChargingTracker &tracker,
+                                      uint32_t now_tick,
+                                      uint32_t minimum_ticks)
+{
+    return tracker.session_start_tick_set &&
+           app_tick_interval_elapsed(now_tick,
+                                     tracker.session_start_tick,
+                                     minimum_ticks);
+}
+
 bool update_battery_charging_state(const BatteryChargingInput &input,
                                    const BatteryChargingPolicy &policy,
                                    BatteryChargingTracker *tracker,
@@ -93,6 +103,8 @@ bool update_battery_charging_state(const BatteryChargingInput &input,
         tracker->peak_voltage = input.current_voltage;
         tracker->last_peak_tick = input.now_tick;
         tracker->peak_tick_set = true;
+        tracker->session_start_tick = input.now_tick;
+        tracker->session_start_tick_set = true;
     }
 
     bool charging_idle = state->charging &&

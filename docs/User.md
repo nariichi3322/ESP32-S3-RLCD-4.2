@@ -373,7 +373,7 @@ Xiaozhi AI cannot be the first page because its high-power service is unsuitable
 - **Offline Mode**
 - **Network Diagnostics**: checks local IP, public IP, IP location, DNS, QWeather, NTP, Daily Saying, internet access, and the OTA manifest. The DNS item resolves the currently saved QWeather API Host and GitHub host instead of a retired public QWeather domain, and reports success only when the resolver actually returns an address. The local IP and all nine results are published as one consistent snapshot and update without a reboot, so connection, lease, disconnection, or background updates never expose a partial address or status line. Public-IP responses are accepted only when they contain a valid four-part IPv4 address; service error text, host names, and out-of-range addresses are reported as failures instead of false successes.
 - **Factory Reset** (requires confirmation)
-- **About Device** (version, battery, voltage, last-charge time, device information, and source repository)
+- **About Device** (version, battery, voltage, last valid charge time, device information, and source repository). A charging trend must persist for at least 60 seconds before its later end can update the displayed time, preventing short load-recovery voltage rebounds from being recorded as charging.
 - **Check Update**
 
 About Device and Network Diagnostics each maintain their own dynamic content. After a UI rebuild they recreate the current device information and latest diagnostics snapshot without changing entry, long-press return, or post-check timeout behavior. Both pages now include only the display interfaces they actually use, reducing unrelated maintenance coupling while preserving device information, diagnostic checks, layout, refresh timing, and controls.

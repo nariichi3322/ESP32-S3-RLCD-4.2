@@ -30,6 +30,7 @@
 #define BATTERY_CHARGING_STARTED_LOG_FORMAT "battery charging detected voltage=%.3fV soc=%d%%"
 #define BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT "battery charging animation completed voltage=%.3fV soc=%d%%"
 #define BATTERY_CHARGING_STOPPED_LOG_FORMAT "battery charging cleared voltage=%.3fV soc=%d%%"
+#define BATTERY_CHARGING_SHORT_SESSION_LOG_FORMAT "battery charging history ignored short session voltage=%.3fV soc=%d%%"
 #define BATTERY_CHARGING_ADC_RETRY_LOG_FORMAT "battery ADC failed while charging, preserving state for up to %d retries"
 #define BATTERY_CHARGING_ADC_RETRY_EXHAUSTED_LOG_FORMAT "battery ADC charging retry grace exhausted after %d failures"
 
@@ -60,6 +61,8 @@ static constexpr int kBatteryMinValidYear = 2023;
 static constexpr int kBatteryMinValidTmYear = kBatteryMinValidYear - kTmYearOffset;
 static constexpr uint32_t kBatteryChargingAnimationIdleTicks =
     pdMS_TO_TICKS(kBatteryChargingAnimationIdleMs);
+static constexpr uint32_t kBatteryChargeHistoryMinSessionTicks =
+    pdMS_TO_TICKS(kBatteryChargeHistoryMinSessionMs);
 static constexpr BatteryChargingPolicy kBatteryChargingPolicy = {
     kBatteryValidPreviousVoltageMin,
     kBatteryChargingRiseVoltage,
@@ -97,6 +100,9 @@ static_assert(kBatteryChargingAnimationStopPercent > kBatteryPercentMin &&
               "charging animation stop percent must stay within the battery range");
 static_assert(kBatteryChargingAnimationIdleTicks > 0,
               "charging animation idle tick timeout must be positive");
+static_assert(kBatteryChargeHistoryMinSessionTicks >
+                  pdMS_TO_TICKS(kBatteryChargingSampleMs),
+              "charge history must require multiple fast samples");
 static_assert(sizeof(TickType_t) == sizeof(uint32_t),
               "battery charging tracker expects 32-bit FreeRTOS ticks");
 static_assert(kBatteryChargingRiseVoltage > kBatteryChargingStopVoltage,
@@ -292,13 +298,14 @@ static BatteryChargingState derive_battery_charging_state(
     const BatteryReading &reading,
     float previous_voltage,
     const BatteryChargingState &previous_state,
-    BatteryChargingTracker &tracker)
+    BatteryChargingTracker &tracker,
+    uint32_t now_tick)
 {
     BatteryChargingInput input = {
         previous_voltage,
         reading.voltage,
         reading.percent,
-        static_cast<uint32_t>(xTaskGetTickCount()),
+        now_tick,
     };
     BatteryChargingState state = previous_state;
     (void)update_battery_charging_state(input,
@@ -354,6 +361,12 @@ bool sample_battery()
     BatteryReading reading;
     if (read_battery_reading(&reading)) {
         consecutive_read_failures = 0;
+        uint32_t now_tick = static_cast<uint32_t>(xTaskGetTickCount());
+        bool completed_charge_session_is_meaningful =
+            previous.charging &&
+            battery_charging_session_elapsed(charging_tracker,
+                                             now_tick,
+                                             kBatteryChargeHistoryMinSessionTicks);
         BatteryChargingState previous_state = {
             previous.charging,
             previous.animation_complete,
@@ -362,7 +375,8 @@ bool sample_battery()
             reading,
             previous.voltage,
             previous_state,
-            charging_tracker);
+            charging_tracker,
+            now_tick);
         apply_battery_reading(reading, next_state, &next);
         if (!previous.charging && next.charging) {
             ESP_LOGI(TAG, BATTERY_CHARGING_STARTED_LOG_FORMAT, next.voltage, next.percent);
@@ -375,7 +389,16 @@ bool sample_battery()
         }
         if (previous.charging && !next.charging) {
             ESP_LOGI(TAG, BATTERY_CHARGING_STOPPED_LOG_FORMAT, next.voltage, next.percent);
-            next.last_charge_time = last_charge_time_after_unplug(previous.last_charge_time);
+            if (battery_charge_history_should_update(previous.charging,
+                                                     next.charging,
+                                                     completed_charge_session_is_meaningful)) {
+                next.last_charge_time = last_charge_time_after_unplug(previous.last_charge_time);
+            } else {
+                ESP_LOGI(TAG,
+                         BATTERY_CHARGING_SHORT_SESSION_LOG_FORMAT,
+                         next.voltage,
+                         next.percent);
+            }
         }
         release_battery_gauge();
     } else {

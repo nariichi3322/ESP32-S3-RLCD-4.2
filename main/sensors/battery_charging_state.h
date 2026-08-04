@@ -9,6 +9,8 @@ struct BatteryChargingTracker {
     float peak_voltage = 0.0f;
     bool peak_tick_set = false;
     uint32_t last_peak_tick = 0;
+    bool session_start_tick_set = false;
+    uint32_t session_start_tick = 0;
 };
 
 struct BatteryChargingState {
@@ -34,6 +36,9 @@ struct BatteryChargingInput {
 };
 
 void reset_battery_charging_tracker(BatteryChargingTracker *tracker);
+bool battery_charging_session_elapsed(const BatteryChargingTracker &tracker,
+                                      uint32_t now_tick,
+                                      uint32_t minimum_ticks);
 bool update_battery_charging_state(const BatteryChargingInput &input,
                                    const BatteryChargingPolicy &policy,
                                    BatteryChargingTracker *tracker,

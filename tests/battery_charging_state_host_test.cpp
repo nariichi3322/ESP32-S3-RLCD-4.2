@@ -15,12 +15,17 @@ static_assert(kBatteryChargingStopSamples == 5);
 static_assert(kBatteryChargingAnimationStopPercent == 96);
 static_assert(kBatteryChargingAnimationIdleMs == 10 * 60 * 1000);
 static_assert(kBatteryChargingSampleMs == 1000);
+static_assert(kBatteryChargeHistoryMinSessionMs == 60 * 1000);
 static_assert(kBatteryIdleReadFailureGraceSamples == 1);
 static_assert(kBatteryChargingReadFailureGraceSamples == 5);
 static_assert(kBatteryReadFailureMaxGraceSamples ==
               kBatteryChargingReadFailureGraceSamples);
 static_assert(!battery_charging_requires_fast_sampling(false));
 static_assert(battery_charging_requires_fast_sampling(true));
+static_assert(!battery_charge_history_should_update(false, false, true));
+static_assert(!battery_charge_history_should_update(true, true, true));
+static_assert(!battery_charge_history_should_update(true, false, false));
+static_assert(battery_charge_history_should_update(true, false, true));
 static_assert(!battery_read_failure_within_grace(false, 0));
 static_assert(battery_read_failure_within_grace(false, 1));
 static_assert(!battery_read_failure_within_grace(false, 2));
@@ -59,7 +64,7 @@ int main()
                                            nullptr,
                                            nullptr));
 
-    BatteryChargingTracker tracker = {1, 2, 4.0f, true, 10};
+    BatteryChargingTracker tracker = {1, 2, 4.0f, true, 10, true, 5};
     BatteryChargingState state = {false, true};
     assert(update_battery_charging_state(input(-1.0f, 3.8f, 50, 20),
                                          kPolicy,
@@ -68,6 +73,7 @@ int main()
     assert(!state.charging && !state.animation_complete);
     assert(tracker.rise_samples == 0 && tracker.stop_samples == 0);
     assert(tracker.peak_voltage == 0.0f && !tracker.peak_tick_set);
+    assert(!tracker.session_start_tick_set);
 
     tracker = {};
     state = {};
@@ -82,6 +88,9 @@ int main()
                                          &state));
     assert(state.charging && !state.animation_complete);
     assert(tracker.peak_voltage == 3.855f && tracker.last_peak_tick == 200);
+    assert(tracker.session_start_tick_set && tracker.session_start_tick == 200);
+    assert(!battery_charging_session_elapsed(tracker, 259, 60));
+    assert(battery_charging_session_elapsed(tracker, 260, 60));
 
     assert(update_battery_charging_state(input(3.855f, 3.90f, 50, 300),
                                          kPolicy,
@@ -102,6 +111,10 @@ int main()
                                          &tracker,
                                          &state));
     assert(state.charging && !state.animation_complete);
+    assert(tracker.session_start_tick_set &&
+           tracker.session_start_tick == UINT32_MAX - 300U);
+    assert(!battery_charging_session_elapsed(tracker, 298U, 600U));
+    assert(battery_charging_session_elapsed(tracker, 299U, 600U));
     assert(update_battery_charging_state(input(3.84f, 3.84f, 50, 298U),
                                          kPolicy,
                                          &tracker,
@@ -134,5 +147,6 @@ int main()
     assert(!state.charging && !state.animation_complete);
     assert(tracker.rise_samples == 0 && tracker.stop_samples == 0);
     assert(tracker.peak_voltage == 0.0f && !tracker.peak_tick_set);
+    assert(!tracker.session_start_tick_set);
     return 0;
 }

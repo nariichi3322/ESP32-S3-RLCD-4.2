@@ -10,6 +10,7 @@ inline constexpr int kBatteryChargingStopSamples = 5;
 inline constexpr int kBatteryChargingAnimationStopPercent = 96;
 inline constexpr int kBatteryChargingAnimationIdleMs = 10 * 60 * 1000;
 inline constexpr int kBatteryChargingSampleMs = 1000;
+inline constexpr int kBatteryChargeHistoryMinSessionMs = 60 * 1000;
 inline constexpr int kBatteryIdleReadFailureGraceSamples = 1;
 inline constexpr int kBatteryChargingReadFailureGraceSamples = 5;
 inline constexpr int kBatteryReadFailureMaxGraceSamples =
@@ -20,6 +21,13 @@ inline constexpr int kBatteryReadFailureMaxGraceSamples =
 constexpr bool battery_charging_requires_fast_sampling(bool charging)
 {
     return charging;
+}
+
+constexpr bool battery_charge_history_should_update(bool was_charging,
+                                                    bool is_charging,
+                                                    bool session_elapsed)
+{
+    return was_charging && !is_charging && session_elapsed;
 }
 
 constexpr int battery_read_failure_grace_samples(bool charging)
@@ -53,6 +61,8 @@ static_assert(kBatteryChargingAnimationIdleMs > 0,
               "charging animation idle timeout must be positive");
 static_assert(kBatteryChargingSampleMs > 0,
               "charging sample interval must be positive");
+static_assert(kBatteryChargeHistoryMinSessionMs > kBatteryChargingSampleMs,
+              "charge history must reject short voltage-recovery sessions");
 static_assert(kBatteryIdleReadFailureGraceSamples > 0,
               "idle ADC read failure grace must be positive");
 static_assert(kBatteryChargingReadFailureGraceSamples > 0,
