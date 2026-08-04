@@ -1,7 +1,7 @@
 {
-  "version": "v1.5.34",
-  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.34/weather_clock_v1.5.34.bin",
-  "sha256": "b1ff52463e6892b67a21f52a6543b80612272e577491a24cb2ddc04d1285dcee",
-  "size": 6260560,
-  "notes": "v1.5.34：共 11 项更新。\n1. 修复配网热点、Wi-Fi 初始化和联网结果切换在瞬时失败或并发操作后可能无法恢复、射频…\n2. 修复天气、每日文字、电池、设置反馈、关于本机和网络检测等跨任务快照在竞争或读取失败时可…\n3. 修复 RLCD/LVGL 初始化失败仍继续执行、异步颜色缓冲生命周期、像素查找表边界和…\n4. 修复闹钟延期保存与通知竞态、损坏记录清理失败，以及页面顺序持久化和农历、节气日期计算的…\n5. 修复电池 ADC 配置失败后的恢复、OTA 诊断快照未初始化、OTA 写入句柄收尾和小…\n其余 6 项见源码仓库同版本 Release。"
+  "version": "v1.5.35",
+  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.35/weather_clock_v1.5.35.bin",
+  "sha256": "2b437a4d96bfa913940e1d4726bb7bbe3c73643377047903c4fe81a9bdf43463",
+  "size": 6260784,
+  "notes": "v1.5.35：共 1 项更新。\n1. 修复关于本机“最近充电时间”可能被未插入充电器时的短时电压反弹误改的问题；只有持续至少…\n完整说明见源码仓库同版本 Release。"
 }
