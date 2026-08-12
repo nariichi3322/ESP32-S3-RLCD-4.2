@@ -10,6 +10,9 @@ namespace {
 const char *const kExpectedKeys[] = {
     "ssid",
     "pass",
+    "ssid_b",
+    "pass_b",
+    "wifi_pri_v1",
     "api_key",
     "weather_city_v1",
     "asset_city_skip",
@@ -114,7 +117,7 @@ int main()
 {
     constexpr nvs_handle_t kNvs = 1;
     constexpr size_t kExpectedKeyCount = sizeof(kExpectedKeys) / sizeof(kExpectedKeys[0]);
-    static_assert(kExpectedKeyCount == 23,
+    static_assert(kExpectedKeyCount == 26,
                   "factory reset host test must enumerate every registered key");
 
     reset_store(true);

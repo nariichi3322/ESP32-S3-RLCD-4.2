@@ -1,13 +1,18 @@
 // 声明联网凭据、离线模式、天气城市和恢复出厂配置入口。
 #pragma once
 
+#include "wifi_failover_policy.h"
+
 #include <stddef.h>
 
 bool save_config(const char *ssid,
                  const char *pass,
+                 const char *backup_ssid,
+                 const char *backup_pass,
                  const char *api_key,
                  const char *api_host,
                  const char *weather_city = nullptr);
+bool persist_preferred_wifi_slot(WifiCredentialSlot slot);
 bool save_manual_weather_city(const char *city);
 bool clear_manual_weather_city();
 bool is_weather_city_input_valid(const char *city);

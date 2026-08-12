@@ -8,10 +8,12 @@ int main()
 {
     ProvisioningFormFields fields = {};
     read_provisioning_form_fields(
-        "ssid=My+WiFi&pass=abc%20123&api_key=++key++&api_host=++ABC123.RE.QWEATHERAPI.COM++&weather_city=%E6%9D%AD%E5%B7%9E",
+        "ssid=My+WiFi&pass=abc%20123&backup_ssid=Mobile+Hotspot&backup_pass=backup%20456&api_key=++key++&api_host=++ABC123.RE.QWEATHERAPI.COM++&weather_city=%E6%9D%AD%E5%B7%9E",
         &fields);
     assert(strcmp(fields.ssid, "My WiFi") == 0);
     assert(strcmp(fields.pass, "abc 123") == 0);
+    assert(strcmp(fields.backup_ssid, "Mobile Hotspot") == 0);
+    assert(strcmp(fields.backup_pass, "backup 456") == 0);
     assert(strcmp(fields.api_key, "key") == 0);
     assert(strcmp(fields.api_host, "ABC123.RE.QWEATHERAPI.COM") == 0);
     assert(strcmp(fields.weather_city, "杭州") == 0);

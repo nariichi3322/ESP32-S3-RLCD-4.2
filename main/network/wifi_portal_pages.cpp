@@ -55,7 +55,7 @@ constexpr const char *kPortalSaveValidatingBody =
 constexpr const char *kPortalSaveMissingBody =
     "在线模式请填写 Wi-Fi、和风天气 API 密钥和账号专属 API Host；离线模式可仅设置日期和时间。";
 constexpr const char *kPortalSaveWifiFailedBody =
-    "设备未能连接到该 Wi-Fi。请检查密码、信号和路由器状态后重新填写。";
+    "设备未能连接主 Wi-Fi 或备用 Wi-Fi。请检查密码、信号和路由器状态后重新填写。";
 constexpr const char *kPortalSaveWeatherApiFailedBody =
     "Wi-Fi 已连接，但和风天气验证失败。请检查 API 密钥和账号专属 API Host 后重新填写。";
 constexpr const char *kPortalSaveWeatherCityInvalidBody =
@@ -88,7 +88,9 @@ static_assert(kPortalSaveExtraTextSize > 1, "portal save extra text buffer must 
 
 struct PortalPageTextWorkspace {
     char wifi_ssid[kNetworkWifiSsidLen];
+    char backup_wifi_ssid[kNetworkWifiSsidLen];
     char safe_ssid[kPortalEscapedSsidSize];
+    char safe_backup_ssid[kPortalEscapedSsidSize];
     char safe_weather_city[kPortalEscapedCitySize];
     char safe_extra[kPortalSaveExtraTextSize];
     char weather_city[kManualWeatherCityLen];
@@ -253,7 +255,7 @@ void append_wifi_scan_list(char *html, size_t html_len)
     }
     html_append(html,
                 html_len,
-                "<section class='wifi-section portal-panel'><div class='portal-panel-body'><div class='section-title'><span>附近的 Wi-Fi</span><a href='/'>重新扫描</a></div><div class='wifi-list'>");
+                "<section class='wifi-section portal-panel'><div class='portal-panel-body'><div class='section-title'><span>附近的 Wi-Fi（点击填入主 Wi-Fi）</span><a href='/'>重新扫描</a></div><div class='wifi-list'>");
     wifi_scan_config_t scan_config = {};
     esp_err_t err = esp_wifi_scan_start(&scan_config, true);
     if (err != ESP_OK) {
@@ -325,10 +327,15 @@ esp_err_t root_get_handler(httpd_req_t *req)
                                        sizeof(text.weather_city));
     (void)network_wifi_ssid_snapshot(text.wifi_ssid,
                                      sizeof(text.wifi_ssid));
+    (void)network_wifi_alternate_ssid_snapshot(
+        text.backup_wifi_ssid, sizeof(text.backup_wifi_ssid));
     (void)wifi_setup_ap_ssid_snapshot(text.setup_ap_ssid,
                                       sizeof(text.setup_ap_ssid));
     wifi_portal_html::escape_text(
         text.wifi_ssid, text.safe_ssid, sizeof(text.safe_ssid));
+    wifi_portal_html::escape_text(text.backup_wifi_ssid,
+                                  text.safe_backup_ssid,
+                                  sizeof(text.safe_backup_ssid));
     wifi_portal_html::escape_text(text.weather_city,
                                   text.safe_weather_city,
                                   sizeof(text.safe_weather_city));
@@ -366,6 +373,7 @@ esp_err_t root_get_handler(httpd_req_t *req)
     html_append(html.data(), html.size(),
                 wifi_portal_ui::kFormHtml,
                 text.safe_ssid,
+                text.safe_backup_ssid,
                 text.safe_weather_city);
     html_append(html.data(), html.size(), "</section>");
     append_wifi_scan_list(html.data(), html.size());
@@ -386,9 +394,14 @@ esp_err_t send_save_result_page(httpd_req_t *req,
         text.weather_city, sizeof(text.weather_city));
     (void)network_wifi_ssid_snapshot(text.wifi_ssid,
                                      sizeof(text.wifi_ssid));
+    (void)network_wifi_alternate_ssid_snapshot(
+        text.backup_wifi_ssid, sizeof(text.backup_wifi_ssid));
     wifi_portal_html::escape_text(text.wifi_ssid,
                                   text.safe_ssid,
                                   sizeof(text.safe_ssid));
+    wifi_portal_html::escape_text(text.backup_wifi_ssid,
+                                  text.safe_backup_ssid,
+                                  sizeof(text.safe_backup_ssid));
     wifi_portal_html::escape_text(
         have_weather_city ? text.weather_city : "自动定位",
         text.safe_weather_city,
@@ -416,7 +429,7 @@ esp_err_t send_save_result_page(httpd_req_t *req,
     html_append(html.data(), html.size(),
                 "%s"
                 "<title>天气时钟配网结果</title><style>%s</style>%s</head><body><main class='result-shell'><section class='portal-panel result-panel'><div id='save-state' class='result-state'>%s</div><h1 id='save-title'>%s</h1><p id='save-body'>%s</p>"
-                "%s%s%s<div class='meta'>Wi-Fi 名称：%s<br>API Host：已保存<br>天气城市：%s<br>最近一次 Wi-Fi 断开原因：%d</div><a class='primary-link' href='/'>返回配网页</a></section></main></body></html>",
+                "%s%s%s<div class='meta'>主 Wi-Fi：%s<br>备用 Wi-Fi：%s<br>API Host：已保存<br>天气城市：%s<br>最近一次 Wi-Fi 断开原因：%d</div><a class='primary-link' href='/'>返回配网页</a></section></main></body></html>",
                 kPortalHtmlHeadPrefix,
                 wifi_portal_ui::kCommonCss,
                 poll_script,
@@ -427,6 +440,7 @@ esp_err_t send_save_result_page(httpd_req_t *req,
                 text.safe_extra,
                 text.safe_extra[0] ? "</div>" : "",
                 text.safe_ssid,
+                text.safe_backup_ssid[0] ? text.safe_backup_ssid : "未配置",
                 text.safe_weather_city,
                 disconnect_reason);
     return send_portal_html(req, html.data());

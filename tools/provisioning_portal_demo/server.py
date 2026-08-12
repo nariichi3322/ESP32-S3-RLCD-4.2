@@ -144,7 +144,7 @@ def render_form(state: str = "form") -> str:
         return render_offline_result(True)
     if state not in SCENARIOS:
         state = "form"
-    form = FORM_HTML % ("Redmi_8FA2", "杭州")
+    form = FORM_HTML % ("Redmi_8FA2", "备用热点", "杭州")
     return (
         "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
@@ -209,7 +209,7 @@ setTimeout(poll,600);
         "<main class='result-shell'><section class='portal-panel result-panel'>"
         f"<div class='result-state'>{html.escape(badge)}</div>"
         f"<h1>{html.escape(title)}</h1><p>{html.escape(body)}</p>"
-        "<div class='meta'>Wi-Fi 名称：Redmi_8FA2<br>API Host：已保存<br>"
+        "<div class='meta'>主 Wi-Fi：Redmi_8FA2<br>备用 Wi-Fi：备用热点<br>API Host：已保存<br>"
         "天气城市：杭州<br>最近一次 Wi-Fi 断开原因：0</div>"
         "<a class='primary-link' href='/'>返回配网页</a>"
         "</section></main></body></html>"

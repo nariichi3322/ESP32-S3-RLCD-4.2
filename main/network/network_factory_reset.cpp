@@ -20,7 +20,10 @@ using network_chime_storage::kHourlyChimeKey;
 using network_config_keys::kQweatherApiHostKey;
 using network_config_keys::kOfflineModeKey;
 using network_config_keys::kWeatherApiKeyKey;
+using network_config_keys::kWifiBackupPassKey;
+using network_config_keys::kWifiBackupSsidKey;
 using network_config_keys::kWifiPassKey;
+using network_config_keys::kWifiPreferredSlotKey;
 using network_config_keys::kWifiSsidKey;
 using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
@@ -43,6 +46,9 @@ using network_weather_city_storage::kManualWeatherCityKey;
 constexpr const char *kSavedConfigKeys[] = {
     kWifiSsidKey,
     kWifiPassKey,
+    kWifiBackupSsidKey,
+    kWifiBackupPassKey,
+    kWifiPreferredSlotKey,
     kWeatherApiKeyKey,
     kManualWeatherCityKey,
     kIgnoredAssetWeatherCityKey,
@@ -66,7 +72,7 @@ constexpr const char *kSavedConfigKeys[] = {
     kGalleryRotationKey,
 };
 
-static_assert(array_count(kSavedConfigKeys) == 23,
+static_assert(array_count(kSavedConfigKeys) == 26,
               "factory reset key registry count changed; update its host test");
 static_assert(cstr_array_nonempty(kSavedConfigKeys),
               "factory reset config keys must be non-empty");
@@ -76,6 +82,12 @@ static_assert(cstr_array_contains(kSavedConfigKeys, kWifiSsidKey),
               "factory reset must clear Wi-Fi SSID");
 static_assert(cstr_array_contains(kSavedConfigKeys, kWifiPassKey),
               "factory reset must clear Wi-Fi password");
+static_assert(cstr_array_contains(kSavedConfigKeys, kWifiBackupSsidKey),
+              "factory reset must clear backup Wi-Fi SSID");
+static_assert(cstr_array_contains(kSavedConfigKeys, kWifiBackupPassKey),
+              "factory reset must clear backup Wi-Fi password");
+static_assert(cstr_array_contains(kSavedConfigKeys, kWifiPreferredSlotKey),
+              "factory reset must clear preferred Wi-Fi slot");
 static_assert(cstr_array_contains(kSavedConfigKeys, kWeatherApiKeyKey),
               "factory reset must clear weather API key");
 static_assert(cstr_array_contains(kSavedConfigKeys, kManualWeatherCityKey),

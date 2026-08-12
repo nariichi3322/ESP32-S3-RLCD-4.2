@@ -21,6 +21,8 @@ constexpr const char *kFormManualTimeFallbackKey = "datetime";
 constexpr const char *kFormSsidKey = "ssid";
 constexpr const char *kFormPasswordKey = "pass";
 constexpr const char *kFormPasswordFallbackKey = "password";
+constexpr const char *kFormBackupSsidKey = "backup_ssid";
+constexpr const char *kFormBackupPasswordKey = "backup_pass";
 constexpr const char *kFormApiKeyKey = "api_key";
 constexpr const char *kFormApiKeyFallbackKey = "weather";
 constexpr const char *kFormApiHostKey = "api_host";
@@ -56,6 +58,14 @@ void read_provisioning_form_fields(const char *body, ProvisioningFormFields *fie
     }
     form_value(body, kFormSsidKey, fields->ssid, sizeof(fields->ssid));
     form_value_fallback(body, kFormPasswordKey, kFormPasswordFallbackKey, fields->pass, sizeof(fields->pass));
+    form_value(body,
+               kFormBackupSsidKey,
+               fields->backup_ssid,
+               sizeof(fields->backup_ssid));
+    form_value(body,
+               kFormBackupPasswordKey,
+               fields->backup_pass,
+               sizeof(fields->backup_pass));
     form_value_fallback_trimmed(body,
                                 kFormApiKeyKey,
                                 kFormApiKeyFallbackKey,

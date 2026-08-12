@@ -16,6 +16,8 @@ inline constexpr size_t kProvisioningWeatherCityFieldSize = kManualWeatherCityLe
 struct ProvisioningFormFields {
     char ssid[kProvisioningSsidFieldSize] = {};
     char pass[kProvisioningPasswordFieldSize] = {};
+    char backup_ssid[kProvisioningSsidFieldSize] = {};
+    char backup_pass[kProvisioningPasswordFieldSize] = {};
     char api_key[kProvisioningApiKeyFieldSize] = {};
     char api_host[kProvisioningApiHostFieldSize] = {};
     char weather_city[kProvisioningWeatherCityFieldSize] = {};

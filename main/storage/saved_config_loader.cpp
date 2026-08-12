@@ -34,7 +34,10 @@ using network_page_storage::read_saved_page_order;
 using network_config_keys::kOfflineModeKey;
 using network_config_keys::kQweatherApiHostKey;
 using network_config_keys::kWeatherApiKeyKey;
+using network_config_keys::kWifiBackupPassKey;
+using network_config_keys::kWifiBackupSsidKey;
 using network_config_keys::kWifiPassKey;
+using network_config_keys::kWifiPreferredSlotKey;
 using network_config_keys::kWifiSsidKey;
 using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
@@ -56,10 +59,14 @@ constexpr const char *kOfflinePageMaskPersistFailedLog =
 struct LoadedSavedConfig {
     esp_err_t ssid_err;
     esp_err_t pass_err;
+    esp_err_t backup_ssid_err;
+    esp_err_t backup_pass_err;
     esp_err_t key_err;
     esp_err_t host_err;
     char wifi_ssid[kNetworkWifiSsidLen];
     char wifi_password[kNetworkWifiPasswordLen];
+    char backup_wifi_ssid[kNetworkWifiSsidLen];
+    char backup_wifi_password[kNetworkWifiPasswordLen];
     char weather_api_key[kNetworkWeatherApiKeyLen];
     char weather_api_host[kQweatherApiHostLen];
     uint8_t chime;
@@ -70,6 +77,7 @@ struct LoadedSavedConfig {
     uint8_t offline;
     uint8_t xiaozhi_auto_return;
     uint8_t gallery_rotation;
+    uint8_t preferred_wifi_slot;
     uint8_t page_order[kWorkPageCount];
     char manual_weather_city[kManualWeatherCityLen];
     bool have_page_order;
@@ -142,12 +150,16 @@ void initialize_loaded_saved_config(LoadedSavedConfig *loaded)
     clear_loaded_saved_config(loaded);
     loaded->ssid_err = ESP_FAIL;
     loaded->pass_err = ESP_FAIL;
+    loaded->backup_ssid_err = ESP_FAIL;
+    loaded->backup_pass_err = ESP_FAIL;
     loaded->key_err = ESP_FAIL;
     loaded->host_err = ESP_FAIL;
     loaded->volume = chime_settings::kDefaultVolumePercent;
     loaded->page_mask = kPageMaskV5KnownBits;
     loaded->xiaozhi_auto_return = kDefaultXiaozhiAutoReturnEnabled ? 1 : 0;
     loaded->gallery_rotation = kDefaultGalleryRotationPeriod;
+    loaded->preferred_wifi_slot =
+        static_cast<uint8_t>(WifiCredentialSlot::kSlotA);
 }
 
 void read_saved_config(nvs_handle_t nvs, LoadedSavedConfig *loaded)
@@ -160,6 +172,16 @@ void read_saved_config(nvs_handle_t nvs, LoadedSavedConfig *loaded)
         read_nvs_string(nvs, kWifiSsidKey, loaded->wifi_ssid, sizeof(loaded->wifi_ssid));
     loaded->pass_err = read_nvs_string(
         nvs, kWifiPassKey, loaded->wifi_password, sizeof(loaded->wifi_password));
+    loaded->backup_ssid_err = read_nvs_string(
+        nvs,
+        kWifiBackupSsidKey,
+        loaded->backup_wifi_ssid,
+        sizeof(loaded->backup_wifi_ssid));
+    loaded->backup_pass_err = read_nvs_string(
+        nvs,
+        kWifiBackupPassKey,
+        loaded->backup_wifi_password,
+        sizeof(loaded->backup_wifi_password));
     loaded->key_err = read_nvs_string(
         nvs, kWeatherApiKeyKey, loaded->weather_api_key, sizeof(loaded->weather_api_key));
     loaded->host_err = read_nvs_string(
@@ -179,6 +201,10 @@ void read_saved_config(nvs_handle_t nvs, LoadedSavedConfig *loaded)
         nvs, kXiaozhiAutoReturnKey, kDefaultXiaozhiAutoReturnEnabled ? 1 : 0);
     loaded->gallery_rotation = read_nvs_u8_or_default(
         nvs, kGalleryRotationKey, kDefaultGalleryRotationPeriod);
+    loaded->preferred_wifi_slot = read_nvs_u8_or_default(
+        nvs,
+        kWifiPreferredSlotKey,
+        static_cast<uint8_t>(WifiCredentialSlot::kSlotA));
     network_weather_city_storage::load_preferred_city(
         nvs, loaded->manual_weather_city, sizeof(loaded->manual_weather_city));
     loaded->have_page_order =
@@ -187,9 +213,22 @@ void read_saved_config(nvs_handle_t nvs, LoadedSavedConfig *loaded)
 
 bool apply_loaded_config(const LoadedSavedConfig &loaded)
 {
-    const bool wifi_configured = loaded.ssid_err == ESP_OK &&
-                                 loaded.pass_err == ESP_OK &&
-                                 loaded.wifi_ssid[0] != '\0';
+    const bool wifi_a_configured = loaded.ssid_err == ESP_OK &&
+                                   loaded.pass_err == ESP_OK &&
+                                   loaded.wifi_ssid[0] != '\0';
+    const bool wifi_b_configured = loaded.backup_ssid_err == ESP_OK &&
+                                   loaded.backup_pass_err == ESP_OK &&
+                                   loaded.backup_wifi_ssid[0] != '\0';
+    WifiCredentialSlot preferred_slot =
+        loaded.preferred_wifi_slot ==
+                static_cast<uint8_t>(WifiCredentialSlot::kSlotB)
+            ? WifiCredentialSlot::kSlotB
+            : WifiCredentialSlot::kSlotA;
+    if ((preferred_slot == WifiCredentialSlot::kSlotA && !wifi_a_configured) ||
+        (preferred_slot == WifiCredentialSlot::kSlotB && !wifi_b_configured)) {
+        preferred_slot = wifi_a_configured ? WifiCredentialSlot::kSlotA
+                                           : WifiCredentialSlot::kSlotB;
+    }
     const bool weather_key_configured = loaded.key_err == ESP_OK &&
                                         loaded.weather_api_key[0] != '\0';
     const bool weather_host_configured = loaded.host_err == ESP_OK &&
@@ -198,9 +237,11 @@ bool apply_loaded_config(const LoadedSavedConfig &loaded)
                                              loaded.weather_api_host);
     network_credentials_store(loaded.wifi_ssid,
                               loaded.wifi_password,
+                              loaded.backup_wifi_ssid,
+                              loaded.backup_wifi_password,
+                              preferred_slot,
                               loaded.weather_api_key,
                               loaded.weather_api_host,
-                              wifi_configured,
                               weather_key_configured,
                               weather_host_configured);
     manual_weather_city_store(loaded.manual_weather_city);

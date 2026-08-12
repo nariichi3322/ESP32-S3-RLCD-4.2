@@ -5,6 +5,9 @@ namespace network_config_keys {
 
 inline constexpr const char *kWifiSsidKey = "ssid";
 inline constexpr const char *kWifiPassKey = "pass";
+inline constexpr const char *kWifiBackupSsidKey = "ssid_b";
+inline constexpr const char *kWifiBackupPassKey = "pass_b";
+inline constexpr const char *kWifiPreferredSlotKey = "wifi_pri_v1";
 inline constexpr const char *kWeatherApiKeyKey = "api_key";
 inline constexpr const char *kQweatherApiHostKey = "api_host";
 inline constexpr const char *kOfflineModeKey = "offline_v1";

@@ -8,6 +8,7 @@
 #include "network_config.h"
 #include "network_config_internal.h"
 #include "network_credentials_state.h"
+#include "network_credentials_state_internal.h"
 #include "manual_time_parser.h"
 #include "provisioning_form_fields.h"
 #include "qweather_api_host.h"
@@ -37,13 +38,18 @@ constexpr const char *kConfigEventReasonProvisioningSave = "provisioning save";
 #define PROVISIONING_EMPTY_API_HOST_LOG "provisioning ignored empty API Host for online setup"
 #define PROVISIONING_INVALID_API_HOST_LOG "provisioning ignored invalid QWeather API Host"
 #define PROVISIONING_INVALID_WEATHER_CITY_LOG "provisioning ignored invalid weather city"
-#define PROVISIONING_SAVED_FORMAT "provisioning saved ssid=%s pass_len=%u api_key=%s len=%u api_host=%s len=%u weather_city=%s city_len=%u"
+#define PROVISIONING_DUPLICATE_WIFI_LOG \
+    "provisioning ignored duplicate main and backup Wi-Fi SSID"
+#define PROVISIONING_SAVED_FORMAT \
+    "provisioning saved main_ssid=%s main_pass_len=%u backup_ssid=%s backup_pass_len=%u api_key=%s len=%u api_host=%s len=%u weather_city=%s city_len=%u"
 
 // Synchronous setup handlers share one HTTP server task, so only one save
 // request can own this workspace at a time.
 EXT_RAM_BSS_ATTR ProvisioningFormFields s_provisioning_form_fields_workspace;
 static_assert(sizeof(s_provisioning_form_fields_workspace) >=
                   kProvisioningSsidFieldSize +
+                      kProvisioningPasswordFieldSize +
+                      kProvisioningSsidFieldSize +
                       kProvisioningPasswordFieldSize +
                       kProvisioningApiKeyFieldSize +
                       kProvisioningApiHostFieldSize +
@@ -84,6 +90,30 @@ public:
         return s_provisioning_form_fields_workspace;
     }
 };
+
+void preserve_saved_wifi_password(WifiCredentialSlot slot,
+                                  const char *submitted_ssid,
+                                  char *submitted_password,
+                                  size_t submitted_password_len)
+{
+    if (!submitted_ssid || submitted_ssid[0] == '\0' ||
+        !submitted_password || submitted_password_len == 0 ||
+        submitted_password[0] != '\0') {
+        return;
+    }
+    char saved_ssid[kNetworkWifiSsidLen] = {};
+    char saved_password[kNetworkWifiPasswordLen] = {};
+    if (network_wifi_credentials_for_slot_copy(slot,
+                                               saved_ssid,
+                                               sizeof(saved_ssid),
+                                               saved_password,
+                                               sizeof(saved_password)) &&
+        strcmp(saved_ssid, submitted_ssid) == 0) {
+        strlcpy(submitted_password,
+                saved_password,
+                submitted_password_len);
+    }
+}
 } // namespace
 
 bool save_offline_datetime_from_body(const char *body)
@@ -140,6 +170,21 @@ bool save_credentials_from_body(const char *body)
         ESP_LOGW(TAG, "%s", PROVISIONING_EMPTY_SSID_LOG);
         return false;
     }
+    const WifiCredentialSlot preferred_slot = network_wifi_preferred_slot();
+    preserve_saved_wifi_password(preferred_slot,
+                                 fields.ssid,
+                                 fields.pass,
+                                 sizeof(fields.pass));
+    preserve_saved_wifi_password(
+        wifi_alternate_credential_slot(preferred_slot),
+        fields.backup_ssid,
+        fields.backup_pass,
+        sizeof(fields.backup_pass));
+    if (fields.backup_ssid[0] != '\0' &&
+        strcmp(fields.ssid, fields.backup_ssid) == 0) {
+        ESP_LOGW(TAG, "%s", PROVISIONING_DUPLICATE_WIFI_LOG);
+        return false;
+    }
     if (fields.api_key[0] == '\0') {
         (void)network_weather_api_key_snapshot(fields.api_key, sizeof(fields.api_key));
     }
@@ -168,6 +213,8 @@ bool save_credentials_from_body(const char *body)
     ESP_LOGI(TAG, PROVISIONING_SAVED_FORMAT,
              fields.ssid,
              (unsigned)strlen(fields.pass),
+             fields.backup_ssid[0] ? fields.backup_ssid : "none",
+             (unsigned)strlen(fields.backup_pass),
              fields.api_key[0] ? "set" : "empty",
              (unsigned)strlen(fields.api_key),
              fields.api_host[0] ? "set" : "empty",
@@ -178,6 +225,8 @@ bool save_credentials_from_body(const char *body)
     clear_config_event_bits(kWifiConnectedBit, kConfigEventReasonProvisioningSave);
     if (!save_config(fields.ssid,
                      fields.pass,
+                     fields.backup_ssid,
+                     fields.backup_pass,
                      fields.api_key,
                      fields.api_host,
                      fields.weather_city)) {

@@ -40,7 +40,10 @@ using network_page_storage::kPageMaskV5Key;
 using network_config_keys::kQweatherApiHostKey;
 using network_config_keys::kOfflineModeKey;
 using network_config_keys::kWeatherApiKeyKey;
+using network_config_keys::kWifiBackupPassKey;
+using network_config_keys::kWifiBackupSsidKey;
 using network_config_keys::kWifiPassKey;
+using network_config_keys::kWifiPreferredSlotKey;
 using network_config_keys::kWifiSsidKey;
 
 namespace {
@@ -196,19 +199,25 @@ static void reset_saved_config_runtime_state()
 
 static void apply_saved_config_runtime_state(const char *ssid,
                                              const char *pass,
+                                             const char *backup_ssid,
+                                             const char *backup_pass,
                                              const char *api_key,
                                              const char *api_host,
                                              const char *weather_city)
 {
     const char *saved_ssid = cstr_or_empty(ssid);
     const char *saved_password = cstr_or_empty(pass);
+    const char *saved_backup_ssid = cstr_or_empty(backup_ssid);
+    const char *saved_backup_password = cstr_or_empty(backup_pass);
     const char *saved_api_key = cstr_or_empty(api_key);
     const char *saved_api_host = cstr_or_empty(api_host);
     network_credentials_store(saved_ssid,
                               saved_password,
+                              saved_backup_ssid,
+                              saved_backup_password,
+                              WifiCredentialSlot::kSlotA,
                               saved_api_key,
                               saved_api_host,
-                              saved_ssid[0] != '\0',
                               saved_api_key[0] != '\0',
                               saved_api_host[0] != '\0');
     manual_weather_city_store(weather_city);
@@ -217,6 +226,8 @@ static void apply_saved_config_runtime_state(const char *ssid,
 static esp_err_t write_saved_config_nvs(nvs_handle_t nvs,
                                         const char *ssid,
                                         const char *pass,
+                                        const char *backup_ssid,
+                                        const char *backup_pass,
                                         const char *api_key,
                                         const char *api_host,
                                         const char *city,
@@ -235,6 +246,49 @@ static esp_err_t write_saved_config_nvs(nvs_handle_t nvs,
                                              scratch,
                                              sizeof(scratch),
                                              &item_changed);
+    any_changed = any_changed || item_changed;
+    if (backup_ssid[0] != '\0') {
+        err = write_changed_nvs_string(nvs,
+                                       err,
+                                       kWifiBackupSsidKey,
+                                       backup_ssid,
+                                       scratch,
+                                       sizeof(scratch),
+                                       &item_changed);
+        any_changed = any_changed || item_changed;
+        err = write_changed_nvs_string(nvs,
+                                       err,
+                                       kWifiBackupPassKey,
+                                       backup_pass,
+                                       scratch,
+                                       sizeof(scratch),
+                                       &item_changed);
+        any_changed = any_changed || item_changed;
+    } else {
+        err = network_config_nvs::write_changed_optional_nvs_string(
+            nvs,
+            err,
+            kWifiBackupSsidKey,
+            "",
+            scratch,
+            sizeof(scratch),
+            &item_changed);
+        any_changed = any_changed || item_changed;
+        err = network_config_nvs::write_changed_optional_nvs_string(
+            nvs,
+            err,
+            kWifiBackupPassKey,
+            "",
+            scratch,
+            sizeof(scratch),
+            &item_changed);
+        any_changed = any_changed || item_changed;
+    }
+    err = write_changed_nvs_u8(nvs,
+                               err,
+                               kWifiPreferredSlotKey,
+                               static_cast<uint8_t>(WifiCredentialSlot::kSlotA),
+                               &item_changed);
     any_changed = any_changed || item_changed;
     err = write_changed_nvs_string(nvs,
                                    err,
@@ -275,6 +329,8 @@ static esp_err_t write_saved_config_nvs(nvs_handle_t nvs,
 
 bool save_config(const char *ssid,
                  const char *pass,
+                 const char *backup_ssid,
+                 const char *backup_pass,
                  const char *api_key,
                  const char *api_host,
                  const char *weather_city)
@@ -285,6 +341,12 @@ bool save_config(const char *ssid,
     }
     if (!pass) {
         pass = "";
+    }
+    if (!backup_ssid) {
+        backup_ssid = "";
+    }
+    if (!backup_pass) {
+        backup_pass = "";
     }
     if (!api_key) {
         api_key = "";
@@ -311,6 +373,8 @@ bool save_config(const char *ssid,
     err = write_saved_config_nvs(nvs.get(),
                                  ssid,
                                  pass,
+                                 backup_ssid,
+                                 backup_pass,
                                  api_key,
                                  normalized_api_host,
                                  city,
@@ -322,9 +386,49 @@ bool save_config(const char *ssid,
         return false;
     }
     apply_saved_config_runtime_state(
-        ssid, pass, api_key, normalized_api_host, city);
+        ssid,
+        pass,
+        backup_ssid,
+        backup_pass,
+        api_key,
+        normalized_api_host,
+        city);
     offline_mode_enabled_store(false);
     xiaozhi_ai_notify_network_configuration_changed();
+    return true;
+}
+
+bool persist_preferred_wifi_slot(WifiCredentialSlot slot)
+{
+    if (!wifi_credential_slot_valid(slot)) {
+        return false;
+    }
+    if (slot == network_wifi_preferred_slot()) {
+        return true;
+    }
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, kNvsActionSavingConfig);
+    if (err != ESP_OK) {
+        return false;
+    }
+    bool changed = false;
+    err = write_changed_nvs_u8(nvs.get(),
+                               err,
+                               kWifiPreferredSlotKey,
+                               static_cast<uint8_t>(slot),
+                               &changed);
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
+    nvs.close();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG,
+                 "failed to persist preferred Wi-Fi slot: %s",
+                 esp_err_to_name(err));
+        return false;
+    }
+    network_wifi_preferred_slot_store(slot);
+    ESP_LOGI(TAG,
+             "preferred Wi-Fi slot updated: %c",
+             slot == WifiCredentialSlot::kSlotA ? 'A' : 'B');
     return true;
 }
 

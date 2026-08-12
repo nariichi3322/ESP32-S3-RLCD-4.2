@@ -6,7 +6,9 @@
 
 #include "app_constexpr.h"
 #include "app_text_format.h"
+#include "network_config.h"
 #include "network_credentials_state.h"
+#include "network_credentials_state_internal.h"
 #include "offline_mode_state.h"
 #include "power_services.h"
 #include "scoped_semaphore_lock.h"
@@ -50,8 +52,11 @@ esp_event_handler_instance_t s_ip_event_handler_instance = nullptr;
 std::atomic<bool> s_wifi_stop_requested{false};
 std::atomic<bool> s_wifi_stop_when_idle_requested{false};
 StaticTaskMutex s_wifi_lifecycle_mutex;
+StaticTaskMutex s_wifi_failover_mutex;
 WifiDriverInitState s_wifi_driver_init_state =
     WifiDriverInitState::kRetryable;
+WifiFailoverState s_wifi_failover_state = {};
+std::atomic<bool> s_wifi_reconfigure_disconnect_pending{false};
 constexpr uint8_t kSetupApChannel = 1;
 constexpr uint8_t kSetupApMaxConnections = 4;
 constexpr const char *kSetupApSsidFormat = "WeatherClock-%02X%02X";
@@ -169,6 +174,13 @@ enum class WifiRadioStopAttempt {
 #define WIFI_CONNECT_START_FAILED_FORMAT "wifi connect failed to start: %s"
 #define WIFI_DISCONNECTED_FORMAT "wifi disconnected, reason=%d"
 #define WIFI_RECONNECT_START_FAILED_FORMAT "wifi reconnect failed to start: %s"
+#define WIFI_FAILOVER_SWITCH_FORMAT \
+    "Wi-Fi slot %c unavailable; trying slot %c"
+#define WIFI_FAILOVER_EXHAUSTED_LOG \
+    "both Wi-Fi slots unavailable; stopping reconnects for this session"
+#define WIFI_FAILOVER_MUTEX_UNAVAILABLE_LOG "Wi-Fi failover mutex unavailable"
+#define WIFI_PREFERRED_SLOT_PERSIST_FAILED_LOG \
+    "connected backup Wi-Fi could not be promoted"
 #define WIFI_GOT_IP_EVENT_MISSING_LOG "got ip event missing data"
 #define WIFI_GOT_IP_FORMAT "got ip: " IPSTR
 #define WIFI_STA_IP_FORMAT_FAILED_LOG "sta ip format failed"
@@ -204,6 +216,9 @@ constexpr uint32_t kWifiPowerSaveRetryMs = 10;
 constexpr unsigned kWifiPowerSaveAttempts = 3;
 constexpr TickType_t kWifiPowerSaveRetryDelay =
     pdMS_TO_TICKS(kWifiPowerSaveRetryMs);
+constexpr uint32_t kWifiPrimaryAttemptWindowMs = 12000;
+constexpr TickType_t kWifiPrimaryAttemptWindowTicks =
+    pdMS_TO_TICKS(kWifiPrimaryAttemptWindowMs);
 static_assert(kSetupResultDeliveryAttempts > 0,
               "setup result delivery needs at least one attempt");
 static_assert(kWifiInitializationAttempts > 1,
@@ -214,6 +229,8 @@ static_assert(kWifiPowerSaveAttempts > 1,
               "Wi-Fi power-save setup must retain a retry opportunity");
 static_assert(kWifiPowerSaveRetryDelay > 0,
               "Wi-Fi power-save retry delay must be positive");
+static_assert(kWifiPrimaryAttemptWindowTicks > 0,
+              "Wi-Fi failover window must be positive");
 #define WIFI_INIT_RETRY_FORMAT "wifi initialization retry: attempt=%u/%u"
 #define WIFI_INIT_RETRY_EXHAUSTED_LOG "wifi initialization retry exhausted"
 #define WIFI_LIFECYCLE_MUTEX_UNAVAILABLE_LOG "wifi lifecycle mutex unavailable"
@@ -252,6 +269,108 @@ void clear_sta_connection_state()
 {
     clear_wifi_station_ip();
     set_wifi_connected_event(false);
+}
+
+char wifi_slot_label(WifiCredentialSlot slot)
+{
+    return slot == WifiCredentialSlot::kSlotA ? 'A' : 'B';
+}
+
+bool begin_wifi_failover_session()
+{
+    const WifiCredentialSlot preferred = network_wifi_preferred_slot();
+    if (!network_wifi_select_slot(preferred)) {
+        return false;
+    }
+    const bool alternate_configured =
+        network_wifi_alternate_slot_configured();
+    ScopedSemaphoreLock failover_lock(s_wifi_failover_mutex);
+    if (!failover_lock) {
+        ESP_LOGW(TAG, "%s", WIFI_FAILOVER_MUTEX_UNAVAILABLE_LOG);
+        return false;
+    }
+    s_wifi_failover_state = wifi_failover_begin(
+        preferred, alternate_configured);
+    s_wifi_reconfigure_disconnect_pending.store(false,
+                                                 std::memory_order_release);
+    return true;
+}
+
+WifiCredentialSlot wifi_failover_current_slot_snapshot()
+{
+    ScopedSemaphoreLock failover_lock(s_wifi_failover_mutex);
+    return failover_lock ? s_wifi_failover_state.current_slot
+                         : network_wifi_current_slot();
+}
+
+WifiFailoverAction record_wifi_connection_failure(bool deliberate_disconnect,
+                                                  WifiCredentialSlot *slot)
+{
+    ScopedSemaphoreLock failover_lock(s_wifi_failover_mutex);
+    if (!failover_lock) {
+        return WifiFailoverAction::kExhausted;
+    }
+    const WifiCredentialSlot previous = s_wifi_failover_state.current_slot;
+    const WifiFailoverAction action = wifi_failover_record_failure(
+        &s_wifi_failover_state, deliberate_disconnect);
+    if (slot) {
+        *slot = s_wifi_failover_state.current_slot;
+    }
+    if (action == WifiFailoverAction::kSwitchAlternate) {
+        ESP_LOGW(TAG,
+                 WIFI_FAILOVER_SWITCH_FORMAT,
+                 wifi_slot_label(previous),
+                 wifi_slot_label(s_wifi_failover_state.current_slot));
+    }
+    return action;
+}
+
+bool force_wifi_failover_switch(WifiCredentialSlot initial_slot)
+{
+    WifiCredentialSlot next_slot = initial_slot;
+    {
+        ScopedSemaphoreLock failover_lock(s_wifi_failover_mutex);
+        if (!failover_lock) {
+            return false;
+        }
+        if (s_wifi_failover_state.current_slot != initial_slot) {
+            return true;
+        }
+        if (wifi_failover_force_switch(&s_wifi_failover_state) !=
+            WifiFailoverAction::kSwitchAlternate) {
+            return false;
+        }
+        next_slot = s_wifi_failover_state.current_slot;
+    }
+    ESP_LOGW(TAG,
+             WIFI_FAILOVER_SWITCH_FORMAT,
+             wifi_slot_label(initial_slot),
+             wifi_slot_label(next_slot));
+    if (!network_wifi_select_slot(next_slot)) {
+        return false;
+    }
+    return apply_station_config(true);
+}
+
+void record_wifi_connection_success()
+{
+    ScopedSemaphoreLock failover_lock(s_wifi_failover_mutex);
+    if (failover_lock) {
+        wifi_failover_record_connected(&s_wifi_failover_state);
+    }
+}
+
+void persist_connected_wifi_slot_if_needed()
+{
+    if (!app_event_group_ready() ||
+        (app_event_group_get_bits() & kWifiConnectedBit) == 0) {
+        return;
+    }
+    const WifiCredentialSlot current = network_wifi_current_slot();
+    if (current != network_wifi_preferred_slot() &&
+        !persist_preferred_wifi_slot(current)) {
+        ESP_LOGW(TAG, "%s", WIFI_PREFERRED_SLOT_PERSIST_FAILED_LOG);
+    }
 }
 
 void format_setup_ap_ssid(uint8_t mac4, uint8_t mac5)
@@ -361,10 +480,18 @@ bool start_station_connection(StationConnectAttempt attempt)
 
 bool disconnect_station_and_clear_state()
 {
+    s_wifi_reconfigure_disconnect_pending.store(true,
+                                                 std::memory_order_release);
     const esp_err_t err = esp_wifi_disconnect();
     if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_CONNECT) {
+        s_wifi_reconfigure_disconnect_pending.store(false,
+                                                     std::memory_order_release);
         ESP_LOGW(TAG, WIFI_STA_DISCONNECT_FAILED_FORMAT, esp_err_to_name(err));
         return false;
+    }
+    if (err == ESP_ERR_WIFI_NOT_CONNECT) {
+        s_wifi_reconfigure_disconnect_pending.store(false,
+                                                     std::memory_order_release);
     }
     // The disconnect event is asynchronous. Clear the previous IP state now so
     // a connection wait cannot mistake the old AP for the newly saved one.
@@ -376,6 +503,32 @@ void reconnect_station_after_disconnect_if_allowed()
 {
     const bool stop_requested =
         s_wifi_stop_requested.load(std::memory_order_acquire);
+    const bool reconfigure_disconnect =
+        s_wifi_reconfigure_disconnect_pending.exchange(
+            false, std::memory_order_acq_rel);
+    WifiCredentialSlot selected_slot = network_wifi_current_slot();
+    const WifiFailoverAction action = record_wifi_connection_failure(
+        stop_requested || reconfigure_disconnect, &selected_slot);
+    if (action == WifiFailoverAction::kIgnore) {
+        return;
+    }
+    if (action == WifiFailoverAction::kExhausted) {
+        ESP_LOGW(TAG, "%s", WIFI_FAILOVER_EXHAUSTED_LOG);
+        if (!setup_portal_active_load()) {
+            request_wifi_radio_stop_when_idle();
+        }
+        return;
+    }
+    if (action == WifiFailoverAction::kSwitchAlternate) {
+        if (!network_wifi_select_slot(selected_slot) ||
+            !apply_station_config(false)) {
+            ESP_LOGW(TAG, "%s", WIFI_FAILOVER_EXHAUSTED_LOG);
+            if (!setup_portal_active_load()) {
+                request_wifi_radio_stop_when_idle();
+            }
+            return;
+        }
+    }
     const bool offline_mode = offline_mode_enabled_load();
     if (!should_attempt_station_reconnect(
             network_wifi_credentials_configured(),
@@ -651,7 +804,8 @@ static bool configure_running_wifi_radio(bool enable_setup_portal,
     if (network_wifi_credentials_configured() &&
         should_reconnect_running_station(enable_setup_portal,
                                          station_connected)) {
-        if (!apply_station_config(true)) {
+        if (!begin_wifi_failover_session() ||
+            !apply_station_config(true)) {
             if (station_config_failure_blocks_start(enable_setup_portal)) {
                 return false;
             }
@@ -679,7 +833,8 @@ static bool start_stopped_wifi_radio(bool enable_setup_portal,
         }
     }
     if (network_wifi_credentials_configured()) {
-        if (!apply_station_config(false)) {
+        if (!begin_wifi_failover_session() ||
+            !apply_station_config(false)) {
             if (station_config_failure_blocks_start(enable_setup_portal)) {
                 return false;
             }
@@ -757,14 +912,47 @@ bool wait_for_wifi_connected(uint32_t timeout_ms, uint32_t cancel_bits)
         return false;
     }
     const EventBits_t cancellation_bits = static_cast<EventBits_t>(cancel_bits);
-    EventBits_t bits = app_event_group_wait_bits(kWifiConnectedBit | cancellation_bits,
-                                                 pdFALSE,
-                                                 pdFALSE,
-                                                 pdMS_TO_TICKS(timeout_ms));
-    if ((bits & cancellation_bits) != 0) {
-        return false;
+    const TickType_t timeout_ticks = pdMS_TO_TICKS(timeout_ms);
+    const TickType_t started_at = xTaskGetTickCount();
+    const WifiCredentialSlot initial_slot =
+        wifi_failover_current_slot_snapshot();
+    const bool alternate_configured =
+        network_wifi_alternate_slot_configured();
+    TickType_t failover_window = timeout_ticks / 2;
+    if (failover_window > kWifiPrimaryAttemptWindowTicks) {
+        failover_window = kWifiPrimaryAttemptWindowTicks;
     }
-    return (bits & kWifiConnectedBit) != 0;
+    if (failover_window == 0 && timeout_ticks > 0) {
+        failover_window = 1;
+    }
+    bool failover_window_consumed = !alternate_configured;
+
+    for (;;) {
+        const TickType_t elapsed = xTaskGetTickCount() - started_at;
+        if (elapsed >= timeout_ticks) {
+            return false;
+        }
+        const TickType_t remaining = timeout_ticks - elapsed;
+        const TickType_t wait_ticks =
+            !failover_window_consumed && failover_window < remaining
+                ? failover_window
+                : remaining;
+        const EventBits_t bits = app_event_group_wait_bits(
+            kWifiConnectedBit | cancellation_bits,
+            pdFALSE,
+            pdFALSE,
+            wait_ticks);
+        if ((bits & cancellation_bits) != 0) {
+            return false;
+        }
+        if ((bits & kWifiConnectedBit) != 0) {
+            return true;
+        }
+        if (!failover_window_consumed) {
+            failover_window_consumed = true;
+            (void)force_wifi_failover_switch(initial_slot);
+        }
+    }
 }
 
 bool prepare_setup_portal_result_delivery()
@@ -781,6 +969,7 @@ bool prepare_setup_portal_result_delivery()
     // APSTA must follow the router channel while credentials are validated.
     // Return to AP-only before publishing the result so the phone can rejoin
     // the original setup channel with its existing DHCP lease.
+    persist_connected_wifi_slot_if_needed();
     wifi_portal_ap_channel_transition_begin();
     s_wifi_stop_requested.store(true, std::memory_order_release);
     esp_err_t disconnect_err = esp_wifi_disconnect();
@@ -858,6 +1047,7 @@ static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt)
             return false;
         }
     }
+    persist_connected_wifi_slot_if_needed();
     // Publish deliberate-stop ownership before stopping the HTTP server.
     // Otherwise a concurrent STA disconnect can still start a reconnect while
     // the portal teardown and esp_wifi_stop() sequence is already in flight.
@@ -998,6 +1188,7 @@ static void wifi_event_handler(void *,
             return;
         }
         ESP_LOGI(TAG, WIFI_GOT_IP_FORMAT, IP2STR(&event->ip_info.ip));
+        record_wifi_connection_success();
         format_sta_ip_or_clear(&event->ip_info.ip);
         set_wifi_connected_event(true);
         notify_ui_task();
@@ -1024,6 +1215,11 @@ void init_wifi()
     if (!s_wifi_lifecycle_mutex.handle() &&
         !s_wifi_lifecycle_mutex.init()) {
         ESP_LOGW(TAG, "%s", WIFI_LIFECYCLE_MUTEX_UNAVAILABLE_LOG);
+        return;
+    }
+    if (!s_wifi_failover_mutex.handle() &&
+        !s_wifi_failover_mutex.init()) {
+        ESP_LOGW(TAG, "%s", WIFI_FAILOVER_MUTEX_UNAVAILABLE_LOG);
         return;
     }
     uint8_t mac[6] = {};

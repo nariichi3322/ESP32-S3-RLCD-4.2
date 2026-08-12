@@ -259,12 +259,22 @@ inline constexpr char kFormHtml[] = R"PORTAL(
       <div><h2>联网配置</h2><p>连接并验证后自动进入工作状态</p></div>
     </div>
     <div class='field'>
-      <label for='wifi-ssid'>Wi-Fi 名称（SSID）</label>
+      <label for='wifi-ssid'>主 Wi-Fi 名称（SSID）</label>
       <input id='wifi-ssid' name='ssid' placeholder='请选择或输入 Wi-Fi 名称' value='%s' autocomplete='off'>
     </div>
     <div class='field'>
-      <label for='wifi-pass'>Wi-Fi 密码</label>
+      <label for='wifi-pass'>主 Wi-Fi 密码</label>
       <input id='wifi-pass' name='pass' placeholder='请输入 Wi-Fi 密码' type='password' autocomplete='current-password'>
+      <p class='hint'>SSID 未改变时，密码留空可继续使用原密码。</p>
+    </div>
+    <div class='field'>
+      <label for='backup-wifi-ssid'>备用 Wi-Fi 名称 <em>选填</em></label>
+      <input id='backup-wifi-ssid' name='backup_ssid' placeholder='主 Wi-Fi 不可用时自动尝试' value='%s' autocomplete='off'>
+    </div>
+    <div class='field'>
+      <label for='backup-wifi-pass'>备用 Wi-Fi 密码 <em>选填</em></label>
+      <input id='backup-wifi-pass' name='backup_pass' placeholder='请输入备用 Wi-Fi 密码' type='password' autocomplete='off'>
+      <p class='hint'>可不配置；备用连接成功后会自动成为首选 Wi-Fi。</p>
     </div>
   </div>
   <div class='form-section section-weather'>

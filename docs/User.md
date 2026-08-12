@@ -181,8 +181,9 @@ With no saved online configuration and offline mode disabled, setup starts autom
 1. Join `WeatherClock-xxxx`.
 2. Wait for the captive portal or open `http://192.168.4.1/`.
 3. Fill the required fields:
-   - **Wi-Fi SSID:** select from the scan list or enter manually. The list shows up to 32 access points; refreshing scans again, and a temporary memory warning does not prevent manual entry.
-   - **Wi-Fi password:** password for the selected network.
+   - **Primary Wi-Fi SSID:** select from the scan list or enter manually. The list shows up to 32 access points; refreshing scans again, and a temporary memory warning does not prevent manual entry.
+   - **Primary Wi-Fi password:** password for the preferred network. Leave it empty to keep the saved password when the SSID has not changed.
+   - **Backup Wi-Fi SSID and password (optional):** tried when the primary network is unavailable. Leave both empty when no backup is needed. An unchanged backup SSID can also keep its saved password.
    - **QWeather API Key:** required for current weather, alerts, forecast, and air quality.
    - **QWeather API Host:** find it under **Settings → API Host** in the QWeather Console, for example `abc123.re.qweatherapi.com`. Enter only the domain, without `https://`, a port, or a path.
    - **Weather city (optional):** for example Hangzhou. Chinese names ending in `市` are normalized and validated through QWeather. Leave empty for public-IP location.
@@ -191,6 +192,10 @@ With no saved online configuration and offline mode disabled, setup starts autom
 The setup page groups fields into Network, Weather Service, and Offline sections. Nearby Wi-Fi uses a compact list, while validating, success, and failure states use distinct feedback treatments. This layout change does not alter field meaning, save order, or validation rules.
 
 Wi-Fi names up to the router-supported 32-byte limit are passed to the radio driver without losing the final byte. Because `v1.5.29` introduces the account-specific API Host, devices upgraded from an earlier version must reopen setup and fill this field; other saved values remain available for reuse.
+
+An older single-network configuration automatically becomes the primary slot, so an OTA upgrade does not require a factory reset. Each radio session tries the current preferred network first. After bounded repeated failures, or when its connection window expires, that session may switch to the backup only once. A successfully connected backup becomes the new preferred network for the next session; the same promotion rule works in the opposite direction later.
+
+If both networks are unavailable, the device does not switch forever. Ordinary work ends the current connection attempt and returns to the existing synchronization backoff, avoiding continuous Wi-Fi power use. Setup mode keeps the device hotspot and result page available so the user can correct either network. Serial logs expose slot state, SSIDs, and password lengths only, never full passwords.
 
 After Save is pressed, the page immediately shows a validating state; validation does not intentionally restart the device. A background network task connects to the selected router in AP+STA mode, validates the QWeather API key through the configured API Host, and then validates an optional manual city. The page polls the lightweight validation status. The setup hotspot closes only after all checks pass. A Wi-Fi password, API key, API Host, or city failure keeps the hotspot active and shows a specific error. If the phone loses the current HTTP connection while the STA changes channel, reopening `http://192.168.4.1/` shows the latest validation state above the form. The Save button remains on its own row below the date/time field.
 

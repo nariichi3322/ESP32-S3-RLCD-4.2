@@ -32,7 +32,7 @@ constexpr uint16_t kSetupHttpServerPort = 80;
 constexpr size_t kSetupHttpServerStackSize = 8192;
 constexpr size_t kSetupHttpMaxRequestHeaderLength = 1024;
 constexpr size_t kPortalSubmitSsidFieldSize = 33;
-constexpr size_t kPortalRequestBufferSize = 1024;
+constexpr size_t kPortalRequestBufferSize = 1536;
 // ESP-IDF invokes synchronous URI handlers on the single HTTP server task.
 // Keep their mutually exclusive request staging area off that task's stack.
 EXT_RAM_BSS_ATTR char s_portal_request_buffer[kPortalRequestBufferSize];
