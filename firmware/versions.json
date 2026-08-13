@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.35",
+  "latest": "v1.5.36",
   "items": [
+    {
+      "version": "v1.5.36",
+      "notes": "v1.5.36：共 3 项更新。\n1. 配网页新增可选备用 Wi-Fi，可同时保存主、备两个热点；已有单 Wi-Fi 配置会继…\n2. 主 Wi-Fi 连续不可用时会有界切换到备用 Wi-Fi；备用连接成功后自动晋升为首选…\n3. 主、备 Wi-Fi 均不可用时停止本轮重复重连：正常工作进入既有退避，配网模式保留设备…\n完整说明见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.36/weather_clock_v1.5.36.bin",
+        "sha256": "4c0e1f6b9f34922f931d70ec7cc3031b753257efe773622de86bc2f23ebce58f",
+        "size": 6264768
+      },
+      "merged": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.36/weather_clock_v1.5.36_merged.bin",
+        "sha256": "ffc683afa70bc05c79366e08b067a34277acc9c01e2eb0d4b41953bd095cb5ea",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.35",
       "notes": "v1.5.35：共 1 项更新。\n1. 修复关于本机“最近充电时间”可能被未插入充电器时的短时电压反弹误改的问题；只有持续至少…\n完整说明见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.27/weather_clock_v1.5.27_merged.bin",
         "sha256": "0411182ea2aa15b5537ccf32d15bbeb752c495090d2e2b9040bdb81e780779ac",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.26",
-      "notes": "v1.5.26：共 8 项更新。\n1. 修复小智实时会话从唤醒切换到 VOIP AEC 时任务栈不足导致的崩溃重启。\n2. 修复小智播放回复期间残余扬声器回声被上传、导致云端误判插话并提前中断回答。\n3. 修复小智唤醒与实时对话管线交接以及 TTS 句间收尾不完整，降低误唤醒和多句回复中途切…\n4. 修复充电动画结束后电池 ADC 被过早降频、导致充满或拔电状态反馈延迟的问题。\n5. OTA 内置来源由 Cloudflare 迁移为 GitHub OTA 主源和 Git…\n6. GitHub 与 Gitee OTA 仓库采用一致的目标仓库自主镜像流程，在源码构建完…\n其余 2 项见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.26/weather_clock_v1.5.26.bin",
-        "sha256": "b080c314aa55822da12bea6b8688b8355e6e231ed11500cf804878416b0e61d8",
-        "size": 6235552
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.26/weather_clock_v1.5.26_merged.bin",
-        "sha256": "40a15665f700a39b14a186ddf8dbee7b0e0d2d78b251dd19b4d9da5805fad598",
         "size": 16509951
       }
     }

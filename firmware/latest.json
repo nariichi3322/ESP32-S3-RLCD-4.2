@@ -1,7 +1,7 @@
 {
-  "version": "v1.5.35",
-  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.35/weather_clock_v1.5.35.bin",
-  "sha256": "2b437a4d96bfa913940e1d4726bb7bbe3c73643377047903c4fe81a9bdf43463",
-  "size": 6260784,
-  "notes": "v1.5.35：共 1 项更新。\n1. 修复关于本机“最近充电时间”可能被未插入充电器时的短时电压反弹误改的问题；只有持续至少…\n完整说明见源码仓库同版本 Release。"
+  "version": "v1.5.36",
+  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.36/weather_clock_v1.5.36.bin",
+  "sha256": "4c0e1f6b9f34922f931d70ec7cc3031b753257efe773622de86bc2f23ebce58f",
+  "size": 6264768,
+  "notes": "v1.5.36：共 3 项更新。\n1. 配网页新增可选备用 Wi-Fi，可同时保存主、备两个热点；已有单 Wi-Fi 配置会继…\n2. 主 Wi-Fi 连续不可用时会有界切换到备用 Wi-Fi；备用连接成功后自动晋升为首选…\n3. 主、备 Wi-Fi 均不可用时停止本轮重复重连：正常工作进入既有退避，配网模式保留设备…\n完整说明见源码仓库同版本 Release。"
 }
