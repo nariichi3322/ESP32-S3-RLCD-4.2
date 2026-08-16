@@ -11,6 +11,7 @@ struct BatteryChargingTracker {
     uint32_t last_peak_tick = 0;
     bool session_start_tick_set = false;
     uint32_t session_start_tick = 0;
+    bool session_started_below_full_threshold = false;
 };
 
 struct BatteryChargingState {
@@ -26,6 +27,7 @@ struct BatteryChargingPolicy {
     int stop_samples_required = 0;
     int animation_stop_percent = 0;
     uint32_t animation_idle_ticks = 0;
+    uint32_t full_charge_min_ticks = 0;
 };
 
 struct BatteryChargingInput {

@@ -50,7 +50,7 @@ int main()
     snapshot.voltage = 50.0f;
     snapshot.charging = true;
     snapshot.animation_complete = true;
-    snapshot.last_charge_time = 1234;
+    snapshot.last_full_charge_time = 1234;
     snapshot.version = 7;
     snapshot.low_battery_mode = false;
     battery_runtime_snapshot_store(snapshot);
@@ -75,7 +75,7 @@ int main()
 
     snapshot.charging = false;
     snapshot.animation_complete = false;
-    snapshot.last_charge_time = 50;
+    snapshot.last_full_charge_time = 50;
     battery_runtime_snapshot_store(snapshot);
 
     std::atomic<bool> inconsistent{false};
@@ -87,7 +87,7 @@ int main()
             next.voltage = static_cast<float>(next.percent);
             next.charging = (next.percent % 2) != 0;
             next.animation_complete = next.charging;
-            next.last_charge_time = next.percent;
+            next.last_full_charge_time = next.percent;
             next.version = static_cast<uint32_t>(i);
             next.low_battery_mode = next.percent < kEnterPercent;
             battery_runtime_snapshot_store(next);
@@ -99,7 +99,7 @@ int main()
             if (!battery_runtime_snapshot_load(&current) ||
                 current.voltage != static_cast<float>(current.percent) ||
                 current.animation_complete != current.charging ||
-                current.last_charge_time != current.percent) {
+                current.last_full_charge_time != current.percent) {
                 inconsistent.store(true, std::memory_order_relaxed);
             }
         }

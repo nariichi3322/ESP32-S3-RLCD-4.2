@@ -189,7 +189,7 @@ bool set_info_battery_label()
     }
     char line[kInfoLineTextSize] = {};
     char charge_time[kInfoTimeTextSize] = {};
-    format_time_or_dash(battery.last_charge_time, charge_time, sizeof(charge_time));
+    format_time_or_dash(battery.last_full_charge_time, charge_time, sizeof(charge_time));
     if (battery.percent >= 0 && battery.voltage >= 0.0f) {
         ui_text::format_or_fallback(line, sizeof(line), kInfoBatteryPlaceholder, kInfoBatteryFullFormat,
                                     battery.percent, battery.voltage, charge_time);

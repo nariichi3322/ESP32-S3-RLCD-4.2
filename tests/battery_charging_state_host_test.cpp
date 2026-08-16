@@ -22,10 +22,12 @@ static_assert(kBatteryReadFailureMaxGraceSamples ==
               kBatteryChargingReadFailureGraceSamples);
 static_assert(!battery_charging_requires_fast_sampling(false));
 static_assert(battery_charging_requires_fast_sampling(true));
-static_assert(!battery_charge_history_should_update(false, false, true));
-static_assert(!battery_charge_history_should_update(true, true, true));
-static_assert(!battery_charge_history_should_update(true, false, false));
-static_assert(battery_charge_history_should_update(true, false, true));
+static_assert(!battery_full_charge_history_should_update(false, true, false, true, true));
+static_assert(!battery_full_charge_history_should_update(true, false, false, true, true));
+static_assert(!battery_full_charge_history_should_update(true, true, false, false, true));
+static_assert(!battery_full_charge_history_should_update(true, true, false, true, false));
+static_assert(battery_full_charge_history_should_update(true, true, false, true, true));
+static_assert(!battery_full_charge_history_should_update(true, true, true, true, true));
 static_assert(!battery_read_failure_within_grace(false, 0));
 static_assert(battery_read_failure_within_grace(false, 1));
 static_assert(!battery_read_failure_within_grace(false, 2));
@@ -46,6 +48,7 @@ constexpr BatteryChargingPolicy kPolicy = {
     5,
     96,
     600,
+    60,
 };
 
 BatteryChargingInput input(float previous,
@@ -64,7 +67,7 @@ int main()
                                            nullptr,
                                            nullptr));
 
-    BatteryChargingTracker tracker = {1, 2, 4.0f, true, 10, true, 5};
+    BatteryChargingTracker tracker = {1, 2, 4.0f, true, 10, true, 5, true};
     BatteryChargingState state = {false, true};
     assert(update_battery_charging_state(input(-1.0f, 3.8f, 50, 20),
                                          kPolicy,
@@ -74,6 +77,7 @@ int main()
     assert(tracker.rise_samples == 0 && tracker.stop_samples == 0);
     assert(tracker.peak_voltage == 0.0f && !tracker.peak_tick_set);
     assert(!tracker.session_start_tick_set);
+    assert(!tracker.session_started_below_full_threshold);
 
     tracker = {};
     state = {};
@@ -89,6 +93,7 @@ int main()
     assert(state.charging && !state.animation_complete);
     assert(tracker.peak_voltage == 3.855f && tracker.last_peak_tick == 200);
     assert(tracker.session_start_tick_set && tracker.session_start_tick == 200);
+    assert(tracker.session_started_below_full_threshold);
     assert(!battery_charging_session_elapsed(tracker, 259, 60));
     assert(battery_charging_session_elapsed(tracker, 260, 60));
 
@@ -99,6 +104,25 @@ int main()
     assert(state.charging && tracker.peak_voltage == 3.90f);
     assert(tracker.last_peak_tick == 300 && tracker.stop_samples == 0);
     assert(update_battery_charging_state(input(3.90f, 3.90f, 96, 301),
+                                         kPolicy,
+                                         &tracker,
+                                         &state));
+    assert(state.charging && state.animation_complete);
+
+    tracker = {};
+    state = {};
+    assert(update_battery_charging_state(input(3.90f, 3.94f, 96, 100),
+                                         kPolicy,
+                                         &tracker,
+                                         &state));
+    assert(state.charging && !state.animation_complete);
+    assert(!tracker.session_started_below_full_threshold);
+    assert(update_battery_charging_state(input(3.94f, 3.94f, 96, 699),
+                                         kPolicy,
+                                         &tracker,
+                                         &state));
+    assert(state.charging && !state.animation_complete);
+    assert(update_battery_charging_state(input(3.94f, 3.94f, 96, 700),
                                          kPolicy,
                                          &tracker,
                                          &state));
@@ -148,5 +172,6 @@ int main()
     assert(tracker.rise_samples == 0 && tracker.stop_samples == 0);
     assert(tracker.peak_voltage == 0.0f && !tracker.peak_tick_set);
     assert(!tracker.session_start_tick_set);
+    assert(!tracker.session_started_below_full_threshold);
     return 0;
 }

@@ -338,6 +338,7 @@ extern "C" void app_main(void)
     setenv("TZ", "CST-8", 1);
     tzset();
     restore_system_time_from_rtc();
+    load_battery_charge_history();
     init_shtc3_sensor(i2c);
     sample_battery();
     if (!battery_low_mode_load()) {

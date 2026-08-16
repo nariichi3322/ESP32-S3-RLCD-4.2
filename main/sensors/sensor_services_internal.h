@@ -17,6 +17,7 @@ constexpr bool local_sensor_read_failure_within_grace(int consecutive_failures)
 
 bool init_sensor_services_state();
 void load_hourly_sensor_history();
+void load_battery_charge_history();
 void init_shtc3_sensor(I2cMasterBus &i2c);
 bool sample_sensor();
 bool sample_battery();

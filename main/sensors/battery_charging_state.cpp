@@ -33,6 +33,15 @@ bool charging_animation_idle_elapsed(const BatteryChargingTracker &tracker,
                                      tracker.last_peak_tick,
                                      policy.animation_idle_ticks);
 }
+
+bool charging_session_is_meaningful(const BatteryChargingTracker &tracker,
+                                    uint32_t now_tick,
+                                    const BatteryChargingPolicy &policy)
+{
+    return battery_charging_session_elapsed(tracker,
+                                            now_tick,
+                                            policy.full_charge_min_ticks);
+}
 } // namespace
 
 void reset_battery_charging_tracker(BatteryChargingTracker *tracker)
@@ -105,15 +114,22 @@ bool update_battery_charging_state(const BatteryChargingInput &input,
         tracker->peak_tick_set = true;
         tracker->session_start_tick = input.now_tick;
         tracker->session_start_tick_set = true;
+        tracker->session_started_below_full_threshold =
+            input.percent < policy.animation_stop_percent;
     }
 
     bool charging_idle = state->charging &&
                          charging_animation_idle_elapsed(*tracker,
                                                          input.now_tick,
                                                          policy);
+    bool charging_threshold_reached =
+        state->charging &&
+        tracker->session_started_below_full_threshold &&
+        input.percent >= policy.animation_stop_percent;
     if (state->charging &&
         !state->animation_complete &&
-        (input.percent >= policy.animation_stop_percent || charging_idle)) {
+        charging_session_is_meaningful(*tracker, input.now_tick, policy) &&
+        (charging_threshold_reached || charging_idle)) {
         state->animation_complete = true;
     }
     return true;

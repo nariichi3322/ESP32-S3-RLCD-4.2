@@ -7,12 +7,14 @@
 #include "battery_policy.h"
 #include "battery_runtime_state_internal.h"
 #include "network_runtime_events.h"
+#include "scoped_nvs_handle.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "esp_adc/adc_oneshot.h"
 
 #include "esp_err.h"
 #include "esp_log.h"
+#include "nvs.h"
 
 #include <time.h>
 
@@ -30,7 +32,11 @@
 #define BATTERY_CHARGING_STARTED_LOG_FORMAT "battery charging detected voltage=%.3fV soc=%d%%"
 #define BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT "battery charging animation completed voltage=%.3fV soc=%d%%"
 #define BATTERY_CHARGING_STOPPED_LOG_FORMAT "battery charging cleared voltage=%.3fV soc=%d%%"
-#define BATTERY_CHARGING_SHORT_SESSION_LOG_FORMAT "battery charging history ignored short session voltage=%.3fV soc=%d%%"
+#define BATTERY_FULL_CHARGE_RECORDED_LOG_FORMAT "battery full charge recorded voltage=%.3fV soc=%d%%"
+#define BATTERY_FULL_CHARGE_NVS_OPEN_FAILED_LOG_FORMAT "open battery full-charge history nvs failed: %s"
+#define BATTERY_FULL_CHARGE_NVS_READ_FAILED_LOG_FORMAT "read battery full-charge history failed: %s"
+#define BATTERY_FULL_CHARGE_NVS_INVALID_LOG_FORMAT "battery full-charge history contains invalid timestamp"
+#define BATTERY_FULL_CHARGE_NVS_SAVE_FAILED_LOG_FORMAT "save battery full-charge history failed: %s"
 #define BATTERY_CHARGING_ADC_RETRY_LOG_FORMAT "battery ADC failed while charging, preserving state for up to %d retries"
 #define BATTERY_CHARGING_ADC_RETRY_EXHAUSTED_LOG_FORMAT "battery ADC charging retry grace exhausted after %d failures"
 
@@ -59,6 +65,8 @@ static constexpr int kBatteryPercentMax = 100;
 static constexpr int kBatteryPercentUnknown = -1;
 static constexpr int kBatteryMinValidYear = 2023;
 static constexpr int kBatteryMinValidTmYear = kBatteryMinValidYear - kTmYearOffset;
+static constexpr const char *kBatteryNvsNamespace = "sensor";
+static constexpr const char *kBatteryLastFullChargeKey = "batfull1";
 static constexpr uint32_t kBatteryChargingAnimationIdleTicks =
     pdMS_TO_TICKS(kBatteryChargingAnimationIdleMs);
 static constexpr uint32_t kBatteryChargeHistoryMinSessionTicks =
@@ -71,6 +79,7 @@ static constexpr BatteryChargingPolicy kBatteryChargingPolicy = {
     kBatteryChargingStopSamples,
     kBatteryChargingAnimationStopPercent,
     kBatteryChargingAnimationIdleTicks,
+    kBatteryChargeHistoryMinSessionTicks,
 };
 
 struct BatteryReading {
@@ -105,6 +114,8 @@ static_assert(kBatteryChargeHistoryMinSessionTicks >
               "charge history must require multiple fast samples");
 static_assert(sizeof(TickType_t) == sizeof(uint32_t),
               "battery charging tracker expects 32-bit FreeRTOS ticks");
+static_assert(sizeof(time_t) <= sizeof(int64_t),
+              "battery full-charge timestamp must fit NVS int64 storage");
 static_assert(kBatteryChargingRiseVoltage > kBatteryChargingStopVoltage,
               "charging rise threshold must stay above stop threshold");
 static_assert(kBatteryChargingStopVoltage >=
@@ -131,14 +142,81 @@ static bool battery_time_valid(time_t value)
     return localtime_r(&value, &local) && local.tm_year >= kBatteryMinValidTmYear;
 }
 
-static time_t last_charge_time_after_unplug(time_t previous)
+static bool current_full_charge_time(time_t *out)
 {
+    if (!out) {
+        return false;
+    }
     time_t now = 0;
     time(&now);
-    if (battery_time_valid(now)) {
-        return now;
+    if (!battery_time_valid(now)) {
+        return false;
     }
-    return previous;
+    *out = now;
+    return true;
+}
+
+static bool save_last_full_charge_time(time_t value)
+{
+    if (!battery_time_valid(value)) {
+        return false;
+    }
+    app_storage::ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(kBatteryNvsNamespace, NVS_READWRITE);
+    if (err == ESP_OK) {
+        err = nvs_set_i64(nvs.get(),
+                          kBatteryLastFullChargeKey,
+                          static_cast<int64_t>(value));
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(nvs.get());
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG,
+                 BATTERY_FULL_CHARGE_NVS_SAVE_FAILED_LOG_FORMAT,
+                 esp_err_to_name(err));
+        return false;
+    }
+    return true;
+}
+
+void load_battery_charge_history()
+{
+    app_storage::ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(kBatteryNvsNamespace, NVS_READONLY);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return;
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG,
+                 BATTERY_FULL_CHARGE_NVS_OPEN_FAILED_LOG_FORMAT,
+                 esp_err_to_name(err));
+        return;
+    }
+
+    int64_t stored = 0;
+    err = nvs_get_i64(nvs.get(), kBatteryLastFullChargeKey, &stored);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        return;
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG,
+                 BATTERY_FULL_CHARGE_NVS_READ_FAILED_LOG_FORMAT,
+                 esp_err_to_name(err));
+        return;
+    }
+    const time_t loaded = static_cast<time_t>(stored);
+    if (!battery_time_valid(loaded)) {
+        ESP_LOGW(TAG, "%s", BATTERY_FULL_CHARGE_NVS_INVALID_LOG_FORMAT);
+        return;
+    }
+
+    BatteryRuntimeSnapshot snapshot;
+    if (!battery_runtime_snapshot_load(&snapshot)) {
+        return;
+    }
+    snapshot.last_full_charge_time = loaded;
+    battery_runtime_snapshot_store(snapshot);
 }
 
 static void release_battery_gauge()
@@ -353,6 +431,7 @@ bool sample_battery()
 {
     static BatteryChargingTracker charging_tracker;
     static int consecutive_read_failures = 0;
+    static bool full_charge_time_pending = false;
     BatteryRuntimeSnapshot previous;
     if (!battery_runtime_snapshot_load(&previous)) {
         return false;
@@ -360,13 +439,9 @@ bool sample_battery()
     BatteryRuntimeSnapshot next = previous;
     BatteryReading reading;
     if (read_battery_reading(&reading)) {
+        time_t full_charge_time_to_persist = 0;
         consecutive_read_failures = 0;
         uint32_t now_tick = static_cast<uint32_t>(xTaskGetTickCount());
-        bool completed_charge_session_is_meaningful =
-            previous.charging &&
-            battery_charging_session_elapsed(charging_tracker,
-                                             now_tick,
-                                             kBatteryChargeHistoryMinSessionTicks);
         BatteryChargingState previous_state = {
             previous.charging,
             previous.animation_complete,
@@ -378,7 +453,13 @@ bool sample_battery()
             charging_tracker,
             now_tick);
         apply_battery_reading(reading, next_state, &next);
+        bool completed_charge_session_is_meaningful =
+            next_state.charging &&
+            battery_charging_session_elapsed(charging_tracker,
+                                             now_tick,
+                                             kBatteryChargeHistoryMinSessionTicks);
         if (!previous.charging && next.charging) {
+            full_charge_time_pending = false;
             ESP_LOGI(TAG, BATTERY_CHARGING_STARTED_LOG_FORMAT, next.voltage, next.percent);
         }
         if (!previous.animation_complete && next.animation_complete) {
@@ -386,21 +467,35 @@ bool sample_battery()
                      BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT,
                      next.voltage,
                      next.percent);
+            if (battery_full_charge_history_should_update(
+                    next.charging,
+                    charging_tracker.session_started_below_full_threshold,
+                    previous.animation_complete,
+                    next.animation_complete,
+                    completed_charge_session_is_meaningful)) {
+                full_charge_time_pending = true;
+            }
         }
-        if (previous.charging && !next.charging) {
-            ESP_LOGI(TAG, BATTERY_CHARGING_STOPPED_LOG_FORMAT, next.voltage, next.percent);
-            if (battery_charge_history_should_update(previous.charging,
-                                                     next.charging,
-                                                     completed_charge_session_is_meaningful)) {
-                next.last_charge_time = last_charge_time_after_unplug(previous.last_charge_time);
-            } else {
+        if (full_charge_time_pending && next.charging && next.animation_complete) {
+            time_t recorded_at = 0;
+            if (current_full_charge_time(&recorded_at)) {
+                next.last_full_charge_time = recorded_at;
+                full_charge_time_to_persist = recorded_at;
+                full_charge_time_pending = false;
                 ESP_LOGI(TAG,
-                         BATTERY_CHARGING_SHORT_SESSION_LOG_FORMAT,
+                         BATTERY_FULL_CHARGE_RECORDED_LOG_FORMAT,
                          next.voltage,
                          next.percent);
             }
         }
+        if (previous.charging && !next.charging) {
+            full_charge_time_pending = false;
+            ESP_LOGI(TAG, BATTERY_CHARGING_STOPPED_LOG_FORMAT, next.voltage, next.percent);
+        }
         release_battery_gauge();
+        if (full_charge_time_to_persist != 0) {
+            (void)save_last_full_charge_time(full_charge_time_to_persist);
+        }
     } else {
         if (consecutive_read_failures <= kBatteryReadFailureMaxGraceSamples) {
             ++consecutive_read_failures;
@@ -419,6 +514,7 @@ bool sample_battery()
                          consecutive_read_failures);
             }
             reset_battery_state_after_sample_failure(charging_tracker, &next);
+            full_charge_time_pending = false;
             consecutive_read_failures = 0;
         }
     }

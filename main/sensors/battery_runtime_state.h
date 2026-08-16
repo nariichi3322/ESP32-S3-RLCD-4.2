@@ -9,7 +9,7 @@ struct BatteryRuntimeSnapshot {
     float voltage = -1.0f;
     bool charging = false;
     bool animation_complete = false;
-    time_t last_charge_time = 0;
+    time_t last_full_charge_time = 0;
     uint32_t version = 0;
     bool low_battery_mode = false;
 };

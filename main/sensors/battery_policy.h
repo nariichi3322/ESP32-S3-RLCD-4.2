@@ -23,11 +23,18 @@ constexpr bool battery_charging_requires_fast_sampling(bool charging)
     return charging;
 }
 
-constexpr bool battery_charge_history_should_update(bool was_charging,
-                                                    bool is_charging,
-                                                    bool session_elapsed)
+constexpr bool battery_full_charge_history_should_update(
+    bool is_charging,
+    bool session_started_below_full_threshold,
+    bool was_animation_complete,
+    bool is_animation_complete,
+    bool session_elapsed)
 {
-    return was_charging && !is_charging && session_elapsed;
+    return is_charging &&
+           session_started_below_full_threshold &&
+           !was_animation_complete &&
+           is_animation_complete &&
+           session_elapsed;
 }
 
 constexpr int battery_read_failure_grace_samples(bool charging)
