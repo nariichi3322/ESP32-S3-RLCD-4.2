@@ -1,9 +1,14 @@
 # ESP32-S3 RLCD 4.2 Weather Clock
 
-<p align="center">
-  <a href="README.md"><img src="https://img.shields.io/badge/语言-简体中文-d9d9d9" alt="简体中文"></a>
-  <a href="README_EN.md"><img src="https://img.shields.io/badge/Language-English-111111" alt="English"></a>
-</p>
+<div align="center">
+
+### Documentation Language / 文档语言
+
+**[切换到简体中文](README.md)** &nbsp;&nbsp;|&nbsp;&nbsp; **English (Current)**
+
+</div>
+
+---
 
 This is a low-power weather clock firmware project built around the **ESP32-S3** and a **4.2-inch RLCD display**. It combines an always-readable clock, local temperature and humidity sensing, online weather data, a calendar, picture display, audio reminders, Xiaozhi AI, and OTA updates in one desktop device.
 
