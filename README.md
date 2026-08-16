@@ -1,14 +1,6 @@
 # ESP32-S3 RLCD 4.2 天气时钟
 
-<div align="center">
-
-### 文档语言 / Documentation Language
-
-**简体中文（当前）** &nbsp;&nbsp;|&nbsp;&nbsp; **[切换到 English](README_EN.md)**
-
-</div>
-
----
+> **语言：** 简体中文（当前） · [English](README_EN.md)
 
 这是一个基于 **ESP32-S3** 和 **4.2 英寸 RLCD 屏幕** 的低功耗天气时钟固件项目。它把常驻显示、本地温湿度、联网天气、日历、图片展示、音频提醒、小智 AI 和 OTA 更新整合到一台桌面设备中。
 

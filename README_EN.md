@@ -1,14 +1,6 @@
 # ESP32-S3 RLCD 4.2 Weather Clock
 
-<div align="center">
-
-### Documentation Language / 文档语言
-
-**[切换到简体中文](README.md)** &nbsp;&nbsp;|&nbsp;&nbsp; **English (Current)**
-
-</div>
-
----
+> **Language:** English (current) · [Chinese](README.md)
 
 This is a low-power weather clock firmware project built around the **ESP32-S3** and a **4.2-inch RLCD display**. It combines an always-readable clock, local temperature and humidity sensing, online weather data, a calendar, picture display, audio reminders, Xiaozhi AI, and OTA updates in one desktop device.
 
@@ -16,8 +8,8 @@ This is a low-power weather clock firmware project built around the **ESP32-S3**
 
 - [Chinese User Guide](docs/User_zh.md)
 - [English User Guide](docs/User.md)
-- [Contributing Guide / 贡献指南](CONTRIBUTING.md)
-- [Security Policy / 安全政策](SECURITY.md)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
 - [Third-Party Notices](THIRD_PARTY_NOTICES.md)
 - [Project License](LICENSE)
 - [Minimum-power Power Demo](docs/Power%20Demo/README.md)
@@ -139,8 +131,8 @@ The Xiaozhi AI page is ported and adapted from [`78/xiaozhi-esp32`](https://gith
 
 Before opening an issue or pull request, read:
 
-- [Contributing Guide / 贡献指南](CONTRIBUTING.md)
-- [Security Policy / 安全政策](SECURITY.md)
+- [Contributing Guide](CONTRIBUTING.md)
+- [Security Policy](SECURITY.md)
 
 Do not publish Wi-Fi passwords, QWeather API keys, private API Host configuration, tokens, NVS images, device private keys, absolute local paths, or private service endpoints in issues, logs, screenshots, or commits.
 
