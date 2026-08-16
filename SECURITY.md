@@ -30,7 +30,7 @@
 - 经过脱敏的日志、请求和响应。
 - 你已经尝试过的缓解措施。
 
-请不要发送真实 Wi-Fi 密码、API Key、Access Token、设备私钥、完整 NVS 镜像或其它用户数据。需要说明字段结构时，请使用虚构值或删除敏感部分。
+请勿在 Issue、Pull Request、评论、日志、截图或提交中公开 Wi-Fi 密码、QWeather API Key、API Host 私有配置、Token、NVS 镜像、设备私钥、本机绝对路径、私有服务地址或其它用户数据。需要说明字段结构时，请使用虚构值或删除敏感部分；截图和串口日志在上传前也必须逐项检查并脱敏。若已误提交，请立即撤销或轮换对应凭据，并通过私密漏洞报告告知维护者，因为删除当前文件不能清除 Git 历史中的泄露内容。
 
 ### 处理与披露
 
@@ -68,7 +68,7 @@ A useful report should include:
 - Sanitized logs, requests, and responses.
 - Any mitigations you have already tested.
 
-Never send real Wi-Fi passwords, API keys, access tokens, device private keys, complete NVS images, or other user data. Use fictional values or redact sensitive fields when describing a format.
+Never expose Wi-Fi passwords, QWeather API keys, private API Host configuration, tokens, NVS images, device private keys, absolute local paths, private service endpoints, or other user data in issues, pull requests, comments, logs, screenshots, or commits. Use fictional values or redact sensitive fields when describing a format, and inspect screenshots and serial logs before upload. If a secret is committed accidentally, revoke or rotate it immediately and notify maintainers through private vulnerability reporting, because deleting the current file does not remove the value from Git history.
 
 ### Handling and Disclosure
 

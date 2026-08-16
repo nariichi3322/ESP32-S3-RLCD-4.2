@@ -79,6 +79,7 @@ Weather and daily-saying data are cached. A temporary network failure does not e
 
 The firmware reduces unnecessary work while keeping the display visible:
 
+- ESP-IDF Dynamic Power Management and FreeRTOS Tickless Idle are enabled. The CPU can scale from `240MHz` down to `40MHz` when load permits, and idle windows automatically enter Light Sleep. Networking, audio, and OTA hold the required performance only while their PM Locks are active.
 - Second-level pages use partial updates; static pages suspend periodic rendering when no event is pending.
 - Temperature, humidity, battery, and history sampling are scheduled according to time of day and charging state.
 - Weather, daily saying, NTP, and OTA work is staggered to avoid startup memory and Wi-Fi peaks.
@@ -98,7 +99,7 @@ The standalone [Power Demo](docs/Power%20Demo/README.md) under `docs/Power Demo/
 - Audio: microphone, codec, power amplifier, and speaker for Xiaozhi AI and alert sounds.
 - Network: Wi-Fi for provisioning, weather, daily saying, NTP, OTA, and diagnostics.
 - Storage: NVS for network and user settings, plus a separate resource partition for replaceable assets.
-- Framework: ESP-IDF `v5.5.3`; the UI is based on LVGL.
+- Development framework: ESP-IDF `v5.5.3`; graphical interface: LVGL `v8.4.0`.
 
 ## Source Layout
 
