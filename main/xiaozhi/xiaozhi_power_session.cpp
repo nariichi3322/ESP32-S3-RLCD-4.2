@@ -11,14 +11,38 @@
 #include <atomic>
 
 #include <esp_log.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include "esp_wifi.h"
 
 namespace {
 constexpr uint32_t kWifiWaitMs = 30000;
+constexpr int kWifiPowerSaveMaxAttempts = 3;
+constexpr TickType_t kWifiPowerSaveRetryDelay = pdMS_TO_TICKS(10);
 
 std::atomic<bool> s_network_keepalive{false};
 bool s_network_lock_held = false;
 bool s_idle_low_power = false;
+
+bool set_wifi_power_save_with_retry(wifi_ps_type_t mode, const char *operation)
+{
+    esp_err_t err = ESP_FAIL;
+    for (int attempt = 1; attempt <= kWifiPowerSaveMaxAttempts; ++attempt) {
+        err = esp_wifi_set_ps(mode);
+        if (err == ESP_OK) {
+            return true;
+        }
+        if (attempt < kWifiPowerSaveMaxAttempts) {
+            vTaskDelay(kWifiPowerSaveRetryDelay);
+        }
+    }
+    ESP_LOGW(TAG,
+             "Xiaozhi %s failed after %d attempts: %s",
+             operation,
+             kWifiPowerSaveMaxAttempts,
+             esp_err_to_name(err));
+    return false;
+}
 } // namespace
 
 bool xiaozhi_power_session_keepalive_active()
@@ -44,7 +68,12 @@ void xiaozhi_power_session_release()
 {
     s_idle_low_power = false;
     if (xiaozhi_power_session_keepalive_active()) {
-        esp_wifi_set_ps(WIFI_PS_MIN_MODEM);
+        // A competing network owner can keep the radio alive after this page
+        // releases its lock. Restore the normal low-power policy before
+        // publishing keepalive=false so that deferred shutdown never leaves
+        // Wi-Fi in the realtime session's high-power mode.
+        (void)set_wifi_power_save_with_retry(WIFI_PS_MAX_MODEM,
+                                             "release Wi-Fi power save");
         s_network_keepalive.store(false, std::memory_order_release);
     }
     if (s_network_lock_held) {
@@ -60,34 +89,54 @@ void xiaozhi_power_session_release()
 bool xiaozhi_power_session_set_idle(bool enabled)
 {
     if (enabled == s_idle_low_power) {
-        return true;
+        // Rebuilding WakeNet starts a new audio session and reacquires CPU MAX.
+        // Reconcile the lock even when the logical power state did not change.
+        return set_xiaozhi_audio_high_performance(!enabled);
     }
     if (enabled) {
+        if (!set_wifi_power_save_with_retry(WIFI_PS_MAX_MODEM,
+                                            "idle Wi-Fi power save")) {
+            return false;
+        }
+        if (!set_xiaozhi_audio_high_performance(false)) {
+            (void)set_wifi_power_save_with_retry(WIFI_PS_NONE,
+                                                 "idle rollback Wi-Fi power save");
+            return false;
+        }
         if (s_network_lock_held) {
             release_network_awake_lock();
             s_network_lock_held = false;
         }
-        esp_err_t ps_err = esp_wifi_set_ps(WIFI_PS_MAX_MODEM);
-        if (ps_err != ESP_OK) {
-            ESP_LOGW(TAG, "Xiaozhi idle Wi-Fi power save failed: %s", esp_err_to_name(ps_err));
-        }
-        set_xiaozhi_audio_high_performance(false);
         s_idle_low_power = true;
         ESP_LOGI(TAG, "Xiaozhi wake idle power: CPU DFS + Wi-Fi max modem sleep");
         return true;
     }
+    bool network_lock_acquired = false;
     if (!s_network_lock_held) {
         if (!acquire_network_awake_lock()) {
             ESP_LOGW(TAG, "Xiaozhi network PM lock unavailable");
             return false;
         }
         s_network_lock_held = true;
+        network_lock_acquired = true;
     }
-    esp_err_t ps_err = esp_wifi_set_ps(WIFI_PS_NONE);
-    if (ps_err != ESP_OK) {
-        ESP_LOGW(TAG, "Xiaozhi realtime Wi-Fi power save disable failed: %s", esp_err_to_name(ps_err));
+    if (!set_wifi_power_save_with_retry(WIFI_PS_NONE,
+                                        "realtime Wi-Fi power save disable")) {
+        if (network_lock_acquired) {
+            release_network_awake_lock();
+            s_network_lock_held = false;
+        }
+        return false;
     }
-    set_xiaozhi_audio_high_performance(true);
+    if (!set_xiaozhi_audio_high_performance(true)) {
+        (void)set_wifi_power_save_with_retry(WIFI_PS_MAX_MODEM,
+                                             "realtime rollback Wi-Fi power save");
+        if (network_lock_acquired) {
+            release_network_awake_lock();
+            s_network_lock_held = false;
+        }
+        return false;
+    }
     s_idle_low_power = false;
     ESP_LOGI(TAG, "Xiaozhi realtime power restored");
     return true;
@@ -120,10 +169,11 @@ bool xiaozhi_power_session_acquire_realtime()
     // Once the page owns keepalive, only publish the transition once. Repeating
     // esp_wifi_set_ps() produces noisy logs and unnecessary driver work.
     if (!xiaozhi_power_session_keepalive_active()) {
-        s_network_keepalive.store(true, std::memory_order_release);
-        if (esp_wifi_set_ps(WIFI_PS_NONE) != ESP_OK) {
-            ESP_LOGW(TAG, "Xiaozhi Wi-Fi power save disable failed");
+        if (!set_wifi_power_save_with_retry(WIFI_PS_NONE,
+                                            "initial realtime Wi-Fi power save disable")) {
+            return false;
         }
+        s_network_keepalive.store(true, std::memory_order_release);
     }
     return wait_for_wifi_connected(kWifiWaitMs, kXiaozhiPageStateChangedBit);
 }

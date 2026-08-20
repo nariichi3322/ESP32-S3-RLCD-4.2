@@ -8,7 +8,9 @@
 #include <esp_lcd_panel_ops.h>
 
 
+#ifndef AlgorithmOptimization
 #define AlgorithmOptimization  3     //1:原始算法 2:采用移位算法 3:查表法   来优化CPU
+#endif
 
 enum ColorSelection {
     ColorBlack = 0,    
@@ -68,7 +70,5 @@ class DisplayPort {
     void RLCD_SetPortraitPixel(uint16_t x, uint16_t y, uint8_t color);      //竖屏显示
     void RLCD_SetLandscapePixel(uint16_t x, uint16_t y, uint8_t color);     //横屏显示
 	#endif
-	#if (AlgorithmOptimization == 3)
 	void RLCD_SetPixel(uint16_t x, uint16_t y, uint8_t color);
-	#endif
 };

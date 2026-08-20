@@ -346,17 +346,18 @@ bool acquire_audio_awake_lock()
 void release_audio_awake_lock()
 {
 #if CONFIG_PM_ENABLE
-    set_audio_performance_mode(false);
+    (void)set_audio_performance_mode(false);
     release_pm_lock(kAudioWakePmLock);
     release_pm_lock(kAudioPmLock);
 #endif
 }
 
-void set_audio_performance_mode(bool enabled)
+bool set_audio_performance_mode(bool enabled)
 {
 #if CONFIG_PM_ENABLE
-    (void)set_pm_lock_active(kAudioCpuPmLock, enabled);
+    return set_pm_lock_active(kAudioCpuPmLock, enabled);
 #else
     (void)enabled;
+    return true;
 #endif
 }

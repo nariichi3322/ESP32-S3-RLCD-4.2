@@ -1013,7 +1013,18 @@ void SensorBHI260AP::parseDebugMessage(const struct bhy2_fifo_parse_data_info *c
         log_i("Null reference");
         return;
     }
+    if (!callback_info->data_ptr || callback_info->data_size < 1) {
+        log_i("Invalid debug message frame");
+        return;
+    }
     msg_length = callback_info->data_ptr[0];
+    if (msg_length > sizeof(debug_msg) - 1 ||
+        msg_length > callback_info->data_size - 1) {
+        log_i("Invalid debug message length: %u frame: %u",
+              msg_length,
+              callback_info->data_size);
+        return;
+    }
     memcpy(debug_msg, &callback_info->data_ptr[1], msg_length);
     debug_msg[msg_length] = '\0'; /* Terminate the string */
     log_d("[DEBUG MSG]: %s", debug_msg);

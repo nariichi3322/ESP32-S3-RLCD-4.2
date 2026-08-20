@@ -244,7 +244,13 @@ spihost_(spihost)
     Set_ResetIOLevel(1);
 
     DisplayLen                = static_cast<int>(display_len);
-    DispBuffer                = (uint8_t *) heap_caps_malloc(DisplayLen, MALLOC_CAP_SPIRAM);
+#if (AlgorithmOptimization == 3)
+    constexpr uint32_t kDisplayBufferCaps = MALLOC_CAP_SPIRAM;
+#else
+    // 低功耗 Demo 使用移位寻址，15 KB 帧缓冲可放内部 RAM，无需启动 PSRAM。
+    constexpr uint32_t kDisplayBufferCaps = MALLOC_CAP_INTERNAL;
+#endif
+    DispBuffer                = (uint8_t *) heap_caps_malloc(DisplayLen, kDisplayBufferCaps);
     if (DispBuffer == NULL) {
         LogDisplayAllocationFailure("RLCD display buffer", DisplayLen);
         ReleaseResources();
@@ -613,6 +619,14 @@ void DisplayPort::RLCD_SetLandscapePixel(uint16_t x, uint16_t y, uint8_t color) 
     else
         DispBuffer[index] &= ~(1 << bit);
 #endif
+}
+
+void DisplayPort::RLCD_SetPixel(uint16_t x, uint16_t y, uint8_t color) {
+    if (width_ == 400) {
+        RLCD_SetLandscapePixel(x, y, color);
+    } else {
+        RLCD_SetPortraitPixel(x, y, color);
+    }
 }
 
 #endif

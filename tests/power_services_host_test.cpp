@@ -205,7 +205,7 @@ int main()
     assert(acquire_audio_awake_lock());
     expect_depths(0, 1, 1, 1);
     const int cpu_acquires = cpu->acquire_attempts;
-    set_audio_performance_mode(true);
+    assert(set_audio_performance_mode(true));
     assert(cpu->acquire_attempts == cpu_acquires);
     const int unbounded_takes_before_audio_release =
         g_unbounded_mutex_take_calls;
@@ -238,6 +238,17 @@ int main()
     assert(acquire_audio_awake_lock());
     assert(cpu->acquire_attempts ==
            cpu_acquires_before_stale_driver_state + 1);
+    release_audio_awake_lock();
+    expect_depths(0, 0, 0, 0);
+
+    assert(acquire_audio_awake_lock());
+    s_fail_release_name = "audio_cpu_max";
+    assert(!set_audio_performance_mode(false));
+    expect_depths(0, 1, 1, 1);
+    s_fail_release_name = nullptr;
+    assert(set_audio_performance_mode(false));
+    expect_depths(0, 1, 1, 0);
+    assert(set_audio_performance_mode(false));
     release_audio_awake_lock();
     expect_depths(0, 0, 0, 0);
     return 0;

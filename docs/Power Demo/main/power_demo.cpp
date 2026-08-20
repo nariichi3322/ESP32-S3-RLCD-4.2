@@ -1,13 +1,6 @@
 // 最低功耗单页面固件：每分钟唤醒一次，更新后立即进入深度睡眠。
 #include "power_ui.h"
 
-// 私密配置只放本机忽略文件；公开源码缺少该文件时使用脱敏模板，仍可独立编译。
-#if __has_include("wifi_secrets.h")
-#include "wifi_secrets.h"
-#else
-#include "wifi_secrets.example.h"
-#endif
-
 #include "audio_codec_if.h"
 #include "audio_codec_ctrl_if.h"
 #include "audio_codec_gpio_if.h"
@@ -100,6 +93,15 @@ constexpr uint64_t kMicrosecondsPerSecond = 1000000ULL;
 constexpr EventBits_t kWifiConnectedBit = BIT0;
 constexpr EventBits_t kWifiFailedBit = BIT1;
 constexpr int kWifiMaxRetries = 8;
+constexpr char kWifiNvsNamespace[] = "wifi";
+constexpr char kWifiSsidKeys[][11] = {"ssid", "ssid_b"};
+constexpr char kWifiPasswordKeys[][11] = {"pass", "pass_b"};
+constexpr char kWifiPreferredSlotKey[] = "wifi_pri_v1";
+
+struct PowerWifiCredentials {
+    char ssid[33];
+    char password[65];
+};
 
 struct RetainedState {
     uint32_t magic;
@@ -496,6 +498,51 @@ void save_ntp_day(int day)
     }
 }
 
+bool load_wifi_slot(nvs_handle_t handle, uint8_t slot,
+                    PowerWifiCredentials *credentials)
+{
+    if (!credentials || slot >= 2) {
+        return false;
+    }
+    std::memset(credentials, 0, sizeof(*credentials));
+    size_t ssid_len = sizeof(credentials->ssid);
+    size_t password_len = sizeof(credentials->password);
+    const esp_err_t ssid_error = nvs_get_str(
+        handle, kWifiSsidKeys[slot], credentials->ssid, &ssid_len);
+    const esp_err_t password_error = nvs_get_str(
+        handle, kWifiPasswordKeys[slot], credentials->password,
+        &password_len);
+    if (ssid_error != ESP_OK || password_error != ESP_OK ||
+        credentials->ssid[0] == '\0') {
+        std::memset(credentials, 0, sizeof(*credentials));
+        return false;
+    }
+    return true;
+}
+
+bool load_wifi_credentials(PowerWifiCredentials *credentials)
+{
+    if (!credentials) {
+        return false;
+    }
+    nvs_handle_t handle = 0;
+    if (nvs_open(kWifiNvsNamespace, NVS_READONLY, &handle) != ESP_OK) {
+        return false;
+    }
+    uint8_t preferred_slot = 0;
+    if (nvs_get_u8(handle, kWifiPreferredSlotKey, &preferred_slot) != ESP_OK ||
+        preferred_slot >= 2) {
+        preferred_slot = 0;
+    }
+    bool loaded = load_wifi_slot(handle, preferred_slot, credentials);
+    if (!loaded) {
+        loaded = load_wifi_slot(handle, preferred_slot == 0 ? 1 : 0,
+                                credentials);
+    }
+    nvs_close(handle);
+    return loaded;
+}
+
 int read_battery_percent()
 {
     adc_oneshot_unit_handle_t adc = nullptr;
@@ -576,6 +623,11 @@ bool sync_ntp(I2cDevices &devices, struct tm *local)
     if (!local) {
         return false;
     }
+    PowerWifiCredentials credentials = {};
+    if (!load_wifi_credentials(&credentials)) {
+        ESP_LOGW(kTag, "NTP: 未找到完整版固件保存的 Wi-Fi 配置");
+        return false;
+    }
     bool success = false;
     bool sntp_started = false;
     bool netif_initialized = false;
@@ -641,10 +693,10 @@ bool sync_ntp(I2cDevices &devices, struct tm *local)
     {
         wifi_config_t wifi_config = {};
         std::strncpy(reinterpret_cast<char *>(wifi_config.sta.ssid),
-                     POWER_DEMO_WIFI_SSID,
+                     credentials.ssid,
                      sizeof(wifi_config.sta.ssid) - 1);
         std::strncpy(reinterpret_cast<char *>(wifi_config.sta.password),
-                     POWER_DEMO_WIFI_PASSWORD,
+                     credentials.password,
                      sizeof(wifi_config.sta.password) - 1);
         wifi_config.sta.threshold.authmode = WIFI_AUTH_WPA2_PSK;
         wifi_config.sta.pmf_cfg.capable = true;
@@ -1039,7 +1091,10 @@ extern "C" void app_main(void)
     if (s_retained.ntp_pending && s_retained.ntp_retry_wakes == 0) {
         esp_log_level_set(kTag, ESP_LOG_INFO);
         ESP_LOGI(kTag, "开始每日 NTP 校时");
-        if (sync_ntp(devices, &local)) {
+        if (!nvs_ready) {
+            nvs_ready = init_nvs();
+        }
+        if (nvs_ready && sync_ntp(devices, &local)) {
             time_valid = true;
             struct tm rtc_local = {};
             rtc_valid = devices.read_rtc(&rtc_local);

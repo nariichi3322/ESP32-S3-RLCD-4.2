@@ -1,9 +1,8 @@
 name: 构建固件并附加到 Release
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       version:
@@ -15,7 +14,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: clock-firmware-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+  group: clock-firmware-${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name }}
   cancel-in-progress: false
 
 jobs:
@@ -28,7 +27,7 @@ jobs:
       - name: 确定构建版本
         id: version
         env:
-          REQUESTED_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          REQUESTED_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -38,10 +37,11 @@ jobs:
           fi
           echo "version=$REQUESTED_VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: 检出对应版本源码
+      - name: 检出受信任默认分支源码
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.repository.default_branch || steps.version.outputs.version }}
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
           submodules: recursive
 
       - name: 校验源码版本
@@ -53,6 +53,13 @@ jobs:
           project_version="$(sed -n 's/.*PROJECT_VER "\(v[^"]*\)".*/\1/p' CMakeLists.txt | head -n 1)"
           if [[ "$project_version" != "$EXPECTED_VERSION" ]]; then
             echo "标签版本 $EXPECTED_VERSION 与工程版本 $project_version 不一致" >&2
+            exit 1
+          fi
+          git fetch --force origin "refs/tags/$EXPECTED_VERSION:refs/tags/$EXPECTED_VERSION"
+          tag_commit="$(git rev-list -n 1 "$EXPECTED_VERSION")"
+          source_commit="$(git rev-parse HEAD)"
+          if [[ "$tag_commit" != "$source_commit" ]]; then
+            echo "拒绝构建：标签 $EXPECTED_VERSION 未指向默认分支当前提交" >&2
             exit 1
           fi
 
@@ -260,7 +267,7 @@ jobs:
       - name: 检出通知格式化工具
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.repository.default_branch || github.ref_name }}
+          ref: ${{ github.event.repository.default_branch }}
 
       - name: 推送构建结果与 Release 更新内容
         continue-on-error: true
@@ -268,7 +275,7 @@ jobs:
           FEISHU_BUILD_WEBHOOK: ${{ secrets.FEISHU_BUILD_WEBHOOK }}
           GH_TOKEN: ${{ github.token }}
           BUILD_RESULT: ${{ needs.build-and-upload.result }}
-          REQUESTED_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+          REQUESTED_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.event.release.tag_name }}
         shell: bash
         run: |
           set -euo pipefail

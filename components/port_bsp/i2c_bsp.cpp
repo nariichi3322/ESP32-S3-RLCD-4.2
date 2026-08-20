@@ -14,8 +14,6 @@ constexpr size_t kI2cMaxRegisterWriteFrameLen =
     static_cast<size_t>(std::numeric_limits<uint8_t>::max()) + kI2cRegisterPrefixLen;
 constexpr uint32_t kI2cTransferTimeoutMs = 5000;
 constexpr uint32_t kI2cBusDoneTimeoutMs = 1000;
-constexpr TickType_t kI2cTransferTimeoutTicks = pdMS_TO_TICKS(kI2cTransferTimeoutMs);
-constexpr TickType_t kI2cBusDoneTimeoutTicks = pdMS_TO_TICKS(kI2cBusDoneTimeoutMs);
 constexpr const char *kI2cLogTag = "I2cMasterBus";
 #define I2C_BUS_INIT_FAILED_LOG_FORMAT "I2C master bus initialization failed: %s"
 #define I2C_BUS_RELEASE_FAILED_LOG_FORMAT "I2C master bus release failed: %s"
@@ -26,8 +24,6 @@ static_assert(kI2cMaxRegisterWriteFrameLen == 256,
               "I2C register write frame must cover every uint8_t payload length");
 static_assert(kI2cTransferTimeoutMs > 0, "I2C transfer timeout must be positive");
 static_assert(kI2cBusDoneTimeoutMs > 0, "I2C bus done timeout must be positive");
-static_assert(kI2cTransferTimeoutTicks > 0, "I2C transfer tick timeout must be positive");
-static_assert(kI2cBusDoneTimeoutTicks > 0, "I2C bus done tick timeout must be positive");
 static_assert(kI2cLogTag[0] != '\0', "I2C log tag must not be empty");
 } // namespace
 
@@ -70,18 +66,18 @@ int I2cMasterBus::i2c_write_buff(i2c_master_dev_handle_t dev_handle, int reg, ui
         return ESP_ERR_INVALID_ARG;
     }
     int  ret;
-    ret           = i2c_master_bus_wait_all_done(user_i2c_handle, kI2cBusDoneTimeoutTicks);
+    ret           = i2c_master_bus_wait_all_done(user_i2c_handle, kI2cBusDoneTimeoutMs);
     if (ret != ESP_OK)
         return ret;
     if (reg == -1) {
-        ret = i2c_master_transmit(dev_handle, buf, len, kI2cTransferTimeoutTicks);
+        ret = i2c_master_transmit(dev_handle, buf, len, kI2cTransferTimeoutMs);
     } else {
         std::array<uint8_t, kI2cMaxRegisterWriteFrameLen> write_frame;
         const size_t write_len = static_cast<size_t>(len) + kI2cRegisterPrefixLen;
         write_frame[kI2cRegisterIndex] = static_cast<uint8_t>(reg);
         memcpy(write_frame.data() + kI2cRegisterPrefixLen, buf, len);
         ret = i2c_master_transmit(
-            dev_handle, write_frame.data(), write_len, kI2cTransferTimeoutTicks);
+            dev_handle, write_frame.data(), write_len, kI2cTransferTimeoutMs);
     }
     return ret;
 }
@@ -94,10 +90,10 @@ int I2cMasterBus::i2c_master_write_read_dev(i2c_master_dev_handle_t dev_handle, 
         return ESP_ERR_INVALID_ARG;
     }
     int ret;
-    ret = i2c_master_bus_wait_all_done(user_i2c_handle, kI2cBusDoneTimeoutTicks);
+    ret = i2c_master_bus_wait_all_done(user_i2c_handle, kI2cBusDoneTimeoutMs);
     if (ret != ESP_OK)
         return ret;
-    ret = i2c_master_transmit_receive(dev_handle, writeBuf, writeLen, readBuf, readLen, kI2cTransferTimeoutTicks);
+    ret = i2c_master_transmit_receive(dev_handle, writeBuf, writeLen, readBuf, readLen, kI2cTransferTimeoutMs);
     return ret;
 }
 
@@ -110,14 +106,14 @@ int I2cMasterBus::i2c_read_buff(i2c_master_dev_handle_t dev_handle, int reg, uin
     }
     int ret;
     uint8_t addr = 0;
-    ret          = i2c_master_bus_wait_all_done(user_i2c_handle, kI2cBusDoneTimeoutTicks);
+    ret          = i2c_master_bus_wait_all_done(user_i2c_handle, kI2cBusDoneTimeoutMs);
     if (ret != ESP_OK)
         return ret;
     if (reg == -1) {
-        ret = i2c_master_receive(dev_handle, buf, len, kI2cTransferTimeoutTicks);
+        ret = i2c_master_receive(dev_handle, buf, len, kI2cTransferTimeoutMs);
     } else {
         addr = (uint8_t) reg;
-        ret  = i2c_master_transmit_receive(dev_handle, &addr, 1, buf, len, kI2cTransferTimeoutTicks);
+        ret  = i2c_master_transmit_receive(dev_handle, &addr, 1, buf, len, kI2cTransferTimeoutMs);
     }
     return ret;
 }

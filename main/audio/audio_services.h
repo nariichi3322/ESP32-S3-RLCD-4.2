@@ -29,7 +29,7 @@ void play_hourly_chime(int hour, bool enforce_quiet_hours = true);
 // 结束时必须调用 stop_xiaozhi_audio_session() 归还音频与轻睡眠锁。
 bool start_xiaozhi_audio_session();
 void stop_xiaozhi_audio_session();
-void set_xiaozhi_audio_high_performance(bool enabled);
+bool set_xiaozhi_audio_high_performance(bool enabled);
 int read_xiaozhi_microphone(void *buffer, size_t bytes);
 int write_xiaozhi_speaker(const int16_t *mono_samples, size_t sample_count, int sample_rate);
 void apply_xiaozhi_speaker_volume(int volume_percent);

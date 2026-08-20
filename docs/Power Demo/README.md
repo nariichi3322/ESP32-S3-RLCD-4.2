@@ -40,18 +40,11 @@ Power Demo/
 └── sdkconfig.defaults
 ```
 
-## 私密 Wi-Fi 配置
+## Wi-Fi 配置
 
-真实凭据只允许放在本机文件 `main/wifi_secrets.h`。这个文件和整个 `build/` 已写入 `.gitignore`，GitHub 中只保留脱敏模板：
+Demo 不再从头文件编译 Wi-Fi 凭据。它会读取完整版固件保存在同一 `nvs` 分区中的主/备用 Wi-Fi，并优先使用当前首选槽位；两个槽位都不可用时跳过本轮 NTP，5 分钟后重试。测试前应先用完整版固件完成配网，再仅刷写 Power Demo 的 App 分区并保留 NVS。
 
-```sh
-cd "Power Demo"
-cp main/wifi_secrets.example.h main/wifi_secrets.h
-```
-
-然后只在本机编辑两个宏。不要把真实凭据写回模板。
-
-注意：真实 Wi-Fi 密码也会存在于本机编译出的 `power_demo.bin` 中。因此不仅不能提交 `wifi_secrets.h`，也不能发布用真实密码构建的 BIN、ELF、MAP 或完整 `build/`。需要公开发布二进制时，必须先换成专用测试网络凭据并重新构建。
+公开构建产物不会因开发者本机配置而包含固定 Wi-Fi 名称或密码。完整擦除 Flash 或单独刷写 NVS 后，必须先回到完整版固件重新配网。
 
 ## 编译
 

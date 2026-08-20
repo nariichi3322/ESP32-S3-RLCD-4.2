@@ -309,13 +309,14 @@ void stop_xiaozhi_audio_session()
     audio_finish_playback();
 }
 
-void set_xiaozhi_audio_high_performance(bool enabled)
+bool set_xiaozhi_audio_high_performance(bool enabled)
 {
     // The shared playback gate can be owned by a chime, alarm or setup prompt.
     // Xiaozhi power-state transitions must not change another owner's CPU lock.
     if (s_xiaozhi_audio_session_owned && is_audio_playing()) {
-        set_audio_performance_mode(enabled);
+        return set_audio_performance_mode(enabled);
     }
+    return true;
 }
 
 int read_xiaozhi_microphone(void *buffer, size_t bytes)
