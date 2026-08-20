@@ -237,6 +237,7 @@ void build_xiaozhi_page()
         return;
     }
     set_work_page_root(kWorkPageXiaozhiAI, root);
+    lv_obj_add_flag(root, LV_OBJ_FLAG_HIDDEN);
     build_work_page_status_bar(root,
                                kWorkPageXiaozhiAI,
                                true,

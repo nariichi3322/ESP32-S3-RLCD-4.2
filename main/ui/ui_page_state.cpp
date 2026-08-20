@@ -175,6 +175,9 @@ void show_page(lv_obj_t *page)
     for (lv_obj_t *root : s_auxiliary_page_roots) {
         set_page_visible(root, page == root);
     }
+    if (page) {
+        lv_obj_invalidate(page);
+    }
 }
 
 lv_obj_t *active_work_page_root()
