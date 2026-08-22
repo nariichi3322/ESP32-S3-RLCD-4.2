@@ -13,6 +13,7 @@
 - [第三方开源许可说明](THIRD_PARTY_NOTICES.md)
 - [项目许可证](LICENSE)
 - [最低功耗 Power Demo](docs/Power%20Demo/README.md)
+- [查看全部详细页面预览](previews/)
 
 ## 关联项目
 
@@ -32,6 +33,17 @@
 - **离线可用**：支持 RTC 保持时间，也可以不配置网络直接进入离线模式。
 - **稳定优先**：OTA、音频、显示和网络任务之间设有资源与状态保护。
 - **便于维护**：页面、天气、配置、音频、传感器、OTA 和小智 AI 按职责维护。
+
+## SDL 页面预览
+
+`previews/` 保存由当前源码和固定测试数据重新生成的 SDL 页面预览。每个工作页、设置子页、配网页、低电量、天气预警以及小智主要状态都有独立 PNG；下面的总览图便于快速浏览，[查看全部详细页面预览](previews/)可以打开原始 `400 × 300` 图片。
+
+![SDL 页面预览 1](previews/weather_clock_preview_sheet_1.png)
+![SDL 页面预览 2](previews/weather_clock_preview_sheet_2.png)
+![SDL 页面预览 3](previews/weather_clock_preview_sheet_3.png)
+![SDL 页面预览 4](previews/weather_clock_preview_sheet_4.png)
+![SDL 页面预览 5](previews/weather_clock_preview_sheet_5.png)
+![SDL 页面预览 6](previews/weather_clock_preview_sheet_6.png)
 
 ## 七个工作页面
 
@@ -109,6 +121,7 @@
 - `CMakeLists.txt`：ESP-IDF 工程入口。
 - `sdkconfig.defaults`：默认工程配置。
 - `docs/`：用户手册和独立 Power Demo。
+- `previews/`：由当前源码生成的全部详细 SDL 页面预览和总览图。
 - `.github/`：公开仓库的固件构建与源码发布工作流。
 
 构建与提交要求见 [贡献指南](CONTRIBUTING.md)。完整刷机、仅更新 App、配网、页面操作和常见问题见 [中文用户手册](docs/User_zh.md) 或 [English User Guide](docs/User.md)。

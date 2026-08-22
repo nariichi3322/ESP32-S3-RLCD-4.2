@@ -13,6 +13,7 @@ This is a low-power weather clock firmware project built around the **ESP32-S3**
 - [Third-Party Notices](THIRD_PARTY_NOTICES.md)
 - [Project License](LICENSE)
 - [Minimum-power Power Demo](docs/Power%20Demo/README.md)
+- [Browse every detailed page preview](previews/)
 
 ## Related Projects
 
@@ -32,6 +33,17 @@ Core goals:
 - **Offline operation:** the RTC maintains time, and the device can enter offline mode without network configuration.
 - **Stability first:** OTA, audio, display, and network tasks use explicit state and resource guards.
 - **Maintainable structure:** pages, weather, configuration, audio, sensors, OTA, and Xiaozhi AI are maintained by responsibility.
+
+## SDL Page Previews
+
+The `previews/` directory contains SDL screenshots regenerated from the current source with fixed test data. Each work page, Settings subpage, provisioning page, low-battery state, weather-alert state, and major Xiaozhi state has its own PNG. The contact sheets below provide a quick overview; [browse every detailed page preview](previews/) to open the original `400 x 300` images.
+
+![SDL page previews 1](previews/weather_clock_preview_sheet_1.png)
+![SDL page previews 2](previews/weather_clock_preview_sheet_2.png)
+![SDL page previews 3](previews/weather_clock_preview_sheet_3.png)
+![SDL page previews 4](previews/weather_clock_preview_sheet_4.png)
+![SDL page previews 5](previews/weather_clock_preview_sheet_5.png)
+![SDL page previews 6](previews/weather_clock_preview_sheet_6.png)
 
 ## Seven Work Pages
 
@@ -109,6 +121,7 @@ The standalone [Power Demo](docs/Power%20Demo/README.md) under `docs/Power Demo/
 - `CMakeLists.txt`: ESP-IDF project entry point.
 - `sdkconfig.defaults`: default project configuration.
 - `docs/`: user guides and the standalone Power Demo.
+- `previews/`: every detailed SDL page preview and the generated contact sheets.
 - `.github/`: public firmware build and source-release workflow.
 
 See the [Contributing Guide](CONTRIBUTING.md) for build and contribution requirements. See the [Chinese User Guide](docs/User_zh.md) or [English User Guide](docs/User.md) for full flashing, provisioning, page operation, and troubleshooting instructions.
