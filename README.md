@@ -34,17 +34,6 @@
 - **稳定优先**：OTA、音频、显示和网络任务之间设有资源与状态保护。
 - **便于维护**：页面、天气、配置、音频、传感器、OTA 和小智 AI 按职责维护。
 
-## SDL 页面预览
-
-`previews/` 保存由当前源码和固定测试数据重新生成的 SDL 页面预览。每个工作页、设置子页、配网页、低电量、天气预警以及小智主要状态都有独立 PNG；下面的总览图便于快速浏览，[查看全部详细页面预览](previews/)可以打开原始 `400 × 300` 图片。
-
-![SDL 页面预览 1](previews/weather_clock_preview_sheet_1.png)
-![SDL 页面预览 2](previews/weather_clock_preview_sheet_2.png)
-![SDL 页面预览 3](previews/weather_clock_preview_sheet_3.png)
-![SDL 页面预览 4](previews/weather_clock_preview_sheet_4.png)
-![SDL 页面预览 5](previews/weather_clock_preview_sheet_5.png)
-![SDL 页面预览 6](previews/weather_clock_preview_sheet_6.png)
-
 ## 七个工作页面
 
 默认页面顺序如下，用户可以在设置中关闭页面或重新排序；系统始终保留至少一个可用工作页。

@@ -34,17 +34,6 @@ Core goals:
 - **Stability first:** OTA, audio, display, and network tasks use explicit state and resource guards.
 - **Maintainable structure:** pages, weather, configuration, audio, sensors, OTA, and Xiaozhi AI are maintained by responsibility.
 
-## SDL Page Previews
-
-The `previews/` directory contains SDL screenshots regenerated from the current source with fixed test data. Each work page, Settings subpage, provisioning page, low-battery state, weather-alert state, and major Xiaozhi state has its own PNG. The contact sheets below provide a quick overview; [browse every detailed page preview](previews/) to open the original `400 x 300` images.
-
-![SDL page previews 1](previews/weather_clock_preview_sheet_1.png)
-![SDL page previews 2](previews/weather_clock_preview_sheet_2.png)
-![SDL page previews 3](previews/weather_clock_preview_sheet_3.png)
-![SDL page previews 4](previews/weather_clock_preview_sheet_4.png)
-![SDL page previews 5](previews/weather_clock_preview_sheet_5.png)
-![SDL page previews 6](previews/weather_clock_preview_sheet_6.png)
-
 ## Seven Work Pages
 
 The default order is shown below. Pages can be disabled or reordered in Settings, while the firmware always keeps at least one work page enabled.
