@@ -55,6 +55,22 @@ int main()
 
     assert(ui_pomodoro_boundary_delay_ms(0) == 0);
     assert(ui_pomodoro_boundary_delay_ms(995) == 1000);
+    UiCodexWaitInput codex = {};
+    assert(ui_codex_wait_delay_ms(codex) == UINT32_MAX);
+    codex.data_valid = true;
+    codex.ble_connected = true;
+    codex.received_ms = 1000;
+    codex.last_valid_ms = 1000;
+    codex.now_ms = 1000;
+    codex.quota_reset_seconds = 151;
+    codex.credit_expiry_seconds = 0;
+    assert(ui_codex_wait_delay_ms(codex) == 32000);
+    codex.now_ms = 61001;
+    assert(ui_codex_wait_delay_ms(codex) == 31999);
+    codex.ble_connected = false;
+    codex.pairing_visible = true;
+    codex.pairing_expiry_ms = 62001;
+    assert(ui_codex_wait_delay_ms(codex) == 1000);
     assert(ui_lvgl_lock_retry_delay_ms(0) == 0);
     assert(ui_lvgl_lock_retry_delay_ms(1) == 100);
     assert(ui_lvgl_lock_retry_delay_ms(2) == 200);

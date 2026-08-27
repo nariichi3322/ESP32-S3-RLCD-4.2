@@ -14,6 +14,8 @@
 #include "audio_services.h"
 #include "audio_services_internal.h"
 #include "custom_assets_internal.h"
+#include "codex_usage_state.h"
+#include "codex_usage_ble.h"
 #include "daily_saying_state_internal.h"
 #include "manual_weather_city_state_internal.h"
 #include "network_credentials_state_internal.h"
@@ -76,6 +78,7 @@
 #define MAIN_SETTINGS_ACTIVITY_STATE_INIT_FAILED_LOG_FORMAT "settings activity state initialization failed"
 #define MAIN_SETTINGS_FEEDBACK_STATE_INIT_FAILED_LOG_FORMAT "settings feedback state initialization failed"
 #define MAIN_WORK_PAGE_CATALOG_INIT_FAILED_LOG_FORMAT "work page catalog initialization failed"
+#define MAIN_CODEX_USAGE_STATE_INIT_FAILED_LOG_FORMAT "Codex usage state initialization failed"
 #define MAIN_POMODORO_STATE_INIT_FAILED_LOG_FORMAT "pomodoro runtime state initialization failed"
 #define MAIN_ALARM_STATE_INIT_FAILED_LOG_FORMAT "alarm runtime state initialization failed"
 #define MAIN_INVALID_BOOT_TASK_LOG_FORMAT "%s: invalid boot task request"
@@ -128,6 +131,7 @@ constexpr AppInitializerSpec kCoreRuntimeStateInitializers[] = {
     {settings_activity_state_init, MAIN_SETTINGS_ACTIVITY_STATE_INIT_FAILED_LOG_FORMAT},
     {settings_feedback_state_init, MAIN_SETTINGS_FEEDBACK_STATE_INIT_FAILED_LOG_FORMAT},
     {work_page_catalog_init, MAIN_WORK_PAGE_CATALOG_INIT_FAILED_LOG_FORMAT},
+    {codex_usage_state_init, MAIN_CODEX_USAGE_STATE_INIT_FAILED_LOG_FORMAT},
 };
 
 constexpr AppInitializerSpec kFeatureRuntimeInitializers[] = {
@@ -404,6 +408,9 @@ extern "C" void app_main(void)
     // are retained, so the normal path only checks the ready catalog.
     init_power_management();
     create_regular_app_tasks();
+    if (!codex_usage_ble_start_if_enabled()) {
+        ESP_LOGW(TAG, "Codex BLE unavailable; local clock remains active");
+    }
 
     if (setup_prompt_playback_pending()) {
         vTaskDelay(pdMS_TO_TICKS(kSetupPromptStartDelayMs));

@@ -10,6 +10,7 @@
 #include "ui_clock.h"
 #include "ui_clock_header_objects.h"
 #include "ui_clock_surface_objects.h"
+#include "ui_codex_usage.h"
 #include "ui_flip_clock.h"
 #include "ui_progress.h"
 #include "ui_setup_status.h"
@@ -74,6 +75,9 @@ lv_obj_t *build_work_page_root(int page)
         break;
     case kWorkPageXiaozhiAI:
         build_xiaozhi_page();
+        break;
+    case kWorkPageCodexUsage:
+        build_codex_usage_page();
         break;
     default:
         return work_page_root(kFallbackWorkPage);

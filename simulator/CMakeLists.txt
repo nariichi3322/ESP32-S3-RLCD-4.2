@@ -41,6 +41,7 @@ add_executable(weather_clock_sdl
     "sdl_preview_boot.cpp"
     "sdl_preview_calendar.cpp"
     "sdl_preview_clock.cpp"
+    "sdl_preview_codex.cpp"
     "sdl_preview_flip_cards.cpp"
     "sdl_preview_flip_clock.cpp"
     "sdl_preview_gallery.cpp"

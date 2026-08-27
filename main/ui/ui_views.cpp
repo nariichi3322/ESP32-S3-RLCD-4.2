@@ -25,6 +25,7 @@
 #include "ui_battery.h"
 #include "ui_battery_blink.h"
 #include "ui_clock_seconds_state.h"
+#include "ui_codex_pairing.h"
 #include "ui_aux_pages.h"
 #include "ui_settings_page.h"
 #include "ui_draw_cache.h"
@@ -739,6 +740,8 @@ void ui_task(void *)
                 }
                 refresh_now |= content_changed;
             }
+            refresh_now |= update_codex_pairing_overlay(
+                static_cast<uint32_t>(tick_now * portTICK_PERIOD_MS));
             if (refresh_now) {
                 lv_refr_now(nullptr);
             }

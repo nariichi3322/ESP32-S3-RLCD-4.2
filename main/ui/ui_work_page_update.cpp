@@ -2,6 +2,8 @@
 #include "ui_work_page_update.h"
 
 #include "sensor_time.h"
+#include "codex_usage_state.h"
+#include "ui_codex_usage.h"
 #include "ui_clock_alert_state.h"
 #include "ui_clock_runtime.h"
 #include "ui_clock_time.h"
@@ -41,6 +43,12 @@ bool update_visible_work_page_body(const struct tm &local,
     }
     if (state.xiaozhi) {
         changed |= update_xiaozhi_page(local);
+    }
+    if (state.codex_usage) {
+        CodexUsageSnapshotView view{};
+        if (codex_usage_snapshot_copy(&view)) {
+            changed |= update_codex_usage_page(local, view);
+        }
     }
     return changed;
 }

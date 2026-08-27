@@ -25,6 +25,18 @@ struct UiInfoPageWaitInput {
     bool ota_updating = false;
 };
 
+struct UiCodexWaitInput {
+    uint32_t now_ms = 0;
+    uint32_t received_ms = 0;
+    uint32_t last_valid_ms = 0;
+    uint32_t quota_reset_seconds = 0;
+    uint32_t credit_expiry_seconds = 0;
+    uint32_t pairing_expiry_ms = 0;
+    bool data_valid = false;
+    bool ble_connected = false;
+    bool pairing_visible = false;
+};
+
 uint32_t ui_next_second_delay_ms(int64_t sampled_wall_second,
                                  int64_t wall_clock_us);
 bool ui_local_time_cache_refresh_due(int64_t sampled_wall_second,
@@ -48,6 +60,7 @@ bool ui_xiaozhi_activation_update_due(bool requested_active,
 uint32_t ui_next_minute_delay_ms(int64_t sampled_wall_second,
                                  int64_t wall_clock_us);
 uint32_t ui_pomodoro_boundary_delay_ms(uint32_t boundary_ms);
+uint32_t ui_codex_wait_delay_ms(const UiCodexWaitInput &input);
 uint32_t ui_lvgl_lock_retry_delay_ms(uint8_t consecutive_failures);
 uint32_t ui_shortest_delay_ticks(const uint32_t *candidates, size_t count);
 uint32_t ui_inactivity_wait_ticks(uint32_t now_tick,

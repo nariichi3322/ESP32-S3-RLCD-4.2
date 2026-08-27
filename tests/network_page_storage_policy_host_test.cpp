@@ -7,12 +7,14 @@
 int main()
 {
     static_assert(network_page_storage::kLegacyV4KnownPageMask == 0x3f);
-    static_assert(network_page_storage::kCurrentKnownPageMask == 0x7f);
-    static_assert(network_page_storage::migrate_v4_page_mask(0x00) == 0x40);
-    static_assert(network_page_storage::migrate_v4_page_mask(0x3f) == 0x7f);
+    static_assert(network_page_storage::kCurrentKnownPageMask == 0xff);
+    static_assert(network_page_storage::migrate_v4_page_mask(0x00) == 0xc0);
+    static_assert(network_page_storage::migrate_v4_page_mask(0x3f) == 0xff);
+    static_assert(network_page_storage::migrate_v5_page_mask(0x00) == 0x80);
+    static_assert(network_page_storage::migrate_v5_page_mask(0x7f) == 0xff);
 
     const uint8_t legacy_order[] = {2, 0, 1, 3, 4, 5};
-    const uint8_t expected_order[] = {2, 0, 1, 3, 4, 5, 6};
+    const uint8_t expected_order[] = {2, 0, 1, 3, 4, 5, 6, 7};
     uint8_t current_order[kWorkPageCount] = {};
     assert(network_page_storage::migrate_v4_page_order(legacy_order,
                                                        sizeof(legacy_order),
@@ -20,7 +22,7 @@ int main()
                                                        sizeof(current_order)));
     assert(memcmp(current_order, expected_order, sizeof(expected_order)) == 0);
 
-    uint8_t untouched[kWorkPageCount] = {9, 9, 9, 9, 9, 9, 9};
+    uint8_t untouched[kWorkPageCount] = {9, 9, 9, 9, 9, 9, 9, 9};
     assert(!network_page_storage::migrate_v4_page_order(nullptr,
                                                         sizeof(legacy_order),
                                                         untouched,
@@ -36,5 +38,11 @@ int main()
     for (uint8_t value : untouched) {
         assert(value == 9);
     }
+    const uint8_t v5_order[] = {6, 2, 0, 1, 3, 4, 5};
+    assert(network_page_storage::migrate_v5_page_order(v5_order,
+                                                       sizeof(v5_order),
+                                                       current_order,
+                                                       sizeof(current_order)));
+    assert(current_order[7] == kWorkPageCodexUsage);
     return 0;
 }

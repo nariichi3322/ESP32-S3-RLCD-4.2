@@ -18,7 +18,7 @@ inline constexpr int kSettingsSecondaryH = 30;
 inline constexpr int kSettingsSwitchDotX = 362;
 inline constexpr int kSettingsSwitchDotYOffset = 8;
 inline constexpr int kSettingsSwitchDotSize = 12;
-inline constexpr int kSettingsListRowY[] = {66, 105, 144, 183, 222, 222, 222};
+inline constexpr int kSettingsListRowY[] = {66, 105, 144, 183, 222, 222, 222, 222};
 inline constexpr int kSettingsGridRowY[] = {66, 105, 144, 183};
 inline constexpr size_t kSettingsListRowCount =
     sizeof(kSettingsListRowY) / sizeof(kSettingsListRowY[0]);

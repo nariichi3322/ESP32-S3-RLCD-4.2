@@ -108,6 +108,7 @@ int main()
     expect_text(items, kSystemSettingsSetupItem, "設定模式");
     expect_text(items, kSystemSettingsFactoryResetItem, "确认恢复");
     expect_text(items, kSystemSettingsInfoItem, "关于本机");
+    expect_text(items, kSystemSettingsClearCodexBondsItem, "清除 Codex 配对");
 
     return 0;
 }

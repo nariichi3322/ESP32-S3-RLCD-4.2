@@ -21,6 +21,12 @@ int main()
     assert(sdl_preview_mode::selection_for("calendar").calendar);
     assert(sdl_preview_mode::selection_for("weather_board").weather_board);
     assert(sdl_preview_mode::selection_for("info").info);
+    assert(sdl_preview_mode::selection_for("codex_waiting").codex);
+    assert(sdl_preview_mode::selection_for("codex_linked").codex);
+    assert(sdl_preview_mode::selection_for("codex_stale").codex);
+    assert(sdl_preview_mode::selection_for("codex_estimated").codex);
+    assert(sdl_preview_mode::selection_for("codex_pairing").codex);
+    assert(sdl_preview_mode::selection_for("codex_large_tokens").codex);
     assert(!sdl_preview_mode::selection_for("history_extra").alternate_work_page());
 
     assert(sdl_preview_mode::is_settings("settings"));

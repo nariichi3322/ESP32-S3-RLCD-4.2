@@ -27,6 +27,7 @@ void expect_default_order()
         kWorkPageCalendar,
         kWorkPageHistory,
         kWorkPageXiaozhiAI,
+        kWorkPageCodexUsage,
     };
     uint8_t actual[kWorkPageCount] = {};
     assert(work_page_order_copy(actual, sizeof(actual)));
@@ -43,6 +44,7 @@ void expect_order_policy_boundaries()
         kWorkPageCalendar,
         kWorkPageHistory,
         kWorkPageXiaozhiAI,
+        kWorkPageCodexUsage,
     };
     assert(!work_page_order_policy::order_is_valid(nullptr, kWorkPageCount));
     assert(!work_page_order_policy::order_is_valid(default_order,
@@ -75,6 +77,7 @@ void expect_order_policy_boundaries()
         kWorkPageWeatherBoard,
         kWorkPageGallery,
         kWorkPageWeatherClock,
+        kWorkPageCodexUsage,
     };
     const uint8_t enabled = page_bit(kWorkPageXiaozhiAI) |
                             page_bit(kWorkPageHistory) |
@@ -125,6 +128,7 @@ void expect_order_policy_boundaries()
         kWorkPageCalendar,
         kWorkPageHistory,
         kWorkPageXiaozhiAI,
+        kWorkPageCodexUsage,
     };
     memcpy(swap_candidate, preserved_candidate, sizeof(swap_candidate));
     assert(!work_page_order_policy::swap_entries_preserving_home(
@@ -173,11 +177,13 @@ int main()
         "日历",
         "温湿历史",
         "小智AI",
+        "Codex Usage",
     };
     const WorkPageDataRequirements expected_data[kWorkPageCount] = {
         {true, false, false},
         {false, false, true},
         {true, true, false},
+        {false, false, false},
         {false, false, false},
         {false, false, false},
         {false, false, false},
@@ -201,6 +207,7 @@ int main()
     assert(!work_page_requires_network(kWorkPageFlipClock));
     assert(!work_page_requires_network(kWorkPageCalendar));
     assert(!work_page_requires_network(kWorkPageHistory));
+    assert(!work_page_requires_network(kWorkPageCodexUsage));
     assert(!work_page_requires_network(-1));
 
     assert(!work_page_uses_low_refresh_idle(kWorkPageWeatherClock));
@@ -210,12 +217,17 @@ int main()
     assert(work_page_uses_low_refresh_idle(kWorkPageCalendar));
     assert(work_page_uses_low_refresh_idle(kWorkPageHistory));
     assert(!work_page_uses_low_refresh_idle(kWorkPageXiaozhiAI));
+    assert(work_page_uses_low_refresh_idle(kWorkPageCodexUsage));
     assert(!work_page_uses_low_refresh_idle(-1));
     assert(!work_page_data_requirements(-1).weather);
     assert(!work_page_data_requirements(-1).extended_weather);
     assert(!work_page_data_requirements(-1).daily_saying);
 
     const uint8_t all_pages = static_cast<uint8_t>((1U << kWorkPageCount) - 1U);
+    assert(codex_usage_feature_enabled());
+    work_page_enabled_mask_store(static_cast<uint8_t>(all_pages & ~page_bit(kWorkPageCodexUsage)));
+    assert(!codex_usage_feature_enabled());
+    work_page_enabled_mask_store(all_pages);
     WorkPageDataRequirements enabled_data =
         enabled_work_page_data_requirements(all_pages);
     assert(enabled_data.weather);
@@ -237,13 +249,13 @@ int main()
     assert(!enabled_data.extended_weather);
     assert(enabled_data.daily_saying);
     enabled_data = enabled_work_page_data_requirements(
-        page_bit(kWorkPageCalendar) | 0x80);
+        page_bit(kWorkPageCalendar) | page_bit(kWorkPageCodexUsage));
     assert(!enabled_data.weather);
     assert(!enabled_data.extended_weather);
     assert(!enabled_data.daily_saying);
     assert(normalize_work_page_enabled_mask(all_pages) == all_pages);
     assert(normalize_work_page_enabled_mask(0) == all_pages);
-    assert(normalize_work_page_enabled_mask(0x80) == all_pages);
+    assert(normalize_work_page_enabled_mask(0x80) == 0x80);
     assert(normalize_work_page_enabled_mask(page_bit(kWorkPageXiaozhiAI)) ==
            (page_bit(kWorkPageWeatherClock) | page_bit(kWorkPageXiaozhiAI)));
     assert(normalize_work_page_enabled_mask(page_bit(kWorkPageCalendar) |
@@ -255,7 +267,8 @@ int main()
     assert(work_page_mask_for_offline_mode(work_page_enabled_mask_load()) ==
            (page_bit(kWorkPageFlipClock) |
             page_bit(kWorkPageCalendar) |
-            page_bit(kWorkPageHistory)));
+            page_bit(kWorkPageHistory) |
+            page_bit(kWorkPageCodexUsage)));
     assert(work_page_mask_for_offline_mode(local_pages |
                                            page_bit(kWorkPageWeatherClock)) ==
            local_pages);
@@ -270,6 +283,7 @@ int main()
         kWorkPageWeatherBoard,
         kWorkPageGallery,
         kWorkPageWeatherClock,
+        kWorkPageCodexUsage,
     };
     work_page_order_replace(xiaozhi_first, sizeof(xiaozhi_first));
     uint8_t normalized[kWorkPageCount] = {};
@@ -294,6 +308,9 @@ int main()
     active_work_page_store(kWorkPageGallery);
     ensure_active_work_page_enabled();
     assert(active_work_page_load() == kWorkPageWeatherClock);
+    active_work_page_store(kWorkPageCodexUsage);
+    ensure_active_work_page_enabled();
+    assert(active_work_page_load() == kWorkPageWeatherClock);
 
     const uint8_t invalid_order[kWorkPageCount] = {
         kWorkPageWeatherClock,
@@ -310,6 +327,7 @@ int main()
         kWorkPageCalendar,
         kWorkPageHistory,
         kWorkPageXiaozhiAI,
+        kWorkPageCodexUsage,
     };
     const uint8_t alternate_order[kWorkPageCount] = {
         kWorkPageHistory,
@@ -319,6 +337,7 @@ int main()
         kWorkPageGallery,
         kWorkPageWeatherClock,
         kWorkPageXiaozhiAI,
+        kWorkPageCodexUsage,
     };
     work_page_enabled_mask_store(all_pages);
     std::atomic<bool> writer_done{false};

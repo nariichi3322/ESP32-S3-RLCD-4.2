@@ -2,6 +2,9 @@
 idf_component_register(
     SRCS
         "core/main.cpp"
+        "codex/codex_usage_protocol.cpp"
+        "codex/codex_usage_state.cpp"
+        "codex/codex_usage_ble.cpp"
         "core/app_task_startup.cpp"
         "core/app_metadata.cpp"
         "core/app_event_group.cpp"
@@ -67,6 +70,8 @@ idf_component_register(
         "ui/ui_visible_cache.cpp"
         "ui/ui_visible_data_sync.cpp"
         "ui/ui_loop_schedule.cpp"
+        "ui/ui_codex_usage.cpp"
+        "ui/ui_codex_pairing.cpp"
         "ui/ui_runtime_schedule.cpp"
         "ui/ui_status_refresh_policy.cpp"
         "ui/ui_work_page_update.cpp"
@@ -209,6 +214,7 @@ idf_component_register(
     INCLUDE_DIRS
         "."
         "core"
+        "codex"
         "ui"
         "network"
         "ota"
@@ -240,6 +246,7 @@ idf_component_register(
         esp_driver_gpio
         json
         mbedtls
+        bt
         tcp_transport)
 
 string(TIMESTAMP WEATHER_CLOCK_BUILD_DATE "%Y-%m-%d")

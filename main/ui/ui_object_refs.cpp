@@ -5,6 +5,8 @@
 #include "ui_battery.h"
 #include "ui_settings_page.h"
 #include "ui_clock.h"
+#include "ui_codex_usage.h"
+#include "ui_codex_pairing.h"
 #include "ui_draw_cache.h"
 #include "ui_flip_clock.h"
 #include "ui_page_state.h"
@@ -51,6 +53,8 @@ void clear_clock_object_refs()
     clear_weather_clock_refs();
     clear_flip_clock_object_refs();
     clear_xiaozhi_page_object_refs();
+    clear_codex_usage_page_object_refs();
+    clear_codex_pairing_overlay_object_refs();
     clear_work_page_day_progress_refs();
     clear_work_page_battery_refs();
     clear_history_object_refs();

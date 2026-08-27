@@ -46,6 +46,7 @@ constexpr WorkPageDescriptor kWorkPageDescriptors[kWorkPageCount] = {
     {kWorkPageCalendar, "日历", kWorkPageTraitLowRefreshIdle},
     {kWorkPageHistory, "温湿历史", kWorkPageTraitLowRefreshIdle},
     {kWorkPageXiaozhiAI, "小智AI", kWorkPageTraitRequiresNetwork},
+    {kWorkPageCodexUsage, "Codex Usage", kWorkPageTraitLowRefreshIdle},
 };
 
 constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
@@ -56,6 +57,7 @@ constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
     kWorkPageCalendar,
     kWorkPageHistory,
     kWorkPageXiaozhiAI,
+    kWorkPageCodexUsage,
 };
 StaticTaskMutex s_work_page_order_mutex;
 uint8_t s_work_page_order[kWorkPageCount] = {
@@ -66,6 +68,7 @@ uint8_t s_work_page_order[kWorkPageCount] = {
     kWorkPageCalendar,
     kWorkPageHistory,
     kWorkPageXiaozhiAI,
+    kWorkPageCodexUsage,
 };
 constexpr const char *kUnknownWorkPageName = "未知页面";
 
@@ -234,6 +237,11 @@ bool is_work_page_enabled(int page)
         return false;
     }
     return (work_page_enabled_mask_load() & work_page_mask(page)) != 0;
+}
+
+bool codex_usage_feature_enabled()
+{
+    return is_work_page_enabled(kWorkPageCodexUsage);
 }
 
 uint8_t work_page_enabled_mask_load()

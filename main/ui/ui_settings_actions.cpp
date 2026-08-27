@@ -8,6 +8,7 @@
 #include "app_runtime_timing.h"
 #include "audio_services.h"
 #include "chime_runtime_state.h"
+#include "codex_usage_ble.h"
 #include "chime_settings.h"
 #include "custom_assets.h"
 #include "network_config.h"
@@ -69,6 +70,8 @@ constexpr const char *kSetupStartFailedFeedback = "配网启动失败";
 constexpr const char *kSetupInstructionFeedback = "設定模式已開啟，請連線 AP";
 constexpr const char *kFactoryResetConfirmFeedback = "再次按 BOOT 确认";
 constexpr const char *kFactoryResetFailedFeedback = "恢复失败";
+constexpr const char *kCodexBondsClearedFeedback = "Codex 配对已清除";
+constexpr const char *kCodexBondsClearFailedFeedback = "清除 Codex 配对失败";
 constexpr size_t kSettingsFeedbackTextSize = 32;
 #define CHIME_BOOLEAN_SETTING_LOG_FORMAT "%s %s"
 #define CHIME_SETTING_ENABLED_LOG_VALUE "enabled"
@@ -285,12 +288,20 @@ void handle_display_settings_action(
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
+        const bool codex_runtime_ok = page != kWorkPageCodexUsage ||
+            codex_usage_ble_set_enabled(page_will_be_enabled);
+        if (!codex_runtime_ok) {
+            set_settings_feedback(kSettingsSaveFailedFeedback,
+                                  kSettingsFeedbackDefaultMs);
+        }
         notify_network_sync_runtime_state_changed();
         normalize_work_page_order();
         ensure_active_work_page_enabled();
-        set_formatted_settings_feedback(kWorkPageFeedbackFormat,
-                                        work_page_name(page),
-                                        page_will_be_enabled ? kWorkPageEnabledSuffix : kWorkPageDisabledSuffix);
+        if (codex_runtime_ok) {
+            set_formatted_settings_feedback(kWorkPageFeedbackFormat,
+                                            work_page_name(page),
+                                            page_will_be_enabled ? kWorkPageEnabledSuffix : kWorkPageDisabledSuffix);
+        }
         return;
     }
     if (selected == kDisplaySettingsPageSwitchItem) {
@@ -392,6 +403,11 @@ void handle_system_settings_action(
         settings_confirmation_clear(SettingsConfirmation::kFactoryReset);
         info_page_request(xTaskGetTickCount() + pdMS_TO_TICKS(kSettingsTimeoutMs));
         ESP_LOGI(TAG, "%s", SYSTEM_INFO_REQUESTED_LOG);
+    } else if (selected == kSystemSettingsClearCodexBondsItem) {
+        set_settings_feedback(codex_usage_ble_clear_bonds()
+                                  ? kCodexBondsClearedFeedback
+                                  : kCodexBondsClearFailedFeedback,
+                              kSettingsFeedbackDefaultMs);
     }
 }
 } // namespace

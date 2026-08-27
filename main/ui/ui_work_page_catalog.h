@@ -13,6 +13,7 @@ struct WorkPageDataRequirements {
 };
 
 bool is_work_page_enabled(int page);
+bool codex_usage_feature_enabled();
 uint8_t work_page_enabled_mask_load();
 bool work_page_requires_network(int page);
 bool work_page_uses_low_refresh_idle(int page);

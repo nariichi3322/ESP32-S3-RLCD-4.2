@@ -42,3 +42,25 @@ SOFTWARE.
 仓库内其他第三方组件的许可证文件随对应源码目录一并保留。
 
 License files for other third-party components remain with their corresponding source directories.
+
+## Codex Usage Display
+
+- Upstream: local migration source `codex-usage-display`
+- License: MIT License
+- Copyright (c) 2026 Jay Yao
+
+The Codex status protocol and Windows companion are adapted from Codex Usage
+Display. Permission is granted, free of charge, to use, copy, modify, merge,
+publish, distribute, sublicense, and/or sell copies, provided the copyright and
+permission notice are included. The software is provided "AS IS", without
+warranty of any kind; the authors are not liable for claims or damages arising
+from its use. The complete upstream notice is retained in
+`companion/UPSTREAM_LICENSE.txt`.
+
+## Bleak
+
+- Project: [Bleak](https://github.com/hbldh/bleak)
+- License: MIT License
+- Copyright (c) 2017 Henrik Blidh
+
+The optional Windows companion uses Bleak for Bluetooth Low Energy access.

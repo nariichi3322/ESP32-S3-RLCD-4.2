@@ -2,7 +2,7 @@
 #pragma once
 
 inline constexpr int kSettingsPrimaryCount = 4;
-inline constexpr int kSettingsSecondaryMaxCount = 7;
+inline constexpr int kSettingsSecondaryMaxCount = 8;
 inline constexpr int kSettingsLabelCount =
     kSettingsPrimaryCount + kSettingsSecondaryMaxCount;
 
@@ -33,10 +33,11 @@ inline constexpr int kSystemSettingsSetupItem = 0;
 inline constexpr int kSystemSettingsOfflineItem = kSystemSettingsSetupItem;
 inline constexpr int kSystemSettingsFactoryResetItem = 1;
 inline constexpr int kSystemSettingsInfoItem = 2;
-inline constexpr int kSystemSettingsNetworkDiagItem = 3;
-inline constexpr int kSystemSettingsOtaItem = 4;
-inline constexpr int kSystemSettingsGridItemCount = 3;
-inline constexpr int kSystemSettingsSecondaryCount = 3;
+inline constexpr int kSystemSettingsClearCodexBondsItem = 3;
+inline constexpr int kSystemSettingsNetworkDiagItem = 4;
+inline constexpr int kSystemSettingsOtaItem = 5;
+inline constexpr int kSystemSettingsGridItemCount = 4;
+inline constexpr int kSystemSettingsSecondaryCount = 4;
 
 enum SettingsSyncOp {
     kSettingsSyncNone = 0,

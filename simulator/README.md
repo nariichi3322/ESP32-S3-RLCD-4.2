@@ -33,3 +33,8 @@ Module ownership:
 - `sdl_preview_history.*`: temperature/humidity history chart body.
 - `sdl_preview_weather.*`: weather-board body and shared QWeather icon conversion.
 - `sdl_preview_xiaozhi.*`: Xiaozhi dialogue, preparing and Pomodoro preview body.
+- `sdl_preview_codex.*`: Codex waiting, linked, stale, estimated-token, pairing and large-token fixtures.
+
+Codex fixture screenshots use `WEATHER_CLOCK_SDL_MODE` values
+`codex_waiting`, `codex_linked`, `codex_stale`, `codex_estimated`,
+`codex_pairing`, and `codex_large_tokens`.

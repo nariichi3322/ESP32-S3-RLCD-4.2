@@ -136,6 +136,35 @@ uint32_t ui_pomodoro_boundary_delay_ms(uint32_t boundary_ms)
     return boundary_ms + kUiLoopBoundaryWakeSlackMs;
 }
 
+uint32_t ui_codex_wait_delay_ms(const UiCodexWaitInput &input)
+{
+    uint32_t shortest = UINT32_MAX;
+    const auto include_deadline = [&](uint32_t deadline) {
+        uint32_t delay = app_tick_deadline_remaining(input.now_ms, deadline);
+        if (delay == 0) return;
+        if (delay < shortest) shortest = delay;
+    };
+    if (input.pairing_visible) include_deadline(input.pairing_expiry_ms);
+    if (!input.data_valid) return shortest;
+    if (input.ble_connected) {
+        include_deadline(input.last_valid_ms + 60001U);
+    }
+    const uint32_t elapsed_ms = input.now_ms - input.received_ms;
+    const uint32_t elapsed_seconds = elapsed_ms / 1000U;
+    const uint32_t partial_ms = elapsed_ms % 1000U;
+    const auto include_countdown = [&](uint32_t total_seconds) {
+        if (elapsed_seconds >= total_seconds) return;
+        const uint32_t remaining = total_seconds - elapsed_seconds;
+        const uint32_t seconds_to_change = remaining % 60U + 1U;
+        uint32_t delay = seconds_to_change * 1000U - partial_ms;
+        if (delay == 0) delay = 1;
+        if (delay < shortest) shortest = delay;
+    };
+    include_countdown(input.quota_reset_seconds);
+    include_countdown(input.credit_expiry_seconds);
+    return shortest;
+}
+
 uint32_t ui_lvgl_lock_retry_delay_ms(uint8_t consecutive_failures)
 {
     if (consecutive_failures == 0) {

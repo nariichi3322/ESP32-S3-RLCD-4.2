@@ -6,6 +6,8 @@
 #include "app_runtime_timing.h"
 #include "app_tick_time.h"
 #include "battery_runtime_state.h"
+#include "codex_usage_ble.h"
+#include "codex_usage_state.h"
 #include "network_diagnostics_state.h"
 #include "pomodoro_services.h"
 #include "sensor_time.h"
@@ -114,7 +116,7 @@ TickType_t ui_runtime_next_loop_delay_ticks(time_t sampled_wall_second,
         (!minute_level_wait || battery_blink_visible)
             ? next_second_delay_ticks(sampled_wall_second)
             : 0;
-    uint32_t delay_candidates[4] = {};
+    uint32_t delay_candidates[5] = {};
     delay_candidates[0] = minute_level_wait
                               ? next_minute_delay_ticks(sampled_wall_second)
                               : second_delay_ticks;
@@ -140,6 +142,28 @@ TickType_t ui_runtime_next_loop_delay_ticks(time_t sampled_wall_second,
     }
     if (battery_blink_visible) {
         delay_candidates[3] = second_delay_ticks;
+    }
+    UiCodexWaitInput codex_wait{};
+    codex_wait.now_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    CodexPairingSnapshot pairing{};
+    if (codex_usage_ble_pairing_snapshot(&pairing) && pairing.visible) {
+        codex_wait.pairing_visible = true;
+        codex_wait.pairing_expiry_ms = pairing.expires_tick_ms;
+    }
+    if (active_page == kWorkPageCodexUsage && !surfaces.auxiliary_page_requested()) {
+        CodexUsageSnapshotView view{};
+        if (codex_usage_snapshot_copy(&view)) {
+            codex_wait.received_ms = view.received_tick_ms;
+            codex_wait.last_valid_ms = view.last_valid_tick_ms;
+            codex_wait.quota_reset_seconds = view.snapshot.quota_reset_seconds;
+            codex_wait.credit_expiry_seconds = view.snapshot.next_credit_expiry_seconds;
+            codex_wait.data_valid = view.data_valid;
+            codex_wait.ble_connected = view.ble_connected;
+        }
+    }
+    const uint32_t codex_delay_ms = ui_codex_wait_delay_ms(codex_wait);
+    if (codex_delay_ms != UINT32_MAX) {
+        delay_candidates[4] = app_tick_nonzero_delay(pdMS_TO_TICKS(codex_delay_ms));
     }
     return static_cast<TickType_t>(ui_shortest_delay_ticks(
         delay_candidates,

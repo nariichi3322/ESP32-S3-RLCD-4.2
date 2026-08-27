@@ -18,7 +18,7 @@
 using network_config_nvs::commit_nvs_if_changed;
 using network_config_nvs::ScopedNvsHandle;
 using network_config_nvs::write_changed_nvs_u8;
-using network_page_storage::kPageMaskV5Key;
+using network_page_storage::kPageMaskV6Key;
 using network_page_storage::write_work_page_order_nvs;
 using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
@@ -110,7 +110,7 @@ bool set_work_page_enabled_mask_setting(uint8_t page_mask)
         normalize_work_page_enabled_mask(page_mask));
     if (!save_changed_u8_setting(kNvsActionSavingPageSettings,
                                  kNvsFailureContextPageSettings,
-                                 kPageMaskV5Key,
+                                 kPageMaskV6Key,
                                  mask)) {
         return false;
     }

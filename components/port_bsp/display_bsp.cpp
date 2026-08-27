@@ -28,7 +28,10 @@ static constexpr int kRlcdOtaTxRetryStepDelayMs = 4;
 static constexpr int kRlcdLcdCommandBits = 8;
 static constexpr int kRlcdLcdParamBits = 8;
 static constexpr int kRlcdSpiMode = 0;
-static constexpr int kRlcdSpiTransQueueDepth = 10;
+// Color chunks are deliberately drained before the next chunk so only one
+// PSRAM-to-DMA private copy can exist.  A deeper queue wastes scarce internal
+// DMA bookkeeping memory once Bluetooth is enabled.
+static constexpr int kRlcdSpiTransQueueDepth = 1;
 static constexpr int kRlcdPixelsPerByte = 8;
 static constexpr int kRlcdLandscapeBlockWidth = 4;
 static constexpr int kRlcdLandscapeBlockHeight = 2;
@@ -532,10 +535,19 @@ bool DisplayPort::RLCD_Sendbuffera(uint8_t *Data, int len) {
             all_chunks_queued = false;
             break;
         }
+        // DispBuffer normally lives in PSRAM, so the SPI master creates a
+        // temporary DMA-capable copy for each queued color transaction.  If
+        // several chunks remain queued, those private buffers coexist and can
+        // exhaust internal DMA heap after NimBLE is enabled.  Drain each chunk
+        // before queuing the next one; this bounds temporary DMA usage to one
+        // kRlcdTxChunkBytes allocation without reserving more internal RAM.
+        if (!RLCD_WaitForPendingColorTransfers()) {
+            all_chunks_queued = false;
+            break;
+        }
         offset += chunk;
     }
-    bool queue_drained = RLCD_WaitForPendingColorTransfers();
-    return all_chunks_queued && queue_drained;
+    return all_chunks_queued;
 }
 
 void DisplayPort::Set_ResetIOLevel(uint8_t level) {

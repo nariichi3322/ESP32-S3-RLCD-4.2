@@ -54,7 +54,7 @@ constexpr uint8_t work_page_mask_bit(int page)
 }
 
 constexpr uint8_t kPageMaskV4KnownBits = network_page_storage::kLegacyV4KnownPageMask;
-constexpr uint8_t kPageMaskV5KnownBits = network_page_storage::kCurrentKnownPageMask;
+constexpr uint8_t kPageMaskV6KnownBits = network_page_storage::kCurrentKnownPageMask;
 constexpr uint8_t kWeatherBoardPageMask = work_page_mask_bit(kWorkPageWeatherBoard);
 constexpr uint8_t kFlipClockPageMask = work_page_mask_bit(kWorkPageFlipClock);
 constexpr const char *kNvsActionLoadingConfig = "loading config";
@@ -95,11 +95,11 @@ EXT_RAM_BSS_ATTR LoadedSavedConfig s_loaded_saved_config_workspace;
 static_assert(kWorkPageCount <= 8, "work page enabled mask is stored as uint8_t");
 static_assert((kPageMaskV4KnownBits & work_page_mask_bit(kWorkPageXiaozhiAI)) == 0,
               "page mask v4 must not include Xiaozhi AI page");
-static_assert(kPageMaskV5KnownBits == static_cast<uint8_t>((1U << kWorkPageCount) - 1U),
-              "page mask v5 must cover every current work page");
-static_assert((kPageMaskV5KnownBits & kWeatherBoardPageMask) == kWeatherBoardPageMask,
+static_assert(kPageMaskV6KnownBits == static_cast<uint8_t>((1U << kWorkPageCount) - 1U),
+              "page mask v6 must cover every current work page");
+static_assert((kPageMaskV6KnownBits & kWeatherBoardPageMask) == kWeatherBoardPageMask,
               "weather board page must be covered by the current page mask");
-static_assert((kPageMaskV5KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
+static_assert((kPageMaskV6KnownBits & kFlipClockPageMask) == kFlipClockPageMask,
               "flip clock page must be covered by the current page mask");
 static_assert(std::is_trivially_default_constructible<LoadedSavedConfig>::value,
               "saved config workspace must not require static construction");
@@ -161,7 +161,7 @@ void initialize_loaded_saved_config(LoadedSavedConfig *loaded)
     loaded->host_err = ESP_FAIL;
     loaded->ntp_server_err = ESP_FAIL;
     loaded->volume = chime_settings::kDefaultVolumePercent;
-    loaded->page_mask = kPageMaskV5KnownBits;
+    loaded->page_mask = kPageMaskV6KnownBits;
     loaded->xiaozhi_auto_return = kDefaultXiaozhiAutoReturnEnabled ? 1 : 0;
     loaded->gallery_rotation = kDefaultGalleryRotationPeriod;
     loaded->weather_clock_seconds_visible =

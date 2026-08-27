@@ -10,6 +10,7 @@
 #include "sdl_preview_boot.h"
 #include "sdl_preview_calendar.h"
 #include "sdl_preview_clock.h"
+#include "sdl_preview_codex.h"
 #include "sdl_preview_flip_clock.h"
 #include "sdl_preview_gallery.h"
 #include "sdl_preview_history.h"
@@ -218,6 +219,26 @@ static void build_info_preview_ui()
     lv_obj_set_style_text_align(return_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
 }
 
+static void build_codex_preview_ui(const char *preview_mode)
+{
+    lv_obj_t *screen = lv_scr_act();
+    lv_obj_clean(screen);
+    lv_obj_set_style_bg_color(screen, lv_color_white(), LV_PART_MAIN);
+    lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
+    time_t now = preview_time();
+    struct tm local = {};
+    localtime_r(&now, &local);
+    g_work_status.build(screen, local);
+    make_black_bar(screen,
+                   ui_work_page_layout::kTopSeparatorX,
+                   ui_work_page_layout::kTopSeparatorY,
+                   ui_work_page_layout::kTopSeparatorWidth,
+                   ui_work_page_layout::kTopSeparatorHeight);
+    g_work_page_day_progress.build_day(screen, local, 59);
+    build_codex_preview_body(screen, preview_mode);
+    g_clock.update_time(local);
+}
+
 static void flush_cb(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *color_p)
 {
     sdl_preview_backend_flush(&g_sdl_preview, drv, area, color_p);
@@ -275,6 +296,8 @@ static sdl_preview_mode::Selection build_selected_preview(const char *preview_mo
         build_weather_board_preview_ui();
     } else if (selection.info) {
         build_info_preview_ui();
+    } else if (selection.codex) {
+        build_codex_preview_ui(preview_mode);
     } else {
         g_clock.build(lv_scr_act());
         g_clock.populate_sample_data();
