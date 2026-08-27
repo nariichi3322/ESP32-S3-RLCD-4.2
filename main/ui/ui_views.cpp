@@ -36,6 +36,7 @@
 #include "ui_settings_feedback.h"
 #include "ui_visible_cache.h"
 #include "ui_visible_data_sync.h"
+#include "ui_work_page_catalog.h"
 #include "ui_work_page_update.h"
 #include "weather_state.h"
 #include "wifi_radio_state.h"
@@ -53,6 +54,8 @@ constexpr int kUiLvglLockTimeoutMs = 80;
 constexpr EventBits_t kUiWeatherNetworkStatusBits =
     kWifiConnectedBit | kWeatherReadyBit;
 #define UI_SETTINGS_TIMEOUT_RETURN_LOG "settings timeout, returning to clock"
+#define UI_LOW_BATTERY_PAGE_CAPTURE_LOG "low battery mode entered, remembering page=%d"
+#define UI_LOW_BATTERY_PAGE_RESTORE_LOG "low battery mode cleared, restoring page=%d remembered=%d"
 
 enum class VisibleAuxiliaryPage {
     kNone,
@@ -147,6 +150,8 @@ void ui_task(void *)
     bool cached_local_valid = false;
     bool xiaozhi_activation_requested = false;
     bool xiaozhi_activation_request_valid = false;
+    int low_battery_resume_page = kWorkPageWeatherClock;
+    bool low_battery_resume_pending = false;
     uint8_t lvgl_lock_failures = 0;
 
     for (;;) {
@@ -288,6 +293,14 @@ void ui_task(void *)
                 invalidate_clock_time_draw_cache();
                 refresh_now = true;
             };
+            if (mode_due && battery.low_battery_mode &&
+                !low_battery_resume_pending) {
+                low_battery_resume_page = active_page;
+                low_battery_resume_pending = true;
+                ESP_LOGI(TAG,
+                         UI_LOW_BATTERY_PAGE_CAPTURE_LOG,
+                         low_battery_resume_page);
+            }
             if (info_requested && info_until != 0 &&
                 app_tick_deadline_reached(tick_now, info_until) &&
                 !info_ota_flow_active) {
@@ -525,6 +538,22 @@ void ui_task(void *)
                 restore_active_work_page_after_aux(false);
             }
 
+            if (low_battery_resume_pending &&
+                !battery.low_battery_mode &&
+                !runtime_surfaces.setup_portal_active) {
+                const int remembered_page = low_battery_resume_page;
+                const int resume_page = is_work_page_enabled(remembered_page)
+                                            ? remembered_page
+                                            : first_enabled_work_page();
+                active_work_page_store(resume_page);
+                ensure_active_work_page_enabled();
+                active_page = active_work_page_load();
+                low_battery_resume_pending = false;
+                ESP_LOGI(TAG,
+                         UI_LOW_BATTERY_PAGE_RESTORE_LOG,
+                         active_page,
+                         remembered_page);
+            }
             if (battery.low_battery_mode || runtime_surfaces.setup_portal_active) {
                 if (active_page != kWorkPageWeatherClock) {
                     active_work_page_store(kWorkPageWeatherClock);
