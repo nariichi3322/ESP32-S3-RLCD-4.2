@@ -10,8 +10,7 @@ inline constexpr int kNetworkSettingsNtpItem = 0;
 inline constexpr int kNetworkSettingsWeatherItem = 1;
 inline constexpr int kNetworkSettingsSayingItem = 2;
 inline constexpr int kNetworkSettingsWeatherCityItem = 3;
-inline constexpr int kNetworkSettingsSecondaryCount =
-    kNetworkSettingsWeatherCityItem + 1;
+inline constexpr int kNetworkSettingsSecondaryCount = 1;
 
 inline constexpr int kSoundSettingsVolumeItem = 0;
 inline constexpr int kSoundSettingsSoundItem = 1;
@@ -30,14 +29,14 @@ inline constexpr int kDisplaySettingsSecondaryCount =
 inline constexpr int kDisplaySettingsGridItemCount =
     kDisplaySettingsSecondaryCount;
 
-inline constexpr int kSystemSettingsOfflineItem = 0;
-inline constexpr int kSystemSettingsNetworkDiagItem = 1;
-inline constexpr int kSystemSettingsFactoryResetItem = 2;
-inline constexpr int kSystemSettingsInfoItem = 3;
+inline constexpr int kSystemSettingsSetupItem = 0;
+inline constexpr int kSystemSettingsOfflineItem = kSystemSettingsSetupItem;
+inline constexpr int kSystemSettingsFactoryResetItem = 1;
+inline constexpr int kSystemSettingsInfoItem = 2;
+inline constexpr int kSystemSettingsNetworkDiagItem = 3;
 inline constexpr int kSystemSettingsOtaItem = 4;
-inline constexpr int kSystemSettingsGridItemCount = 4;
-inline constexpr int kSystemSettingsSecondaryCount =
-    kSystemSettingsOtaItem + 1;
+inline constexpr int kSystemSettingsGridItemCount = 3;
+inline constexpr int kSystemSettingsSecondaryCount = 3;
 
 enum SettingsSyncOp {
     kSettingsSyncNone = 0,
@@ -64,5 +63,5 @@ static_assert(kDisplaySettingsSecondaryCount ==
               "display settings count must include gallery rotation");
 static_assert(kDisplaySettingsGridItemCount == kDisplaySettingsSecondaryCount,
               "all display settings items use the compact grid");
-static_assert(kSystemSettingsGridItemCount < kSystemSettingsSecondaryCount,
-              "system grid items must leave the OTA item in its long row");
+static_assert(kSystemSettingsGridItemCount == kSystemSettingsSecondaryCount,
+              "local-only system settings all use the compact grid");

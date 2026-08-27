@@ -256,7 +256,7 @@ inline constexpr char kFormHtml[] = R"PORTAL(
   <div class='form-section section-network'>
     <div class='section-heading'>
       <span class='section-index'>01</span>
-      <div><h2>联网配置</h2><p>连接并验证后自动进入工作状态</p></div>
+      <div><h2>Wi-Fi 设置</h2><p>仅在校时或设置期间启用网络</p></div>
     </div>
     <div class='field'>
       <label for='wifi-ssid'>主 Wi-Fi 名称（SSID）</label>
@@ -280,31 +280,12 @@ inline constexpr char kFormHtml[] = R"PORTAL(
   <div class='form-section section-weather'>
     <div class='section-heading'>
       <span class='section-index'>02</span>
-      <div><h2>天气服务</h2><p>用于天气、预报与空气质量</p></div>
+      <div><h2>时间同步</h2><p>开机及每 24 小时自动校时</p></div>
     </div>
     <div class='field'>
-      <label for='weather-key'>和风天气 API 密钥</label>
-      <input id='weather-key' name='api_key' placeholder='请输入和风天气 API Key' value='' autocomplete='off'>
-    </div>
-    <div class='field'>
-      <label for='weather-host'>和风天气 API Host</label>
-      <input id='weather-host' name='api_host' placeholder='例如：abc123.re.qweatherapi.com' value='' autocomplete='off' aria-describedby='api-host-hint'>
-      <p id='api-host-hint' class='hint'>请在和风天气控制台“设置 → API Host”中查看；只填写域名，不含 https:// 和路径。已有 Host 时可留空。</p>
-    </div>
-    <div class='field'>
-      <label for='weather-city'>天气城市 <em>选填</em></label>
-      <input id='weather-city' name='weather_city' placeholder='例如：杭州；留空则根据公网 IP 自动定位' value='%s' autocomplete='off'>
-    </div>
-  </div>
-  <div class='form-section section-offline'>
-    <div class='section-heading'>
-      <span class='section-index'>03</span>
-      <div><h2>离线使用</h2><p>不连接 Wi-Fi 时设置本地时间</p></div>
-    </div>
-    <div class='field'>
-      <label for='manual_time'>离线日期和时间 <em>选填</em></label>
-      <input id='manual_time' name='manual_time' type='datetime-local' placeholder='连接 Wi-Fi 时可留空' aria-describedby='manual-time-hint'>
-      <p id='manual-time-hint' class='hint'>正常连接 Wi-Fi 时留空；仅离线使用时填写。</p>
+      <label for='ntp-server'>NTP 伺服器</label>
+      <input id='ntp-server' name='ntp_server' placeholder='pool.ntp.org' value='%s' autocomplete='off' aria-describedby='ntp-server-hint'>
+      <p id='ntp-server-hint' class='hint'>請填主機名稱，例如 pool.ntp.org；不要包含 http://、https:// 或路徑。</p>
     </div>
   </div>
   <div class='actions'>

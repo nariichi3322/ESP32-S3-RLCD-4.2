@@ -450,7 +450,11 @@ esp_err_t configure_softap()
     ap_config.ap.ssid_len = strlen(setup_ap_ssid);
     ap_config.ap.channel = kSetupApChannel;
     ap_config.ap.max_connection = kSetupApMaxConnections;
-    ap_config.ap.authmode = WIFI_AUTH_WPA_WPA2_PSK;
+    // Match the ESP-IDF SoftAP reference configuration.  Legacy WPA/WPA2
+    // mixed mode can negotiate an inconsistent protected-management-frame
+    // policy with modern clients, leading to repeated SA Query timeouts.
+    ap_config.ap.authmode = WIFI_AUTH_WPA2_PSK;
+    ap_config.ap.pmf_cfg.required = true;
     return esp_wifi_set_config(WIFI_IF_AP, &ap_config);
 }
 
@@ -1242,8 +1246,7 @@ void init_wifi()
         return;
     }
 
-    if (!network_all_online_credentials_configured() &&
-        !offline_mode_enabled_load()) {
+    if (!network_wifi_credentials_configured()) {
         if (!start_wifi_radio(true) && !request_setup_portal_start()) {
             ESP_LOGW(TAG, "%s", WIFI_SETUP_START_RECOVERY_QUEUE_FAILED_LOG);
         }

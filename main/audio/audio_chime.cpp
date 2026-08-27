@@ -53,6 +53,7 @@ constexpr const char *kSetupPromptLogName = "setup prompt";
 constexpr const char *kSettingsChimeBusyLog = "settings confirmation chime skipped: audio busy";
 constexpr const char *kSetupPromptPlayedLog = "setup prompt played";
 constexpr const char *kSetupPromptSkippedLog = "setup prompt skipped";
+constexpr const char *kSetupPromptMutedLog = "setup prompt skipped: muted";
 constexpr const char *kSetupPromptPendingLog = "setup prompt pending";
 constexpr const char *kSettingsChimeRetryTaskCreateFailedLog = "failed to create settings chime retry task";
 constexpr const char *kHourlyChimeRadioSetupSkippedLog = "hourly chime skipped while radio or setup is active";
@@ -158,6 +159,10 @@ void run_hourly_chime(int sound_index)
         return;
     }
     const int volume_percent = chime_runtime_volume_percent();
+    if (volume_percent <= 0) {
+        audio_finish_playback();
+        return;
+    }
     CodecPort *codec = audio_prepare_codec_for_playback();
     if (codec && codec->CodecPort_PlayChimeSound(sound_index, volume_percent)) {
         ESP_LOGI(TAG, HOURLY_CHIME_PLAYED_LOG_FORMAT, sound_index, volume_percent);
@@ -172,6 +177,14 @@ void run_setup_prompt()
     SetupPromptDisplayDmaGuard display_dma_guard;
     vTaskDelay(kSetupPromptDmaSettleDelay);
     for (int attempt = 0; attempt < kSetupPromptPlaybackAttempts; ++attempt) {
+        const int volume_percent = chime_runtime_volume_percent();
+        if (volume_percent <= 0) {
+            if (attempt == 0) {
+                audio_finish_playback();
+            }
+            ESP_LOGI(TAG, "%s", kSetupPromptMutedLog);
+            return;
+        }
         if (!setup_portal_active_load()) {
             if (attempt == 0) {
                 audio_finish_playback();
@@ -185,7 +198,8 @@ void run_setup_prompt()
             continue;
         }
         CodecPort *codec = audio_prepare_codec_for_playback();
-        const bool played = codec && codec->CodecPort_PlayWifiPrompt();
+        const bool played = codec &&
+                            codec->CodecPort_PlayWifiPrompt(volume_percent);
         audio_finish_playback();
         if (played) {
             ESP_LOGI(TAG, "%s", kSetupPromptPlayedLog);
@@ -220,11 +234,17 @@ bool play_chime_sound_repeated_blocking(int source_slot,
                                         int repeat_count,
                                         AudioStopRequestedCallback stop_requested)
 {
-    if (repeat_count <= 0 || !audio_try_mark_playing()) {
+    if (repeat_count <= 0) {
+        return false;
+    }
+    const int volume_percent = chime_runtime_volume_percent();
+    if (volume_percent <= 0) {
+        return true;
+    }
+    if (!audio_try_mark_playing()) {
         return false;
     }
     CodecPort *codec = audio_prepare_codec_for_playback();
-    const int volume_percent = chime_runtime_volume_percent();
     bool played = codec != nullptr;
     for (int repeat = 0; played && repeat < repeat_count; ++repeat) {
         if (stop_requested && stop_requested()) {
@@ -290,6 +310,11 @@ bool start_chime_playback(int source_slot)
 
 bool start_setup_prompt_playback()
 {
+    if (chime_runtime_volume_percent() <= 0) {
+        s_setup_prompt_pending.store(false, std::memory_order_release);
+        ESP_LOGI(TAG, "%s", kSetupPromptMutedLog);
+        return true;
+    }
     if (!audio_try_mark_playing()) {
         return false;
     }

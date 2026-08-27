@@ -9,6 +9,7 @@ bool save_config(const char *ssid,
                  const char *pass,
                  const char *backup_ssid,
                  const char *backup_pass,
+                 const char *ntp_server,
                  const char *api_key,
                  const char *api_host,
                  const char *weather_city = nullptr);
@@ -17,6 +18,4 @@ bool save_manual_weather_city(const char *city);
 bool clear_manual_weather_city();
 bool is_weather_city_input_valid(const char *city);
 bool normalize_weather_city_input(const char *city, char *out, size_t out_len);
-bool set_offline_mode_enabled(bool enabled);
-bool can_leave_offline_mode_without_setup();
 bool clear_saved_config();

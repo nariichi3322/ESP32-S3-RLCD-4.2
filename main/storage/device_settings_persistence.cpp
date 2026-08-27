@@ -102,7 +102,8 @@ bool set_chime_setting(const ChimeRuntimeSnapshot &settings)
 
 bool set_work_page_enabled_mask_setting(uint8_t page_mask)
 {
-    const uint8_t mask = normalize_work_page_enabled_mask(page_mask);
+    const uint8_t mask = work_page_mask_for_offline_mode(
+        normalize_work_page_enabled_mask(page_mask));
     if (!save_changed_u8_setting(kNvsActionSavingPageSettings,
                                  kNvsFailureContextPageSettings,
                                  kPageMaskV5Key,

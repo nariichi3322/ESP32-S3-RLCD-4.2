@@ -38,7 +38,7 @@ public:
     bool CodecPort_PlayChimeSound(int sound_index,
                                   int volume_percent,
                                   bool (*stop_requested)() = nullptr);
-    bool CodecPort_PlayWifiPrompt(void);
+    bool CodecPort_PlayWifiPrompt(int volume_percent);
 
     bool CodecPort_SetInfo(const char *strName,int open_en,int sample_rate,int channel,int bits_per_sample);
 

@@ -28,36 +28,14 @@ static constexpr const char *kNtpRuntimeChangedLog =
 
 namespace {
 bool s_ntp_started = false;
-constexpr const char *const kNtpServers[] = {
-    "pool.ntp.org",
-    "ntp.aliyun.com",
-    "time.windows.com",
-};
-constexpr size_t kNtpServerCount = array_count(kNtpServers);
-constexpr size_t kDefaultConfiguredNtpServerSlots = 1;
-#ifdef CONFIG_LWIP_SNTP_MAX_SERVERS
-constexpr size_t kConfiguredNtpServerSlots = CONFIG_LWIP_SNTP_MAX_SERVERS;
-#else
-constexpr size_t kConfiguredNtpServerSlots = kDefaultConfiguredNtpServerSlots;
-#endif
+char s_active_ntp_server[kNtpServerNameLen] = {};
 constexpr uint32_t kNtpPollDelayMs = 1000;
-static_assert(kNtpServerCount > 0, "at least one NTP server is required");
-static_assert(kConfiguredNtpServerSlots > 0, "SNTP must support at least one configured server");
-
-constexpr size_t min_size(size_t a, size_t b)
-{
-    return a < b ? a : b;
-}
-
-constexpr size_t kActiveNtpServerCount = min_size(kNtpServerCount, kConfiguredNtpServerSlots);
 constexpr TickType_t kNtpPollDelay = pdMS_TO_TICKS(kNtpPollDelayMs);
 constexpr TickType_t kNtpMaxFiniteWait = portMAX_DELAY - 1;
 constexpr const char *kNtpTimeSyncedEventUnavailableLog = "skip time synced event bit: app events unavailable";
 
-static_assert(cstr_array_nonempty(kNtpServers), "NTP server names must be non-empty");
-static_assert(kActiveNtpServerCount > 0, "active NTP server count must be positive");
-static_assert(kActiveNtpServerCount <= kNtpServerCount, "active NTP server count must fit server list");
-static_assert(kActiveNtpServerCount <= kConfiguredNtpServerSlots, "active NTP server count must fit SNTP slots");
+static_assert(kNtpServerNameLen > cstr_length(kDefaultNtpServerName),
+              "NTP server buffer must fit its default value");
 static_assert(kNtpPollDelayMs > 0, "NTP poll delay must be positive");
 static_assert(kNtpPollDelay > 0, "NTP poll tick delay must be positive");
 static_assert(portMAX_DELAY > 1, "NTP finite wait requires a distinct maximum tick");
@@ -74,9 +52,13 @@ void set_time_synced_event_bit()
 
 void configure_ntp_servers()
 {
-    for (size_t i = 0; i < kActiveNtpServerCount; ++i) {
-        esp_sntp_setservername(i, kNtpServers[i]);
+    if (!ntp_server_name_snapshot(s_active_ntp_server,
+                                  sizeof(s_active_ntp_server))) {
+        strlcpy(s_active_ntp_server,
+                kDefaultNtpServerName,
+                sizeof(s_active_ntp_server));
     }
+    esp_sntp_setservername(0, s_active_ntp_server);
 }
 
 void on_ntp_time_sync(struct timeval *)
@@ -160,6 +142,11 @@ NetworkSyncCompletionWaitResult wait_for_ntp_synced_time(
 time_t get_last_ntp_sync_time()
 {
     return ntp_last_sync_time_load();
+}
+
+bool get_ntp_server_name(char *out, size_t out_len)
+{
+    return ntp_server_name_snapshot(out, out_len);
 }
 
 bool perform_ntp_sync(int max_retries)

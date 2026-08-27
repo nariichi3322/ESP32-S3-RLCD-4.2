@@ -6,7 +6,6 @@
 #include "app_text_format.h"
 #include "network_credentials_state.h"
 #include "ntp_services.h"
-#include "offline_mode_state.h"
 #include "network_sync_schedule.h"
 #include "network_task_guards.h"
 #include "sensor_time.h"
@@ -26,7 +25,6 @@ static portMUX_TYPE s_boot_sync_deadline_mux = portMUX_INITIALIZER_UNLOCKED;
 static int64_t s_boot_sync_deadline_us = 0;
 constexpr int64_t kMicrosecondsPerMillisecond = 1000;
 constexpr uint32_t kBootScreenShortDelayMs = 200;
-constexpr uint32_t kBootScreenOfflineDelayMs = 600;
 constexpr uint32_t kBootScreenSetupDelayMs = 1500;
 constexpr int kBootScreenCompletePercent = 100;
 constexpr int kBootNtpMinRemainingMs = 600;
@@ -115,17 +113,12 @@ int boot_sync_remaining_ms()
 
 void run_boot_connectivity_sync()
 {
-    if (offline_mode_enabled_load()) {
-        update_boot_screen(kBootScreenCompletePercent, "Offline mode", "Using RTC time");
-        vTaskDelay(pdMS_TO_TICKS(kBootScreenOfflineDelayMs));
-        return;
-    }
     char wifi_ssid[kNetworkWifiSsidLen] = {};
-    if (!network_all_online_credentials_configured() ||
+    if (!network_wifi_credentials_configured() ||
         !network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid))) {
         char detail[kBootSetupDetailTextSize] = {};
         format_boot_setup_detail(detail, sizeof(detail));
-        update_boot_screen(kBootScreenCompletePercent, "Setup mode", detail);
+        update_boot_screen(kBootScreenCompletePercent, "Settings mode", detail);
         vTaskDelay(pdMS_TO_TICKS(kBootScreenSetupDelayMs));
         return;
     }

@@ -133,7 +133,7 @@ int collect_visible_work_page_order(int *indices,
 #define SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT "settings secondary label create failed index=%d"
 #define SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT "settings switch dot create failed index=%d"
 
-constexpr const char *kSettingsPrimaryItems[kSettingsPrimaryCount] = {"网络", "声音", "显示", "系统"};
+constexpr const char *kSettingsPrimaryItems[kSettingsPrimaryCount] = {"校時", "聲音", "顯示", "系統"};
 constexpr const char *kSettingsPageOrderEntryFormat = "%d %s";
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
 constexpr const char *kSettingsLabelPlaceholder = "--";

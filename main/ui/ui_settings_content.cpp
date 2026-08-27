@@ -3,12 +3,9 @@
 
 #include "app_metadata.h"
 #include "custom_assets.h"
-#include "manual_weather_city_state.h"
-#include "offline_mode_state.h"
 #include "ui_settings_confirmation_state.h"
 #include "ui_gallery_rotation_state.h"
 #include "ui_text_format.h"
-#include "weather_city_contract.h"
 
 #include <esp_log.h>
 #include <stdarg.h>
@@ -19,11 +16,8 @@ namespace {
 #define SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT "settings secondary text index out of range: %d"
 
 constexpr const char *kSettingsNetworkSyncTimeText = "同步时间";
-constexpr const char *kSettingsNetworkSyncWeatherText = "同步天气";
-constexpr const char *kSettingsNetworkSayingText = "更新一言";
-constexpr const char *kSettingsWeatherCityManualFormat = "天气城市 %s";
-constexpr const char *kSettingsWeatherCityAutoText = "天气城市 自动";
 constexpr const char *kSettingsSoundVolumeFormat = "音量 %d%%";
+constexpr const char *kSettingsSoundMutedText = "音量 靜音";
 constexpr const char *kSettingsSoundChoiceFormat = "声音选择 %d";
 constexpr const char *kSettingsHourlyText = "整点提醒 7:00 - 22:00";
 constexpr const char *kSettingsAllDayText = "全天提醒 0:00 - 24:00";
@@ -33,14 +27,10 @@ constexpr const char *kSettingsAlarmOffText = "闹钟 --:--";
 constexpr const char *kSettingsAlarmOnFormat = "闹钟 %02d:%02d";
 constexpr const char *kSettingsXiaozhiAutoReturnText = "小智节能";
 constexpr const char *kSettingsGalleryRotationFormat = "图片切换 %s";
-constexpr const char *kSettingsOfflineFormat = "离线模式 %s";
-constexpr const char *kSettingsOfflineOnText = "开";
-constexpr const char *kSettingsOfflineOffText = "关";
-constexpr const char *kSettingsNetworkDiagText = "网络检测";
+constexpr const char *kSettingsSetupModeText = "設定模式";
 constexpr const char *kSettingsFactoryResetConfirmText = "确认恢复";
 constexpr const char *kSettingsFactoryResetText = "恢复出厂设置";
 constexpr const char *kSettingsSystemInfoText = "关于本机";
-constexpr const char *kSettingsCheckUpdateText = "检查更新";
 static_assert(kSettingsSecondaryTextSize > 1,
               "settings secondary text buffer must fit text and NUL");
 } // namespace
@@ -91,24 +81,17 @@ void populate_settings_secondary_items(
 {
     if (primary == kSettingsPrimaryNetwork) {
         set_secondary_text(secondary_items, kNetworkSettingsNtpItem, kSettingsNetworkSyncTimeText);
-        set_secondary_text(secondary_items, kNetworkSettingsWeatherItem, kSettingsNetworkSyncWeatherText);
-        set_secondary_text(secondary_items, kNetworkSettingsSayingItem, kSettingsNetworkSayingText);
-        char weather_city[kManualWeatherCityLen] = {};
-        if (manual_weather_city_snapshot(weather_city, sizeof(weather_city))) {
-            format_secondary_text(secondary_items,
-                                  kNetworkSettingsWeatherCityItem,
-                                  kSettingsWeatherCityManualFormat,
-                                  weather_city);
-        } else {
-            set_secondary_text(secondary_items,
-                               kNetworkSettingsWeatherCityItem,
-                               kSettingsWeatherCityAutoText);
-        }
     } else if (primary == kSettingsPrimarySound) {
-        format_secondary_text(secondary_items,
-                              kSoundSettingsVolumeItem,
-                              kSettingsSoundVolumeFormat,
-                              static_cast<int>(state.volume_percent));
+        if (state.volume_percent == 0) {
+            set_secondary_text(secondary_items,
+                               kSoundSettingsVolumeItem,
+                               kSettingsSoundMutedText);
+        } else {
+            format_secondary_text(secondary_items,
+                                  kSoundSettingsVolumeItem,
+                                  kSettingsSoundVolumeFormat,
+                                  static_cast<int>(state.volume_percent));
+        }
         format_secondary_text(secondary_items,
                               kSoundSettingsSoundItem,
                               kSettingsSoundChoiceFormat,
@@ -143,14 +126,9 @@ void populate_settings_secondary_items(
             effective_gallery_rotation_label(gallery_rotation_period_load(),
                                              custom_assets_gallery_count()));
     } else {
-        format_secondary_text(secondary_items,
-                              kSystemSettingsOfflineItem,
-                              kSettingsOfflineFormat,
-                              offline_mode_enabled_load() ? kSettingsOfflineOnText
-                                                          : kSettingsOfflineOffText);
         set_secondary_text(secondary_items,
-                           kSystemSettingsNetworkDiagItem,
-                           kSettingsNetworkDiagText);
+                           kSystemSettingsSetupItem,
+                           kSettingsSetupModeText);
         set_secondary_text(secondary_items,
                            kSystemSettingsFactoryResetItem,
                            settings_confirmation_pending(SettingsConfirmation::kFactoryReset)
@@ -159,8 +137,5 @@ void populate_settings_secondary_items(
         set_secondary_text(secondary_items,
                            kSystemSettingsInfoItem,
                            kSettingsSystemInfoText);
-        set_secondary_text(secondary_items,
-                           kSystemSettingsOtaItem,
-                           kSettingsCheckUpdateText);
     }
 }

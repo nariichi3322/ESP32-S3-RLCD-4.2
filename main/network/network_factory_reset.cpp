@@ -19,6 +19,7 @@ using network_chime_storage::kHourlyAllDayKey;
 using network_chime_storage::kHourlyChimeKey;
 using network_config_keys::kQweatherApiHostKey;
 using network_config_keys::kOfflineModeKey;
+using network_config_keys::kNtpServerKey;
 using network_config_keys::kWeatherApiKeyKey;
 using network_config_keys::kWifiBackupPassKey;
 using network_config_keys::kWifiBackupSsidKey;
@@ -54,6 +55,7 @@ constexpr const char *kSavedConfigKeys[] = {
     kIgnoredAssetWeatherCityKey,
     kQweatherApiHostKey,
     kOfflineModeKey,
+    kNtpServerKey,
     kHourlyChimeKey,
     kHourlyAllDayKey,
     kChimeVolumeKey,
@@ -72,7 +74,7 @@ constexpr const char *kSavedConfigKeys[] = {
     kGalleryRotationKey,
 };
 
-static_assert(array_count(kSavedConfigKeys) == 26,
+static_assert(array_count(kSavedConfigKeys) == 27,
               "factory reset key registry count changed; update its host test");
 static_assert(cstr_array_nonempty(kSavedConfigKeys),
               "factory reset config keys must be non-empty");
@@ -98,6 +100,8 @@ static_assert(cstr_array_contains(kSavedConfigKeys, kQweatherApiHostKey),
               "factory reset must clear QWeather API Host");
 static_assert(cstr_array_contains(kSavedConfigKeys, kOfflineModeKey),
               "factory reset must clear offline mode");
+static_assert(cstr_array_contains(kSavedConfigKeys, kNtpServerKey),
+              "factory reset must clear NTP server");
 static_assert(cstr_array_contains(kSavedConfigKeys, kHourlyChimeKey),
               "factory reset must clear hourly reminder");
 static_assert(cstr_array_contains(kSavedConfigKeys, kHourlyAllDayKey),

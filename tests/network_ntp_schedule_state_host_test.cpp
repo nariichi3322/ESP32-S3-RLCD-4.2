@@ -7,14 +7,12 @@
 
 namespace {
 constexpr time_t kPlausibleNow = 1783890000;
-constexpr time_t kNextMidnight = 1783900800;
+constexpr time_t kNextAutomaticSync =
+    kPlausibleNow + kNtpAutomaticSyncIntervalSeconds;
 }
 
 int main()
 {
-    setenv("TZ", "UTC0", 1);
-    tzset();
-
     NetworkNtpScheduleState cold =
         initialize_network_ntp_schedule(false, kPlausibleNow);
     assert(cold.boot_due);
@@ -26,7 +24,7 @@ int main()
     NetworkNtpScheduleState synced =
         initialize_network_ntp_schedule(true, kPlausibleNow);
     assert(!synced.boot_due);
-    assert(synced.next_daily_at == kNextMidnight);
+    assert(synced.next_daily_at == kNextAutomaticSync);
 
     NetworkNtpRetryUpdate retry = finish_network_ntp_attempt(
         &cold, false, true, false, 100);
@@ -64,7 +62,7 @@ int main()
     assert(!cold.daily_pending);
     assert(cold.next_retry_at == 0);
     assert(cold.retry_failures == 0);
-    assert(cold.next_daily_at == kNextMidnight);
+    assert(cold.next_daily_at == kNextAutomaticSync);
 
     synced.next_daily_at = kPlausibleNow;
     refresh_network_ntp_daily_due(&synced, kPlausibleNow, true);
@@ -75,7 +73,7 @@ int main()
     synced.boot_due = false;
     refresh_network_ntp_daily_due(&synced, kPlausibleNow, true);
     assert(!synced.daily_pending);
-    assert(synced.next_daily_at == kNextMidnight);
+    assert(synced.next_daily_at == kNextAutomaticSync);
 
     schedule_network_ntp_after_provisioning(&synced);
     assert(synced.boot_due);

@@ -63,14 +63,6 @@ int main()
 
     populate_settings_secondary_items(kSettingsPrimaryNetwork, state, items);
     expect_text(items, kNetworkSettingsNtpItem, "同步时间");
-    expect_text(items, kNetworkSettingsWeatherItem, "同步天气");
-    expect_text(items, kNetworkSettingsSayingItem, "更新一言");
-    expect_text(items, kNetworkSettingsWeatherCityItem, "天气城市 自动");
-
-    manual_weather_city_store("杭州");
-    memset(items, 0, sizeof(items));
-    populate_settings_secondary_items(kSettingsPrimaryNetwork, state, items);
-    expect_text(items, kNetworkSettingsWeatherCityItem, "天气城市 杭州");
 
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimarySound, state, items);
@@ -78,6 +70,11 @@ int main()
     expect_text(items, kSoundSettingsSoundItem, "声音选择 3");
     expect_text(items, kSoundSettingsHourlyItem, "整点提醒 7:00 - 22:00");
     expect_text(items, kSoundSettingsAllDayItem, "全天提醒 0:00 - 24:00");
+
+    state.volume_percent = 0;
+    memset(items, 0, sizeof(items));
+    populate_settings_secondary_items(kSettingsPrimarySound, state, items);
+    expect_text(items, kSoundSettingsVolumeItem, "音量 靜音");
 
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimaryDisplay, state, items);
@@ -108,11 +105,9 @@ int main()
     settings_confirmation_request(SettingsConfirmation::kFactoryReset);
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
-    expect_text(items, kSystemSettingsOfflineItem, "离线模式 开");
-    expect_text(items, kSystemSettingsNetworkDiagItem, "网络检测");
+    expect_text(items, kSystemSettingsSetupItem, "設定模式");
     expect_text(items, kSystemSettingsFactoryResetItem, "确认恢复");
     expect_text(items, kSystemSettingsInfoItem, "关于本机");
-    expect_text(items, kSystemSettingsOtaItem, "检查更新");
 
     return 0;
 }

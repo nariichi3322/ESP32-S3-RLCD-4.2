@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <time.h>
 
+inline constexpr time_t kNtpAutomaticSyncIntervalSeconds = 24 * 60 * 60;
+
 struct NetworkNtpScheduleState {
     time_t next_retry_at = 0;
     time_t next_daily_at = 0;

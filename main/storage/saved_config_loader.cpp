@@ -16,6 +16,8 @@
 #include "qweather_api_host.h"
 #include "network_weather_city_storage.h"
 #include "offline_mode_state_internal.h"
+#include "ntp_runtime_state_internal.h"
+#include "ntp_server_config.h"
 #include "ui_gallery_rotation_state_internal.h"
 #include "ui_work_page_catalog_internal.h"
 #include "xiaozhi_auto_return_state_internal.h"
@@ -32,6 +34,7 @@ using network_config_nvs::ScopedNvsHandle;
 using network_page_storage::read_saved_page_mask;
 using network_page_storage::read_saved_page_order;
 using network_config_keys::kOfflineModeKey;
+using network_config_keys::kNtpServerKey;
 using network_config_keys::kQweatherApiHostKey;
 using network_config_keys::kWeatherApiKeyKey;
 using network_config_keys::kWifiBackupPassKey;
@@ -63,12 +66,14 @@ struct LoadedSavedConfig {
     esp_err_t backup_pass_err;
     esp_err_t key_err;
     esp_err_t host_err;
+    esp_err_t ntp_server_err;
     char wifi_ssid[kNetworkWifiSsidLen];
     char wifi_password[kNetworkWifiPasswordLen];
     char backup_wifi_ssid[kNetworkWifiSsidLen];
     char backup_wifi_password[kNetworkWifiPasswordLen];
     char weather_api_key[kNetworkWeatherApiKeyLen];
     char weather_api_host[kQweatherApiHostLen];
+    char ntp_server[kNtpServerNameLen];
     uint8_t chime;
     uint8_t all_day;
     uint8_t volume;
@@ -112,22 +117,19 @@ bool apply_loaded_page_config(uint8_t page_mask,
                               const uint8_t *page_order,
                               bool have_page_order)
 {
-    const uint8_t online_mask = normalize_work_page_enabled_mask(page_mask);
-    work_page_enabled_mask_store(online_mask);
+    const uint8_t saved_mask = normalize_work_page_enabled_mask(page_mask);
+    work_page_enabled_mask_store(saved_mask);
     if (have_page_order && page_order) {
         work_page_order_replace(page_order, kWorkPageCount);
     } else {
         normalize_work_page_order();
     }
-    uint8_t runtime_mask = online_mask;
-    if (offline_mode_enabled_load()) {
-        runtime_mask = work_page_mask_for_offline_mode(online_mask);
-        if (runtime_mask != online_mask) {
-            work_page_enabled_mask_store(runtime_mask);
-        }
+    const uint8_t runtime_mask = work_page_mask_for_offline_mode(saved_mask);
+    if (runtime_mask != saved_mask) {
+        work_page_enabled_mask_store(runtime_mask);
     }
     active_work_page_store(first_enabled_work_page());
-    return runtime_mask != online_mask;
+    return runtime_mask != saved_mask;
 }
 
 void clear_loaded_saved_config(LoadedSavedConfig *loaded)
@@ -154,6 +156,7 @@ void initialize_loaded_saved_config(LoadedSavedConfig *loaded)
     loaded->backup_pass_err = ESP_FAIL;
     loaded->key_err = ESP_FAIL;
     loaded->host_err = ESP_FAIL;
+    loaded->ntp_server_err = ESP_FAIL;
     loaded->volume = chime_settings::kDefaultVolumePercent;
     loaded->page_mask = kPageMaskV5KnownBits;
     loaded->xiaozhi_auto_return = kDefaultXiaozhiAutoReturnEnabled ? 1 : 0;
@@ -189,6 +192,11 @@ void read_saved_config(nvs_handle_t nvs, LoadedSavedConfig *loaded)
         kQweatherApiHostKey,
         loaded->weather_api_host,
         sizeof(loaded->weather_api_host));
+    loaded->ntp_server_err = read_nvs_string(
+        nvs,
+        kNtpServerKey,
+        loaded->ntp_server,
+        sizeof(loaded->ntp_server));
     network_chime_storage::StoredChimeSettings chime =
         network_chime_storage::read(nvs, chime_settings::kDefaultVolumePercent);
     loaded->chime = chime.enabled;
@@ -245,6 +253,16 @@ bool apply_loaded_config(const LoadedSavedConfig &loaded)
                               weather_key_configured,
                               weather_host_configured);
     manual_weather_city_store(loaded.manual_weather_city);
+    char ntp_server[kNtpServerNameLen] = {};
+    const char *saved_ntp_server =
+        loaded.ntp_server_err == ESP_OK ? loaded.ntp_server
+                                        : kDefaultNtpServerName;
+    if (!normalize_ntp_server_name(saved_ntp_server,
+                                   ntp_server,
+                                   sizeof(ntp_server))) {
+        strlcpy(ntp_server, kDefaultNtpServerName, sizeof(ntp_server));
+    }
+    ntp_server_name_store(ntp_server);
     ChimeRuntimeSnapshot chime = {
         nvs_u8_to_bool(loaded.chime),
         nvs_u8_to_bool(loaded.all_day),
@@ -252,7 +270,9 @@ bool apply_loaded_config(const LoadedSavedConfig &loaded)
         static_cast<uint8_t>(normalize_chime_sound_index(loaded.sound)),
     };
     chime_runtime_snapshot_store(chime);
-    offline_mode_enabled_store(nvs_u8_to_bool(loaded.offline));
+    // This firmware always uses the local interface while still allowing
+    // short Wi-Fi windows for setup and NTP.
+    offline_mode_enabled_store(false);
     xiaozhi_auto_return_enabled_store(nvs_u8_to_bool(loaded.xiaozhi_auto_return));
     gallery_rotation_period_store(loaded.gallery_rotation);
     return apply_loaded_page_config(loaded.page_mask, loaded.page_order, loaded.have_page_order);
@@ -276,6 +296,5 @@ bool load_saved_config()
         !set_work_page_enabled_mask_setting(work_page_enabled_mask_load())) {
         ESP_LOGW(TAG, "%s", kOfflinePageMaskPersistFailedLog);
     }
-    return offline_mode_enabled_load() ||
-           network_all_online_credentials_configured();
+    return network_wifi_credentials_configured();
 }

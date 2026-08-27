@@ -107,7 +107,6 @@ static_assert(portal_http_routes_valid(), "portal HTTP routes must have URI and 
 #define PORTAL_POST_BODY_TRUNCATED_FORMAT "setup POST body truncated content_len=%u buffer=%u"
 #define PORTAL_POST_BODY_RECEIVE_FAILED_FORMAT "setup POST body receive failed ret=%d received=%d expected=%u"
 #define PORTAL_PROVISIONING_SYNC_EVENT_UNAVAILABLE_LOG "setup save skipped initial sync request: app events unavailable"
-#define PORTAL_OFFLINE_STOP_REQUEST_UNAVAILABLE_LOG "offline setup could not queue portal stop"
 
 bool request_provisioning_sync_after_save()
 {
@@ -168,24 +167,8 @@ esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
     form_value(body, "ssid", ssid, sizeof(ssid));
     trim_ascii_whitespace(ssid);
     if (ssid[0] == '\0') {
-        bool offline_saved = save_offline_datetime_from_body(body);
-        if (!offline_saved) {
-            wifi_portal_save_result_store(WifiPortalSaveResult::kInvalidInput);
-        }
-        esp_err_t err = send_offline_result_page(req, offline_saved);
-        if (offline_saved) {
-            settings_page_clear();
-            network_diag_page_clear();
-            info_page_clear();
-            if (err == ESP_OK) {
-                vTaskDelay(pdMS_TO_TICKS(kPortalResponseSettleMs));
-            }
-            if (!request_setup_portal_stop()) {
-                ESP_LOGW(TAG, "%s", PORTAL_OFFLINE_STOP_REQUEST_UNAVAILABLE_LOG);
-            }
-            notify_ui_task();
-        }
-        return err;
+        wifi_portal_save_result_store(WifiPortalSaveResult::kInvalidInput);
+        return send_save_result_page(req, WifiPortalSaveResult::kInvalidInput);
     }
     const bool saved = save_credentials_from_body(body);
     WifiPortalSaveResult result = saved

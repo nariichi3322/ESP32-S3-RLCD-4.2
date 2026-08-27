@@ -5,8 +5,8 @@
 #include "app_network_config.h"
 #include "app_text_format.h"
 #include "checked_size.h"
-#include "manual_weather_city_state.h"
 #include "network_credentials_state.h"
+#include "ntp_services.h"
 #include "scoped_heap_buffer.h"
 #include "wifi_portal_html_text.h"
 #include "wifi_portal_ui_assets.h"
@@ -23,16 +23,14 @@
 namespace {
 constexpr uint16_t kMaxListedApCount = 32;
 constexpr size_t kPortalSubmitSsidFieldSize = 33;
-constexpr size_t kPortalWeatherCityNameSize = 32;
 constexpr size_t kPortalLongestHtmlEntitySize = sizeof("&quot;") - 1;
 constexpr size_t kPortalEscapedSsidSize =
     (kPortalSubmitSsidFieldSize - 1) * kPortalLongestHtmlEntitySize + 1;
-constexpr size_t kPortalEscapedCitySize =
-    (kPortalWeatherCityNameSize - 1) * kPortalLongestHtmlEntitySize + 1;
+constexpr size_t kPortalEscapedNtpServerSize =
+    (kNtpServerNameLen - 1) * kPortalLongestHtmlEntitySize + 1;
 constexpr size_t kPortalSaveExtraTextSize = 220;
 constexpr size_t kPortalRootHtmlSize = 24576;
 constexpr size_t kPortalSaveResultHtmlSize = 12288;
-constexpr size_t kPortalOfflineResultHtmlSize = 10240;
 constexpr const char *kPortalSectionCloseHtml = "</div></div></section>";
 constexpr const char *kPortalHtmlContentType = "text/html; charset=utf-8";
 constexpr const char *kPortalHttpStatusInternalError = "500 Internal Server Error";
@@ -49,21 +47,18 @@ constexpr const char *kPortalSaveMissingTitle = "配置信息不完整";
 constexpr const char *kPortalSaveWifiFailedTitle = "Wi-Fi 连接失败";
 constexpr const char *kPortalSaveWeatherApiFailedTitle = "天气 API 验证失败";
 constexpr const char *kPortalSaveWeatherCityInvalidTitle = "天气城市无效";
-constexpr const char *kPortalSaveConnectedBody = "天气时钟已连接到 Wi-Fi 网络。";
+constexpr const char *kPortalSaveConnectedBody =
+    "Wi-Fi 与 NTP 設定已儲存，裝置將返回本機時鐘介面。";
 constexpr const char *kPortalSaveValidatingBody =
-    "设备正在连接 Wi-Fi，并验证天气 API 密钥、API Host 和天气城市，请稍候。";
+    "裝置正在連接 Wi-Fi，請稍候。";
 constexpr const char *kPortalSaveMissingBody =
-    "在线模式请填写 Wi-Fi、和风天气 API 密钥和账号专属 API Host；离线模式可仅设置日期和时间。";
+    "請填寫 Wi-Fi 名稱；NTP 伺服器可保留預設值 pool.ntp.org。";
 constexpr const char *kPortalSaveWifiFailedBody =
     "设备未能连接主 Wi-Fi 或备用 Wi-Fi。请检查密码、信号和路由器状态后重新填写。";
 constexpr const char *kPortalSaveWeatherApiFailedBody =
     "Wi-Fi 已连接，但和风天气验证失败。请检查 API 密钥和账号专属 API Host 后重新填写。";
 constexpr const char *kPortalSaveWeatherCityInvalidBody =
     "Wi-Fi 与 API 密钥可用，但和风天气无法识别该城市。请修改城市，或留空使用自动定位。";
-constexpr const char *kPortalOfflineSavedTitle = "离线模式已开启";
-constexpr const char *kPortalOfflineInvalidTitle = "日期或时间无效";
-constexpr const char *kPortalOfflineSavedBody = "天气时钟将使用 RTC 时间，并停止所有网络更新。";
-constexpr const char *kPortalOfflineInvalidBody = "请输入有效日期和时间，或者填写 Wi-Fi、和风天气 API 密钥与账号专属 API Host。";
 constexpr const char *kPortalWifiScanBusyMessage = "Wi-Fi 正在扫描，请稍后刷新页面。";
 constexpr const char *kPortalWifiScanFailedMessage = "Wi-Fi 扫描失败，请刷新页面重试。";
 constexpr const char *kPortalWifiScanEmptyMessage = "没有发现可用的 Wi-Fi 网络。";
@@ -76,14 +71,8 @@ constexpr const char *kPortalHtmlHeadPrefix =
 static_assert(kMaxListedApCount > 0, "listed AP count must be positive");
 static_assert(kPortalEscapedSsidSize > kPortalSubmitSsidFieldSize,
               "escaped SSID buffer must exceed submitted SSID field size");
-static_assert(kPortalEscapedCitySize > kPortalWeatherCityNameSize,
-              "escaped city buffer must exceed weather city name buffer");
-static_assert(kPortalWeatherCityNameSize == kManualWeatherCityLen,
-              "portal city escape capacity must follow the shared city contract");
 static_assert(kPortalRootHtmlSize > kPortalSaveResultHtmlSize,
               "portal root HTML buffer must exceed save result buffer");
-static_assert(kPortalRootHtmlSize > kPortalOfflineResultHtmlSize,
-              "portal root HTML buffer must exceed offline result buffer");
 static_assert(kPortalSaveExtraTextSize > 1, "portal save extra text buffer must fit text and NUL");
 
 struct PortalPageTextWorkspace {
@@ -91,9 +80,9 @@ struct PortalPageTextWorkspace {
     char backup_wifi_ssid[kNetworkWifiSsidLen];
     char safe_ssid[kPortalEscapedSsidSize];
     char safe_backup_ssid[kPortalEscapedSsidSize];
-    char safe_weather_city[kPortalEscapedCitySize];
+    char ntp_server[kNtpServerNameLen];
+    char safe_ntp_server[kPortalEscapedNtpServerSize];
     char safe_extra[kPortalSaveExtraTextSize];
-    char weather_city[kManualWeatherCityLen];
     char setup_ap_ssid[kWifiSetupApSsidTextLen];
 };
 
@@ -117,7 +106,6 @@ void set_portal_common_response_headers(httpd_req_t *req)
     httpd_resp_set_hdr(req, kPortalHeaderCacheControl, kPortalCacheNoStore);
     httpd_resp_set_hdr(req, kPortalHeaderConnection, kPortalConnectionClose);
 }
-
 esp_err_t send_portal_html(httpd_req_t *req, const char *html)
 {
     if (!req || !html) {
@@ -323,8 +311,7 @@ void append_wifi_scan_list(char *html, size_t html_len)
 esp_err_t root_get_handler(httpd_req_t *req)
 {
     PortalPageTextWorkspace &text = reset_portal_page_text_workspace();
-    (void)manual_weather_city_snapshot(text.weather_city,
-                                       sizeof(text.weather_city));
+    (void)get_ntp_server_name(text.ntp_server, sizeof(text.ntp_server));
     (void)network_wifi_ssid_snapshot(text.wifi_ssid,
                                      sizeof(text.wifi_ssid));
     (void)network_wifi_alternate_ssid_snapshot(
@@ -336,9 +323,9 @@ esp_err_t root_get_handler(httpd_req_t *req)
     wifi_portal_html::escape_text(text.backup_wifi_ssid,
                                   text.safe_backup_ssid,
                                   sizeof(text.safe_backup_ssid));
-    wifi_portal_html::escape_text(text.weather_city,
-                                  text.safe_weather_city,
-                                  sizeof(text.safe_weather_city));
+    wifi_portal_html::escape_text(text.ntp_server,
+                                  text.safe_ntp_server,
+                                  sizeof(text.safe_ntp_server));
     const WifiPortalSaveSnapshot save =
         wifi_portal_save_snapshot_load();
     const WifiPortalSaveResult save_result = save.result;
@@ -356,8 +343,8 @@ esp_err_t root_get_handler(httpd_req_t *req)
     }
     html_append(html.data(), html.size(),
                 "%s"
-                "<title>天气时钟配网</title><style>%s</style><script>%s</script></head>"
-                "<body><main class='portal-shell'><header class='portal-header'><div class='brand-lockup'><div class='brand-mark'>42</div><div class='brand-copy'><h1>天气时钟</h1><p>网络、天气与离线时间设置</p></div></div>"
+                "<title>時鐘設定模式</title><style>%s</style><script>%s</script></head>"
+                "<body><main class='portal-shell'><header class='portal-header'><div class='brand-lockup'><div class='brand-mark'>42</div><div class='brand-copy'><h1>時鐘設定模式</h1><p>Wi-Fi 與 NTP 校時設定</p></div></div>"
                 "<div class='ap-meta'><span>设备热点</span><strong>%s</strong></div></header>"
                 "<section class='portal-form-shell'>%s%s%s",
                 kPortalHtmlHeadPrefix,
@@ -374,7 +361,7 @@ esp_err_t root_get_handler(httpd_req_t *req)
                 wifi_portal_ui::kFormHtml,
                 text.safe_ssid,
                 text.safe_backup_ssid,
-                text.safe_weather_city);
+                text.safe_ntp_server);
     html_append(html.data(), html.size(), "</section>");
     append_wifi_scan_list(html.data(), html.size());
     html_append(html.data(), html.size(), "</main></body></html>");
@@ -390,22 +377,20 @@ esp_err_t send_save_result_page(httpd_req_t *req,
                                 const char *extra_message)
 {
     PortalPageTextWorkspace &text = reset_portal_page_text_workspace();
-    const bool have_weather_city = manual_weather_city_snapshot(
-        text.weather_city, sizeof(text.weather_city));
     (void)network_wifi_ssid_snapshot(text.wifi_ssid,
                                      sizeof(text.wifi_ssid));
     (void)network_wifi_alternate_ssid_snapshot(
         text.backup_wifi_ssid, sizeof(text.backup_wifi_ssid));
+    (void)get_ntp_server_name(text.ntp_server, sizeof(text.ntp_server));
     wifi_portal_html::escape_text(text.wifi_ssid,
                                   text.safe_ssid,
                                   sizeof(text.safe_ssid));
     wifi_portal_html::escape_text(text.backup_wifi_ssid,
                                   text.safe_backup_ssid,
                                   sizeof(text.safe_backup_ssid));
-    wifi_portal_html::escape_text(
-        have_weather_city ? text.weather_city : "自动定位",
-        text.safe_weather_city,
-        sizeof(text.safe_weather_city));
+    wifi_portal_html::escape_text(text.ntp_server,
+                                  text.safe_ntp_server,
+                                  sizeof(text.safe_ntp_server));
     wifi_portal_html::escape_text(extra_message ? extra_message : "",
                                   text.safe_extra,
                                   sizeof(text.safe_extra));
@@ -418,7 +403,7 @@ esp_err_t send_save_result_page(httpd_req_t *req,
     const char *title = portal_save_result_title(result);
     const char *body = portal_save_result_body(result);
     const char *poll_script = result == WifiPortalSaveResult::kValidating
-                                  ? "<script>function poll(){fetch('/status',{cache:'no-store'}).then(function(r){if(r.status===200){document.getElementById('save-state').textContent='已连接';document.getElementById('save-title').textContent='网络连接成功';document.getElementById('save-body').textContent='验证通过，设备即将进入工作状态。';return;}if(r.status===409){location.replace('/');return;}setTimeout(poll,1000);}).catch(function(){setTimeout(poll,1200);});}setTimeout(poll,800);</script>"
+                                  ? "<script>function poll(){fetch('/status',{cache:'no-store'}).then(function(r){if(r.status===200){document.getElementById('save-state').textContent='已連線';document.getElementById('save-title').textContent='設定成功';document.getElementById('save-body').textContent='裝置即將返回本機時鐘介面。';return;}if(r.status===409){location.replace('/');return;}setTimeout(poll,1000);}).catch(function(){setTimeout(poll,1200);});}setTimeout(poll,800);</script>"
                                   : "";
     const char *state_text = result == WifiPortalSaveResult::kSuccess
                                  ? "已连接"
@@ -428,8 +413,8 @@ esp_err_t send_save_result_page(httpd_req_t *req,
     const int disconnect_reason = wifi_last_disconnect_reason();
     html_append(html.data(), html.size(),
                 "%s"
-                "<title>天气时钟配网结果</title><style>%s</style>%s</head><body><main class='result-shell'><section class='portal-panel result-panel'><div id='save-state' class='result-state'>%s</div><h1 id='save-title'>%s</h1><p id='save-body'>%s</p>"
-                "%s%s%s<div class='meta'>主 Wi-Fi：%s<br>备用 Wi-Fi：%s<br>API Host：已保存<br>天气城市：%s<br>最近一次 Wi-Fi 断开原因：%d</div><a class='primary-link' href='/'>返回配网页</a></section></main></body></html>",
+                "<title>時鐘設定結果</title><style>%s</style>%s</head><body><main class='result-shell'><section class='portal-panel result-panel'><div id='save-state' class='result-state'>%s</div><h1 id='save-title'>%s</h1><p id='save-body'>%s</p>"
+                "%s%s%s<div class='meta'>主 Wi-Fi：%s<br>備用 Wi-Fi：%s<br>NTP 伺服器：%s<br>最近一次 Wi-Fi 斷線原因：%d</div><a class='primary-link' href='/'>返回設定頁</a></section></main></body></html>",
                 kPortalHtmlHeadPrefix,
                 wifi_portal_ui::kCommonCss,
                 poll_script,
@@ -441,26 +426,9 @@ esp_err_t send_save_result_page(httpd_req_t *req,
                 text.safe_extra[0] ? "</div>" : "",
                 text.safe_ssid,
                 text.safe_backup_ssid[0] ? text.safe_backup_ssid : "未配置",
-                text.safe_weather_city,
+                text.safe_ntp_server,
                 disconnect_reason);
     return send_portal_html(req, html.data());
 }
 
-esp_err_t send_offline_result_page(httpd_req_t *req, bool saved)
-{
-    ScopedHeapBuffer<char> html(kPortalOfflineResultHtmlSize,
-                                HeapBufferInit::kZeroed,
-                                HeapBufferStorage::kPsramRequired);
-    if (!html) {
-        return send_portal_text_status(req, kPortalHttpStatusInternalError, kPortalErrorNotEnoughMemory);
-    }
-    html_append(html.data(), html.size(),
-                "%s"
-                "<title>天气时钟离线模式</title><style>%s</style></head><body><main class='result-shell'><section class='portal-panel result-panel'><div class='result-state'>%s</div><h1>%s</h1><p>%s</p><a class='primary-link' href='/'>返回配网页</a></section></main></body></html>",
-                kPortalHtmlHeadPrefix,
-                wifi_portal_ui::kCommonCss,
-                saved ? "已开启" : "提示",
-                saved ? kPortalOfflineSavedTitle : kPortalOfflineInvalidTitle,
-                saved ? kPortalOfflineSavedBody : kPortalOfflineInvalidBody);
-    return send_portal_html(req, html.data());
-}
+// End of Settings Mode portal page rendering.

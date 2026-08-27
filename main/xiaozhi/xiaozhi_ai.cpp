@@ -10,6 +10,7 @@
 #include "network_credentials_state.h"
 #include "network_https_resources.h"
 #include "offline_mode_state.h"
+#include "product_mode.h"
 #include "ui_task_notify.h"
 #include "ui_work_page_catalog.h"
 #include "xiaozhi_activation_flow.h"
@@ -501,7 +502,10 @@ void xiaozhi_ai_task(void *)
             xiaozhi_snapshot_set(kXiaozhiAiReady, kReadyStatus, kBoundDetail);
             ESP_LOGI(TAG, "Xiaozhi audio resuming after pomodoro completion");
         }
-        const bool offline_mode = offline_mode_enabled_load();
+        // Do not let the dormant AI task acquire a radio session merely
+        // because Wi-Fi credentials are available for NTP.
+        const bool offline_mode = kLocalClockNtpOnlyMode ||
+                                  offline_mode_enabled_load();
         if (xiaozhi_ai_configuration_blocked(offline_mode,
                                              network_wifi_credentials_configured())) {
             release_realtime_network();

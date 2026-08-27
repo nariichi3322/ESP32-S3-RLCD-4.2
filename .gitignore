@@ -1,0 +1,65 @@
+# ESP-IDF build output and downloaded managed components
+/build/
+/managed_components/
+
+# Local ESP-IDF configuration backups
+/sdkconfig.old
+/sdkconfig.old.*
+/sdkconfig.save
+
+# CMake and Ninja generated files (including host/simulator builds)
+**/build/
+**/cmake-build-*/
+**/CMakeFiles/
+**/CMakeCache.txt
+**/cmake_install.cmake
+**/compile_commands.json
+**/.cmake/
+**/.ninja_deps
+**/.ninja_log
+**/build.ninja
+**/rules.ninja
+/CMakeUserPresets.json
+
+# Editor and IDE state
+/.vscode/
+/.idea/
+*.code-workspace
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Python tooling used by repository scripts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Test and coverage artifacts
+Testing/
+coverage/
+*.gcda
+*.gcno
+*.gcov
+
+# Temporary files and logs
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+
+# Operating-system metadata
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini

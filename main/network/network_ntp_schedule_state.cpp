@@ -3,7 +3,6 @@
 
 #include "app_constexpr.h"
 #include "network_sync_schedule.h"
-#include "sensor_time.h"
 
 namespace {
 void clear_retry(NetworkNtpScheduleState *state)
@@ -20,7 +19,7 @@ NetworkNtpScheduleState initialize_network_ntp_schedule(bool already_synced,
     state.boot_due = !already_synced;
     state.next_daily_at = state.boot_due
                               ? 0
-                              : next_local_midnight_time(now);
+                              : now + kNtpAutomaticSyncIntervalSeconds;
     return state;
 }
 
@@ -39,7 +38,7 @@ NetworkNtpRetryUpdate finish_network_ntp_attempt(
         state->boot_due = false;
         state->daily_pending = false;
         clear_retry(state);
-        state->next_daily_at = next_local_midnight_time(now);
+        state->next_daily_at = now + kNtpAutomaticSyncIntervalSeconds;
         return update;
     }
     if (!retry_required) {
@@ -73,7 +72,7 @@ void refresh_network_ntp_daily_due(NetworkNtpScheduleState *state,
         state->next_daily_at == 0 &&
         !state->boot_due &&
         time_plausible) {
-        state->next_daily_at = next_local_midnight_time(now);
+        state->next_daily_at = now + kNtpAutomaticSyncIntervalSeconds;
     }
 }
 

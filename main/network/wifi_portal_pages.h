@@ -13,7 +13,6 @@ esp_err_t root_get_handler(httpd_req_t *req);
 esp_err_t send_save_result_page(httpd_req_t *req,
                                 WifiPortalSaveResult result,
                                 const char *extra_message = nullptr);
-esp_err_t send_offline_result_page(httpd_req_t *req, bool saved);
 esp_err_t send_portal_text_status(httpd_req_t *req, const char *status, const char *text);
 esp_err_t send_portal_empty_status(httpd_req_t *req, const char *status);
 esp_err_t redirect_to_setup_portal(httpd_req_t *req);

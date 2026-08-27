@@ -386,6 +386,10 @@ bool CodecPort::CodecPort_PlayChimeSound(int sound_index,
                              stop_requested);
 }
 
-bool CodecPort::CodecPort_PlayWifiPrompt(void) {
-    return play_pcm_to_slot0(this, wifi_prompt_pcm_start, wifi_prompt_pcm_end, 0, 90);
+bool CodecPort::CodecPort_PlayWifiPrompt(int volume_percent) {
+    return play_pcm_to_slot0(this,
+                             wifi_prompt_pcm_start,
+                             wifi_prompt_pcm_end,
+                             0,
+                             volume_percent);
 }

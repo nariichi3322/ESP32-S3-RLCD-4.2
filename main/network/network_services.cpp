@@ -15,7 +15,6 @@
 #include "network_diagnostics_internal.h"
 #include "ntp_services.h"
 #include "network_provisioning_session_internal.h"
-#include "provisioning_validation.h"
 #include "network_diagnostics_catalog.h"
 #include "network_ntp_schedule_state.h"
 #include "network_sync_requests.h"
@@ -782,17 +781,6 @@ void network_sync_task(void *)
                 continue;
             }
             if (requests.provisioning) {
-                WifiPortalSaveResult validation_result =
-                    validate_saved_provisioning_weather_configuration();
-                if (validation_result != WifiPortalSaveResult::kSuccess) {
-                    finish_failed_network_sync_session(schedule,
-                                                       requests,
-                                                       sync_runtime,
-                                                       awake_lock,
-                                                       validation_result);
-                    wait_for_network_sync_event(kNetworkShortRetryWaitMs);
-                    continue;
-                }
                 if (!publish_setup_portal_result(
                         WifiPortalSaveResult::kSuccess,
                         requests.provisioning_generation)) {

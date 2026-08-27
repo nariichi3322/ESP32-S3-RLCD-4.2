@@ -18,6 +18,7 @@ const char *const kExpectedKeys[] = {
     "asset_city_skip",
     "api_host",
     "offline_v1",
+    "ntp_server_v1",
     "hourly_chime_v2",
     "hour_all_v1",
     "chime_vol_v1",
@@ -117,7 +118,7 @@ int main()
 {
     constexpr nvs_handle_t kNvs = 1;
     constexpr size_t kExpectedKeyCount = sizeof(kExpectedKeys) / sizeof(kExpectedKeys[0]);
-    static_assert(kExpectedKeyCount == 26,
+    static_assert(kExpectedKeyCount == 27,
                   "factory reset host test must enumerate every registered key");
 
     reset_store(true);
