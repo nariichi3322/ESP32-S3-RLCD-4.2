@@ -8,6 +8,7 @@
 #include "flip_sensor_icons.h"
 #include "ui_battery.h"
 #include "ui_canvas_primitives.h"
+#include "ui_clock_seconds_state.h"
 #include "ui_draw_cache.h"
 #include "ui_fonts.h"
 #include "ui_inverted_clock_card.h"
@@ -35,6 +36,12 @@ static constexpr int kCardY = inverted_clock_card::kY;
 static constexpr const int (&kCardX)[kCardCount] = inverted_clock_card::kX;
 static constexpr int kHourCardIndex = 0;
 static constexpr int kMinuteCardIndex = 1;
+static constexpr int kSecondCardIndex = 2;
+static constexpr int kTwoCardGap =
+    kCardX[kMinuteCardIndex] - kCardX[kHourCardIndex] - kCardW;
+static constexpr int kTwoCardSpan = 2 * kCardW + kTwoCardGap;
+static constexpr int kTwoCardHourX = (400 - kTwoCardSpan) / 2;
+static constexpr int kTwoCardMinuteX = kTwoCardHourX + kCardW + kTwoCardGap;
 static constexpr int kFlipSensorPanelX = kCardX[kHourCardIndex];
 static constexpr int kFlipSensorPanelY = 198;
 static constexpr int kFlipSensorPanelW = kCardX[kMinuteCardIndex] + kCardW - kFlipSensorPanelX;
@@ -80,6 +87,9 @@ static_assert(array_count(kCardX) == kCardCount,
               "flip clock card X table must match card count");
 static_assert(kFlipClockObjectCardCount == kCardCount,
               "flip clock object registry must match inverted card count");
+static_assert(kTwoCardGap >= 0 && kTwoCardHourX >= 0 &&
+                  kTwoCardMinuteX + kCardW <= 400,
+              "centered two-card clock must fit the display");
 static_assert(kFlipSensorPanelX == kCardX[kHourCardIndex] &&
                   kFlipSensorPanelX + kFlipSensorPanelW == kCardX[kMinuteCardIndex] + kCardW &&
                   kFlipDatePanelW == kCardW,
@@ -359,6 +369,24 @@ void clear_flip_clock_object_refs()
     s_flip_clock_objects = {};
 }
 
+void apply_flip_clock_seconds_visibility(bool visible)
+{
+    FlipClockObjectRefs &objects = mutable_flip_clock_object_refs();
+    if (objects.card_canvas[kHourCardIndex]) {
+        lv_obj_set_x(objects.card_canvas[kHourCardIndex],
+                     visible ? kCardX[kHourCardIndex] : kTwoCardHourX);
+    }
+    if (objects.card_canvas[kMinuteCardIndex]) {
+        lv_obj_set_x(objects.card_canvas[kMinuteCardIndex],
+                     visible ? kCardX[kMinuteCardIndex] : kTwoCardMinuteX);
+    }
+    set_obj_visible(objects.card_canvas[kSecondCardIndex], visible);
+    lv_obj_t *root = work_page_root(kWorkPageFlipClock);
+    if (root) {
+        lv_obj_invalidate(root);
+    }
+}
+
 void build_flip_clock_page()
 {
     if (work_page_root(kWorkPageFlipClock)) {
@@ -388,6 +416,7 @@ void build_flip_clock_page()
     build_inverted_clock_cards(screen,
                                objects.card_canvas,
                                s_flip_clock_card_canvas_buffer);
+    apply_flip_clock_seconds_visibility(weather_clock_seconds_visible_load());
     build_flip_sensor_panel(screen, objects);
     build_flip_date_panel(screen, objects);
 

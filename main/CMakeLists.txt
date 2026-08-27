@@ -61,6 +61,7 @@ idf_component_register(
         "ui/ui_clock.cpp"
         "ui/ui_clock_object_state.cpp"
         "ui/ui_clock_runtime.cpp"
+        "ui/ui_clock_seconds_state.cpp"
         "ui/ui_clock_time.cpp"
         "ui/ui_clock_alert_state.cpp"
         "ui/ui_visible_cache.cpp"

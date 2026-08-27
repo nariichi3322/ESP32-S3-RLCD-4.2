@@ -10,6 +10,7 @@
 #include "pomodoro_services.h"
 #include "sensor_time.h"
 #include "ui_info_page_state.h"
+#include "ui_clock_seconds_state.h"
 #include "ui_loop_schedule.h"
 #include "ui_settings_activity_state.h"
 #include "ui_work_page_catalog.h"
@@ -100,7 +101,15 @@ TickType_t ui_runtime_next_loop_delay_ticks(time_t sampled_wall_second,
         battery.low_battery_mode,
         surfaces.setup_portal_active,
         surfaces.auxiliary_page_requested());
-    const bool minute_level_wait = low_idle || low_refresh_page_idle;
+    const bool hidden_seconds_idle = ui_hidden_clock_seconds_minute_idle(
+        active_page == kWorkPageWeatherClock ||
+            active_page == kWorkPageFlipClock,
+        weather_clock_seconds_visible_load(),
+        battery.low_battery_mode,
+        surfaces.setup_portal_active,
+        surfaces.auxiliary_page_requested());
+    const bool minute_level_wait = low_idle || low_refresh_page_idle ||
+                                   hidden_seconds_idle;
     const TickType_t second_delay_ticks =
         (!minute_level_wait || battery_blink_visible)
             ? next_second_delay_ticks(sampled_wall_second)

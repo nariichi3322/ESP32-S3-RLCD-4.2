@@ -9,6 +9,7 @@ inline constexpr int kClockTimeCanvasX = 18;
 inline constexpr int kClockTimeCanvasY = 76;
 inline constexpr int kClockTimeCanvasWidth = 292;
 inline constexpr int kClockTimeCanvasHeight = 92;
+inline constexpr int kClockTimeOnlyCanvasX = (400 - kClockTimeCanvasWidth) / 2;
 inline constexpr int kClockSecondCanvasX = 320;
 inline constexpr int kClockSecondCanvasY = 124;
 inline constexpr int kClockSecondCanvasWidth = 60;
@@ -93,6 +94,9 @@ static_assert(kClockTimeCanvasX >= 0 && kClockTimeCanvasY >= 0 &&
                   kClockTimeCanvasWidth > 0 &&
                   kClockTimeCanvasHeight > 0,
               "clock time canvas must have a valid rectangle");
+static_assert(kClockTimeOnlyCanvasX >= 0 &&
+                  kClockTimeOnlyCanvasX + kClockTimeCanvasWidth <= 400,
+              "centered clock time canvas must fit the display");
 static_assert(kClockSecondCanvasX >= 0 && kClockSecondCanvasY >= 0 &&
                   kClockSecondCanvasWidth > 0 &&
                   kClockSecondCanvasHeight > 0,

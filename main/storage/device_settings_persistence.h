@@ -13,3 +13,4 @@ bool set_work_page_order_setting(const uint8_t *page_order,
                                  size_t page_order_size);
 bool set_xiaozhi_auto_return_setting(bool enabled);
 bool set_gallery_rotation_period_setting(uint8_t period);
+bool set_weather_clock_seconds_visible_setting(bool visible);

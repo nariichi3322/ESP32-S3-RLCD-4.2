@@ -5,6 +5,7 @@
 #include "alarm_services.h"
 #include "app_metadata.h"
 #include "battery_runtime_state.h"
+#include "device_settings_persistence.h"
 #include "input_button_config.h"
 #include "input_button_wait_policy.h"
 #include "network_diagnostics_state.h"
@@ -13,6 +14,7 @@
 #include "pomodoro_services.h"
 #include "task_notification_target.h"
 #include "ui_info_page_state.h"
+#include "ui_clock_seconds_state.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_feedback.h"
 #include "ui_settings_navigation.h"
@@ -34,6 +36,8 @@
 #define BUTTON_EDGE_WAKEUP_READY_LOG_FORMAT "button edge wakeup ready"
 #define BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT "switch work page: %d"
 #define BUTTON_SHOW_SETTINGS_LOG_FORMAT "key button clicked, showing settings page"
+#define BUTTON_CLOCK_SECONDS_LOG_FORMAT "weather clock seconds display: %s"
+#define BUTTON_CLOCK_SECONDS_SAVE_FAILED_LOG "failed to save weather clock seconds display"
 
 namespace {
 constexpr int kButtonDebounceMs = 18;
@@ -99,6 +103,19 @@ void handle_settings_key_long_or_busy()
         return;
     }
     set_settings_feedback(kSettingsBusyFeedbackText, kButtonBusyFeedbackMs);
+}
+
+void toggle_weather_clock_seconds()
+{
+    const bool visible = !weather_clock_seconds_visible_load();
+    const bool saved = set_weather_clock_seconds_visible_setting(visible);
+    ESP_LOGI(TAG,
+             BUTTON_CLOCK_SECONDS_LOG_FORMAT,
+             visible ? "on" : "off");
+    notify_ui_task();
+    if (!saved) {
+        ESP_LOGW(TAG, "%s", BUTTON_CLOCK_SECONDS_SAVE_FAILED_LOG);
+    }
 }
 
 void IRAM_ATTR notify_button_edge(void *)
@@ -221,6 +238,7 @@ void button_task(void *)
     TickType_t key_pressed_since = 0;
     bool key_press_opened_settings = false;
     bool key_long_handled = false;
+    bool boot_long_handled = false;
     bool boot_press_stopped_alert = false;
     bool key_press_stopped_alert = false;
 
@@ -232,11 +250,22 @@ void button_task(void *)
         if (boot_pressed) {
             if (boot_pressed_since == 0) {
                 boot_pressed_since = now;
+                boot_long_handled = false;
                 boot_press_stopped_alert = alarm_stop_ringing_from_button() ||
                                            pomodoro_stop_alert_from_button();
                 if (settings_page_requested()) {
                     settings_activity_record(now);
                 }
+            } else if (!boot_press_stopped_alert &&
+                       !boot_long_handled &&
+                       !settings_page_requested() &&
+                       !info_page_requested() &&
+                       !network_diag_page_requested() &&
+                       !setup_portal_active_load() &&
+                       !battery_low_mode_load() &&
+                       button_press_is_long(now - boot_pressed_since)) {
+                toggle_weather_clock_seconds();
+                boot_long_handled = true;
             }
         } else {
             if (boot_pressed_since != 0 && boot_press_stopped_alert) {
@@ -250,6 +279,7 @@ void button_task(void *)
                     settings_activity_record(now);
                 }
             } else if (boot_pressed_since != 0 &&
+                       !boot_long_handled &&
                        !info_page_requested() &&
                        !network_diag_page_requested() &&
                        !setup_portal_active_load() &&
@@ -260,9 +290,12 @@ void button_task(void *)
                     active_work_page_store(next_page);
                     ESP_LOGI(TAG, BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT, next_page + 1);
                     notify_ui_task();
+                } else if (button_press_is_long(held)) {
+                    toggle_weather_clock_seconds();
                 }
             }
             boot_pressed_since = 0;
+            boot_long_handled = false;
             boot_press_stopped_alert = false;
         }
 

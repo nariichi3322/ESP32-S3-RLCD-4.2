@@ -31,6 +31,13 @@ int main()
     assert(!ui_low_refresh_page_minute_idle(true, false, true, false));
     assert(!ui_low_refresh_page_minute_idle(true, false, false, true));
 
+    assert(ui_hidden_clock_seconds_minute_idle(true, false, false, false, false));
+    assert(!ui_hidden_clock_seconds_minute_idle(false, false, false, false, false));
+    assert(!ui_hidden_clock_seconds_minute_idle(true, true, false, false, false));
+    assert(!ui_hidden_clock_seconds_minute_idle(true, false, true, false, false));
+    assert(!ui_hidden_clock_seconds_minute_idle(true, false, false, true, false));
+    assert(!ui_hidden_clock_seconds_minute_idle(true, false, false, false, true));
+
     assert(ui_xiaozhi_activation_update_due(false, false, false, true));
     assert(!ui_xiaozhi_activation_update_due(false, false, true, true));
     assert(ui_xiaozhi_activation_update_due(true, false, true, false));

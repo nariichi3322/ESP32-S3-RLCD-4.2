@@ -8,6 +8,7 @@
 #include "network_config_nvs.h"
 #include "network_page_storage.h"
 #include "ui_gallery_rotation_state_internal.h"
+#include "ui_clock_seconds_state_internal.h"
 #include "ui_work_page_catalog_internal.h"
 #include "ui_work_page_order_policy.h"
 #include "xiaozhi_auto_return_state_internal.h"
@@ -21,6 +22,7 @@ using network_page_storage::kPageMaskV5Key;
 using network_page_storage::write_work_page_order_nvs;
 using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
+using network_config_keys::kWeatherClockSecondsKey;
 
 namespace {
 constexpr const char *kNvsActionSavingHourlyReminder = "saving hourly reminder";
@@ -28,9 +30,11 @@ constexpr const char *kNvsActionSavingPageSettings = "saving page settings";
 constexpr const char *kNvsActionSavingPageOrder = "saving page order";
 constexpr const char *kNvsActionSavingXiaozhiAutoReturn = "saving Xiaozhi auto return";
 constexpr const char *kNvsActionSavingGalleryRotation = "saving gallery rotation";
+constexpr const char *kNvsActionSavingClockSeconds = "saving clock seconds";
 constexpr const char *kNvsFailureContextPageSettings = "page settings";
 constexpr const char *kNvsFailureContextXiaozhiAutoReturn = "Xiaozhi auto return";
 constexpr const char *kNvsFailureContextGalleryRotation = "gallery rotation";
+constexpr const char *kNvsFailureContextClockSeconds = "clock seconds";
 #define NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT "nvs save hourly reminder failed: %s"
 #define NVS_SAVE_PAGE_ORDER_FAILED_FORMAT "nvs save page order failed: %s"
 #define NVS_SAVE_U8_SETTING_FAILED_FORMAT "nvs save %s failed: %s"
@@ -166,4 +170,16 @@ bool set_gallery_rotation_period_setting(uint8_t period)
     }
     gallery_rotation_period_store(normalized);
     return true;
+}
+
+bool set_weather_clock_seconds_visible_setting(bool visible)
+{
+    const bool saved = save_changed_u8_setting(kNvsActionSavingClockSeconds,
+                                               kNvsFailureContextClockSeconds,
+                                               kWeatherClockSecondsKey,
+                                               bool_to_nvs_u8(visible));
+    // The runtime control must remain usable even if NVS is temporarily
+    // unavailable. A failed save only means the choice may not survive reboot.
+    weather_clock_seconds_visible_store(visible);
+    return saved;
 }

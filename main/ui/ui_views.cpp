@@ -24,6 +24,7 @@
 #include "sensor_time.h"
 #include "ui_battery.h"
 #include "ui_battery_blink.h"
+#include "ui_clock_seconds_state.h"
 #include "ui_aux_pages.h"
 #include "ui_settings_page.h"
 #include "ui_draw_cache.h"
@@ -128,6 +129,7 @@ void ui_task(void *)
         VisibleAuxiliaryPage::kNone;
     bool setup_panel_visible = false;
     bool low_mode_visible = false;
+    uint32_t applied_clock_seconds_version = UINT32_MAX;
     bool alert_visible = false;
     int visible_work_page = kWorkPageWeatherClock;
     int alert_index = -1;
@@ -244,7 +246,13 @@ void ui_task(void *)
         int battery_blink_phase = battery_blink.phase;
         bool battery_blink_due = battery_blink_visible != last_battery_charging ||
                                  (battery_blink_visible &&
-                                  battery_blink_phase != last_battery_blink_phase);
+                                   battery_blink_phase != last_battery_blink_phase);
+        const bool current_clock_seconds_visible =
+            weather_clock_seconds_visible_load();
+        const uint32_t current_clock_seconds_version =
+            weather_clock_seconds_version_load();
+        const bool clock_seconds_mode_due =
+            current_clock_seconds_version != applied_clock_seconds_version;
         bool setup_due = runtime_surfaces.setup_portal_active != setup_panel_visible;
         bool mode_due = battery.low_battery_mode != low_mode_visible;
 
@@ -657,18 +665,25 @@ void ui_task(void *)
                     battery.low_battery_mode || setup_active_for_frame);
             }
 
-            if (status_due || battery_due || battery_blink_due || setup_due || mode_due) {
+            if (status_due || battery_due || battery_blink_due || setup_due ||
+                mode_due || clock_seconds_mode_due) {
                 bool setup_active = runtime_surfaces.setup_portal_active;
                 bool content_changed = false;
-                if (setup_active != setup_panel_visible || mode_due) {
+                if (setup_active != setup_panel_visible || mode_due ||
+                    clock_seconds_mode_due) {
                     apply_clock_mode_visibility(setup_active,
                                                 battery.low_battery_mode);
+                    applied_clock_seconds_version = current_clock_seconds_version;
+                    ESP_LOGI(TAG,
+                             "weather clock seconds UI applied: %s",
+                             current_clock_seconds_visible ? "on" : "off");
                     setup_panel_visible = setup_active;
                     low_mode_visible = battery.low_battery_mode;
                     status_due = true;
                     sensor_status_due = true;
                     invalidate_clock_time_draw_cache();
                     invalidate_clock_second_progress_draw_cache();
+                    invalidate_flip_clock_time_sensor_draw_cache();
                     update_alert_pill(false,
                                       0,
                                       current_status_snapshot,

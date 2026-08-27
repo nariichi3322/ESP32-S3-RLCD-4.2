@@ -4,6 +4,7 @@
 #include "audio_services.h"
 #include "status_gif_contract.h"
 #include "ui_clock_surface_objects.h"
+#include "ui_clock_seconds_state.h"
 #include "ui_clock_time.h"
 #include "ui_dseg_clock.h"
 #include "ui_draw_cache.h"
@@ -28,7 +29,10 @@ int s_last_runtime_page = -1;
 bool clock_runtime_update_due(const ClockUiTimeSnapshot &time_snapshot,
                               int active_work_page)
 {
-    return time_snapshot.second_key != s_last_runtime_second_key ||
+    const int runtime_time_key = weather_clock_seconds_visible_load()
+                                     ? time_snapshot.second_key
+                                     : time_snapshot.minute_key;
+    return runtime_time_key != s_last_runtime_second_key ||
            time_snapshot.date_key != s_last_runtime_date_key ||
            active_work_page != s_last_runtime_page;
 }
@@ -36,7 +40,9 @@ bool clock_runtime_update_due(const ClockUiTimeSnapshot &time_snapshot,
 void remember_clock_runtime_update(const ClockUiTimeSnapshot &time_snapshot,
                                    int active_work_page)
 {
-    s_last_runtime_second_key = time_snapshot.second_key;
+    s_last_runtime_second_key = weather_clock_seconds_visible_load()
+                                    ? time_snapshot.second_key
+                                    : time_snapshot.minute_key;
     s_last_runtime_date_key = time_snapshot.date_key;
     s_last_runtime_page = active_work_page;
 }
@@ -119,6 +125,7 @@ bool update_time_ui(const struct tm &local,
     }
     if (clock_page_active &&
         !low_battery_mode &&
+        weather_clock_seconds_visible_load() &&
         local.tm_sec != s_last_ui_second) {
         draw_second_canvas(local);
         draw_status_gif_frame(local.tm_sec % STATUS_GIF_FRAME_COUNT);

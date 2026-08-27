@@ -6,6 +6,7 @@
 struct ClockUiTimeSnapshot;
 
 void build_flip_clock_page();
+void apply_flip_clock_seconds_visibility(bool visible);
 bool update_flip_clock_page(const struct tm &local,
                             const ClockUiTimeSnapshot &time_snapshot);
 bool update_flip_clock_sensor_status();

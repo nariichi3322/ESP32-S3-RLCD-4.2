@@ -3,6 +3,8 @@
 
 #include "active_work_page_state_internal.h"
 #include "app_display_config.h"
+#include "ui_clock_layout.h"
+#include "ui_clock_seconds_state.h"
 #include "app_metadata.h"
 #include "battery_runtime_state.h"
 #include "ui_clock.h"
@@ -245,11 +247,23 @@ void apply_clock_mode_visibility(bool setup_active, bool low_battery_mode)
     const ClockHeaderObjectRefs &header = clock_header_object_refs();
     const ClockSurfaceObjectRefs &surface = clock_surface_object_refs();
     const bool low = low_battery_mode;
-    set_obj_visible(surface.second_canvas, !low && !setup_active);
+    const bool seconds_visible = weather_clock_seconds_visible_load();
+    apply_flip_clock_seconds_visibility(seconds_visible);
+    if (surface.time_canvas) {
+        lv_obj_set_x(surface.time_canvas,
+                     seconds_visible
+                         ? ui_clock_layout::kClockTimeCanvasX
+                         : ui_clock_layout::kClockTimeOnlyCanvasX);
+    }
+    set_obj_visible(surface.second_canvas,
+                    seconds_visible && !low && !setup_active);
     set_work_page_day_progress_visible(kWorkPageWeatherClock, !low);
-    set_obj_visible(surface.second_progress_canvas, !low && !setup_active);
+    set_obj_visible(surface.second_progress_canvas,
+                    seconds_visible && !low && !setup_active);
     set_obj_visible(surface.low_battery_icon_canvas, low);
     set_lower_panel_visible(!setup_active && !low);
+    set_obj_visible(surface.status_gif_canvas,
+                    seconds_visible && !setup_active && !low);
     set_setup_status_panel_visible(setup_active && !low);
     set_obj_visible(surface.panel_separator_a, !setup_active || low);
     set_obj_visible(surface.panel_separator_b, !setup_active || low);

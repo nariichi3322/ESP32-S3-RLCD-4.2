@@ -19,6 +19,7 @@
 #include "ntp_runtime_state_internal.h"
 #include "ntp_server_config.h"
 #include "ui_gallery_rotation_state_internal.h"
+#include "ui_clock_seconds_state_internal.h"
 #include "ui_work_page_catalog_internal.h"
 #include "xiaozhi_auto_return_state_internal.h"
 
@@ -44,6 +45,7 @@ using network_config_keys::kWifiPreferredSlotKey;
 using network_config_keys::kWifiSsidKey;
 using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
+using network_config_keys::kWeatherClockSecondsKey;
 
 namespace {
 constexpr uint8_t work_page_mask_bit(int page)
@@ -82,6 +84,7 @@ struct LoadedSavedConfig {
     uint8_t offline;
     uint8_t xiaozhi_auto_return;
     uint8_t gallery_rotation;
+    uint8_t weather_clock_seconds_visible;
     uint8_t preferred_wifi_slot;
     uint8_t page_order[kWorkPageCount];
     char manual_weather_city[kManualWeatherCityLen];
@@ -161,6 +164,8 @@ void initialize_loaded_saved_config(LoadedSavedConfig *loaded)
     loaded->page_mask = kPageMaskV5KnownBits;
     loaded->xiaozhi_auto_return = kDefaultXiaozhiAutoReturnEnabled ? 1 : 0;
     loaded->gallery_rotation = kDefaultGalleryRotationPeriod;
+    loaded->weather_clock_seconds_visible =
+        kDefaultWeatherClockSecondsVisible ? 1 : 0;
     loaded->preferred_wifi_slot =
         static_cast<uint8_t>(WifiCredentialSlot::kSlotA);
 }
@@ -209,6 +214,10 @@ void read_saved_config(nvs_handle_t nvs, LoadedSavedConfig *loaded)
         nvs, kXiaozhiAutoReturnKey, kDefaultXiaozhiAutoReturnEnabled ? 1 : 0);
     loaded->gallery_rotation = read_nvs_u8_or_default(
         nvs, kGalleryRotationKey, kDefaultGalleryRotationPeriod);
+    loaded->weather_clock_seconds_visible = read_nvs_u8_or_default(
+        nvs,
+        kWeatherClockSecondsKey,
+        kDefaultWeatherClockSecondsVisible ? 1 : 0);
     loaded->preferred_wifi_slot = read_nvs_u8_or_default(
         nvs,
         kWifiPreferredSlotKey,
@@ -275,6 +284,8 @@ bool apply_loaded_config(const LoadedSavedConfig &loaded)
     offline_mode_enabled_store(false);
     xiaozhi_auto_return_enabled_store(nvs_u8_to_bool(loaded.xiaozhi_auto_return));
     gallery_rotation_period_store(loaded.gallery_rotation);
+    weather_clock_seconds_visible_store(
+        nvs_u8_to_bool(loaded.weather_clock_seconds_visible));
     return apply_loaded_page_config(loaded.page_mask, loaded.page_order, loaded.have_page_order);
 }
 } // namespace

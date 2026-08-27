@@ -36,6 +36,11 @@ bool ui_low_refresh_page_minute_idle(bool page_uses_low_refresh,
                                      bool low_battery_mode,
                                      bool setup_portal_active,
                                      bool auxiliary_page_requested);
+bool ui_hidden_clock_seconds_minute_idle(bool seconds_clock_active,
+                                         bool seconds_visible,
+                                         bool low_battery_mode,
+                                         bool setup_portal_active,
+                                         bool auxiliary_page_requested);
 bool ui_xiaozhi_activation_update_due(bool requested_active,
                                       bool previous_requested_active,
                                       bool previous_valid,

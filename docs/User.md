@@ -19,6 +19,7 @@ This guide explains first-time setup, the seven work pages, hardware keys, onlin
 Hardware key behavior:
 
 - **BOOT short press:** move to the next enabled work page; confirm in Settings.
+- **BOOT long press:** toggle seconds on both the Weather Clock and Temperature/Humidity Clock during normal operation. With seconds hidden, hours and minutes are centered, while the seconds card, second progress, and per-second animation stop. Both clock pages wait on minute boundaries unless charging blink or another required event wakes them earlier. The choice persists across restarts.
 - **KEY short press:** open Settings; move the selection inside Settings.
 - **KEY long press:** return from a secondary menu; exit Settings from the primary menu.
 - **Either key during an alarm or Pomodoro completion sound:** stop the remaining sound and consume that key press.

@@ -7,6 +7,7 @@
 #include "local_sensor_state.h"
 #include "ui_bitmap.h"
 #include "ui_clock_time.h"
+#include "ui_clock_seconds_state.h"
 #include "ui_flip_sensor_mood.h"
 #include "ui_inverted_clock_card.h"
 #include "ui_icons.h"
@@ -21,7 +22,6 @@
 
 namespace {
 
-constexpr int kCardCount = inverted_clock_card::kCount;
 constexpr int kHourCardIndex = 0;
 constexpr int kMinuteCardIndex = 1;
 constexpr int kSecondCardIndex = 2;
@@ -273,18 +273,17 @@ bool update_flip_clock_page(const struct tm &local,
     if (!work_page_root(kWorkPageFlipClock)) {
         return false;
     }
-    int last_values[kCardCount] = {
-        s_last_hour,
-        s_last_minute,
-        s_last_second,
-    };
     const FlipClockObjectRefs &objects = flip_clock_object_refs();
-    bool changed = update_inverted_clock_cards(local,
-                                                objects.card_canvas,
-                                                last_values);
-    s_last_hour = last_values[kHourCardIndex];
-    s_last_minute = last_values[kMinuteCardIndex];
-    s_last_second = last_values[kSecondCardIndex];
+    bool changed = update_inverted_clock_card_value(
+        objects.card_canvas[kHourCardIndex], local.tm_hour, &s_last_hour);
+    changed |= update_inverted_clock_card_value(
+        objects.card_canvas[kMinuteCardIndex], local.tm_min, &s_last_minute);
+    if (weather_clock_seconds_visible_load()) {
+        changed |= update_inverted_clock_card_value(
+            objects.card_canvas[kSecondCardIndex], local.tm_sec, &s_last_second);
+    } else {
+        s_last_second = -1;
+    }
 
     if (time_snapshot.date_key != s_last_date_key) {
         s_last_date_key = time_snapshot.date_key;
