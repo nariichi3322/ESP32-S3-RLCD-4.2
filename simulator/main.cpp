@@ -229,6 +229,8 @@ static void build_codex_preview_ui(const char *preview_mode)
     struct tm local = {};
     localtime_r(&now, &local);
     g_work_status.build(screen, local);
+    g_work_status.set_bluetooth_state(
+        codex_preview_fixture(preview_mode).state);
     make_black_bar(screen,
                    ui_work_page_layout::kTopSeparatorX,
                    ui_work_page_layout::kTopSeparatorY,

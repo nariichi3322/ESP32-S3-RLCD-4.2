@@ -17,8 +17,9 @@ struct CodexPreviewFixture {
     const char *today;
     const char *week;
     uint16_t active_threads;
+    const char *paid;
     uint16_t reset_credits;
-    const char *expiry;
+    const char *reset_expiry;
 };
 
 CodexPreviewFixture codex_preview_fixture(const char *mode);

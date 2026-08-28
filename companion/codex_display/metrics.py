@@ -5,6 +5,7 @@ import os
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal, InvalidOperation, ROUND_DOWN
 from typing import Any, Iterable, Optional
 
 
@@ -22,6 +23,9 @@ class Snapshot:
     tokens_today: int
     tokens_today_estimated: bool
     tokens_7d: int
+    paid_credits_available: bool
+    paid_credits_unlimited: bool
+    paid_credits_balance: int
     reset_credits: int
     next_credit_expiry_seconds: int
     active_threads: int
@@ -29,6 +33,26 @@ class Snapshot:
 
 def _until(timestamp: Optional[int], now: int) -> int:
     return max(0, int(timestamp) - now) if timestamp is not None else 0
+
+
+def _paid_credits(value: Any) -> tuple[bool, bool, int]:
+    if not isinstance(value, dict):
+        return False, False, 0
+    if value.get("unlimited") is True:
+        return True, True, 0
+    balance = value.get("balance")
+    if balance is None:
+        return (True, False, 0) if value.get("hasCredits") is False else (False, False, 0)
+    if isinstance(balance, bool):
+        return False, False, 0
+    try:
+        parsed = Decimal(str(balance))
+    except (InvalidOperation, ValueError):
+        return False, False, 0
+    if not parsed.is_finite() or parsed < 0 or parsed > Decimal(0xFFFFFFFF):
+        return False, False, 0
+    integer = int(parsed.to_integral_value(rounding=ROUND_DOWN))
+    return True, False, integer
 
 
 def thread_is_active(thread: dict[str, Any]) -> bool:
@@ -128,6 +152,10 @@ def build_snapshot(rate_limits: dict[str, Any], usage: dict[str, Any],
                for item in usage.get("dailyUsageBuckets") or [] if item.get("startDate")}
     today = utc_date.isoformat()
     credits = rate_limits.get("rateLimitResetCredits") or {}
+    paid_value = codex_limits.get("credits")
+    if not isinstance(paid_value, dict):
+        paid_value = legacy_limits.get("credits")
+    paid_available, paid_unlimited, paid_balance = _paid_credits(paid_value)
     expiries = [int(item["expiresAt"]) for item in credits.get("credits") or []
                 if item.get("status") == "available" and item.get("expiresAt") is not None
                 and int(item["expiresAt"]) > now]
@@ -141,6 +169,9 @@ def build_snapshot(rate_limits: dict[str, Any], usage: dict[str, Any],
         buckets.get(today, 0),
         today not in buckets,
         sum(buckets.get((utc_date - timedelta(days=i)).isoformat(), 0) for i in range(7)),
+        paid_available,
+        paid_unlimited,
+        paid_balance,
         max(0, int(credits.get("availableCount", 0))),
         _until(min(expiries) if expiries else None, now),
         active_thread_state(threads)[0])

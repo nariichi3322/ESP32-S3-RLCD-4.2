@@ -77,6 +77,18 @@ int main()
     codex.pairing_visible = true;
     codex.pairing_expiry_ms = 62001;
     assert(ui_codex_wait_delay_ms(codex) == 1000);
+
+    // Non-Codex work pages still wake at the LINKED -> STALE boundary, but do
+    // not schedule quota countdown refreshes.
+    UiCodexWaitInput global_codex_status = {};
+    global_codex_status.snapshot_valid = true;
+    global_codex_status.data_valid = true;
+    global_codex_status.ble_connected = true;
+    global_codex_status.last_valid_ms = 1000;
+    global_codex_status.now_ms = 1000;
+    assert(ui_codex_wait_delay_ms(global_codex_status) == 60001);
+    global_codex_status.now_ms = 61000;
+    assert(ui_codex_wait_delay_ms(global_codex_status) == 1);
     assert(ui_lvgl_lock_retry_delay_ms(0) == 0);
     assert(ui_lvgl_lock_retry_delay_ms(1) == 100);
     assert(ui_lvgl_lock_retry_delay_ms(2) == 200);

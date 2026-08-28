@@ -144,26 +144,32 @@ TickType_t ui_runtime_next_loop_delay_ticks(time_t sampled_wall_second,
         delay_candidates[3] = second_delay_ticks;
     }
     UiCodexWaitInput codex_wait{};
-    codex_wait.now_ms = static_cast<uint32_t>(xTaskGetTickCount() * portTICK_PERIOD_MS);
     CodexPairingSnapshot pairing{};
     if (codex_usage_ble_pairing_snapshot(&pairing) && pairing.visible) {
         codex_wait.pairing_visible = true;
         codex_wait.pairing_expiry_ms = pairing.expires_tick_ms;
     }
-    if (active_page == kWorkPageCodexUsage && !surfaces.auxiliary_page_requested()) {
+    if (codex_usage_feature_enabled()) {
         CodexUsageSnapshotView view{};
         if (codex_usage_snapshot_copy(&view)) {
-            codex_wait.received_ms = view.received_tick_ms;
             codex_wait.last_valid_ms = view.last_valid_tick_ms;
-            codex_wait.quota_reset_seconds = view.snapshot.quota_reset_seconds;
-            codex_wait.secondary_quota_reset_seconds =
-                view.snapshot.secondary_quota_reset_seconds;
-            codex_wait.credit_expiry_seconds = view.snapshot.next_credit_expiry_seconds;
             codex_wait.snapshot_valid = view.snapshot_valid;
             codex_wait.data_valid = view.data_valid;
             codex_wait.ble_connected = view.ble_connected;
+            if (active_page == kWorkPageCodexUsage &&
+                !surfaces.auxiliary_page_requested()) {
+                codex_wait.received_ms = view.received_tick_ms;
+                codex_wait.quota_reset_seconds = view.snapshot.quota_reset_seconds;
+                codex_wait.secondary_quota_reset_seconds =
+                    view.snapshot.secondary_quota_reset_seconds;
+                codex_wait.credit_expiry_seconds =
+                    view.snapshot.next_credit_expiry_seconds;
+            }
         }
     }
+    // Sample after copying the BLE snapshot so a concurrent heartbeat cannot
+    // make last_valid_ms appear to come from the future.
+    codex_wait.now_ms = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
     const uint32_t codex_delay_ms = ui_codex_wait_delay_ms(codex_wait);
     if (codex_delay_ms != UINT32_MAX) {
         delay_candidates[4] = app_tick_nonzero_delay(pdMS_TO_TICKS(codex_delay_ms));

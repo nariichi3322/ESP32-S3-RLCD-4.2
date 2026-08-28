@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "app_display_config.h"
 #include "app_metadata.h"
+#include "codex_usage_protocol.h"
 #include "local_sensor_state.h"
 #include "work_page_ids.h"
 #include "ui_bitmap.h"
@@ -39,11 +40,13 @@ static constexpr int kStatusTimeH = 18;
 static constexpr int kStatusChimeX = 64;
 static constexpr int kStatusWifiX = 90;
 static constexpr int kStatusAlarmX = 116;
+static constexpr int kStatusBluetoothX = 142;
 static constexpr int kStatusIconY = 15;
 static constexpr int kStatusFirstWorkPage = kWorkPageWeatherClock;
 static constexpr int kTrendDrawCacheInvalid = 99;
 static constexpr int kStatusTimeCacheInvalid = -1;
 static constexpr int kStatusMinutesPerHour = 60;
+static constexpr uint8_t kBluetoothStateInvalid = UINT8_MAX;
 
 struct WorkPageStatusIconSlot {
     lv_color_t *buffer;
@@ -54,17 +57,20 @@ struct WorkPageStatusIcons {
     WorkPageStatusIconSlot chime;
     WorkPageStatusIconSlot wifi;
     WorkPageStatusIconSlot alarm;
+    WorkPageStatusIconSlot bluetooth;
 };
 
 struct WorkPageStatusState {
     WorkPageStatusLabels labels;
     WorkPageStatusIcons icons;
     int last_time_key;
+    uint8_t last_bluetooth_state;
 };
 
 EXT_RAM_BSS_ATTR WorkPageStatusState s_work_status_pages[kWorkPageCount] = {};
 int s_last_temp_trend_drawn = kTrendDrawCacheInvalid;
 int s_last_humi_trend_drawn = kTrendDrawCacheInvalid;
+lv_color_t *s_bluetooth_status_buffer = nullptr;
 static constexpr const char *kStatusDatePlaceholder = "----/--/-- / 星期-";
 static constexpr const char *kStatusSummaryPlaceholder = "--C --%";
 static constexpr size_t kStatusSensorSummaryTextSize = 32;
@@ -97,14 +103,17 @@ static_assert(kStatusTimeX >= 0 && kStatusTimeY >= 0 &&
                   kStatusTimeX + kStatusTimeW <= kDisplayWidth &&
                   kStatusTimeY + kStatusTimeH <= kDisplayHeight,
               "work status time label must fit display bounds");
-static_assert(kStatusChimeX >= 0 && kStatusWifiX >= 0 && kStatusAlarmX >= 0 && kStatusIconY >= 0,
+static_assert(kStatusChimeX >= 0 && kStatusWifiX >= 0 && kStatusAlarmX >= 0 &&
+                  kStatusBluetoothX >= 0 && kStatusIconY >= 0,
               "work status icon positions must be non-negative");
 static_assert(kStatusChimeX + CHIME_STATUS_ICON_WIDTH <= kDisplayWidth &&
                   kStatusWifiX + WIFI_STATUS_ICON_WIDTH <= kDisplayWidth &&
                   kStatusAlarmX + ALARM_STATUS_ICON_WIDTH <= kDisplayWidth &&
+                  kStatusBluetoothX + CODEX_BT_STATUS_ICON_WIDTH <= kDisplayWidth &&
                   kStatusIconY + CHIME_STATUS_ICON_HEIGHT <= kDisplayHeight &&
                   kStatusIconY + WIFI_STATUS_ICON_HEIGHT <= kDisplayHeight &&
-                  kStatusIconY + ALARM_STATUS_ICON_HEIGHT <= kDisplayHeight,
+                  kStatusIconY + ALARM_STATUS_ICON_HEIGHT <= kDisplayHeight &&
+                  kStatusIconY + CODEX_BT_STATUS_ICON_HEIGHT <= kDisplayHeight,
               "work status icons must fit display bounds");
 static_assert(kStatusTimeTextSize >= sizeof("00:00"),
               "work status time buffer must fit HH:MM text");
@@ -124,6 +133,17 @@ enum class StatusLabelKind {
 bool is_shared_work_status_page(int page)
 {
     return page >= kStatusFirstWorkPage && page < kWorkPageCount && page != kWorkPageWeatherClock;
+}
+
+const uint8_t *codex_bluetooth_bits(uint8_t state)
+{
+    switch (static_cast<CodexUsageLinkState>(state)) {
+    case CodexUsageLinkState::Linked: return codex_bt_linked_icon_bits;
+    case CodexUsageLinkState::Waiting: return codex_bt_waiting_icon_bits;
+    case CodexUsageLinkState::Stale: return codex_bt_stale_icon_bits;
+    case CodexUsageLinkState::Disconnected: return codex_bt_disconnect_icon_bits;
+    }
+    return codex_bt_disconnect_icon_bits;
 }
 
 void build_status_icon(lv_obj_t *screen,
@@ -231,6 +251,7 @@ void invalidate_work_status_draw_cache()
     s_last_humi_trend_drawn = kTrendDrawCacheInvalid;
     for (WorkPageStatusState &status : s_work_status_pages) {
         status.last_time_key = kStatusTimeCacheInvalid;
+        status.last_bluetooth_state = kBluetoothStateInvalid;
     }
 }
 
@@ -247,6 +268,8 @@ void clear_work_status_icon_refs()
         status.icons.chime.canvas = nullptr;
         status.icons.wifi.canvas = nullptr;
         status.icons.alarm.canvas = nullptr;
+        status.icons.bluetooth.canvas = nullptr;
+        status.last_bluetooth_state = kBluetoothStateInvalid;
     }
 }
 
@@ -255,6 +278,7 @@ void clear_work_status_label_refs()
     for (WorkPageStatusState &status : s_work_status_pages) {
         status.labels = {};
         status.last_time_key = kStatusTimeCacheInvalid;
+        status.last_bluetooth_state = kBluetoothStateInvalid;
     }
 }
 
@@ -270,6 +294,7 @@ void build_work_page_status_bar(lv_obj_t *screen,
     WorkPageStatusLabels &labels = status.labels;
     labels = {};
     status.last_time_key = kStatusTimeCacheInvalid;
+    status.last_bluetooth_state = kBluetoothStateInvalid;
     if (!screen) {
         return;
     }
@@ -341,6 +366,15 @@ void build_work_page_status_bar(lv_obj_t *screen,
                       ALARM_STATUS_ICON_HEIGHT,
                       ALARM_STATUS_ICON_BYTES_PER_ROW,
                       alarm_status_icon_bits);
+    build_status_icon(screen,
+                      &status.icons.bluetooth.canvas,
+                      &s_bluetooth_status_buffer,
+                      kStatusBluetoothX,
+                      kStatusIconY,
+                      CODEX_BT_STATUS_ICON_WIDTH,
+                      CODEX_BT_STATUS_ICON_HEIGHT,
+                      CODEX_BT_STATUS_ICON_BYTES_PER_ROW,
+                      codex_bt_disconnect_icon_bits);
 }
 
 WorkPageStatusLabels get_work_page_status_labels(int page)
@@ -457,13 +491,29 @@ bool update_work_page_status_icons(int page,
     const bool allow = !low_battery_mode && !setup_active;
     const bool chime_visible = allow && status.chime_enabled;
     const bool wifi_visible = allow && status.wifi_radio_on;
-    const WorkPageStatusIcons &icons = s_work_status_pages[page].icons;
+    WorkPageStatusState &page_status = s_work_status_pages[page];
+    const WorkPageStatusIcons &icons = page_status.icons;
     lv_obj_t *chime = icons.chime.canvas;
     lv_obj_t *wifi = icons.wifi.canvas;
     lv_obj_t *alarm = icons.alarm.canvas;
+    lv_obj_t *bluetooth = icons.bluetooth.canvas;
     bool changed = false;
     changed |= set_obj_visible(chime, chime_visible);
     changed |= set_obj_visible(wifi, wifi_visible);
     changed |= set_obj_visible(alarm, allow && status.alarm_enabled);
+    const bool bluetooth_visible = allow && status.codex_enabled;
+    if (bluetooth_visible &&
+        page_status.last_bluetooth_state != status.codex_link_state) {
+        draw_1bit_icon(bluetooth,
+                       CODEX_BT_STATUS_ICON_WIDTH,
+                       CODEX_BT_STATUS_ICON_HEIGHT,
+                       CODEX_BT_STATUS_ICON_BYTES_PER_ROW,
+                       codex_bluetooth_bits(status.codex_link_state),
+                       lv_color_black(),
+                       lv_color_white());
+        page_status.last_bluetooth_state = status.codex_link_state;
+        changed = true;
+    }
+    changed |= set_obj_visible(bluetooth, bluetooth_visible);
     return changed;
 }

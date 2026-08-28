@@ -61,6 +61,7 @@ lv_color_t *s_alert_icon_canvas_buffer;
 lv_color_t *s_chime_status_icon_canvas_buffer;
 lv_color_t *s_wifi_status_icon_canvas_buffer;
 lv_color_t *s_alarm_status_icon_canvas_buffer;
+lv_color_t *s_bluetooth_status_icon_canvas_buffer;
 lv_color_t *s_low_battery_icon_canvas_buffer;
 lv_color_t *s_time_canvas_buffer;
 lv_color_t *s_second_canvas_buffer;
@@ -304,6 +305,16 @@ void build_clock_header(lv_obj_t *screen)
                             ALARM_STATUS_ICON_HEIGHT,
                             ALARM_STATUS_ICON_BYTES_PER_ROW,
                             alarm_status_icon_bits);
+    build_clock_status_icon(screen,
+                            &objects.bluetooth_status_icon_canvas,
+                            &s_bluetooth_status_icon_canvas_buffer,
+                            kClockBluetoothStatusIconX,
+                            kClockBluetoothStatusIconY,
+                            CODEX_BT_STATUS_ICON_WIDTH,
+                            CODEX_BT_STATUS_ICON_HEIGHT,
+                            CODEX_BT_STATUS_ICON_BYTES_PER_ROW,
+                            codex_bt_disconnect_icon_bits);
+    objects.bluetooth_status_state = UINT8_MAX;
 }
 
 void build_clock_weather_panel(lv_obj_t *screen)

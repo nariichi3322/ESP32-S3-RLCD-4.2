@@ -36,7 +36,7 @@
 
 ### 相容性與授權
 
-- 沿用來源 BLE service UUID 與 status characteristic UUID；Companion 傳送 protocol v2 雙額度資料，韌體相容讀取 v1；不建立 command/result characteristic。
+- 沿用來源 BLE service UUID 與 status characteristic UUID；Companion 傳送 protocol v3 雙額度及付費 Credits 資料，韌體相容讀取 v1/v2；不建立 command/result characteristic。
 - Companion 改為 status-only，不再訂閱 command characteristic，也不保留 action 執行路徑。
 - 搬入的 MIT 程式碼保留來源 copyright／license，並在本專案 `THIRD_PARTY_NOTICES.md` 加入 Codex Usage Display 與 Bleak 聲明；不改變本專案既有授權對原始碼的適用範圍。
 - 執行前先檢查工作樹；目前 `main/input/input_tasks.cpp`、`main/ui/ui_page_state.cpp`、`main/ui/ui_views.cpp` 等已有使用者修改。所有整合必須逐段合併，不得覆寫或回退既有變更。
@@ -57,6 +57,7 @@
 - `remaining_percent: uint8_t`，範圍 0～100。
 - `tokens_today: uint64_t`、`tokens_today_estimated: bool`。
 - `tokens_7d: uint64_t`。
+- 付費 Credits 的 unavailable／finite／unlimited 狀態及 `uint32_t` 餘額。
 - `active_threads: uint8_t`。
 - `reset_credits: uint8_t`。
 - `quota_reset_seconds: uint32_t`。
@@ -69,16 +70,16 @@
 
 狀態採單一 mutex 保護的 copy-in/copy-out store；BLE callback 驗證並提交完整 snapshot，UI 只讀副本，不直接讀 callback-owned memory。每次有效資料變更增加 generation；相同顯示值的 heartbeat 只更新 watchdog，不強迫 UI redraw。
 
-### BLE status JSON v2（相容讀取 v1）
+### BLE status JSON v3（相容讀取 v1/v2）
 
 接受上限 180 bytes 的 UTF-8 JSON，Companion payload 也必須維持 180 bytes 內。欄位如下：
 
 ```json
-{"v":2,"s":42,"t":1784341234,"o":480,"r":68,"u":300,"q":9600,"n":1,"R":74,"U":10080,"Q":358400,"d":1250000,"e":0,"w":6840000,"c":2,"x":358400,"a":3}
+{"v":3,"s":42,"t":1784341234,"o":480,"r":68,"u":300,"q":9600,"n":1,"R":74,"U":10080,"Q":358400,"d":1250000,"e":0,"w":6840000,"p":1,"b":875,"c":2,"x":358400,"a":3}
 ```
 
-- v2 必填：既有 v1 欄位及 `n`、`R`、`U`、`Q`；`n` 表示第二視窗是否可用，韌體仍接受缺少這四欄的 v1。
-- `v` 必須為 1 或 2，`s` 必須大於 0，百分比必須在 0～100；數字必須為整數且不得負值，只有 `o` 可為負並限制在合理 UTC offset 範圍 -840～840 分鐘。
+- v2 必填：既有 v1 欄位及 `n`、`R`、`U`、`Q`；`n` 表示第二視窗是否可用。v3 再新增 `p`、`b`，其中 `p=0/1/2` 代表不可用／有限／無限，`b` 是有限餘額。
+- `v` 必須為 1、2 或 3，`s` 必須大於 0，百分比必須在 0～100；數字必須為整數且不得負值，只有 `o` 可為負並限制在合理 UTC offset 範圍 -840～840 分鐘。
 - 每次 BLE connection 將 last sequence 歸零；小於 last sequence 的封包拒絕，相同 sequence 視為 idempotent heartbeat，大於 last sequence 才替換業務資料。
 - malformed、超長、版本錯誤或越界 payload 不得覆蓋最後有效資料，只記錄節流後的診斷訊息。
 - Companion 連線後先重新讀取 Codex，再送第一包；之後每 15 秒 heartbeat、每 60 秒重新取得帳戶資料，hook 狀態變更可立即推送。
@@ -113,8 +114,8 @@
 頁面沿用現有白底、黑色文字、共用頂部狀態列與局部刷新框架，不移植 AMOLED 色彩、圓形 arc、觸控按鈕或 overlay actions。
 
 - 頂部 0～63 px：沿用 work-page status bar 與分隔線；日期／時間更新沿用既有機制。
-- 主內容 18～382 px、70～282 px：左側上下顯示 primary/secondary `CODEX LEFT`、百分比及 reset countdown，週期依服務回傳顯示為 `5h`、`7d`、`30d` 等；右側以兩欄／三列顯示 `TODAY`、`7 DAYS` token、`RUN`、credits／expiry。
-- 底部或右下角使用邊框／反白 badge 顯示四種連線狀態，不依賴顏色傳達狀態。
+- 主內容左側上下顯示 primary/secondary `CODEX LEFT`、百分比及 reset countdown，底部另以緊湊列顯示 `PAID CREDITS`；右側第一列顯示 `TODAY / 7 DAYS`、第二列為橫跨兩欄的 `RUN`、第三列顯示 `RESET CR / RESET EXP`。
+- Codex 功能啟用時，所有一般工作頁的共用頁首都在 `x=142、y=15` 使用 19×19 靜態藍牙 bitmap 表示 LINKED／WAITING／STALE／DISCONNECT；LINKED 採黑色圓底、白色純藍牙符號的反白設計，不加左右箭頭，其餘採白底加粗黑圖，分別以省略點、驚嘆號及斜線區分，且只在狀態改變時重畫。停用 Codex 功能、低電量、設定／配網或天氣警報遮罩顯示時隱藏圖示。
 - `tokens_today_estimated` 為真時在 TODAY 值前顯示 `~`。
 - 無資料時各 metric 顯示 `--`；STALE 保留最後值並顯示狀態，不清空。
 - 文字過長必須使用固定 buffer、compact formatting 或截斷，不允許水平捲動。
@@ -128,14 +129,14 @@
 2. 建立 device name `Codex Display`，沿用 service UUID `7d8b6c20-8f6d-4b44-a0f8-1b6570c0de01` 與 encrypted-write status UUID `...de02`；可保留 read-only device-info UUID `...de05` 提供 protocol/firmware 資訊，但不得建立 command/result characteristic。
 3. 安全設定固定為 LE Secure Connections、bonding、MITM、display-only IO capability 與隨機六位 passkey。未加密／未 authenticated 的 status write 必須由 attribute permission 或 callback 明確拒絕。
 4. BLE callback 只做 bounded copy、解析／提交與 event notify，不呼叫 LVGL、不執行阻塞 I/O。斷線後重新 advertising；重連 backoff 由 Companion 控制。
-5. 啟動時讀取 settings mask 後才決定是否初始化 BLE。NTP Wi-Fi 視窗不得銷毀 NimBLE；驗證共存後，維持 BLE 連線或在受控斷線後自動恢復。
+5. 啟動時讀取 settings mask 後、Wi-Fi／LVGL／常駐 task 配置前初始化 BLE，先保留 controller 內部 RAM；NimBLE host 配置使用 PSRAM，controller activities 限為實際需要的 2。NTP Wi-Fi 視窗不得銷毀 NimBLE；廣播啟動失敗時依 250 ms／1 s／5 s／15 s／30 s 上限循環重試，維持 BLE 連線或在受控斷線後自動恢復。
 6. 新增本機設定動作「清除 Codex BLE 配對」：停止 advertising、刪除所有 Codex service bonds、清除 snapshot、重新 advertising；不得連帶清除 Wi-Fi、RTC 或其它 NVS 設定。
 7. BLE 初始化／配置失敗不能阻止時鐘啟動；頁面顯示 WAITING，錯誤寫入節流 log，後續以有限 backoff 重試。
 
 ### E. Windows Companion 納入目前 repo
 
 1. 將來源的必要 Python package、hooks、測試、`run.ps1`、requirements 與 Windows Scheduled Task installer 複製到目前 repo 的 `companion/`；不使用 symlink 或執行期依賴來源 repo 路徑。
-2. 移除 macOS LaunchAgent、AppleScript action 與 command/result 處理；`BleCompanion` 只掃描指定 service、以 `pair=True` 連線、refresh 後寫入 status、維持 heartbeat 並處理重連。
+2. 移除 macOS LaunchAgent、AppleScript action 與 command/result 處理；`BleCompanion` 只掃描指定 service，先以預載快照完成安全連線與第一筆 status，再刷新 Codex 資料並維持 heartbeat。找到裝置即清除累積退避；GATT characteristic 暫時不可見時，以同一裝置進行三次 1 秒快速重連，之後才回到掃描流程。
 3. 保留 Codex app-server、metrics、local usage 與 hooks 的資料取得邏輯；hooks 安裝器必須保存使用者既有 hooks、可重複執行且可獨立卸載。
 4. Windows launcher 使用 repo 內 `.venv`，Scheduled Task 以目前使用者、limited privilege、登入後啟動、異常時重啟；log 寫入 `%LOCALAPPDATA%\CodexUsageDisplay\companion.log` 並維持 bounded rotation。
 5. 更新 README/User 文件：安裝、首次配對、前景診斷、背景安裝、狀態查詢、解除安裝、清除 bonds、Windows Bluetooth 權限及已知限制。
@@ -171,7 +172,7 @@
 
 1. 未配對開機：本地頁正常，Codex 頁顯示 DISCONNECT，Windows 能發現 `Codex Display`。
 2. 首次配對：裝置顯示六位 passkey，Windows 輸入相同碼後收到第一包並顯示 LINKED。
-3. 指標比對：頁面 remaining、reset、TODAY、7 DAYS、RUN、credits/expiry 與 Companion `--once` 輸出一致。
+3. 指標比對：頁面 remaining、reset、TODAY、7 DAYS、RUN、PAID CREDITS、RESET CR／RESET EXP 與 Companion `--once` 輸出一致。
 4. 關閉／重開 Companion：BLE 斷線立即進入 DISCONNECT、保留最後值，重連後回 LINKED；只有 BLE 保持連線但資料超過 60 秒才顯示 STALE。
 5. Windows Bluetooth off/on、電腦睡眠喚醒及登出登入：Scheduled Task 能恢復掃描與資料更新。
 6. 執行 NTP 同步：Wi-Fi 視窗結束後關閉 Wi-Fi，BLE 保持或自動恢復，時鐘與 RTC 行為不退化。
@@ -191,3 +192,14 @@
 - Windows 實機不接受 display-only passkey，必須降低到無 MITM／未加密連線；此情況不得降低安全性，應停止並提出替代配對方案。
 
 交付時需列出：修改檔案、通過的測試、未執行項目、App/DRAM/IRAM 檢查結果、實機待驗項目及任何偏離本計畫的原因。
+# 2026-08-28 Companion 常駐時的機台重啟恢復
+
+- 韌體每次 NimBLE 同步完成後，透過標準 GATT Service Changed 將完整
+  handle 範圍標記為已更新。NimBLE 會替已訂閱的 bonded peer 保存標記，
+  並在重新連線時送出 indication，讓 Windows 清除中斷連線留下的舊服務
+  視圖。
+- Companion 啟用目前 Bleak WinRT 後端既有的 Service Changed 競態重試
+  路徑；事件若發生在服務探索途中，會依 WinRT 規範重新取得服務清單。
+- 額外記錄 status characteristic handle，供實機確認每次開機 GATT 表一致。
+- 驗收必須保持 Companion 執行，只重啟機台；預期第一次掃描／連線便恢復
+  `LINKED`，不得以重啟 Companion 作為成功條件。

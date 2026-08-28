@@ -11,6 +11,8 @@ struct UiStatusRefreshSnapshot {
     bool chime_enabled = false;
     bool wifi_radio_on = false;
     bool alarm_enabled = false;
+    bool codex_enabled = false;
+    uint8_t codex_link_state = 0;
 };
 
 bool ui_weather_network_status_required(bool weather_clock_visible,

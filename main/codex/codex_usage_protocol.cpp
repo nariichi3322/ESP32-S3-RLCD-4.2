@@ -11,9 +11,11 @@ enum Field : uint32_t {
     E = 1U << 8, W = 1U << 9, C = 1U << 10, X = 1U << 11,
     A = 1U << 12,
     N = 1U << 13, SR = 1U << 14, SU = 1U << 15, SQ = 1U << 16,
+    P = 1U << 17, B = 1U << 18,
 };
 constexpr uint32_t kRequiredV1 = V | S | T | O | R | U | Q | D | W | C | X | A;
 constexpr uint32_t kRequiredV2 = kRequiredV1 | N | SR | SU | SQ;
+constexpr uint32_t kRequiredV3 = kRequiredV2 | P | B;
 
 void skip_ws(const char *p, size_t n, size_t &i)
 {
@@ -50,6 +52,7 @@ uint32_t field_for(char key)
     case 'e': return E; case 'w': return W; case 'c': return C; case 'x': return X;
     case 'a': return A; default: return 0;
     case 'n': return N; case 'R': return SR; case 'U': return SU; case 'Q': return SQ;
+    case 'p': return P; case 'b': return B;
     }
 }
 
@@ -110,6 +113,8 @@ CodexUsageParseResult codex_usage_parse_status(const char *p, size_t n,
         case 'd': parsed.tokens_today = value; break;
         case 'e': if (value > 1) return CodexUsageParseResult::OutOfRange; parsed.tokens_today_estimated = value != 0; break;
         case 'w': parsed.tokens_7d = value; break;
+        case 'p': if (value > 2) return CodexUsageParseResult::OutOfRange; parsed.paid_credits_state = static_cast<CodexPaidCreditsState>(value); break;
+        case 'b': if (!fits_u32(value)) return CodexUsageParseResult::OutOfRange; parsed.paid_credits_balance = static_cast<uint32_t>(value); break;
         case 'c': if (value > UINT8_MAX) return CodexUsageParseResult::OutOfRange; parsed.reset_credits = static_cast<uint8_t>(value); break;
         case 'x': if (!fits_u32(value)) return CodexUsageParseResult::OutOfRange; parsed.next_credit_expiry_seconds = static_cast<uint32_t>(value); break;
         case 'a': if (value > UINT8_MAX) return CodexUsageParseResult::OutOfRange; parsed.active_threads = static_cast<uint8_t>(value); break;
@@ -128,14 +133,20 @@ CodexUsageParseResult codex_usage_parse_status(const char *p, size_t n,
     }
     skip_ws(p, n, i);
     if (i != n) return CodexUsageParseResult::Malformed;
-    const uint32_t required = version == 1 ? kRequiredV1 : kRequiredV2;
-    if (version != 1 && version != 2) return CodexUsageParseResult::UnsupportedVersion;
+    const uint32_t required = version == 1 ? kRequiredV1 :
+                              version == 2 ? kRequiredV2 : kRequiredV3;
+    if (version != 1 && version != 2 && version != 3)
+        return CodexUsageParseResult::UnsupportedVersion;
     if ((seen & required) != required) return CodexUsageParseResult::MissingField;
     if (version == 1) parsed.secondary_available = false;
-    if (version == 2 && !parsed.secondary_available &&
+    if (version >= 2 && !parsed.secondary_available &&
         (parsed.secondary_remaining_percent != 0 ||
          parsed.secondary_limit_window_minutes != 0 ||
          parsed.secondary_quota_reset_seconds != 0)) {
+        return CodexUsageParseResult::OutOfRange;
+    }
+    if (version == 3 && parsed.paid_credits_state != CodexPaidCreditsState::Finite &&
+        parsed.paid_credits_balance != 0) {
         return CodexUsageParseResult::OutOfRange;
     }
     *out = parsed;
@@ -153,7 +164,12 @@ CodexUsageLinkState codex_usage_link_state(bool valid, bool connected, bool bond
 {
     if (!connected) return CodexUsageLinkState::Disconnected;
     if (!bonded || !valid) return CodexUsageLinkState::Waiting;
-    return static_cast<uint32_t>(now - last) <= kCodexUsageStaleMs
+    const uint32_t age = static_cast<uint32_t>(now - last);
+    // A status write can race a UI sample: last may then be a few milliseconds
+    // newer than now.  The unsigned subtraction looks almost UINT32_MAX old;
+    // treat that half-range as a future timestamp, not stale data.  Normal
+    // uint32_t wraparound still produces the small, correct elapsed value.
+    return (age <= kCodexUsageStaleMs || age > UINT32_MAX / 2U)
                ? CodexUsageLinkState::Linked : CodexUsageLinkState::Stale;
 }
 
@@ -166,6 +182,8 @@ bool codex_usage_display_values_equal(const CodexUsageSnapshot &a,
            a.tokens_today == b.tokens_today &&
            a.tokens_today_estimated == b.tokens_today_estimated &&
            a.tokens_7d == b.tokens_7d &&
+           a.paid_credits_state == b.paid_credits_state &&
+           a.paid_credits_balance == b.paid_credits_balance &&
            a.active_threads == b.active_threads &&
            a.reset_credits == b.reset_credits &&
            a.quota_reset_seconds == b.quota_reset_seconds &&
@@ -206,6 +224,17 @@ bool codex_usage_format_tokens(uint64_t value, char *buffer, size_t capacity)
     }
     buffer[offset] = '\0';
     return true;
+}
+
+bool codex_usage_format_credits(uint32_t value, char *buffer, size_t capacity)
+{
+    if (value < 10000000U) {
+        if (!buffer || capacity == 0) return false;
+        const int written = snprintf(buffer, capacity, "%lu",
+                                     static_cast<unsigned long>(value));
+        return written >= 0 && static_cast<size_t>(written) < capacity;
+    }
+    return codex_usage_format_tokens(value, buffer, capacity);
 }
 
 bool codex_usage_format_window(uint32_t minutes, char *buffer, size_t capacity)

@@ -6,6 +6,7 @@
 #include "ui_work_page_catalog.h"
 
 #include <esp_log.h>
+#include <esp_heap_caps.h>
 #include <esp_random.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
@@ -36,6 +37,7 @@ constexpr size_t kDeviceNameLength = sizeof("Codex Display") - 1U;
 constexpr uint32_t kPairingOverlayMs = 75000;
 constexpr uint32_t kLogThrottleMs = 5000;
 constexpr uint32_t kFirstStatusTimeoutMs = 20000;
+constexpr uint32_t kAdvertisingRetryDelaysMs[] = {250, 1000, 5000, 15000, 30000};
 constexpr uint16_t kNoConnection = BLE_HS_CONN_HANDLE_NONE;
 
 static_assert(3U + 2U + 16U <= 31U,
@@ -59,6 +61,8 @@ std::atomic<bool> s_connection_secure{false};
 std::atomic<bool> s_status_received{false};
 std::atomic<uint32_t> s_secure_since_tick{0};
 esp_timer_handle_t s_first_status_timer = nullptr;
+esp_timer_handle_t s_advertising_retry_timer = nullptr;
+std::atomic<uint32_t> s_advertising_retry_attempt{0};
 std::atomic<uint8_t> s_own_addr_type{0};
 std::atomic<uint32_t> s_pairing_passkey{0};
 std::atomic<uint32_t> s_pairing_expiry{0};
@@ -68,6 +72,7 @@ std::atomic<uint32_t> s_last_reject_log_tick{0};
 std::atomic<bool> s_desired_enabled{false};
 std::atomic<bool> s_retry_task_active{false};
 std::atomic_flag s_starting = ATOMIC_FLAG_INIT;
+uint16_t s_status_value_handle = 0;
 
 uint32_t monotonic_ms()
 {
@@ -123,17 +128,18 @@ int status_access(uint16_t conn_handle, uint16_t,
         copied != length) {
         return BLE_ATT_ERR_UNLIKELY;
     }
-    bool display_changed = false;
     const CodexUsageParseResult result = codex_usage_state_submit(
-        reinterpret_cast<const char *>(payload), copied, monotonic_ms(),
-        &display_changed);
+        reinterpret_cast<const char *>(payload), copied, monotonic_ms());
     if (result != CodexUsageParseResult::Ok) {
         log_rejected_status(result);
         return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
     }
     s_status_received.store(true, std::memory_order_release);
     if (s_first_status_timer) (void)esp_timer_stop(s_first_status_timer);
-    if (display_changed) notify_ui_task();
+    // Even an unchanged heartbeat refreshes last_valid_tick_ms.  Wake the UI
+    // task so it can cancel/re-arm its STALE deadline; the UI still avoids a
+    // display redraw when the visible state and values did not change.
+    notify_ui_task();
     return 0;
 }
 
@@ -178,7 +184,7 @@ const ble_gatt_chr_def kCharacteristics[] = {
         .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC |
                  BLE_GATT_CHR_F_WRITE_AUTHEN,
         .min_key_size = 16,
-        .val_handle = nullptr,
+        .val_handle = &s_status_value_handle,
         .cpfd = nullptr,
     },
     {},
@@ -195,6 +201,8 @@ const ble_gatt_svc_def kServices[] = {
 };
 
 int start_advertising();
+void start_advertising_with_retry();
+void advertising_retry_timer_callback(void *);
 
 int gap_event(ble_gap_event *event, void *)
 {
@@ -204,6 +212,10 @@ int gap_event(ble_gap_event *event, void *)
         ESP_LOGI(kTag, "connect status=%d handle=%u",
                  event->connect.status, event->connect.conn_handle);
         if (event->connect.status == 0) {
+            if (s_advertising_retry_timer) {
+                (void)esp_timer_stop(s_advertising_retry_timer);
+            }
+            s_advertising_retry_attempt.store(0, std::memory_order_release);
             s_connection.store(event->connect.conn_handle,
                                std::memory_order_release);
             s_connection_secure.store(false, std::memory_order_release);
@@ -213,8 +225,8 @@ int gap_event(ble_gap_event *event, void *)
             notify_ui_task();
             return ble_gap_security_initiate(event->connect.conn_handle);
         }
-        return s_stopping.load(std::memory_order_acquire) ? 0
-                                                          : start_advertising();
+        start_advertising_with_retry();
+        return 0;
     case BLE_GAP_EVENT_DISCONNECT:
         ESP_LOGI(kTag, "disconnect reason=%d handle=%u",
                  event->disconnect.reason,
@@ -227,11 +239,11 @@ int gap_event(ble_gap_event *event, void *)
         codex_usage_state_connection_changed(false, false);
         clear_pairing();
         notify_ui_task();
-        return s_stopping.load(std::memory_order_acquire) ? 0
-                                                          : start_advertising();
+        start_advertising_with_retry();
+        return 0;
     case BLE_GAP_EVENT_ADV_COMPLETE:
-        return s_stopping.load(std::memory_order_acquire) ? 0
-                                                          : start_advertising();
+        start_advertising_with_retry();
+        return 0;
     case BLE_GAP_EVENT_ENC_CHANGE:
         if (ble_gap_conn_find(event->enc_change.conn_handle, &desc) == 0) {
             const bool secure = event->enc_change.status == 0 &&
@@ -286,6 +298,8 @@ int start_advertising()
 {
     if (!s_running.load(std::memory_order_acquire) ||
         s_stopping.load(std::memory_order_acquire)) return 0;
+    if (s_connection.load(std::memory_order_acquire) != kNoConnection ||
+        ble_gap_adv_active()) return 0;
     ble_hs_adv_fields fields{};
     fields.flags = BLE_HS_ADV_F_DISC_GEN | BLE_HS_ADV_F_BREDR_UNSUP;
     fields.uuids128 = const_cast<ble_uuid128_t *>(&kServiceUuid);
@@ -308,14 +322,75 @@ int start_advertising()
                              nullptr);
 }
 
+void schedule_advertising_retry()
+{
+    if (!s_advertising_retry_timer ||
+        !s_running.load(std::memory_order_acquire) ||
+        s_stopping.load(std::memory_order_acquire) ||
+        s_connection.load(std::memory_order_acquire) != kNoConnection) return;
+    const uint32_t attempt = s_advertising_retry_attempt.fetch_add(
+        1, std::memory_order_acq_rel);
+    const size_t index = attempt <
+                                 sizeof(kAdvertisingRetryDelaysMs) /
+                                     sizeof(kAdvertisingRetryDelaysMs[0])
+                             ? attempt
+                             : sizeof(kAdvertisingRetryDelaysMs) /
+                                       sizeof(kAdvertisingRetryDelaysMs[0]) -
+                                   1U;
+    (void)esp_timer_stop(s_advertising_retry_timer);
+    const esp_err_t result = esp_timer_start_once(
+        s_advertising_retry_timer,
+        static_cast<uint64_t>(kAdvertisingRetryDelaysMs[index]) * 1000ULL);
+    if (result != ESP_OK) {
+        ESP_LOGW(kTag, "failed to arm advertising retry: %s",
+                 esp_err_to_name(result));
+    }
+}
+
+void start_advertising_with_retry()
+{
+    if (!s_running.load(std::memory_order_acquire) ||
+        s_stopping.load(std::memory_order_acquire) ||
+        s_connection.load(std::memory_order_acquire) != kNoConnection) return;
+    const int rc = start_advertising();
+    if (rc == 0) {
+        s_advertising_retry_attempt.store(0, std::memory_order_release);
+        return;
+    }
+    ESP_LOGW(kTag,
+             "advertising unavailable rc=%d internal_free=%u largest=%u; retrying",
+             rc,
+             static_cast<unsigned>(heap_caps_get_free_size(
+                 MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+             static_cast<unsigned>(heap_caps_get_largest_free_block(
+                 MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+    schedule_advertising_retry();
+}
+
+void advertising_retry_timer_callback(void *)
+{
+    start_advertising_with_retry();
+}
+
 void on_sync()
 {
     uint8_t address_type = 0;
     if (ble_hs_util_ensure_addr(0) == 0 &&
         ble_hs_id_infer_auto(0, &address_type) == 0) {
         s_own_addr_type.store(address_type, std::memory_order_release);
-        const int rc = start_advertising();
-        if (rc != 0) ESP_LOGE(kTag, "advertising failed: %d", rc);
+        /*
+         * Windows keeps a system-wide GATT cache for bonded peripherals.  If
+         * the peripheral reboots while the Companion remains alive, WinRT can
+         * otherwise hand the new connection the incomplete service view from
+         * the interrupted session.  Service Changed is part of the standard
+         * GATT service.  NimBLE persists this update for subscribed bonded
+         * peers and sends it when they reconnect, causing Windows to refresh
+         * its attribute table.
+         */
+        ble_svc_gatt_changed(0x0001, 0xffff);
+        ESP_LOGI(kTag, "GATT ready status_handle=0x%04x; cache refresh queued",
+                 s_status_value_handle);
+        start_advertising_with_retry();
     }
 }
 
@@ -341,6 +416,20 @@ bool initialize_transport()
         nimble_port_deinit();
         return false;
     }
+    const esp_timer_create_args_t advertising_timer_args = {
+        .callback = advertising_retry_timer_callback,
+        .arg = nullptr,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "codex_adv",
+        .skip_unhandled_events = true,
+    };
+    if (esp_timer_create(&advertising_timer_args,
+                         &s_advertising_retry_timer) != ESP_OK) {
+        (void)esp_timer_delete(s_first_status_timer);
+        s_first_status_timer = nullptr;
+        nimble_port_deinit();
+        return false;
+    }
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
     ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
@@ -358,6 +447,8 @@ bool initialize_transport()
         ble_gatts_add_svcs(kServices) != 0) {
         (void)esp_timer_delete(s_first_status_timer);
         s_first_status_timer = nullptr;
+        (void)esp_timer_delete(s_advertising_retry_timer);
+        s_advertising_retry_timer = nullptr;
         nimble_port_deinit();
         return false;
     }
@@ -410,12 +501,20 @@ bool codex_usage_ble_set_enabled(bool enabled)
         schedule_retry_task();
         return false;
     }
+    if (s_advertising_retry_timer) {
+        (void)esp_timer_stop(s_advertising_retry_timer);
+    }
+    s_advertising_retry_attempt.store(0, std::memory_order_release);
     if (!s_running.exchange(false, std::memory_order_acq_rel)) {
         if (s_initialized.exchange(false, std::memory_order_acq_rel)) {
             if (s_first_status_timer) {
                 (void)esp_timer_stop(s_first_status_timer);
                 (void)esp_timer_delete(s_first_status_timer);
                 s_first_status_timer = nullptr;
+            }
+            if (s_advertising_retry_timer) {
+                (void)esp_timer_delete(s_advertising_retry_timer);
+                s_advertising_retry_timer = nullptr;
             }
             return nimble_port_deinit() == ESP_OK;
         }
@@ -443,6 +542,10 @@ bool codex_usage_ble_set_enabled(bool enabled)
                 (void)esp_timer_stop(s_first_status_timer);
                 (void)esp_timer_delete(s_first_status_timer);
                 s_first_status_timer = nullptr;
+            }
+            if (s_advertising_retry_timer) {
+                (void)esp_timer_delete(s_advertising_retry_timer);
+                s_advertising_retry_timer = nullptr;
             }
         }
     }
@@ -479,7 +582,9 @@ bool codex_usage_ble_clear_bonds()
     const bool cleared = ble_store_clear() == 0;
     codex_usage_state_reset();
     clear_pairing();
-    if (s_running.load(std::memory_order_acquire)) (void)start_advertising();
+    if (s_running.load(std::memory_order_acquire)) {
+        start_advertising_with_retry();
+    }
     notify_ui_task();
     return cleared;
 }

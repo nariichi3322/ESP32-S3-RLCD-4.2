@@ -2,6 +2,7 @@
 #include "sdl_preview_work_status.h"
 
 #include <stdio.h>
+#include <string.h>
 
 #include "sdl_preview_widgets.h"
 #include "ui_icons.h"
@@ -70,7 +71,8 @@ void style_battery_frame(lv_obj_t *obj)
 Bar::Bar()
     : chime_status_icon_pixels_(CHIME_STATUS_ICON_WIDTH * CHIME_STATUS_ICON_HEIGHT),
       wifi_status_icon_pixels_(WIFI_STATUS_ICON_WIDTH * WIFI_STATUS_ICON_HEIGHT),
-      alarm_status_icon_pixels_(ALARM_STATUS_ICON_WIDTH * ALARM_STATUS_ICON_HEIGHT)
+      alarm_status_icon_pixels_(ALARM_STATUS_ICON_WIDTH * ALARM_STATUS_ICON_HEIGHT),
+      bluetooth_status_icon_pixels_(CODEX_BT_STATUS_ICON_WIDTH * CODEX_BT_STATUS_ICON_HEIGHT)
 {
 }
 
@@ -129,6 +131,15 @@ void Bar::build(lv_obj_t *screen,
                       ALARM_STATUS_ICON_HEIGHT,
                       ALARM_STATUS_ICON_BYTES_PER_ROW,
                       alarm_status_icon_bits);
+    build_status_icon(screen,
+                      &bluetooth_status_icon_canvas_,
+                      bluetooth_status_icon_pixels_.data(),
+                      142,
+                      15,
+                      CODEX_BT_STATUS_ICON_WIDTH,
+                      CODEX_BT_STATUS_ICON_HEIGHT,
+                      CODEX_BT_STATUS_ICON_BYTES_PER_ROW,
+                      codex_bt_linked_icon_bits);
 }
 
 void Bar::update_date(const struct tm &local)
@@ -167,6 +178,27 @@ void Bar::set_status_icons_visible(bool visible)
     set_obj_visible(chime_status_icon_canvas_, visible);
     set_obj_visible(wifi_status_icon_canvas_, visible);
     set_obj_visible(alarm_status_icon_canvas_, visible);
+    set_obj_visible(bluetooth_status_icon_canvas_, visible);
+}
+
+void Bar::set_bluetooth_state(const char *state)
+{
+    if (!bluetooth_status_icon_canvas_) return;
+    const uint8_t *bits = state && strcmp(state, "LINKED") == 0
+                              ? codex_bt_linked_icon_bits
+                          : state && strcmp(state, "WAITING") == 0
+                              ? codex_bt_waiting_icon_bits
+                          : state && strcmp(state, "STALE") == 0
+                              ? codex_bt_stale_icon_bits
+                              : codex_bt_disconnect_icon_bits;
+    sdl_preview_widgets::draw_1bit_icon(
+        bluetooth_status_icon_canvas_,
+        CODEX_BT_STATUS_ICON_WIDTH,
+        CODEX_BT_STATUS_ICON_HEIGHT,
+        CODEX_BT_STATUS_ICON_BYTES_PER_ROW,
+        bits,
+        lv_color_black(),
+        lv_color_white());
 }
 
 void Bar::build_battery(lv_obj_t *parent)

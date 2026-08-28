@@ -7,9 +7,12 @@
 #include "ui_clock_seconds_state.h"
 #include "app_metadata.h"
 #include "battery_runtime_state.h"
+#include "codex_usage_protocol.h"
 #include "ui_clock.h"
 #include "ui_clock_header_objects.h"
 #include "ui_clock_surface_objects.h"
+#include "ui_bitmap.h"
+#include "ui_icons.h"
 #include "ui_codex_usage.h"
 #include "ui_flip_clock.h"
 #include "ui_progress.h"
@@ -276,6 +279,7 @@ void apply_clock_mode_visibility(bool setup_active, bool low_battery_mode)
         set_obj_visible(header.chime_status_icon_canvas, false);
         set_obj_visible(header.wifi_status_icon_canvas, false);
         set_obj_visible(header.alarm_status_icon_canvas, false);
+        set_obj_visible(header.bluetooth_status_icon_canvas, false);
     }
 }
 
@@ -308,7 +312,7 @@ bool update_top_status_icons(bool alert_visible,
                              bool low_battery_mode,
                              bool setup_active)
 {
-    const ClockHeaderObjectRefs &header = clock_header_object_refs();
+    ClockHeaderObjectRefs &header = mutable_clock_header_object_refs();
     const bool allow = !alert_visible && !low_battery_mode && !setup_active;
     bool changed = false;
     changed |= set_obj_visible(header.chime_status_icon_canvas,
@@ -317,5 +321,27 @@ bool update_top_status_icons(bool alert_visible,
                                allow && status.wifi_radio_on);
     changed |= set_obj_visible(header.alarm_status_icon_canvas,
                                allow && status.alarm_enabled);
+    const bool bluetooth_visible = allow && status.codex_enabled;
+    if (bluetooth_visible &&
+        header.bluetooth_status_state != status.codex_link_state) {
+        const uint8_t *bits = codex_bt_disconnect_icon_bits;
+        switch (static_cast<CodexUsageLinkState>(status.codex_link_state)) {
+        case CodexUsageLinkState::Linked: bits = codex_bt_linked_icon_bits; break;
+        case CodexUsageLinkState::Waiting: bits = codex_bt_waiting_icon_bits; break;
+        case CodexUsageLinkState::Stale: bits = codex_bt_stale_icon_bits; break;
+        case CodexUsageLinkState::Disconnected: break;
+        }
+        draw_1bit_icon(header.bluetooth_status_icon_canvas,
+                       CODEX_BT_STATUS_ICON_WIDTH,
+                       CODEX_BT_STATUS_ICON_HEIGHT,
+                       CODEX_BT_STATUS_ICON_BYTES_PER_ROW,
+                       bits,
+                       lv_color_black(),
+                       lv_color_white());
+        header.bluetooth_status_state = status.codex_link_state;
+        changed = true;
+    }
+    changed |= set_obj_visible(header.bluetooth_status_icon_canvas,
+                               bluetooth_visible);
     return changed;
 }

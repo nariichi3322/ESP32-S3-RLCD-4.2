@@ -20,7 +20,9 @@ bool ui_status_refresh_inputs_changed(const UiStatusRefreshSnapshot &current,
            current.weather_network_bits != previous.weather_network_bits ||
            current.chime_enabled != previous.chime_enabled ||
            current.wifi_radio_on != previous.wifi_radio_on ||
-           current.alarm_enabled != previous.alarm_enabled;
+           current.alarm_enabled != previous.alarm_enabled ||
+           current.codex_enabled != previous.codex_enabled ||
+           current.codex_link_state != previous.codex_link_state;
 }
 
 bool ui_status_refresh_due(const UiStatusRefreshSnapshot &current,

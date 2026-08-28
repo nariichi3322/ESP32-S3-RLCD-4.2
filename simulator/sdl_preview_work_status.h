@@ -21,6 +21,7 @@ public:
     void update_date(const struct tm &local);
     void update_battery(int percent);
     void set_status_icons_visible(bool visible);
+    void set_bluetooth_state(const char *state);
 
 private:
     void build_battery(lv_obj_t *parent);
@@ -39,9 +40,11 @@ private:
     lv_obj_t *chime_status_icon_canvas_ = nullptr;
     lv_obj_t *wifi_status_icon_canvas_ = nullptr;
     lv_obj_t *alarm_status_icon_canvas_ = nullptr;
+    lv_obj_t *bluetooth_status_icon_canvas_ = nullptr;
     std::vector<lv_color_t> chime_status_icon_pixels_;
     std::vector<lv_color_t> wifi_status_icon_pixels_;
     std::vector<lv_color_t> alarm_status_icon_pixels_;
+    std::vector<lv_color_t> bluetooth_status_icon_pixels_;
 };
 
 } // namespace sdl_preview_work_status

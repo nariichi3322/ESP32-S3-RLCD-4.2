@@ -13,6 +13,7 @@
 #include "battery_policy.h"
 #include "battery_runtime_state.h"
 #include "chime_runtime_state.h"
+#include "codex_usage_state.h"
 #include "daily_saying_state.h"
 #include "local_sensor_state.h"
 #include "input_button_config.h"
@@ -40,11 +41,13 @@
 #include "ui_visible_data_sync.h"
 #include "ui_work_page_catalog.h"
 #include "ui_work_page_update.h"
+#include "ui_work_page_catalog.h"
 #include "weather_state.h"
 #include "wifi_radio_state.h"
 #include "xiaozhi_ai.h"
 
 #include <esp_log.h>
+#include <esp_timer.h>
 #include <stdint.h>
 
 namespace {
@@ -208,12 +211,28 @@ void ui_task(void *)
             weather_network_bits = static_cast<uint32_t>(
                 app_event_group_get_bits() & kUiWeatherNetworkStatusBits);
         }
+        const bool codex_enabled = codex_usage_feature_enabled();
+        uint8_t codex_link_state = static_cast<uint8_t>(
+            CodexUsageLinkState::Disconnected);
+        CodexUsageSnapshotView codex_view{};
+        if (codex_enabled && codex_usage_snapshot_copy(&codex_view)) {
+            const uint32_t codex_now_ms = static_cast<uint32_t>(
+                esp_timer_get_time() / 1000ULL);
+            codex_link_state = static_cast<uint8_t>(codex_usage_link_state(
+                codex_view.data_valid,
+                codex_view.ble_connected,
+                codex_view.bonded,
+                codex_view.last_valid_tick_ms,
+                codex_now_ms));
+        }
         UiStatusRefreshSnapshot current_status_snapshot = {
             local_sensor_state_version(),
             weather_network_bits,
             chime_runtime_any_enabled(),
             wifi_radio_on_load(),
             alarm_is_enabled(),
+            codex_enabled,
+            codex_link_state,
         };
         bool status_fallback_elapsed = app_tick_interval_elapsed(
             tick_now,

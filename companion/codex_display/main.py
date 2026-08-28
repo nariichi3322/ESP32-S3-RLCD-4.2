@@ -73,6 +73,10 @@ class SnapshotCache:
                 logging.exception("Snapshot refresh failed; sending cached data")
         return encode_snapshot(self.current(), self.sequence)
 
+    async def encoded_cached(self) -> bytes:
+        async with self.lock:
+            return encode_snapshot(self.current(), self.sequence)
+
     async def refresh(self) -> None:
         async with self.lock:
             self.snapshot, self.active_paths = await collect_snapshot_state(self.client)
@@ -139,7 +143,8 @@ async def run(args: argparse.Namespace) -> None:
         activity = HookActivityTracker(cache.activity_changed)
         cache.attach_activity(activity)
         ble = BleCompanion(cache.encoded, cache.refresh, args.device,
-                           args.heartbeat_seconds, cache.status_changed)
+                           args.heartbeat_seconds, cache.status_changed,
+                           cache.encoded_cached)
         tasks = [asyncio.create_task(activity.run_forever()),
                  asyncio.create_task(reconcile_loop(cache, args.run_reconcile_seconds,
                                                     ble.connected_event)),

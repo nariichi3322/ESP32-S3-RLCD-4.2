@@ -298,6 +298,7 @@ static void wait_for_boot_task_completion(EventBits_t done_bit,
 static void cleanup_failed_startup_resources()
 {
     ESP_LOGW(TAG, "%s", MAIN_STARTUP_RESOURCE_CLEANUP_LOG_FORMAT);
+    (void)codex_usage_ble_set_enabled(false);
     stop_wifi_radio(true);
     park_unused_audio_peripherals();
 }
@@ -338,6 +339,13 @@ extern "C" void app_main(void)
     custom_assets_init();
 
     (void)load_saved_config();
+    // Reserve the controller/host memory before Wi-Fi, LVGL pages and regular
+    // task stacks fragment internal RAM. Advertising failures still retry in
+    // the BLE transport, so a transient controller allocation cannot leave the
+    // device undiscoverable until the next reboot.
+    if (!codex_usage_ble_start_if_enabled()) {
+        ESP_LOGW(TAG, "Codex BLE unavailable; local clock remains active");
+    }
     Rtc_Setup(&i2c, 0x51);
     setenv("TZ", "CST-8", 1);
     tzset();
@@ -408,9 +416,6 @@ extern "C" void app_main(void)
     // are retained, so the normal path only checks the ready catalog.
     init_power_management();
     create_regular_app_tasks();
-    if (!codex_usage_ble_start_if_enabled()) {
-        ESP_LOGW(TAG, "Codex BLE unavailable; local clock remains active");
-    }
 
     if (setup_prompt_playback_pending()) {
         vTaskDelay(pdMS_TO_TICKS(kSetupPromptStartDelayMs));

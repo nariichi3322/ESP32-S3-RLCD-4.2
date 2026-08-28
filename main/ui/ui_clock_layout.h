@@ -40,6 +40,8 @@ inline constexpr int kClockWifiStatusIconX = 90;
 inline constexpr int kClockWifiStatusIconY = 15;
 inline constexpr int kClockAlarmStatusIconX = 116;
 inline constexpr int kClockAlarmStatusIconY = 15;
+inline constexpr int kClockBluetoothStatusIconX = 142;
+inline constexpr int kClockBluetoothStatusIconY = 15;
 
 inline constexpr int kClockDividerX =
     ui_work_page_layout::kTopSeparatorX;

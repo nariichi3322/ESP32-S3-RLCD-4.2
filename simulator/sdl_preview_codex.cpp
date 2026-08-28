@@ -2,32 +2,33 @@
 
 #include "sdl_preview_mode.h"
 #include "sdl_preview_widgets.h"
-
 #include <stdio.h>
 
 namespace {
-lv_obj_t *metric(lv_obj_t *parent, int x, int y, const char *title, const char *value)
+lv_obj_t *metric(lv_obj_t *parent, int x, int y, const char *title,
+                 const char *value, int width = 92)
 {
     sdl_preview_widgets::make_label_with_font(
-        parent, x, y, 86, 18, title, &lv_font_montserrat_12);
+        parent, x, y, width, 18, title, &lv_font_montserrat_12);
     return sdl_preview_widgets::make_label_with_font(
-        parent, x, y + 19, 86, 29, value, &lv_font_montserrat_16);
+        parent, x, y + 19, width, 29, value, &lv_font_montserrat_16);
 }
+
 }
 
 CodexPreviewFixture codex_preview_fixture(const char *mode)
 {
     if (sdl_preview_mode::is(mode, "codex_waiting"))
-        return {"WAITING", false, 0, "--", "--", false, 0, "--", "--", "--", "--", 0, 0, "--"};
+        return {"WAITING", false, 0, "--", "--", false, 0, "--", "--", "--", "--", 0, "--", 0, "--"};
     if (sdl_preview_mode::is(mode, "codex_disconnect"))
-        return {"DISCONNECT", true, 68, "5h", "2h 31m", true, 74, "30d", "18d 2h", "35.4K", "241K", 3, 7, "1d 6h"};
+        return {"DISCONNECT", true, 68, "5h", "2h 31m", true, 74, "30d", "18d 2h", "35.4K", "241K", 3, "875", 7, "1d 6h"};
     if (sdl_preview_mode::is(mode, "codex_stale"))
-        return {"STALE", true, 42, "5h", "1h 18m", true, 55, "7d", "3d 1h", "~84.2K", "531K", 2, 3, "2d 4h"};
+        return {"STALE", true, 42, "5h", "1h 18m", true, 55, "7d", "3d 1h", "~84.2K", "531K", 2, "0", 3, "2d 4h"};
     if (sdl_preview_mode::is(mode, "codex_estimated"))
-        return {"LINKED", true, 73, "5h", "3h 44m", false, 0, "--", "--", "~21.7K", "302K", 1, 9, "4m"};
+        return {"LINKED", true, 73, "5h", "3h 44m", false, 0, "--", "--", "~21.7K", "302K", 1, "UNLIM", 9, "4m"};
     if (sdl_preview_mode::is(mode, "codex_large_tokens"))
-        return {"LINKED", true, 99, "5h", "4h 59m", true, 88, "30d", "29d 23h", "~98.7M", "1.24B", 128, 999, "29d 23h"};
-    return {"LINKED", true, 68, "5h", "2h 31m", true, 74, "7d", "5d 6h", "35.4K", "241K", 3, 7, "1d 6h"};
+        return {"LINKED", true, 99, "5h", "4h 59m", true, 88, "30d", "29d 23h", "~98.7M", "1.24B", 128, "1.2M", 255, "29d 23h"};
+    return {"LINKED", true, 68, "5h", "2h 31m", true, 74, "7d", "5d 6h", "35.4K", "241K", 3, "875", 7, "1d 6h"};
 }
 
 void build_codex_preview_body(lv_obj_t *screen, const char *mode)
@@ -62,25 +63,28 @@ void build_codex_preview_body(lv_obj_t *screen, const char *mode)
     snprintf(reset, sizeof(reset), "RESET %s", fixture.secondary_reset);
     sdl_preview_widgets::make_label_with_font(
         screen, 18, 200, 170, 20, reset, &lv_font_montserrat_12);
-    sdl_preview_widgets::make_black_bar(screen, 198, 76, 2, 166);
+    sdl_preview_widgets::make_black_bar(screen, 18, 224, 170, 2);
+    sdl_preview_widgets::make_label_with_font(
+        screen, 18, 229, 108, 18, "PAID CREDITS", &lv_font_montserrat_12);
+    lv_obj_t *paid = sdl_preview_widgets::make_label_with_font(
+        screen, 126, 226, 62, 24,
+        fixture.data_valid ? fixture.paid : "--", &lv_font_montserrat_16);
+    lv_obj_set_style_text_align(paid, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    sdl_preview_widgets::make_black_bar(screen, 198, 76, 2, 174);
     metric(screen, 212, 76, "TODAY", fixture.today);
     metric(screen, 302, 76, "7 DAYS", fixture.week);
     if (fixture.data_valid)
         snprintf(text, sizeof(text), "%u", static_cast<unsigned>(fixture.active_threads));
     else
         snprintf(text, sizeof(text), "--");
-    metric(screen, 212, 132, "RUN", text);
+    metric(screen, 212, 132, "RUN", text, 182);
     if (fixture.data_valid)
         snprintf(text, sizeof(text), "%u", static_cast<unsigned>(fixture.reset_credits));
     else
         snprintf(text, sizeof(text), "--");
-    metric(screen, 302, 132, "CREDITS", text);
-    metric(screen, 212, 188, "EXPIRY", fixture.expiry);
-    lv_obj_t *state = sdl_preview_widgets::make_label_with_font(
-        screen, 290, 202, 92, 31, fixture.state, &lv_font_montserrat_12);
-    lv_obj_set_style_text_align(state, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(state, 2, LV_PART_MAIN);
-    lv_obj_set_style_border_color(state, lv_color_black(), LV_PART_MAIN);
+    metric(screen, 212, 188, "RESET CR", text);
+    metric(screen, 302, 188, "RESET EXP",
+           fixture.data_valid ? fixture.reset_expiry : "--");
     if (sdl_preview_mode::is(mode, "codex_pairing")) {
         lv_obj_t *overlay = lv_obj_create(lv_layer_top());
         lv_obj_set_pos(overlay, 0, 0);

@@ -2,6 +2,7 @@
 #pragma once
 
 #include <lvgl.h>
+#include <stdint.h>
 
 struct ClockHeaderObjectRefs {
     lv_obj_t *date_label = nullptr;
@@ -11,6 +12,8 @@ struct ClockHeaderObjectRefs {
     lv_obj_t *chime_status_icon_canvas = nullptr;
     lv_obj_t *wifi_status_icon_canvas = nullptr;
     lv_obj_t *alarm_status_icon_canvas = nullptr;
+    lv_obj_t *bluetooth_status_icon_canvas = nullptr;
+    uint8_t bluetooth_status_state = UINT8_MAX;
 };
 
 ClockHeaderObjectRefs &mutable_clock_header_object_refs();

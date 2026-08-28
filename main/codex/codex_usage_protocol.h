@@ -14,6 +14,12 @@ enum class CodexUsageLinkState : uint8_t {
     Stale,
 };
 
+enum class CodexPaidCreditsState : uint8_t {
+    Unavailable = 0,
+    Finite = 1,
+    Unlimited = 2,
+};
+
 struct CodexUsageSnapshot {
     uint8_t remaining_percent = 0;
     bool secondary_available = false;
@@ -21,6 +27,8 @@ struct CodexUsageSnapshot {
     uint64_t tokens_today = 0;
     bool tokens_today_estimated = false;
     uint64_t tokens_7d = 0;
+    CodexPaidCreditsState paid_credits_state = CodexPaidCreditsState::Unavailable;
+    uint32_t paid_credits_balance = 0;
     uint8_t active_threads = 0;
     uint8_t reset_credits = 0;
     uint32_t quota_reset_seconds = 0;
@@ -56,4 +64,5 @@ CodexUsageLinkState codex_usage_link_state(bool data_valid,
 bool codex_usage_display_values_equal(const CodexUsageSnapshot &a,
                                       const CodexUsageSnapshot &b);
 bool codex_usage_format_tokens(uint64_t tokens, char *buffer, size_t capacity);
+bool codex_usage_format_credits(uint32_t credits, char *buffer, size_t capacity);
 bool codex_usage_format_window(uint32_t minutes, char *buffer, size_t capacity);

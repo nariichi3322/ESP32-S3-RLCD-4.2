@@ -21,14 +21,14 @@ lv_obj_t *s_secondary_reset;
 lv_obj_t *s_today;
 lv_obj_t *s_week;
 lv_obj_t *s_run;
-lv_obj_t *s_credits;
-lv_obj_t *s_expiry;
-lv_obj_t *s_state;
+lv_obj_t *s_paid;
+lv_obj_t *s_reset_credits;
+lv_obj_t *s_reset_expiry;
 
-lv_obj_t *metric(lv_obj_t *parent, int x, int y, const char *title)
+lv_obj_t *metric(lv_obj_t *parent, int x, int y, const char *title, int width = 92)
 {
-    make_label_with_font(parent, x, y, 92, 18, title, &lv_font_montserrat_12);
-    lv_obj_t *value = make_label_with_font(parent, x, y + 19, 92, 29, "--", &lv_font_montserrat_16);
+    make_label_with_font(parent, x, y, width, 18, title, &lv_font_montserrat_12);
+    lv_obj_t *value = make_label_with_font(parent, x, y + 19, width, 29, "--", &lv_font_montserrat_16);
     if (value) lv_obj_set_style_text_align(value, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     return value;
 }
@@ -72,6 +72,7 @@ bool update_quota_block(lv_obj_t *title,
     changed |= set_label_text_if_changed(reset, reset_text);
     return changed;
 }
+
 }
 
 void build_codex_usage_page()
@@ -90,17 +91,16 @@ void build_codex_usage_page()
     s_secondary_title = make_label_with_font(screen, 18, 152, 170, 18, "CODEX LEFT (--)", &lv_font_montserrat_12);
     s_secondary_percent = make_label_with_font(screen, 18, 170, 170, 32, "--", &lv_font_montserrat_24);
     s_secondary_reset = make_label_with_font(screen, 18, 200, 170, 20, "RESET --", &lv_font_montserrat_12);
-    make_black_bar(screen, 198, 76, 2, 166);
+    make_black_bar(screen, 18, 224, 170, 2);
+    make_label_with_font(screen, 18, 229, 108, 18, "PAID CREDITS", &lv_font_montserrat_12);
+    s_paid = make_label_with_font(screen, 126, 226, 62, 24, "--", &lv_font_montserrat_16);
+    if (s_paid) lv_obj_set_style_text_align(s_paid, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
+    make_black_bar(screen, 198, 76, 2, 174);
     s_today = metric(screen, 212, 76, "TODAY");
     s_week = metric(screen, 302, 76, "7 DAYS");
-    s_run = metric(screen, 212, 132, "RUN");
-    s_credits = metric(screen, 302, 132, "CREDITS");
-    s_expiry = metric(screen, 212, 188, "EXPIRY");
-    s_state = make_centered_label_with_font(screen, 290, 202, 92, 31, "DISCONNECT", &lv_font_montserrat_12, "codex state label create failed");
-    if (s_state) {
-        lv_obj_set_style_border_width(s_state, 2, LV_PART_MAIN);
-        lv_obj_set_style_border_color(s_state, lv_color_black(), LV_PART_MAIN);
-    }
+    s_run = metric(screen, 212, 132, "RUN", 182);
+    s_reset_credits = metric(screen, 212, 188, "RESET CR");
+    s_reset_expiry = metric(screen, 302, 188, "RESET EXP");
     build_work_page_day_progress(screen, kWorkPageCodexUsage);
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
     update_work_page_battery_icon(kWorkPageCodexUsage, battery_percent_load());
@@ -109,13 +109,7 @@ void build_codex_usage_page()
 bool update_codex_usage_page(const struct tm &local, const CodexUsageSnapshotView &view)
 {
     const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-    const CodexUsageLinkState state = codex_usage_link_state(
-        view.data_valid, view.ble_connected, view.bonded,
-        view.last_valid_tick_ms, now);
-    bool changed = set_label_text_if_changed(s_state,
-        state == CodexUsageLinkState::Disconnected ? "DISCONNECT" :
-        state == CodexUsageLinkState::Waiting ? "WAITING" :
-        state == CodexUsageLinkState::Linked ? "LINKED" : "STALE");
+    bool changed = false;
     changed |= update_work_page_status_time(kWorkPageCodexUsage, local);
     if (!view.snapshot_valid) {
         changed |= update_quota_block(s_primary_title, s_percent, s_reset,
@@ -125,8 +119,9 @@ bool update_codex_usage_page(const struct tm &local, const CodexUsageSnapshotVie
         changed |= set_label_text_if_changed(s_today, "--");
         changed |= set_label_text_if_changed(s_week, "--");
         changed |= set_label_text_if_changed(s_run, "--");
-        changed |= set_label_text_if_changed(s_credits, "--");
-        changed |= set_label_text_if_changed(s_expiry, "--");
+        changed |= set_label_text_if_changed(s_paid, "--");
+        changed |= set_label_text_if_changed(s_reset_credits, "--");
+        changed |= set_label_text_if_changed(s_reset_expiry, "--");
         return changed;
     }
     changed |= update_quota_block(
@@ -148,10 +143,24 @@ bool update_codex_usage_page(const struct tm &local, const CodexUsageSnapshotVie
     changed |= set_label_text_if_changed(s_week, token);
     snprintf(text, sizeof(text), "%u", view.snapshot.active_threads);
     changed |= set_label_text_if_changed(s_run, text);
+    if (view.snapshot.paid_credits_state == CodexPaidCreditsState::Unlimited) {
+        changed |= set_label_text_if_changed(s_paid, "UNLIM");
+    } else if (view.snapshot.paid_credits_state == CodexPaidCreditsState::Finite) {
+        codex_usage_format_credits(view.snapshot.paid_credits_balance, text, sizeof(text));
+        changed |= set_label_text_if_changed(s_paid, text);
+    } else {
+        changed |= set_label_text_if_changed(s_paid, "--");
+    }
     snprintf(text, sizeof(text), "%u", view.snapshot.reset_credits);
-    changed |= set_label_text_if_changed(s_credits, text);
-    format_duration(codex_usage_countdown_seconds(view.snapshot.next_credit_expiry_seconds, view.received_tick_ms, now), text, sizeof(text));
-    changed |= set_label_text_if_changed(s_expiry, text);
+    changed |= set_label_text_if_changed(s_reset_credits, text);
+    const uint32_t expiry = codex_usage_countdown_seconds(
+        view.snapshot.next_credit_expiry_seconds, view.received_tick_ms, now);
+    if (view.snapshot.next_credit_expiry_seconds == 0 || expiry == 0) {
+        changed |= set_label_text_if_changed(s_reset_expiry, "--");
+    } else {
+        format_duration(expiry, text, sizeof(text));
+        changed |= set_label_text_if_changed(s_reset_expiry, text);
+    }
     return changed;
 }
 
@@ -159,5 +168,5 @@ void clear_codex_usage_page_object_refs()
 {
     s_primary_title = s_percent = s_reset = s_secondary_title =
         s_secondary_percent = s_secondary_reset = s_today = s_week = s_run =
-        s_credits = s_expiry = s_state = nullptr;
+        s_paid = s_reset_credits = s_reset_expiry = nullptr;
 }

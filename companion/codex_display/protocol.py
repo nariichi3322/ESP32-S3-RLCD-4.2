@@ -10,7 +10,8 @@ def encode_snapshot(snapshot: Snapshot, sequence: int) -> bytes:
     if isinstance(sequence, bool) or not isinstance(sequence, int) or not 1 <= sequence <= 0xFFFFFFFF:
         raise ValueError("sequence must be positive")
     values = asdict(snapshot)
-    bool_fields = {"tokens_today_estimated", "secondary_available"}
+    bool_fields = {"tokens_today_estimated", "secondary_available",
+                   "paid_credits_available", "paid_credits_unlimited"}
     if any(isinstance(value, bool) or not isinstance(value, int)
            for key, value in values.items() if key not in bool_fields):
         raise ValueError("snapshot numeric values must be integers")
@@ -31,7 +32,7 @@ def encode_snapshot(snapshot: Snapshot, sequence: int) -> bytes:
     if any(values[key] > 0xFFFFFFFF for key in
            ("limit_window_minutes", "quota_reset_seconds",
             "secondary_limit_window_minutes", "secondary_quota_reset_seconds",
-            "next_credit_expiry_seconds")):
+            "next_credit_expiry_seconds", "paid_credits_balance")):
         raise ValueError("32-bit snapshot value out of range")
     if values["active_threads"] > 255 or values["reset_credits"] > 255:
         raise ValueError("8-bit snapshot value out of range")
@@ -39,6 +40,13 @@ def encode_snapshot(snapshot: Snapshot, sequence: int) -> bytes:
             ("secondary_remaining_percent", "secondary_limit_window_minutes",
              "secondary_quota_reset_seconds")):
         raise ValueError("unavailable secondary window must be empty")
+    if (not values["paid_credits_available"] or values["paid_credits_unlimited"]) and \
+            values["paid_credits_balance"] != 0:
+        raise ValueError("unavailable or unlimited paid credits must have zero balance")
+    if values["paid_credits_unlimited"] and not values["paid_credits_available"]:
+        raise ValueError("unlimited paid credits must be available")
+    paid_state = (2 if values["paid_credits_unlimited"] else 1) \
+        if values["paid_credits_available"] else 0
     payload = {
         "v": PROTOCOL_VERSION, "s": sequence,
         "t": snapshot.generated_at, "o": snapshot.utc_offset_minutes,
@@ -49,6 +57,7 @@ def encode_snapshot(snapshot: Snapshot, sequence: int) -> bytes:
         "U": snapshot.secondary_limit_window_minutes,
         "Q": snapshot.secondary_quota_reset_seconds,
         "e": int(snapshot.tokens_today_estimated), "w": snapshot.tokens_7d,
+        "p": paid_state, "b": snapshot.paid_credits_balance,
         "c": snapshot.reset_credits, "x": snapshot.next_credit_expiry_seconds,
         "a": snapshot.active_threads,
     }
