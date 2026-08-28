@@ -15,5 +15,6 @@ inline constexpr const char *kNtpServerKey = "ntp_server_v1";
 inline constexpr const char *kXiaozhiAutoReturnKey = "xz_auto_ret_v1";
 inline constexpr const char *kGalleryRotationKey = "gallery_rot_v1";
 inline constexpr const char *kWeatherClockSecondsKey = "clock_sec_v1";
+inline constexpr const char *kUiLanguageKey = "ui_lang_v1";
 
 } // namespace network_config_keys

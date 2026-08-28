@@ -156,7 +156,10 @@ TickType_t ui_runtime_next_loop_delay_ticks(time_t sampled_wall_second,
             codex_wait.received_ms = view.received_tick_ms;
             codex_wait.last_valid_ms = view.last_valid_tick_ms;
             codex_wait.quota_reset_seconds = view.snapshot.quota_reset_seconds;
+            codex_wait.secondary_quota_reset_seconds =
+                view.snapshot.secondary_quota_reset_seconds;
             codex_wait.credit_expiry_seconds = view.snapshot.next_credit_expiry_seconds;
+            codex_wait.snapshot_valid = view.snapshot_valid;
             codex_wait.data_valid = view.data_valid;
             codex_wait.ble_connected = view.ble_connected;
         }

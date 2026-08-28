@@ -33,6 +33,7 @@ class DisplayPort {
     int                 height_;
     spi_host_device_t   spihost_;
     uint8_t            *DispBuffer = NULL;
+    uint8_t            *DmaTxBuffer = NULL;
     int                 DisplayLen = 0;
     bool                spi_bus_initialized_ = false;
     bool                reset_gpio_configured_ = false;

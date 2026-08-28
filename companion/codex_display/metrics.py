@@ -15,6 +15,10 @@ class Snapshot:
     remaining_percent: int
     limit_window_minutes: int
     quota_reset_seconds: int
+    secondary_available: bool
+    secondary_remaining_percent: int
+    secondary_limit_window_minutes: int
+    secondary_quota_reset_seconds: int
     tokens_today: int
     tokens_today_estimated: bool
     tokens_7d: int
@@ -103,9 +107,23 @@ def build_snapshot(rate_limits: dict[str, Any], usage: dict[str, Any],
         local = time.localtime(now)
         utc_offset_minutes = int(((-time.altzone if local.tm_isdst > 0 and time.daylight
                                    else -time.timezone)) // 60)
-    limits = (rate_limits.get("rateLimitsByLimitId") or {}).get("codex") or rate_limits.get("rateLimits") or {}
-    primary = limits.get("primary") or {}
+    legacy_limits = rate_limits.get("rateLimits") or {}
+    codex_limits = (rate_limits.get("rateLimitsByLimitId") or {}).get("codex") or {}
+    primary = codex_limits.get("primary") or legacy_limits.get("primary") or {}
+    # Some app-server/account combinations publish primary in
+    # rateLimitsByLimitId.codex while leaving the longer window only in the
+    # legacy rateLimits object.  Resolve each window independently instead of
+    # discarding that valid secondary object when the Codex entry exists.
+    secondary_value = codex_limits.get("secondary")
+    if not isinstance(secondary_value, dict) or not all(
+            secondary_value.get(key) is not None for key in
+            ("usedPercent", "windowDurationMins", "resetsAt")):
+        secondary_value = legacy_limits.get("secondary")
+    secondary = secondary_value if isinstance(secondary_value, dict) else {}
+    secondary_available = all(secondary.get(key) is not None for key in
+                              ("usedPercent", "windowDurationMins", "resetsAt"))
     used = max(0, min(int(primary.get("usedPercent", 100)), 100))
+    secondary_used = max(0, min(int(secondary.get("usedPercent", 100)), 100))
     buckets = {item.get("startDate"): max(0, int(item.get("tokens", 0)))
                for item in usage.get("dailyUsageBuckets") or [] if item.get("startDate")}
     today = utc_date.isoformat()
@@ -116,7 +134,11 @@ def build_snapshot(rate_limits: dict[str, Any], usage: dict[str, Any],
     return Snapshot(
         now, utc_offset_minutes, 100 - used,
         max(0, int(primary.get("windowDurationMins") or 0)),
-        _until(primary.get("resetsAt"), now), buckets.get(today, 0),
+        _until(primary.get("resetsAt"), now), secondary_available,
+        100 - secondary_used if secondary_available else 0,
+        max(0, int(secondary.get("windowDurationMins") or 0)) if secondary_available else 0,
+        _until(secondary.get("resetsAt"), now) if secondary_available else 0,
+        buckets.get(today, 0),
         today not in buckets,
         sum(buckets.get((utc_date - timedelta(days=i)).isoformat(), 0) for i in range(7)),
         max(0, int(credits.get("availableCount", 0))),

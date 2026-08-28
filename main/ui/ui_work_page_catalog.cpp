@@ -5,6 +5,7 @@
 #include "app_constexpr.h"
 #include "scoped_semaphore_lock.h"
 #include "ui_work_page_order_policy.h"
+#include "ui_language.h"
 
 #include <atomic>
 #include <string.h>
@@ -26,27 +27,28 @@ constexpr uint8_t kKnownWorkPageTraits =
 
 struct WorkPageDescriptor {
     uint8_t page;
-    const char *name;
+    const char *traditional_name;
+    const char *simplified_name;
     uint8_t traits;
 };
 
 constexpr WorkPageDescriptor kWorkPageDescriptors[kWorkPageCount] = {
     {kWorkPageWeatherClock,
-     "天气时钟",
+     "天氣時鐘", "天气时钟",
      kWorkPageTraitRequiresNetwork | kWorkPageTraitWeatherData},
     {kWorkPageGallery,
-     "图片时钟",
+     "圖片時鐘", "图片时钟",
      kWorkPageTraitRequiresNetwork | kWorkPageTraitLowRefreshIdle |
          kWorkPageTraitDailySaying},
     {kWorkPageWeatherBoard,
-     "天气看板",
+     "天氣看板", "天气看板",
      kWorkPageTraitRequiresNetwork | kWorkPageTraitLowRefreshIdle |
          kWorkPageTraitWeatherData | kWorkPageTraitExtendedWeatherData},
-    {kWorkPageFlipClock, "温湿时钟", 0},
-    {kWorkPageCalendar, "日历", kWorkPageTraitLowRefreshIdle},
-    {kWorkPageHistory, "温湿历史", kWorkPageTraitLowRefreshIdle},
-    {kWorkPageXiaozhiAI, "小智AI", kWorkPageTraitRequiresNetwork},
-    {kWorkPageCodexUsage, "Codex Usage", kWorkPageTraitLowRefreshIdle},
+    {kWorkPageFlipClock, "溫溼時鐘", "温湿时钟", 0},
+    {kWorkPageCalendar, "日曆", "日历", kWorkPageTraitLowRefreshIdle},
+    {kWorkPageHistory, "溫溼歷史", "温湿历史", kWorkPageTraitLowRefreshIdle},
+    {kWorkPageXiaozhiAI, "小智AI", "小智AI", kWorkPageTraitRequiresNetwork},
+    {kWorkPageCodexUsage, "Codex", "Codex", kWorkPageTraitLowRefreshIdle},
 };
 
 constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
@@ -70,7 +72,8 @@ uint8_t s_work_page_order[kWorkPageCount] = {
     kWorkPageXiaozhiAI,
     kWorkPageCodexUsage,
 };
-constexpr const char *kUnknownWorkPageName = "未知页面";
+constexpr const char *kUnknownWorkPageNameTraditional = "未知頁面";
+constexpr const char *kUnknownWorkPageNameSimplified = "未知页面";
 
 constexpr uint8_t work_page_mask(int page)
 {
@@ -136,7 +139,8 @@ constexpr bool page_list_covers_each_work_page_once(const uint8_t (&pages)[N])
 constexpr bool work_page_descriptor_names_are_nonempty()
 {
     for (const WorkPageDescriptor &descriptor : kWorkPageDescriptors) {
-        if (!cstr_nonempty(descriptor.name)) {
+        if (!cstr_nonempty(descriptor.traditional_name) ||
+            !cstr_nonempty(descriptor.simplified_name)) {
             return false;
         }
     }
@@ -217,7 +221,9 @@ static_assert(array_count(kWorkPageDescriptors) == kWorkPageCount,
               "work page descriptors must cover every work page");
 static_assert(work_page_descriptor_names_are_nonempty(),
               "work page descriptor names must be non-empty");
-static_assert(cstr_nonempty(kUnknownWorkPageName), "unknown work page name must be non-empty");
+static_assert(cstr_nonempty(kUnknownWorkPageNameTraditional) &&
+              cstr_nonempty(kUnknownWorkPageNameSimplified),
+              "unknown work page names must be non-empty");
 static_assert(work_page_descriptors_are_indexed_by_id(),
               "work page descriptors must follow the contiguous work page ids");
 static_assert(work_page_descriptor_traits_are_valid(),
@@ -318,9 +324,11 @@ uint8_t work_page_mask_for_offline_mode(uint8_t page_mask)
 const char *work_page_name(int page)
 {
     if (!work_page_order_policy::is_work_page(page)) {
-        return kUnknownWorkPageName;
+        return ui_language_text(kUnknownWorkPageNameTraditional,
+                                kUnknownWorkPageNameSimplified);
     }
-    return kWorkPageDescriptors[page].name;
+    return ui_language_text(kWorkPageDescriptors[page].traditional_name,
+                            kWorkPageDescriptors[page].simplified_name);
 }
 
 int first_enabled_work_page()

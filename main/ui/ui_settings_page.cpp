@@ -13,6 +13,7 @@
 #include "ui_settings_content.h"
 #include "ui_settings_feedback.h"
 #include "ui_settings_layout.h"
+#include "ui_language.h"
 #include "ui_settings_navigation.h"
 #include "ui_settings_ota_panel.h"
 #include "ui_widgets.h"
@@ -133,7 +134,15 @@ int collect_visible_work_page_order(int *indices,
 #define SETTINGS_SECONDARY_LABEL_CREATE_FAILED_FORMAT "settings secondary label create failed index=%d"
 #define SETTINGS_SWITCH_DOT_CREATE_FAILED_FORMAT "settings switch dot create failed index=%d"
 
-constexpr const char *kSettingsPrimaryItems[kSettingsPrimaryCount] = {"校時", "聲音", "顯示", "系統"};
+const char *settings_primary_item(int index)
+{
+    static constexpr const char *traditional[kSettingsPrimaryCount] =
+        {"校時", "聲音", "顯示", "系統"};
+    static constexpr const char *simplified[kSettingsPrimaryCount] =
+        {"校时", "声音", "显示", "系统"};
+    if (index < 0 || index >= kSettingsPrimaryCount) return "";
+    return ui_language_text(traditional[index], simplified[index]);
+}
 constexpr const char *kSettingsPageOrderEntryFormat = "%d %s";
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
 constexpr const char *kSettingsLabelPlaceholder = "--";
@@ -179,13 +188,10 @@ static_assert(settings_layout::kSettingsGridCapacity >= kSystemSettingsGridItemC
               "settings grid capacity must cover system grid items");
 static_assert(settings_layout::kSettingsGridCapacity >= kDisplaySettingsGridItemCount,
               "settings grid capacity must cover display grid items");
-static_assert(array_count(kSettingsPrimaryItems) == kSettingsPrimaryCount,
-              "settings primary item table must match primary count");
 static_assert(array_count(s_settings_labels) == kSettingsLabelCount,
               "settings label storage must match configured label count");
 static_assert(array_count(s_settings_switch_dots) == kSettingsSecondaryMaxCount,
               "settings switch dot storage must match secondary slot count");
-static_assert(cstr_array_nonempty(kSettingsPrimaryItems), "settings primary menu texts must be non-empty");
 static_assert(settings_layout::kSettingsGridColumns > 0,
               "settings grid must have columns");
 static_assert(settings_layout::kSettingsGridColW > 0 &&
@@ -378,7 +384,7 @@ bool update_settings_primary_items(int primary, bool selection_changed)
     bool changed = false;
     for (int i = 0; i < kSettingsPrimaryCount; ++i) {
         if (s_settings_labels[i]) {
-            changed |= set_label_text_if_changed(s_settings_labels[i], kSettingsPrimaryItems[i]);
+            changed |= set_label_text_if_changed(s_settings_labels[i], settings_primary_item(i));
             if (selection_changed) {
                 style_settings_item(s_settings_labels[i], i == primary);
             }

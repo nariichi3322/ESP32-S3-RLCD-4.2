@@ -84,8 +84,8 @@ def extract_raw_literal(name: str) -> str:
 
 
 COMMON_CSS = extract_raw_literal("kCommonCss")
-COMMON_SCRIPT = extract_raw_literal("kCommonScript")
-FORM_HTML = extract_raw_literal("kFormHtml")
+COMMON_SCRIPT = extract_raw_literal("kCommonScriptTraditional")
+FORM_HTML = extract_raw_literal("kFormHtmlTraditional")
 
 
 def toolbar(active: str) -> str:

@@ -145,8 +145,8 @@ uint32_t ui_codex_wait_delay_ms(const UiCodexWaitInput &input)
         if (delay < shortest) shortest = delay;
     };
     if (input.pairing_visible) include_deadline(input.pairing_expiry_ms);
-    if (!input.data_valid) return shortest;
-    if (input.ble_connected) {
+    if (!input.snapshot_valid) return shortest;
+    if (input.data_valid && input.ble_connected) {
         include_deadline(input.last_valid_ms + 60001U);
     }
     const uint32_t elapsed_ms = input.now_ms - input.received_ms;
@@ -161,6 +161,7 @@ uint32_t ui_codex_wait_delay_ms(const UiCodexWaitInput &input)
         if (delay < shortest) shortest = delay;
     };
     include_countdown(input.quota_reset_seconds);
+    include_countdown(input.secondary_quota_reset_seconds);
     include_countdown(input.credit_expiry_seconds);
     return shortest;
 }

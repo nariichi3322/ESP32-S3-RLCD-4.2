@@ -31,6 +31,7 @@
 #include "xiaozhi_auto_return_state_internal.h"
 #include "ui_gallery_rotation_state_internal.h"
 #include "ui_clock_seconds_state_internal.h"
+#include "ui_language_internal.h"
 
 #include <esp_log.h>
 
@@ -140,6 +141,7 @@ static void reset_saved_config_runtime_state()
     xiaozhi_auto_return_enabled_store(kDefaultXiaozhiAutoReturnEnabled);
     gallery_rotation_period_store(kDefaultGalleryRotationPeriod);
     weather_clock_seconds_visible_store(kDefaultWeatherClockSecondsVisible);
+    ui_language_store(kDefaultUiLanguage);
     chime_runtime_snapshot_store({
         false,
         false,

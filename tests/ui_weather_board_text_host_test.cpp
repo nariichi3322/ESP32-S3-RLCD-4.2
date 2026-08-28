@@ -1,5 +1,6 @@
 // 验证天气看板日期、温度范围和多预警文本的既有格式规则。
 #include "ui_weather_board_text.h"
+#include "ui_language_internal.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -21,7 +22,7 @@ int main()
     strcpy(day.temp_max, "26");
     char out[128] = {};
     format_forecast_date_line(day, out, sizeof(out));
-    assert(strcmp(out, "周日\n12日") == 0);
+    assert(strcmp(out, "週日\n12日") == 0);
     format_forecast_temp_range(day, out, sizeof(out));
     assert(strcmp(out, "17/26") == 0);
     format_today_range(day, out, sizeof(out));
@@ -48,7 +49,7 @@ int main()
     strcpy(alert.titles[3], "雷电黄色预警");
     format_weather_board_alert_line(alert, out, sizeof(out));
     assert(strcmp(out,
-                  "预警 大风黄色预警 / 高温橙色预警 / 暴雨蓝色预警") == 0);
+                  "預警 大风黄色预警 / 高温橙色预警 / 暴雨蓝色预警") == 0);
     alert.titles[0][0] = '\0';
     format_weather_board_alert_line(alert, out, sizeof(out));
     assert(strcmp(out, kWeatherBoardAlertPlaceholder) == 0);
@@ -65,17 +66,17 @@ int main()
     WeatherData weather = {};
     strcpy(weather.humidity, "58");
     format_weather_board_humidity_line(weather, nullptr, out, sizeof(out));
-    assert(strcmp(out, "湿度 58%") == 0);
+    assert(strcmp(out, "溼度 58%") == 0);
     strcpy(day.humidity, "61");
     format_weather_board_humidity_line(weather, &day, out, sizeof(out));
-    assert(strcmp(out, "湿度 61%") == 0);
+    assert(strcmp(out, "溼度 61%") == 0);
 
     format_weather_board_wind_line(nullptr, out, sizeof(out));
     assert(strcmp(out, kWeatherBoardWindPlaceholder) == 0);
     strcpy(day.wind_dir, "东北风");
     strcpy(day.wind_scale, "3");
     format_weather_board_wind_line(&day, out, sizeof(out));
-    assert(strcmp(out, "东北风 3级") == 0);
+    assert(strcmp(out, "东北风 3級") == 0);
 
     format_weather_board_sunrise_line(nullptr, out, sizeof(out));
     assert(strcmp(out, kWeatherBoardSunrisePlaceholder) == 0);
@@ -93,6 +94,13 @@ int main()
     forecast.ready = true;
     strcpy(forecast.advice, "天气平稳，适合轻装出行。");
     assert(strcmp(weather_board_advice_text(forecast), forecast.advice) == 0);
+
+    ui_language_store(UiLanguage::Simplified);
+    strcpy(day.date, "2026-07-12");
+    format_forecast_date_line(day, out, sizeof(out));
+    assert(strcmp(out, "周日\n12日") == 0);
+    format_weather_board_humidity_line(weather, &day, out, sizeof(out));
+    assert(strcmp(out, "湿度 61%") == 0);
 
     format_today_range(day, nullptr, 0);
     format_forecast_date_line(day, nullptr, 0);

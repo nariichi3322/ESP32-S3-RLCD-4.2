@@ -5,13 +5,15 @@
 #include <string.h>
 
 namespace {
-enum Field : uint16_t {
+enum Field : uint32_t {
     V = 1U << 0, S = 1U << 1, T = 1U << 2, O = 1U << 3,
     R = 1U << 4, U = 1U << 5, Q = 1U << 6, D = 1U << 7,
     E = 1U << 8, W = 1U << 9, C = 1U << 10, X = 1U << 11,
     A = 1U << 12,
+    N = 1U << 13, SR = 1U << 14, SU = 1U << 15, SQ = 1U << 16,
 };
-constexpr uint16_t kRequired = V | S | T | O | R | U | Q | D | W | C | X | A;
+constexpr uint32_t kRequiredV1 = V | S | T | O | R | U | Q | D | W | C | X | A;
+constexpr uint32_t kRequiredV2 = kRequiredV1 | N | SR | SU | SQ;
 
 void skip_ws(const char *p, size_t n, size_t &i)
 {
@@ -40,13 +42,14 @@ bool parse_integer(const char *p, size_t n, size_t &i, bool &negative, uint64_t 
     return true;
 }
 
-uint16_t field_for(char key)
+uint32_t field_for(char key)
 {
     switch (key) {
     case 'v': return V; case 's': return S; case 't': return T; case 'o': return O;
     case 'r': return R; case 'u': return U; case 'q': return Q; case 'd': return D;
     case 'e': return E; case 'w': return W; case 'c': return C; case 'x': return X;
     case 'a': return A; default: return 0;
+    case 'n': return N; case 'R': return SR; case 'U': return SU; case 'Q': return SQ;
     }
 }
 
@@ -73,7 +76,7 @@ CodexUsageParseResult codex_usage_parse_status(const char *p, size_t n,
     if (!p || !out || n == 0) return CodexUsageParseResult::Malformed;
     if (n > kCodexUsageMaxPayloadBytes) return CodexUsageParseResult::TooLong;
     CodexUsageSnapshot parsed{};
-    uint16_t seen = 0;
+    uint32_t seen = 0;
     uint64_t version = 0;
     size_t i = 0;
     skip_ws(p, n, i);
@@ -83,7 +86,7 @@ CodexUsageParseResult codex_usage_parse_status(const char *p, size_t n,
         if (i < n && p[i] == '}') { ++i; break; }
         char key = 0;
         if (!parse_key(p, n, i, key)) return CodexUsageParseResult::Malformed;
-        const uint16_t field = field_for(key);
+        const uint32_t field = field_for(key);
         if (field == 0 || (seen & field) != 0) return CodexUsageParseResult::Malformed;
         skip_ws(p, n, i);
         if (i >= n || p[i++] != ':') return CodexUsageParseResult::Malformed;
@@ -100,6 +103,10 @@ CodexUsageParseResult codex_usage_parse_status(const char *p, size_t n,
         case 'r': if (value > 100) return CodexUsageParseResult::OutOfRange; parsed.remaining_percent = static_cast<uint8_t>(value); break;
         case 'u': if (!fits_u32(value)) return CodexUsageParseResult::OutOfRange; parsed.limit_window_minutes = static_cast<uint32_t>(value); break;
         case 'q': if (!fits_u32(value)) return CodexUsageParseResult::OutOfRange; parsed.quota_reset_seconds = static_cast<uint32_t>(value); break;
+        case 'n': if (value > 1) return CodexUsageParseResult::OutOfRange; parsed.secondary_available = value != 0; break;
+        case 'R': if (value > 100) return CodexUsageParseResult::OutOfRange; parsed.secondary_remaining_percent = static_cast<uint8_t>(value); break;
+        case 'U': if (!fits_u32(value)) return CodexUsageParseResult::OutOfRange; parsed.secondary_limit_window_minutes = static_cast<uint32_t>(value); break;
+        case 'Q': if (!fits_u32(value)) return CodexUsageParseResult::OutOfRange; parsed.secondary_quota_reset_seconds = static_cast<uint32_t>(value); break;
         case 'd': parsed.tokens_today = value; break;
         case 'e': if (value > 1) return CodexUsageParseResult::OutOfRange; parsed.tokens_today_estimated = value != 0; break;
         case 'w': parsed.tokens_7d = value; break;
@@ -121,8 +128,16 @@ CodexUsageParseResult codex_usage_parse_status(const char *p, size_t n,
     }
     skip_ws(p, n, i);
     if (i != n) return CodexUsageParseResult::Malformed;
-    if ((seen & kRequired) != kRequired) return CodexUsageParseResult::MissingField;
-    if (version != 1) return CodexUsageParseResult::UnsupportedVersion;
+    const uint32_t required = version == 1 ? kRequiredV1 : kRequiredV2;
+    if (version != 1 && version != 2) return CodexUsageParseResult::UnsupportedVersion;
+    if ((seen & required) != required) return CodexUsageParseResult::MissingField;
+    if (version == 1) parsed.secondary_available = false;
+    if (version == 2 && !parsed.secondary_available &&
+        (parsed.secondary_remaining_percent != 0 ||
+         parsed.secondary_limit_window_minutes != 0 ||
+         parsed.secondary_quota_reset_seconds != 0)) {
+        return CodexUsageParseResult::OutOfRange;
+    }
     *out = parsed;
     return CodexUsageParseResult::Ok;
 }
@@ -133,11 +148,12 @@ uint32_t codex_usage_countdown_seconds(uint32_t seconds, uint32_t received, uint
     return elapsed >= seconds ? 0U : seconds - elapsed;
 }
 
-CodexUsageLinkState codex_usage_link_state(bool valid, bool connected,
+CodexUsageLinkState codex_usage_link_state(bool valid, bool connected, bool bonded,
                                            uint32_t last, uint32_t now)
 {
-    if (!valid) return CodexUsageLinkState::Waiting;
-    return connected && static_cast<uint32_t>(now - last) <= kCodexUsageStaleMs
+    if (!connected) return CodexUsageLinkState::Disconnected;
+    if (!bonded || !valid) return CodexUsageLinkState::Waiting;
+    return static_cast<uint32_t>(now - last) <= kCodexUsageStaleMs
                ? CodexUsageLinkState::Linked : CodexUsageLinkState::Stale;
 }
 
@@ -145,14 +161,18 @@ bool codex_usage_display_values_equal(const CodexUsageSnapshot &a,
                                       const CodexUsageSnapshot &b)
 {
     return a.remaining_percent == b.remaining_percent &&
+           a.secondary_available == b.secondary_available &&
+           a.secondary_remaining_percent == b.secondary_remaining_percent &&
            a.tokens_today == b.tokens_today &&
            a.tokens_today_estimated == b.tokens_today_estimated &&
            a.tokens_7d == b.tokens_7d &&
            a.active_threads == b.active_threads &&
            a.reset_credits == b.reset_credits &&
            a.quota_reset_seconds == b.quota_reset_seconds &&
+           a.secondary_quota_reset_seconds == b.secondary_quota_reset_seconds &&
            a.next_credit_expiry_seconds == b.next_credit_expiry_seconds &&
            a.limit_window_minutes == b.limit_window_minutes &&
+           a.secondary_limit_window_minutes == b.secondary_limit_window_minutes &&
            a.unix_time == b.unix_time &&
            a.utc_offset_minutes == b.utc_offset_minutes;
 }
@@ -186,4 +206,21 @@ bool codex_usage_format_tokens(uint64_t value, char *buffer, size_t capacity)
     }
     buffer[offset] = '\0';
     return true;
+}
+
+bool codex_usage_format_window(uint32_t minutes, char *buffer, size_t capacity)
+{
+    if (!buffer || capacity == 0) return false;
+    int written = 0;
+    if (minutes == 0) written = snprintf(buffer, capacity, "--");
+    else if (minutes % (24U * 60U) == 0)
+        written = snprintf(buffer, capacity, "%lud",
+                           static_cast<unsigned long>(minutes / (24U * 60U)));
+    else if (minutes % 60U == 0)
+        written = snprintf(buffer, capacity, "%luh",
+                           static_cast<unsigned long>(minutes / 60U));
+    else
+        written = snprintf(buffer, capacity, "%lum",
+                           static_cast<unsigned long>(minutes));
+    return written >= 0 && static_cast<size_t>(written) < capacity;
 }

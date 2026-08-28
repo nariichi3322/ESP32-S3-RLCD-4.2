@@ -5,6 +5,7 @@
 #include "custom_assets.h"
 #include "ui_settings_confirmation_state.h"
 #include "ui_gallery_rotation_state.h"
+#include "ui_language.h"
 #include "ui_text_format.h"
 
 #include <esp_log.h>
@@ -15,23 +16,6 @@ namespace {
 #define SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT "settings secondary text format failed index=%d"
 #define SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT "settings secondary text index out of range: %d"
 
-constexpr const char *kSettingsNetworkSyncTimeText = "同步时间";
-constexpr const char *kSettingsSoundVolumeFormat = "音量 %d%%";
-constexpr const char *kSettingsSoundMutedText = "音量 靜音";
-constexpr const char *kSettingsSoundChoiceFormat = "声音选择 %d";
-constexpr const char *kSettingsHourlyText = "整点提醒 7:00 - 22:00";
-constexpr const char *kSettingsAllDayText = "全天提醒 0:00 - 24:00";
-constexpr const char *kSettingsPageSwitchText = "页面开关";
-constexpr const char *kSettingsPageOrderText = "页面顺序";
-constexpr const char *kSettingsAlarmOffText = "闹钟 --:--";
-constexpr const char *kSettingsAlarmOnFormat = "闹钟 %02d:%02d";
-constexpr const char *kSettingsXiaozhiAutoReturnText = "小智节能";
-constexpr const char *kSettingsGalleryRotationFormat = "图片切换 %s";
-constexpr const char *kSettingsSetupModeText = "設定模式";
-constexpr const char *kSettingsFactoryResetConfirmText = "确认恢复";
-constexpr const char *kSettingsFactoryResetText = "恢复出厂设置";
-constexpr const char *kSettingsSystemInfoText = "关于本机";
-constexpr const char *kSettingsClearCodexBondsText = "清除 Codex 配对";
 static_assert(kSettingsSecondaryTextSize > 1,
               "settings secondary text buffer must fit text and NUL");
 } // namespace
@@ -81,65 +65,71 @@ void populate_settings_secondary_items(
     char secondary_items[][kSettingsSecondaryTextSize])
 {
     if (primary == kSettingsPrimaryNetwork) {
-        set_secondary_text(secondary_items, kNetworkSettingsNtpItem, kSettingsNetworkSyncTimeText);
+        set_secondary_text(secondary_items, kNetworkSettingsNtpItem,
+                           ui_language_text("同步時間", "同步时间"));
     } else if (primary == kSettingsPrimarySound) {
         if (state.volume_percent == 0) {
             set_secondary_text(secondary_items,
                                kSoundSettingsVolumeItem,
-                               kSettingsSoundMutedText);
+                               ui_language_text("音量 靜音", "音量 静音"));
         } else {
             format_secondary_text(secondary_items,
                                   kSoundSettingsVolumeItem,
-                                  kSettingsSoundVolumeFormat,
+                                  ui_language_text("音量 %d%%", "音量 %d%%"),
                                   static_cast<int>(state.volume_percent));
         }
         format_secondary_text(secondary_items,
                               kSoundSettingsSoundItem,
-                              kSettingsSoundChoiceFormat,
+                              ui_language_text("聲音選擇 %d", "声音选择 %d"),
                               static_cast<int>(state.sound_index) + 1);
-        set_secondary_text(secondary_items, kSoundSettingsHourlyItem, kSettingsHourlyText);
-        set_secondary_text(secondary_items, kSoundSettingsAllDayItem, kSettingsAllDayText);
+        set_secondary_text(secondary_items, kSoundSettingsHourlyItem,
+                           ui_language_text("整點提醒 7:00 - 22:00", "整点提醒 7:00 - 22:00"));
+        set_secondary_text(secondary_items, kSoundSettingsAllDayItem,
+                           ui_language_text("全天提醒 0:00 - 24:00", "全天提醒 0:00 - 24:00"));
     } else if (primary == kSettingsPrimaryDisplay) {
         set_secondary_text(secondary_items,
                            kDisplaySettingsPageSwitchItem,
-                           kSettingsPageSwitchText);
+                           ui_language_text("頁面開關", "页面开关"));
         set_secondary_text(secondary_items,
                            kDisplaySettingsOrderItem,
-                           kSettingsPageOrderText);
+                           ui_language_text("頁面順序", "页面顺序"));
         if (state.alarm_enabled) {
             format_secondary_text(secondary_items,
                                   kDisplaySettingsAlarmItem,
-                                  kSettingsAlarmOnFormat,
+                                  ui_language_text("鬧鐘 %02d:%02d", "闹钟 %02d:%02d"),
                                   state.alarm_hour,
                                   state.alarm_minute);
         } else {
             set_secondary_text(secondary_items,
                                kDisplaySettingsAlarmItem,
-                               kSettingsAlarmOffText);
+                               ui_language_text("鬧鐘 --:--", "闹钟 --:--"));
         }
         set_secondary_text(secondary_items,
                            kDisplaySettingsXiaozhiAutoReturnItem,
-                           kSettingsXiaozhiAutoReturnText);
+                           ui_language_text("自動返回", "自动返回"));
         format_secondary_text(
             secondary_items,
             kDisplaySettingsGalleryRotationItem,
-            kSettingsGalleryRotationFormat,
+            ui_language_text("自訂圖 %s", "自定义图 %s"),
             effective_gallery_rotation_label(gallery_rotation_period_load(),
                                              custom_assets_gallery_count()));
     } else {
         set_secondary_text(secondary_items,
                            kSystemSettingsSetupItem,
-                           kSettingsSetupModeText);
+                           ui_language_text("設定模式", "设置模式"));
         set_secondary_text(secondary_items,
                            kSystemSettingsFactoryResetItem,
                            settings_confirmation_pending(SettingsConfirmation::kFactoryReset)
-                               ? kSettingsFactoryResetConfirmText
-                               : kSettingsFactoryResetText);
+                               ? ui_language_text("確認恢復", "确认恢复")
+                               : ui_language_text("恢復原廠", "恢复出厂"));
         set_secondary_text(secondary_items,
                            kSystemSettingsInfoItem,
-                           kSettingsSystemInfoText);
+                           ui_language_text("關於本機", "关于本机"));
         set_secondary_text(secondary_items,
                            kSystemSettingsClearCodexBondsItem,
-                           kSettingsClearCodexBondsText);
+                           ui_language_text("清除配對", "清除配对"));
+        set_secondary_text(secondary_items,
+                           kSystemSettingsLanguageItem,
+                           ui_language_text("語言 繁", "语言 简"));
     }
 }

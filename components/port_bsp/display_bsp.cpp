@@ -1,5 +1,6 @@
 // 封装 RLCD 显示屏初始化、像素写入和整屏/局部刷新接口。
 #include <string.h>
+#include <algorithm>
 #include <initializer_list>
 #include <limits>
 #include <freertos/FreeRTOS.h>
@@ -19,6 +20,10 @@
 static constexpr int kRlcdSpiClockHz = 5 * 1000 * 1000;
 static constexpr int kRlcdTxChunkBytes = 2048;
 static constexpr int kRlcdOtaTxChunkBytes = 512;
+// Reserve one small DMA-capable bounce buffer before Wi-Fi/BLE fragment the
+// internal heap. PSRAM color buffers otherwise make the SPI driver allocate a
+// private DMA copy for every transfer, which can fail during boot.
+static constexpr int kRlcdDmaBounceBytes = 512;
 static constexpr int kRlcdTxRetryCount = 4;
 static constexpr int kRlcdOtaTxRetryCount = 8;
 static constexpr int kRlcdTxRetryBaseDelayMs = 2;
@@ -54,6 +59,9 @@ static_assert(kRlcdLcdCommandBits > 0, "RLCD command bit width must be positive"
 static_assert(kRlcdLcdParamBits > 0, "RLCD parameter bit width must be positive");
 static_assert(kRlcdTxChunkBytes > 0 && kRlcdOtaTxChunkBytes > 0,
               "RLCD transfer chunk sizes must be positive");
+static_assert(kRlcdDmaBounceBytes > 0 &&
+                  kRlcdDmaBounceBytes <= kRlcdTxChunkBytes,
+              "RLCD DMA bounce buffer must fit a configured SPI transfer");
 static_assert(kRlcdOtaTxChunkBytes <= kRlcdTxChunkBytes,
               "RLCD conservative transfer chunks must not exceed normal chunks");
 static_assert(kRlcdTxRetryCount > 0 && kRlcdOtaTxRetryCount >= kRlcdTxRetryCount,
@@ -259,6 +267,14 @@ spihost_(spihost)
         ReleaseResources();
         return;
     }
+    DmaTxBuffer = static_cast<uint8_t *>(heap_caps_malloc(
+        kRlcdDmaBounceBytes, MALLOC_CAP_DMA | MALLOC_CAP_INTERNAL));
+    if (DmaTxBuffer == NULL) {
+        LogDisplayAllocationFailure("RLCD DMA bounce buffer",
+                                    kRlcdDmaBounceBytes);
+        ReleaseResources();
+        return;
+    }
 
 #if (AlgorithmOptimization == 3)
     PixelIndexLUT = static_cast<uint16_t *>(heap_caps_malloc(
@@ -297,6 +313,8 @@ void DisplayPort::ReleaseResources() {
     free(PixelIndexLUT);
     PixelIndexLUT = NULL;
 #endif
+    free(DmaTxBuffer);
+    DmaTxBuffer = NULL;
     free(DispBuffer);
     DispBuffer = NULL;
     DisplayLen = 0;
@@ -504,23 +522,27 @@ bool DisplayPort::RLCD_WaitForPendingColorTransfers() {
 }
 
 bool DisplayPort::RLCD_Sendbuffera(uint8_t *Data, int len) {
-    if (!ready_ || !io_handle || !Data || len <= 0) {
+    if (!ready_ || !io_handle || !Data || !DmaTxBuffer || len <= 0) {
         return false;
     }
     int offset = 0;
     bool all_chunks_queued = true;
     const bool quiet = Display_IsDmaConservativeMode();
-    const int max_chunk = quiet ? kRlcdOtaTxChunkBytes : kRlcdTxChunkBytes;
+    const int max_chunk = quiet
+                              ? std::min(kRlcdOtaTxChunkBytes,
+                                         kRlcdDmaBounceBytes)
+                              : kRlcdDmaBounceBytes;
     while (offset < len) {
         int chunk = len - offset;
         if (chunk > max_chunk) {
             chunk = max_chunk;
         }
+        memcpy(DmaTxBuffer, Data + offset, static_cast<size_t>(chunk));
 
         const esp_err_t err = RlcdTransmitWithRetry(quiet, [&]() {
             return esp_lcd_panel_io_tx_color(io_handle,
                                              -1,
-                                             Data + offset,
+                                             DmaTxBuffer,
                                              chunk);
         });
 
@@ -535,12 +557,7 @@ bool DisplayPort::RLCD_Sendbuffera(uint8_t *Data, int len) {
             all_chunks_queued = false;
             break;
         }
-        // DispBuffer normally lives in PSRAM, so the SPI master creates a
-        // temporary DMA-capable copy for each queued color transaction.  If
-        // several chunks remain queued, those private buffers coexist and can
-        // exhaust internal DMA heap after NimBLE is enabled.  Drain each chunk
-        // before queuing the next one; this bounds temporary DMA usage to one
-        // kRlcdTxChunkBytes allocation without reserving more internal RAM.
+        // Drain the transfer before reusing the single DMA bounce buffer.
         if (!RLCD_WaitForPendingColorTransfers()) {
             all_chunks_queued = false;
             break;

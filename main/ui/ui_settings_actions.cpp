@@ -18,6 +18,10 @@
 #include "pomodoro_services.h"
 #include "setup_portal_control.h"
 #include "ui_info_page_state_internal.h"
+#include "ui_language.h"
+#include "ui_object_refs.h"
+#include "ui_page_state.h"
+#include "ui_settings_page.h"
 #include "ui_gallery_rotation_state.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_confirmation_state_internal.h"
@@ -46,7 +50,6 @@ constexpr const char *kOfflinePageUnavailableFeedback = "此版本僅保留本�
 constexpr const char *kManualNtpSyncFeedback = "正在同步时间...";
 constexpr const char *kSoundVolumeFeedbackFormat = "音量 %d%%";
 constexpr const char *kSoundMutedFeedback = "已靜音";
-constexpr const char *kSoundIndexFeedbackFormat = "声音 %d";
 constexpr const char *kHourlyChimeEnabledFeedback = "整点提醒已开启";
 constexpr const char *kHourlyChimeDisabledFeedback = "整点提醒已关闭";
 constexpr const char *kAllDayChimeEnabledFeedback = "全天提醒已开启";
@@ -57,10 +60,9 @@ constexpr const char *kLastWorkPageFeedback = "至少保留一个页面";
 constexpr const char *kXiaozhiNeedsHomeFeedback = "请至少保留一个非小智页面";
 constexpr const char *kXiaozhiHomeBlockedFeedback = "小智AI不能设为主页";
 constexpr const char *kPomodoroRunningFeedback = "请先取消番茄钟";
-constexpr const char *kXiaozhiAutoReturnEnabledFeedback = "小智节能已开启";
-constexpr const char *kXiaozhiAutoReturnDisabledFeedback = "小智节能已关闭";
-constexpr const char *kGalleryRotationBuiltinFeedback = "默认图片固定24h";
-constexpr const char *kGalleryRotationFeedbackFormat = "图片切换 %s";
+constexpr const char *kXiaozhiAutoReturnEnabledFeedback = "小智自動返回已開啟";
+constexpr const char *kXiaozhiAutoReturnDisabledFeedback = "小智自動返回已關閉";
+constexpr const char *kGalleryRotationBuiltinFeedback = "預設圖片固定 24h";
 constexpr const char *kAlarmDisabledFeedback = "闹钟已关闭";
 constexpr const char *kAlarmSetByXiaozhiFeedback = "请通过小智AI设置";
 constexpr const char *kWorkPageFeedbackFormat = "%s%s";
@@ -70,8 +72,6 @@ constexpr const char *kSetupStartFailedFeedback = "配网启动失败";
 constexpr const char *kSetupInstructionFeedback = "設定模式已開啟，請連線 AP";
 constexpr const char *kFactoryResetConfirmFeedback = "再次按 BOOT 确认";
 constexpr const char *kFactoryResetFailedFeedback = "恢复失败";
-constexpr const char *kCodexBondsClearedFeedback = "Codex 配对已清除";
-constexpr const char *kCodexBondsClearFailedFeedback = "清除 Codex 配对失败";
 constexpr size_t kSettingsFeedbackTextSize = 32;
 #define CHIME_BOOLEAN_SETTING_LOG_FORMAT "%s %s"
 #define CHIME_SETTING_ENABLED_LOG_VALUE "enabled"
@@ -233,7 +233,8 @@ void handle_sound_settings_action(int selected)
         if (!set_chime_setting_or_feedback(next)) {
             return;
         }
-        set_formatted_settings_feedback(kSoundIndexFeedbackFormat, next.sound_index + 1);
+        set_formatted_settings_feedback(
+            ui_language_text("聲音 %d", "声音 %d"), next.sound_index + 1);
         request_settings_confirmation_chime();
     } else if (selected == kSoundSettingsHourlyItem) {
         toggle_chime_boolean_setting(
@@ -300,7 +301,9 @@ void handle_display_settings_action(
         if (codex_runtime_ok) {
             set_formatted_settings_feedback(kWorkPageFeedbackFormat,
                                             work_page_name(page),
-                                            page_will_be_enabled ? kWorkPageEnabledSuffix : kWorkPageDisabledSuffix);
+                                            page_will_be_enabled
+                                                ? ui_language_text("已開啟", kWorkPageEnabledSuffix)
+                                                : ui_language_text("已關閉", kWorkPageDisabledSuffix));
         }
         return;
     }
@@ -355,7 +358,7 @@ void handle_display_settings_action(
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        set_formatted_settings_feedback(kGalleryRotationFeedbackFormat,
+        set_formatted_settings_feedback(ui_language_text("自訂圖 %s", "自定义图 %s"),
                                         gallery_rotation_period_label(next));
         return;
     }
@@ -405,9 +408,25 @@ void handle_system_settings_action(
         ESP_LOGI(TAG, "%s", SYSTEM_INFO_REQUESTED_LOG);
     } else if (selected == kSystemSettingsClearCodexBondsItem) {
         set_settings_feedback(codex_usage_ble_clear_bonds()
-                                  ? kCodexBondsClearedFeedback
-                                  : kCodexBondsClearFailedFeedback,
+                                  ? ui_language_text("Codex 配對已清除", "Codex 配对已清除")
+                                  : ui_language_text("清除 Codex 配對失敗", "清除 Codex 配对失败"),
+                               kSettingsFeedbackDefaultMs);
+    } else if (selected == kSystemSettingsLanguageItem) {
+        const UiLanguage next = ui_language_is_traditional()
+                                    ? UiLanguage::Simplified
+                                    : UiLanguage::Traditional;
+        if (!set_ui_language_setting(next)) {
+            set_settings_feedback(ui_language_text("儲存失敗", "保存失败"),
+                                  kSettingsFeedbackDefaultMs);
+            return;
+        }
+        set_settings_feedback(ui_language_text("已切換繁體中文", "已切换简体中文"),
                               kSettingsFeedbackDefaultMs);
+        lv_obj_clean(lv_scr_act());
+        clear_clock_object_refs();
+        clear_info_object_refs();
+        build_settings_page();
+        show_page(auxiliary_page_root(AuxiliaryPage::kSettings));
     }
 }
 } // namespace

@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "app_time_constants.h"
+#include "ui_language.h"
 
 #include <stdint.h>
 #include <stdio.h>
@@ -296,14 +297,16 @@ static const char *lunar_festival(int lunar_month, int lunar_day)
 
 static void set_calendar_subtext(CalendarDayInfo *info, const char *text)
 {
-    strlcpy(info->subtext, text ? text : kCalendarLunarPlaceholder, sizeof(info->subtext));
+    strlcpy(info->subtext,
+            ui_language_localize(text ? text : kCalendarLunarPlaceholder),
+            sizeof(info->subtext));
 }
 
 static void set_calendar_lunar_month_subtext(CalendarDayInfo *info)
 {
     int written = snprintf(info->subtext, sizeof(info->subtext), kLunarMonthDisplayFormat,
-                           info->lunar_leap ? "闰" : "",
-                           kLunarMonthNames[info->lunar_month]);
+                           info->lunar_leap ? ui_language_text("閏", "闰") : "",
+                           ui_language_localize(kLunarMonthNames[info->lunar_month]));
     if (app_text::format_failed(written, sizeof(info->subtext))) {
         set_calendar_subtext(info, nullptr);
     }

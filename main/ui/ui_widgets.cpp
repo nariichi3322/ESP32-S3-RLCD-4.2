@@ -3,6 +3,7 @@
 
 #include "app_metadata.h"
 #include "ui_fonts.h"
+#include "ui_language.h"
 
 #include <esp_log.h>
 #include <string.h>
@@ -99,7 +100,7 @@ lv_obj_t *make_label_with_font(lv_obj_t *parent,
         return nullptr;
     }
     set_obj_box(label, x, y, w, h);
-    lv_label_set_text(label, label_text_or_empty(text));
+    lv_label_set_text(label, ui_language_localize(label_text_or_empty(text)));
     lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(label, lv_color_black(), LV_PART_MAIN);
     if (font) {
@@ -155,7 +156,7 @@ bool set_label_text_if_changed(lv_obj_t *label, const char *text)
     if (!label) {
         return false;
     }
-    text = label_text_or_empty(text);
+    text = ui_language_localize(label_text_or_empty(text));
     const char *current = lv_label_get_text(label);
     if (current == nullptr || strcmp(current, text) != 0) {
         lv_label_set_text(label, text);

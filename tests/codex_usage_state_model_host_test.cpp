@@ -14,7 +14,7 @@ int main()
     first.quota_reset_seconds = 120;
     assert(codex_usage_state_commit(state, first, 1000) ==
            CodexUsageCommitResult::AcceptedChanged);
-    assert(state.generation == 2 && state.data_valid);
+    assert(state.generation == 2 && state.snapshot_valid && state.data_valid);
 
     assert(codex_usage_state_commit(state, first, 16000) ==
            CodexUsageCommitResult::Heartbeat);
@@ -44,14 +44,18 @@ int main()
     assert(state.generation == 3);
 
     assert(codex_usage_state_set_connection(state, false, false));
-    assert(state.last_sequence == 0);
+    assert(state.last_sequence == 0 && state.snapshot_valid && !state.data_valid);
+    assert(codex_usage_state_set_connection(state, true, true));
+    assert(state.snapshot_valid && !state.data_valid);
     CodexUsageSnapshot reconnect = changed;
     reconnect.sequence = 1;
-    assert(codex_usage_state_commit(state, reconnect, 63000) !=
-           CodexUsageCommitResult::SequenceRollback);
+    assert(codex_usage_state_commit(state, reconnect, 63000) ==
+           CodexUsageCommitResult::AcceptedChanged);
+    assert(state.snapshot_valid && state.data_valid);
 
     const uint32_t before_clear = state.generation;
     codex_usage_state_clear(state);
-    assert(!state.data_valid && state.generation == before_clear + 1U);
+    assert(!state.snapshot_valid && !state.data_valid &&
+           state.generation == before_clear + 1U);
     return 0;
 }

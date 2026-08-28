@@ -16,7 +16,14 @@ def _client_options(disconnected_callback: Callable[[Any], None]) -> dict:
     # The ESP32 initiates display-only SMP after connecting. Do not ask
     # Bleak/WinRT to pair first: Bleak 1.x uses a confirm-only ceremony and can
     # fall back to an encrypted-but-unauthenticated bond on Windows.
-    return {"timeout": 60, "disconnected_callback": disconnected_callback}
+    return {
+        "timeout": 60,
+        "disconnected_callback": disconnected_callback,
+        # Firmware updates can change characteristic handles while Windows
+        # retains the bonded device's old GATT database. Always rediscover the
+        # live attribute table instead of accepting that stale cache.
+        "winrt": {"use_cached_services": False},
+    }
 
 
 class BleCompanion:

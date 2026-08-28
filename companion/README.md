@@ -16,14 +16,15 @@ powershell -ExecutionPolicy Bypass -File companion\run.ps1 --once
 powershell -ExecutionPolicy Bypass -File companion\run.ps1
 ```
 
-`--once` prints the actual v1 JSON without BLE. On the first normal run Windows
+`--once` prints the actual v2 JSON without BLE. The firmware also accepts legacy
+v1 payloads. On the first normal run Windows
 opens a pairing dialog. Enter the six-digit passkey shown on the display. A
 snapshot is sent immediately after connection, every 15 seconds as a heartbeat,
 and immediately after lifecycle state changes. Full app-server metrics refresh
 every 60 seconds. Scan/reconnect failures use bounded exponential backoff.
 
 If pairing must be replaced, use the display's local system setting
-`清除 Codex 配对`, remove stale Windows Bluetooth entries if present, and pair
+`清除配對` (or `清除配对` in Simplified Chinese), remove stale Windows Bluetooth entries if present, and pair
 again. BLE initialization failure does not affect the clock or Wi-Fi pages.
 
 If scanning fails, verify Bluetooth is enabled in Windows Settings, remove any

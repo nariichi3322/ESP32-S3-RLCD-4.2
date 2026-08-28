@@ -6,6 +6,7 @@
 #include "offline_mode_state_internal.h"
 #include "ui_settings_confirmation_state_internal.h"
 #include "ui_gallery_rotation_state_internal.h"
+#include "ui_language_internal.h"
 #include "weather_city_contract.h"
 
 #include <assert.h>
@@ -48,7 +49,7 @@ int custom_assets_gallery_count()
 int main()
 {
     static_assert(kDisplaySettingsXiaozhiAutoReturnItem == 2,
-                  "Xiaozhi power saving must use the left cell of the second row");
+                  "Xiaozhi auto return must use the left cell of the second row");
     static_assert(kDisplaySettingsAlarmItem == 3,
                   "alarm must use the right cell of the second row");
     SettingsSecondaryStateSnapshot state = {};
@@ -62,13 +63,13 @@ int main()
     assert(!settings_secondary_index_valid(kSettingsSecondaryMaxCount));
 
     populate_settings_secondary_items(kSettingsPrimaryNetwork, state, items);
-    expect_text(items, kNetworkSettingsNtpItem, "同步时间");
+    expect_text(items, kNetworkSettingsNtpItem, "同步時間");
 
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimarySound, state, items);
     expect_text(items, kSoundSettingsVolumeItem, "音量 60%");
-    expect_text(items, kSoundSettingsSoundItem, "声音选择 3");
-    expect_text(items, kSoundSettingsHourlyItem, "整点提醒 7:00 - 22:00");
+    expect_text(items, kSoundSettingsSoundItem, "聲音選擇 3");
+    expect_text(items, kSoundSettingsHourlyItem, "整點提醒 7:00 - 22:00");
     expect_text(items, kSoundSettingsAllDayItem, "全天提醒 0:00 - 24:00");
 
     state.volume_percent = 0;
@@ -78,37 +79,49 @@ int main()
 
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimaryDisplay, state, items);
-    expect_text(items, kDisplaySettingsPageSwitchItem, "页面开关");
-    expect_text(items, kDisplaySettingsOrderItem, "页面顺序");
-    expect_text(items, kDisplaySettingsXiaozhiAutoReturnItem, "小智节能");
-    expect_text(items, kDisplaySettingsAlarmItem, "闹钟 --:--");
-    expect_text(items, kDisplaySettingsGalleryRotationItem, "图片切换 24h");
+    expect_text(items, kDisplaySettingsPageSwitchItem, "頁面開關");
+    expect_text(items, kDisplaySettingsOrderItem, "頁面順序");
+    expect_text(items, kDisplaySettingsXiaozhiAutoReturnItem, "自動返回");
+    expect_text(items, kDisplaySettingsAlarmItem, "鬧鐘 --:--");
+    expect_text(items, kDisplaySettingsGalleryRotationItem, "自訂圖 24h");
 
     gallery_rotation_period_store(kGalleryRotation30Minutes);
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimaryDisplay, state, items);
-    expect_text(items, kDisplaySettingsGalleryRotationItem, "图片切换 24h");
+    expect_text(items, kDisplaySettingsGalleryRotationItem, "自訂圖 24h");
 
     s_custom_gallery_count = 3;
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimaryDisplay, state, items);
-    expect_text(items, kDisplaySettingsGalleryRotationItem, "图片切换 30m");
+    expect_text(items, kDisplaySettingsGalleryRotationItem, "自訂圖 30m");
 
     state.alarm_enabled = true;
     state.alarm_hour = 6;
     state.alarm_minute = 30;
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimaryDisplay, state, items);
-    expect_text(items, kDisplaySettingsAlarmItem, "闹钟 06:30");
+    expect_text(items, kDisplaySettingsAlarmItem, "鬧鐘 06:30");
 
     offline_mode_enabled_store(true);
     settings_confirmation_request(SettingsConfirmation::kFactoryReset);
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
     expect_text(items, kSystemSettingsSetupItem, "設定模式");
-    expect_text(items, kSystemSettingsFactoryResetItem, "确认恢复");
-    expect_text(items, kSystemSettingsInfoItem, "关于本机");
-    expect_text(items, kSystemSettingsClearCodexBondsItem, "清除 Codex 配对");
+    expect_text(items, kSystemSettingsFactoryResetItem, "確認恢復");
+    expect_text(items, kSystemSettingsInfoItem, "關於本機");
+    expect_text(items, kSystemSettingsClearCodexBondsItem, "清除配對");
+    expect_text(items, kSystemSettingsLanguageItem, "語言 繁");
+
+    ui_language_store(UiLanguage::Simplified);
+    memset(items, 0, sizeof(items));
+    populate_settings_secondary_items(kSettingsPrimaryDisplay, state, items);
+    expect_text(items, kDisplaySettingsPageSwitchItem, "页面开关");
+    expect_text(items, kDisplaySettingsXiaozhiAutoReturnItem, "自动返回");
+    expect_text(items, kDisplaySettingsGalleryRotationItem, "自定义图 30m");
+    memset(items, 0, sizeof(items));
+    populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
+    expect_text(items, kSystemSettingsClearCodexBondsItem, "清除配对");
+    expect_text(items, kSystemSettingsLanguageItem, "语言 简");
 
     return 0;
 }

@@ -4,6 +4,7 @@
 #include "app_metadata.h"
 #include "ota_runtime_state.h"
 #include "ui_page_state.h"
+#include "ui_language.h"
 #include "ui_text_format.h"
 #include "ui_widgets.h"
 
@@ -158,7 +159,8 @@ bool update_settings_ota_panel(bool visible, const OtaRuntimeSnapshot &ota)
             ui_text::format_or_fallback(ota_line,
                                         sizeof(ota_line),
                                         kSettingsOtaLinePlaceholder,
-                                        kSettingsOtaCurrentVersionFormat,
+                                        ui_language_text("目前版本 %s",
+                                                         kSettingsOtaCurrentVersionFormat),
                                         APP_VERSION);
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintCheck);
         }

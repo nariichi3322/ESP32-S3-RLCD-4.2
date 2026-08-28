@@ -1,6 +1,7 @@
 # Adapted from codex-usage-display (MIT); see THIRD_PARTY_NOTICES.md
 import argparse
 import asyncio
+import ctypes
 import logging
 import os
 import platform
@@ -16,6 +17,27 @@ from .metrics import Snapshot, collect_active_thread_state, collect_snapshot_sta
 from .protocol import encode_snapshot
 
 
+_INSTANCE_MUTEX_NAME = "Local\\CodexUsageDisplayCompanion"
+_ERROR_ALREADY_EXISTS = 183
+
+
+def acquire_instance_mutex() -> tuple[object, int] | None:
+    """Return the Win32 mutex owner, or None when a companion already runs."""
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.argtypes = (ctypes.c_void_p, ctypes.c_bool,
+                                      ctypes.c_wchar_p)
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    kernel32.CloseHandle.argtypes = (ctypes.c_void_p,)
+    kernel32.CloseHandle.restype = ctypes.c_bool
+    handle = kernel32.CreateMutexW(None, False, _INSTANCE_MUTEX_NAME)
+    if not handle:
+        raise ctypes.WinError(ctypes.get_last_error())
+    if ctypes.get_last_error() == _ERROR_ALREADY_EXISTS:
+        kernel32.CloseHandle(handle)
+        return None
+    return kernel32, handle
+
+
 class SnapshotCache:
     def __init__(self, client: AppServerClient, refresh_seconds: float) -> None:
         self.client, self.refresh_seconds = client, refresh_seconds
@@ -26,6 +48,7 @@ class SnapshotCache:
         self.active_paths: set[str] = set()
         self.activity: Optional[HookActivityTracker] = None
         self.status_changed = asyncio.Event()
+        self.quota_signature: Optional[tuple[int, int]] = None
 
     def attach_activity(self, activity: HookActivityTracker) -> None:
         self.activity = activity
@@ -53,6 +76,15 @@ class SnapshotCache:
     async def refresh(self) -> None:
         async with self.lock:
             self.snapshot, self.active_paths = await collect_snapshot_state(self.client)
+            signature = (self.snapshot.limit_window_minutes,
+                         self.snapshot.secondary_limit_window_minutes
+                         if self.snapshot.secondary_available else 0)
+            if signature != self.quota_signature:
+                logging.info("Codex quota windows: primary=%dm secondary=%s",
+                             signature[0],
+                             f"{signature[1]}m" if signature[1]
+                             else "unavailable")
+                self.quota_signature = signature
             self.updated_at = asyncio.get_running_loop().time()
             self.sequence += 1
 
@@ -101,6 +133,9 @@ async def run(args: argparse.Namespace) -> None:
         if args.once:
             print((await cache.encoded()).decode())
             return
+        # Preload the first snapshot before scanning. Once BLE connects, the
+        # initial authenticated write must not wait on an app-server round trip.
+        await cache.refresh()
         activity = HookActivityTracker(cache.activity_changed)
         cache.attach_activity(activity)
         ble = BleCompanion(cache.encoded, cache.refresh, args.device,
@@ -142,6 +177,10 @@ def main() -> None:
                                     backupCount=1, encoding="utf-8")] if log_path else None
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s", handlers=handlers)
+    mutex = None if args.once else acquire_instance_mutex()
+    if not args.once and mutex is None:
+        logging.warning("Another Codex Display companion is already running; exiting")
+        return
     try:
         asyncio.run(run(args))
     except KeyboardInterrupt:
@@ -149,3 +188,7 @@ def main() -> None:
     except Exception:
         logging.exception("Companion exited unexpectedly")
         raise SystemExit(1)
+    finally:
+        if mutex is not None:
+            kernel32, handle = mutex
+            kernel32.CloseHandle(handle)

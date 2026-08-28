@@ -4,10 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-inline constexpr size_t kCodexUsageMaxPayloadBytes = 256;
+inline constexpr size_t kCodexUsageMaxPayloadBytes = 180;
 inline constexpr uint32_t kCodexUsageStaleMs = 60000;
 
 enum class CodexUsageLinkState : uint8_t {
+    Disconnected,
     Waiting,
     Linked,
     Stale,
@@ -15,14 +16,18 @@ enum class CodexUsageLinkState : uint8_t {
 
 struct CodexUsageSnapshot {
     uint8_t remaining_percent = 0;
+    bool secondary_available = false;
+    uint8_t secondary_remaining_percent = 0;
     uint64_t tokens_today = 0;
     bool tokens_today_estimated = false;
     uint64_t tokens_7d = 0;
     uint8_t active_threads = 0;
     uint8_t reset_credits = 0;
     uint32_t quota_reset_seconds = 0;
+    uint32_t secondary_quota_reset_seconds = 0;
     uint32_t next_credit_expiry_seconds = 0;
     uint32_t limit_window_minutes = 0;
+    uint32_t secondary_limit_window_minutes = 0;
     uint64_t unix_time = 0;
     int16_t utc_offset_minutes = 0;
     uint32_t sequence = 0;
@@ -45,9 +50,10 @@ uint32_t codex_usage_countdown_seconds(uint32_t received_seconds,
                                        uint32_t now_tick_ms);
 CodexUsageLinkState codex_usage_link_state(bool data_valid,
                                            bool ble_connected,
+                                           bool bonded,
                                            uint32_t last_valid_tick_ms,
                                            uint32_t now_tick_ms);
 bool codex_usage_display_values_equal(const CodexUsageSnapshot &a,
                                       const CodexUsageSnapshot &b);
 bool codex_usage_format_tokens(uint64_t tokens, char *buffer, size_t capacity);
-
+bool codex_usage_format_window(uint32_t minutes, char *buffer, size_t capacity);

@@ -8,7 +8,7 @@
 
 - Codex Usage 可在頁面設定中啟用、停用及排序，既有設定可無損升級。
 - Windows Companion 能完成安全配對並傳送剩餘額度、重置倒數、今日／七日 Token、Reset credits 與執行中任務數。
-- 400×300 RLCD 畫面可顯示 `WAITING`、`LINKED`、`STALE` 與有效資料，無 480×480 AMOLED 版面或觸控相依。
+- 400×300 RLCD 畫面可顯示 `DISCONNECT`、`WAITING`、`LINKED`、`STALE` 與有效資料，無 480×480 AMOLED 版面或觸控相依。
 - 關閉 Codex Usage 頁面時不啟動 BLE；啟用時 BLE 可在 Wi-Fi 關閉及短暫 NTP 同步兩種狀態下正常工作。
 - 隱藏頁面不重繪；heartbeat 未造成可見文字變化時不刷新；倒數最多每分鐘更新一次。
 - 完成 host tests、Companion Python tests、來源檔／局部編譯與 App 連結尺寸檢查，不執行完整韌體映像建置或刷機。
@@ -23,7 +23,7 @@
 - 傳輸方向：Windows → ESP32 狀態快照；ESP32 除 GATT／安全配對必要回應外不傳送應用命令。
 - BLE 在 Codex Usage 頁面「已啟用」期間常駐，不以頁面是否正在顯示作為斷線條件。
 - 新安裝與舊版設定升級後，Codex Usage 預設啟用並排在既有七頁之後；使用者可在顯示設定中關閉或重新排序。
-- Codex 快照只保存在 RAM。重新開機後顯示 `WAITING`，不從 NVS 恢復舊使用量。
+- Codex 快照只保存在 RAM。重新開機且 BLE 尚未連線時顯示 `DISCONNECT`，不從 NVS 恢復舊使用量。
 
 ### 排除範圍
 
@@ -36,7 +36,7 @@
 
 ### 相容性與授權
 
-- 沿用來源 BLE service UUID 與 status characteristic UUID，status JSON 維持 protocol v1，以便重用資料語意；不建立 command/result characteristic。
+- 沿用來源 BLE service UUID 與 status characteristic UUID；Companion 傳送 protocol v2 雙額度資料，韌體相容讀取 v1；不建立 command/result characteristic。
 - Companion 改為 status-only，不再訂閱 command characteristic，也不保留 action 執行路徑。
 - 搬入的 MIT 程式碼保留來源 copyright／license，並在本專案 `THIRD_PARTY_NOTICES.md` 加入 Codex Usage Display 與 Bleak 聲明；不改變本專案既有授權對原始碼的適用範圍。
 - 執行前先檢查工作樹；目前 `main/input/input_tasks.cpp`、`main/ui/ui_page_state.cpp`、`main/ui/ui_views.cpp` 等已有使用者修改。所有整合必須逐段合併，不得覆寫或回退既有變更。
@@ -46,7 +46,7 @@
 ### 工作頁介面
 
 - 在 `work_page_ids.h` 追加 `kWorkPageCodexUsage = 7`，將 `kWorkPageCount` 改為 8；既有 0～6 ID 不變。
-- 頁面名稱固定為 `Codex Usage`；traits 為「本地／不需要 Wi-Fi」及「低刷新頁面」。它必須保留在 `work_page_mask_for_offline_mode()` 的結果中，不觸發 weather、daily saying 或任何 Wi-Fi data requirement。
+- 主頁名稱為 `Codex Usage`，設定清單使用不溢位的短名稱 `Codex`；traits 為「本地／不需要 Wi-Fi」及「低刷新頁面」。它必須保留在 `work_page_mask_for_offline_mode()` 的結果中，不觸發 weather、daily saying 或任何 Wi-Fi data requirement。
 - 目前 `uint8_t` page mask 剛好容納八頁，本次維持格式；加入 static assertion 說明八頁為上限，未來第九頁必須先升級 mask 型別。
 - 新增 UI 介面：`build_codex_usage_page()`、`update_codex_usage_page(const tm &, const CodexUsageSnapshotView &)`、`clear_codex_usage_page_object_refs()`；只有 UI task 可以建立或更新 LVGL object。
 
@@ -60,33 +60,35 @@
 - `active_threads: uint8_t`。
 - `reset_credits: uint8_t`。
 - `quota_reset_seconds: uint32_t`。
+- 第二額度視窗的 available、remaining percent、reset seconds 與 window minutes。
 - `next_credit_expiry_seconds: uint32_t`。
 - `limit_window_minutes: uint32_t`。
 - `unix_time: uint64_t`、`utc_offset_minutes: int16_t`。
 - `sequence: uint32_t`、最後有效封包的 monotonic tick、資料 generation。
-- `data_valid`、BLE connected/bonded 狀態，以及衍生的 `Waiting / Linked / Stale` UI 狀態。
+- `data_valid`、BLE connected/bonded 狀態，以及衍生的 `Disconnected / Waiting / Linked / Stale` UI 狀態。
 
 狀態採單一 mutex 保護的 copy-in/copy-out store；BLE callback 驗證並提交完整 snapshot，UI 只讀副本，不直接讀 callback-owned memory。每次有效資料變更增加 generation；相同顯示值的 heartbeat 只更新 watchdog，不強迫 UI redraw。
 
-### BLE status JSON v1
+### BLE status JSON v2（相容讀取 v1）
 
-接受上限 256 bytes 的 UTF-8 JSON，正常 Companion payload 必須維持 180 bytes 內。欄位如下：
+接受上限 180 bytes 的 UTF-8 JSON，Companion payload 也必須維持 180 bytes 內。欄位如下：
 
 ```json
-{"v":1,"s":42,"t":1784341234,"o":480,"r":68,"u":10080,"q":201600,"d":1250000,"e":0,"w":6840000,"c":2,"x":358400,"a":3}
+{"v":2,"s":42,"t":1784341234,"o":480,"r":68,"u":300,"q":9600,"n":1,"R":74,"U":10080,"Q":358400,"d":1250000,"e":0,"w":6840000,"c":2,"x":358400,"a":3}
 ```
 
-- 必填：`v`、`s`、`t`、`o`、`r`、`u`、`q`、`d`、`w`、`c`、`x`、`a`；`e` 可省略並預設為 0。
-- `v` 必須為 1，`s` 必須大於 0，`r` 必須在 0～100；數字必須為整數且不得負值，只有 `o` 可為負並限制在合理 UTC offset 範圍 -840～840 分鐘。
+- v2 必填：既有 v1 欄位及 `n`、`R`、`U`、`Q`；`n` 表示第二視窗是否可用，韌體仍接受缺少這四欄的 v1。
+- `v` 必須為 1 或 2，`s` 必須大於 0，百分比必須在 0～100；數字必須為整數且不得負值，只有 `o` 可為負並限制在合理 UTC offset 範圍 -840～840 分鐘。
 - 每次 BLE connection 將 last sequence 歸零；小於 last sequence 的封包拒絕，相同 sequence 視為 idempotent heartbeat，大於 last sequence 才替換業務資料。
 - malformed、超長、版本錯誤或越界 payload 不得覆蓋最後有效資料，只記錄節流後的診斷訊息。
 - Companion 連線後先重新讀取 Codex，再送第一包；之後每 15 秒 heartbeat、每 60 秒重新取得帳戶資料，hook 狀態變更可立即推送。
 
 ### 連線狀態定義
 
-- `WAITING`：啟用 BLE 但本次開機尚未收到有效 snapshot。
-- `LINKED`：BLE 已連線，且最後有效 status 未超過 60 秒。
-- `STALE`：曾收到有效 snapshot，但 BLE 已斷線，或超過 60 秒沒有有效 status；保留並顯示最後資料。
+- `DISCONNECT`：BLE 未連線；斷線後立即顯示，已有 snapshot 時仍保留最後資料。
+- `WAITING`：BLE 已連線，但尚未完成安全配對或尚未收到有效 snapshot。
+- `LINKED`：BLE 已完成安全配對，且最後有效 status 未超過 60 秒。
+- `STALE`：BLE 仍連線，但超過 60 秒沒有有效 status；保留並顯示最後資料。
 - 配對碼不是工作頁狀態。NimBLE callback 將六位數 passkey 發成 app event，由 UI task 顯示全畫面最高層 transient overlay；成功、失敗或 75 秒 timeout 後關閉。
 
 ## 4. 實作步驟
@@ -111,8 +113,8 @@
 頁面沿用現有白底、黑色文字、共用頂部狀態列與局部刷新框架，不移植 AMOLED 色彩、圓形 arc、觸控按鈕或 overlay actions。
 
 - 頂部 0～63 px：沿用 work-page status bar 與分隔線；日期／時間更新沿用既有機制。
-- 主內容 18～382 px、70～282 px：左側為 `CODEX LEFT`、大號百分比及 reset countdown；右側以兩欄／三列顯示 `TODAY`、`7 DAYS`、`RUN`、`RESET`／expiry。
-- 底部或右下角使用邊框／反白 badge 顯示 `WAITING`、`LINKED`、`STALE`，不依賴顏色傳達狀態。
+- 主內容 18～382 px、70～282 px：左側上下顯示 primary/secondary `CODEX LEFT`、百分比及 reset countdown，週期依服務回傳顯示為 `5h`、`7d`、`30d` 等；右側以兩欄／三列顯示 `TODAY`、`7 DAYS` token、`RUN`、credits／expiry。
+- 底部或右下角使用邊框／反白 badge 顯示四種連線狀態，不依賴顏色傳達狀態。
 - `tokens_today_estimated` 為真時在 TODAY 值前顯示 `~`。
 - 無資料時各 metric 顯示 `--`；STALE 保留最後值並顯示狀態，不清空。
 - 文字過長必須使用固定 buffer、compact formatting 或截斷，不允許水平捲動。
@@ -167,10 +169,10 @@
 
 ### 實機驗收清單（需使用者操作／回報）
 
-1. 未配對開機：本地頁正常，Codex 頁顯示 WAITING，Windows 能發現 `Codex Display`。
+1. 未配對開機：本地頁正常，Codex 頁顯示 DISCONNECT，Windows 能發現 `Codex Display`。
 2. 首次配對：裝置顯示六位 passkey，Windows 輸入相同碼後收到第一包並顯示 LINKED。
 3. 指標比對：頁面 remaining、reset、TODAY、7 DAYS、RUN、credits/expiry 與 Companion `--once` 輸出一致。
-4. 關閉／重開 Companion：立即或逾時進入 STALE、保留最後值，重連後回 LINKED。
+4. 關閉／重開 Companion：BLE 斷線立即進入 DISCONNECT、保留最後值，重連後回 LINKED；只有 BLE 保持連線但資料超過 60 秒才顯示 STALE。
 5. Windows Bluetooth off/on、電腦睡眠喚醒及登出登入：Scheduled Task 能恢復掃描與資料更新。
 6. 執行 NTP 同步：Wi-Fi 視窗結束後關閉 Wi-Fi，BLE 保持或自動恢復，時鐘與 RTC 行為不退化。
 7. 關閉 Codex Usage 頁面：BLE 停止 advertising/connection；重新啟用後恢復服務。

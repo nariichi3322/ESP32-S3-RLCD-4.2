@@ -1,4 +1,4 @@
-// 构建 Codex Usage 六种验收状态的 SDL 静态预览。
+// 建立 Codex Usage 多種驗收狀態的 SDL 靜態預覽。
 #pragma once
 
 #include <lvgl.h>
@@ -8,7 +8,12 @@ struct CodexPreviewFixture {
     const char *state;
     bool data_valid;
     uint8_t remaining_percent;
+    const char *primary_window;
     const char *reset;
+    bool secondary_available;
+    uint8_t secondary_remaining_percent;
+    const char *secondary_window;
+    const char *secondary_reset;
     const char *today;
     const char *week;
     uint16_t active_threads;

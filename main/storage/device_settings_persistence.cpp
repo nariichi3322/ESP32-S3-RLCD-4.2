@@ -9,6 +9,7 @@
 #include "network_page_storage.h"
 #include "ui_gallery_rotation_state_internal.h"
 #include "ui_clock_seconds_state_internal.h"
+#include "ui_language_internal.h"
 #include "ui_work_page_catalog_internal.h"
 #include "ui_work_page_order_policy.h"
 #include "xiaozhi_auto_return_state_internal.h"
@@ -23,6 +24,7 @@ using network_page_storage::write_work_page_order_nvs;
 using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
 using network_config_keys::kWeatherClockSecondsKey;
+using network_config_keys::kUiLanguageKey;
 
 namespace {
 constexpr const char *kNvsActionSavingHourlyReminder = "saving hourly reminder";
@@ -31,10 +33,12 @@ constexpr const char *kNvsActionSavingPageOrder = "saving page order";
 constexpr const char *kNvsActionSavingXiaozhiAutoReturn = "saving Xiaozhi auto return";
 constexpr const char *kNvsActionSavingGalleryRotation = "saving gallery rotation";
 constexpr const char *kNvsActionSavingClockSeconds = "saving clock seconds";
+constexpr const char *kNvsActionSavingUiLanguage = "saving UI language";
 constexpr const char *kNvsFailureContextPageSettings = "page settings";
 constexpr const char *kNvsFailureContextXiaozhiAutoReturn = "Xiaozhi auto return";
 constexpr const char *kNvsFailureContextGalleryRotation = "gallery rotation";
 constexpr const char *kNvsFailureContextClockSeconds = "clock seconds";
+constexpr const char *kNvsFailureContextUiLanguage = "UI language";
 #define NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT "nvs save hourly reminder failed: %s"
 #define NVS_SAVE_PAGE_ORDER_FAILED_FORMAT "nvs save page order failed: %s"
 #define NVS_SAVE_U8_SETTING_FAILED_FORMAT "nvs save %s failed: %s"
@@ -182,4 +186,17 @@ bool set_weather_clock_seconds_visible_setting(bool visible)
     // unavailable. A failed save only means the choice may not survive reboot.
     weather_clock_seconds_visible_store(visible);
     return saved;
+}
+
+bool set_ui_language_setting(UiLanguage language)
+{
+    language = normalize_ui_language(static_cast<uint8_t>(language));
+    if (!save_changed_u8_setting(kNvsActionSavingUiLanguage,
+                                 kNvsFailureContextUiLanguage,
+                                 kUiLanguageKey,
+                                 static_cast<uint8_t>(language))) {
+        return false;
+    }
+    ui_language_store(language);
+    return true;
 }

@@ -19,7 +19,10 @@ class BleTests(unittest.IsolatedAsyncioTestCase):
     def test_windows_client_leaves_pairing_to_display_only_peripheral(self):
         callback = lambda _: None
         self.assertEqual(_client_options(callback), {
-            "timeout": 60, "disconnected_callback": callback})
+            "timeout": 60,
+            "disconnected_callback": callback,
+            "winrt": {"use_cached_services": False},
+        })
 
     async def test_send_uses_only_status_write_with_response(self):
         async def payload():

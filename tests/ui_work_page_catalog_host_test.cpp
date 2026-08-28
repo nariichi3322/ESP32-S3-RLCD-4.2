@@ -4,6 +4,7 @@
 #include "ui_work_page_order_policy.h"
 
 #include "active_work_page_state_internal.h"
+#include "ui_language_internal.h"
 
 #include <assert.h>
 #include <atomic>
@@ -170,14 +171,14 @@ int main()
     expect_default_order();
 
     const char *const expected_names[kWorkPageCount] = {
-        "天气时钟",
-        "图片时钟",
-        "天气看板",
-        "温湿时钟",
-        "日历",
-        "温湿历史",
+        "天氣時鐘",
+        "圖片時鐘",
+        "天氣看板",
+        "溫溼時鐘",
+        "日曆",
+        "溫溼歷史",
         "小智AI",
-        "Codex Usage",
+        "Codex",
     };
     const WorkPageDataRequirements expected_data[kWorkPageCount] = {
         {true, false, false},
@@ -198,7 +199,12 @@ int main()
                expected_data[page].extended_weather);
         assert(actual.daily_saying == expected_data[page].daily_saying);
     }
+    assert(strcmp(work_page_name(-1), "未知頁面") == 0);
+    ui_language_store(UiLanguage::Simplified);
+    assert(strcmp(work_page_name(kWorkPageWeatherClock), "天气时钟") == 0);
+    assert(strcmp(work_page_name(kWorkPageCodexUsage), "Codex") == 0);
     assert(strcmp(work_page_name(-1), "未知页面") == 0);
+    ui_language_store(UiLanguage::Traditional);
 
     assert(work_page_requires_network(kWorkPageWeatherClock));
     assert(work_page_requires_network(kWorkPageGallery));

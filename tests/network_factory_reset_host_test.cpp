@@ -38,6 +38,7 @@ const char *const kExpectedKeys[] = {
     "xz_auto_ret_v1",
     "gallery_rot_v1",
     "clock_sec_v1",
+    "ui_lang_v1",
 };
 
 std::map<std::string, std::string> g_values;
@@ -121,7 +122,7 @@ int main()
 {
     constexpr nvs_handle_t kNvs = 1;
     constexpr size_t kExpectedKeyCount = sizeof(kExpectedKeys) / sizeof(kExpectedKeys[0]);
-    static_assert(kExpectedKeyCount == 30,
+    static_assert(kExpectedKeyCount == 31,
                   "factory reset host test must enumerate every registered key");
 
     reset_store(true);

@@ -35,6 +35,7 @@ constexpr const char *kDeviceName = "Codex Display";
 constexpr size_t kDeviceNameLength = sizeof("Codex Display") - 1U;
 constexpr uint32_t kPairingOverlayMs = 75000;
 constexpr uint32_t kLogThrottleMs = 5000;
+constexpr uint32_t kFirstStatusTimeoutMs = 20000;
 constexpr uint16_t kNoConnection = BLE_HS_CONN_HANDLE_NONE;
 
 static_assert(3U + 2U + 16U <= 31U,
@@ -54,6 +55,10 @@ std::atomic<bool> s_running{false};
 std::atomic<bool> s_stopping{false};
 std::atomic<bool> s_host_exited{true};
 std::atomic<uint16_t> s_connection{kNoConnection};
+std::atomic<bool> s_connection_secure{false};
+std::atomic<bool> s_status_received{false};
+std::atomic<uint32_t> s_secure_since_tick{0};
+esp_timer_handle_t s_first_status_timer = nullptr;
 std::atomic<uint8_t> s_own_addr_type{0};
 std::atomic<uint32_t> s_pairing_passkey{0};
 std::atomic<uint32_t> s_pairing_expiry{0};
@@ -126,8 +131,42 @@ int status_access(uint16_t conn_handle, uint16_t,
         log_rejected_status(result);
         return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
     }
+    s_status_received.store(true, std::memory_order_release);
+    if (s_first_status_timer) (void)esp_timer_stop(s_first_status_timer);
     if (display_changed) notify_ui_task();
     return 0;
+}
+
+void first_status_watchdog(void *)
+{
+    const uint32_t now = monotonic_ms();
+    const uint32_t secure_since =
+        s_secure_since_tick.load(std::memory_order_acquire);
+    if (s_running.load(std::memory_order_acquire) &&
+        !s_stopping.load(std::memory_order_acquire) &&
+        s_connection_secure.load(std::memory_order_acquire) &&
+        !s_status_received.load(std::memory_order_acquire) &&
+        static_cast<uint32_t>(now - secure_since) >= kFirstStatusTimeoutMs) {
+        const uint16_t connection =
+            s_connection.load(std::memory_order_acquire);
+        if (connection != kNoConnection) {
+            ESP_LOGW(kTag,
+                     "no status after secure connection; disconnecting handle=%u",
+                     connection);
+            (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+        }
+    }
+}
+
+void schedule_first_status_watchdog()
+{
+    if (!s_first_status_timer) return;
+    (void)esp_timer_stop(s_first_status_timer);
+    const esp_err_t result = esp_timer_start_once(
+        s_first_status_timer,
+        static_cast<uint64_t>(kFirstStatusTimeoutMs) * 1000ULL);
+    if (result != ESP_OK) ESP_LOGW(kTag, "failed to arm first-status timer: %s",
+                                   esp_err_to_name(result));
 }
 
 const ble_gatt_chr_def kCharacteristics[] = {
@@ -167,6 +206,9 @@ int gap_event(ble_gap_event *event, void *)
         if (event->connect.status == 0) {
             s_connection.store(event->connect.conn_handle,
                                std::memory_order_release);
+            s_connection_secure.store(false, std::memory_order_release);
+            s_status_received.store(false, std::memory_order_release);
+            s_secure_since_tick.store(0, std::memory_order_release);
             codex_usage_state_connection_changed(true, false);
             notify_ui_task();
             return ble_gap_security_initiate(event->connect.conn_handle);
@@ -178,6 +220,10 @@ int gap_event(ble_gap_event *event, void *)
                  event->disconnect.reason,
                  event->disconnect.conn.conn_handle);
         s_connection.store(kNoConnection, std::memory_order_release);
+        s_connection_secure.store(false, std::memory_order_release);
+        s_status_received.store(false, std::memory_order_release);
+        s_secure_since_tick.store(0, std::memory_order_release);
+        if (s_first_status_timer) (void)esp_timer_stop(s_first_status_timer);
         codex_usage_state_connection_changed(false, false);
         clear_pairing();
         notify_ui_task();
@@ -196,7 +242,15 @@ int gap_event(ble_gap_event *event, void *)
                      "security status=%d encrypted=%u authenticated=%u bonded=%u",
                      event->enc_change.status, desc.sec_state.encrypted,
                      desc.sec_state.authenticated, desc.sec_state.bonded);
+            s_connection_secure.store(secure, std::memory_order_release);
             codex_usage_state_connection_changed(true, secure);
+            if (secure) {
+                s_secure_since_tick.store(monotonic_ms(),
+                                          std::memory_order_release);
+                schedule_first_status_watchdog();
+            } else if (s_first_status_timer) {
+                (void)esp_timer_stop(s_first_status_timer);
+            }
             if (secure || event->enc_change.status != 0) clear_pairing();
             notify_ui_task();
         }
@@ -276,6 +330,17 @@ bool initialize_transport()
 {
     if (s_initialized.load(std::memory_order_acquire)) return true;
     if (nimble_port_init() != ESP_OK) return false;
+    const esp_timer_create_args_t timer_args = {
+        .callback = first_status_watchdog,
+        .arg = nullptr,
+        .dispatch_method = ESP_TIMER_TASK,
+        .name = "codex_first",
+        .skip_unhandled_events = true,
+    };
+    if (esp_timer_create(&timer_args, &s_first_status_timer) != ESP_OK) {
+        nimble_port_deinit();
+        return false;
+    }
     ble_hs_cfg.sync_cb = on_sync;
     ble_hs_cfg.store_status_cb = ble_store_util_status_rr;
     ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
@@ -291,6 +356,8 @@ bool initialize_transport()
     if (ble_svc_gap_device_name_set(kDeviceName) != 0 ||
         ble_gatts_count_cfg(kServices) != 0 ||
         ble_gatts_add_svcs(kServices) != 0) {
+        (void)esp_timer_delete(s_first_status_timer);
+        s_first_status_timer = nullptr;
         nimble_port_deinit();
         return false;
     }
@@ -345,6 +412,11 @@ bool codex_usage_ble_set_enabled(bool enabled)
     }
     if (!s_running.exchange(false, std::memory_order_acq_rel)) {
         if (s_initialized.exchange(false, std::memory_order_acq_rel)) {
+            if (s_first_status_timer) {
+                (void)esp_timer_stop(s_first_status_timer);
+                (void)esp_timer_delete(s_first_status_timer);
+                s_first_status_timer = nullptr;
+            }
             return nimble_port_deinit() == ESP_OK;
         }
         return true;
@@ -367,9 +439,17 @@ bool codex_usage_ble_set_enabled(bool enabled)
         deinitialized = nimble_port_deinit() == ESP_OK;
         if (deinitialized) {
             s_initialized.store(false, std::memory_order_release);
+            if (s_first_status_timer) {
+                (void)esp_timer_stop(s_first_status_timer);
+                (void)esp_timer_delete(s_first_status_timer);
+                s_first_status_timer = nullptr;
+            }
         }
     }
     s_connection.store(kNoConnection, std::memory_order_release);
+    s_connection_secure.store(false, std::memory_order_release);
+    s_status_received.store(false, std::memory_order_release);
+    s_secure_since_tick.store(0, std::memory_order_release);
     codex_usage_state_connection_changed(false, false);
     codex_usage_state_reset();
     s_stopping.store(false, std::memory_order_release);

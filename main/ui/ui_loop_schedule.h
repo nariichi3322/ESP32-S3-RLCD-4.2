@@ -30,8 +30,10 @@ struct UiCodexWaitInput {
     uint32_t received_ms = 0;
     uint32_t last_valid_ms = 0;
     uint32_t quota_reset_seconds = 0;
+    uint32_t secondary_quota_reset_seconds = 0;
     uint32_t credit_expiry_seconds = 0;
     uint32_t pairing_expiry_ms = 0;
+    bool snapshot_valid = false;
     bool data_valid = false;
     bool ble_connected = false;
     bool pairing_visible = false;

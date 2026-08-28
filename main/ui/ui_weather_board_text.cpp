@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "app_time_constants.h"
 #include "ui_text_format.h"
+#include "ui_language.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -13,8 +14,11 @@ namespace {
 constexpr const char *kForecastDateFormat = "%d-%d-%d";
 constexpr int kForecastDateFieldCount = 3;
 constexpr int kWeatherBoardWeekdayCount = 7;
-constexpr const char *kWeatherBoardWeekdayNames[kWeatherBoardWeekdayCount] = {
+constexpr const char *kWeatherBoardWeekdayNamesSimplified[kWeatherBoardWeekdayCount] = {
     "周日", "周一", "周二", "周三", "周四", "周五", "周六",
+};
+constexpr const char *kWeatherBoardWeekdayNamesTraditional[kWeatherBoardWeekdayCount] = {
+    "週日", "週一", "週二", "週三", "週四", "週五", "週六",
 };
 constexpr const char *kForecastShortDateFormat = "%d日";
 constexpr const char *kForecastDateLineFormat = "%s\n%s";
@@ -31,7 +35,8 @@ constexpr const char *kWeatherBoardSunsetFormat = "日落 %s";
 constexpr int kWeatherBoardMaxAlertTitles = 3;
 constexpr size_t kForecastShortDateSize = 8;
 
-static_assert(array_count(kWeatherBoardWeekdayNames) == kWeatherBoardWeekdayCount,
+static_assert(array_count(kWeatherBoardWeekdayNamesSimplified) == kWeatherBoardWeekdayCount &&
+                  array_count(kWeatherBoardWeekdayNamesTraditional) == kWeatherBoardWeekdayCount,
               "weather board weekday names must match weekday count");
 static_assert(kWeatherBoardMaxAlertTitles > 0 &&
                   kWeatherBoardMaxAlertTitles <= kMaxWeatherAlerts,
@@ -67,7 +72,8 @@ const char *weekday_name_from_date(const char *date)
     if (tm_value.tm_wday < 0 || tm_value.tm_wday >= kWeatherBoardWeekdayCount) {
         return kWeatherBoardDash;
     }
-    return kWeatherBoardWeekdayNames[tm_value.tm_wday];
+    return ui_language_text(kWeatherBoardWeekdayNamesTraditional[tm_value.tm_wday],
+                            kWeatherBoardWeekdayNamesSimplified[tm_value.tm_wday]);
 }
 
 void format_short_date(const char *date, char *out, size_t out_len)
@@ -103,7 +109,7 @@ void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len
     ui_text::format_or_fallback(out,
                                 out_len,
                                 kWeatherBoardTodayRangePlaceholder,
-                                kWeatherBoardTodayRangeFormat,
+                                ui_language_text("今日 %s/%sC", kWeatherBoardTodayRangeFormat),
                                 text_or_dash(day.temp_min),
                                 text_or_dash(day.temp_max));
 }
@@ -147,7 +153,7 @@ void format_weather_board_alert_line(const WeatherAlertData &alert,
         strlcpy(out, kWeatherBoardAlertPlaceholder, out_len);
         return;
     }
-    strlcpy(out, kWeatherBoardAlertPrefix, out_len);
+    strlcpy(out, ui_language_text("預警 ", kWeatherBoardAlertPrefix), out_len);
     for (int i = 0; i < alert.count && i < kWeatherBoardMaxAlertTitles; ++i) {
         if (i > 0) {
             strlcat(out, kWeatherBoardAlertSeparator, out_len);
@@ -181,7 +187,7 @@ void format_weather_board_humidity_line(const WeatherData &weather,
     ui_text::format_or_fallback(out,
                                 out_len,
                                 kWeatherBoardHumidityPlaceholder,
-                                kWeatherBoardHumidityFormat,
+                                ui_language_text("溼度 %s%%", kWeatherBoardHumidityFormat),
                                 humidity);
 }
 
@@ -192,7 +198,7 @@ void format_weather_board_wind_line(const WeatherForecastDay *today,
     ui_text::format_or_fallback(out,
                                 out_len,
                                 kWeatherBoardWindPlaceholder,
-                                kWeatherBoardWindFormat,
+                                ui_language_text("%s %s級", kWeatherBoardWindFormat),
                                 today ? text_or_dash(today->wind_dir) : kWeatherBoardDash,
                                 today ? text_or_dash(today->wind_scale) : kWeatherBoardDash);
 }
@@ -204,7 +210,7 @@ void format_weather_board_sunrise_line(const WeatherForecastDay *today,
     ui_text::format_or_fallback(out,
                                 out_len,
                                 kWeatherBoardSunrisePlaceholder,
-                                kWeatherBoardSunriseFormat,
+                                ui_language_text("日出 %s", kWeatherBoardSunriseFormat),
                                 today && today->sunrise[0]
                                     ? today->sunrise
                                     : kWeatherBoardTimePlaceholder);
@@ -217,7 +223,7 @@ void format_weather_board_sunset_line(const WeatherForecastDay *today,
     ui_text::format_or_fallback(out,
                                 out_len,
                                 kWeatherBoardSunsetPlaceholder,
-                                kWeatherBoardSunsetFormat,
+                                ui_language_text("日落 %s", kWeatherBoardSunsetFormat),
                                 today && today->sunset[0]
                                     ? today->sunset
                                     : kWeatherBoardTimePlaceholder);

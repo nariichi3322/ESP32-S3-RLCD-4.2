@@ -22,7 +22,8 @@ class FakeClient:
 class CacheTests(unittest.IsolatedAsyncioTestCase):
     def test_official_zero_bucket_wins_over_local_estimate(self):
         cache = SnapshotCache(FakeClient(), 60)
-        cache.snapshot = Snapshot(0, 0, 100, 0, 0, 0, False, 0, 0, 0, 0)
+        cache.snapshot = Snapshot(0, 0, 100, 0, 0, False, 0, 0, 0,
+                                  0, False, 0, 0, 0, 0)
         with patch("companion.codex_display.main.read_local_tokens", return_value=99):
             self.assertEqual(cache.current().tokens_today, 0)
             self.assertFalse(cache.current().tokens_today_estimated)

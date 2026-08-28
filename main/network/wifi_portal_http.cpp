@@ -15,6 +15,7 @@
 #include "wifi_portal_state_internal.h"
 
 #include "ui_info_page_state.h"
+#include "ui_language.h"
 #include "ui_settings_activity_state.h"
 #include "ui_task_notify.h"
 
@@ -42,8 +43,12 @@ constexpr const char *kPortalHttpStatusPayloadTooLarge = "413 Payload Too Large"
 constexpr const char *kPortalHttpStatusOk = "200 OK";
 constexpr const char *kPortalHttpStatusConflict = "409 Conflict";
 constexpr const char *kPortalHttpStatusNoContent = "204 No Content";
-constexpr const char *kPortalErrorMissingQuery = "缺少请求参数。";
-constexpr const char *kPortalErrorRequestTooLarge = "提交内容过长，请缩短自定义字段后重试。";
+constexpr const char *kPortalErrorMissingQueryTraditional = "缺少請求參數。";
+constexpr const char *kPortalErrorMissingQuerySimplified = "缺少请求参数。";
+constexpr const char *kPortalErrorRequestTooLargeTraditional =
+    "提交內容過長，請縮短自訂欄位後重試。";
+constexpr const char *kPortalErrorRequestTooLargeSimplified =
+    "提交内容过长，请缩短自定义字段后重试。";
 constexpr const char *kPortalRootUri = "/";
 constexpr const char *kPortalSaveUri = "/save";
 constexpr const char *kPortalStatusUri = "/status";
@@ -255,7 +260,9 @@ esp_err_t save_post_handler(httpd_req_t *req)
     if (err == ESP_ERR_INVALID_SIZE) {
         return send_portal_text_status(req,
                                        kPortalHttpStatusPayloadTooLarge,
-                                       kPortalErrorRequestTooLarge);
+                                       ui_language_text(
+                                           kPortalErrorRequestTooLargeTraditional,
+                                           kPortalErrorRequestTooLargeSimplified));
     }
     if (err != ESP_OK) {
         return err;
@@ -272,7 +279,11 @@ esp_err_t save_get_handler(httpd_req_t *req)
     if (httpd_req_get_url_query_str(req,
                                     s_portal_request_buffer,
                                     sizeof(s_portal_request_buffer)) != ESP_OK) {
-        return send_portal_text_status(req, kPortalHttpStatusBadRequest, kPortalErrorMissingQuery);
+        return send_portal_text_status(
+            req,
+            kPortalHttpStatusBadRequest,
+            ui_language_text(kPortalErrorMissingQueryTraditional,
+                             kPortalErrorMissingQuerySimplified));
     }
     return handle_setup_save(req, s_portal_request_buffer);
 }
