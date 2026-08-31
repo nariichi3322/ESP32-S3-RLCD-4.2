@@ -29,7 +29,10 @@ using sdl_preview_widgets::make_label_with_font;
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.5.40";
+#ifndef WEATHER_CLOCK_PROJECT_VER
+#define WEATHER_CLOCK_PROJECT_VER "unknown"
+#endif
+static const char *APP_VERSION = WEATHER_CLOCK_PROJECT_VER;
 
 static SdlPreviewBackend g_sdl_preview(kDisplayWidth, kDisplayHeight);
 static sdl_preview_progress::Canvas g_work_page_day_progress;
