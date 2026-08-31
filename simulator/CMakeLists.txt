@@ -2,6 +2,19 @@
 cmake_minimum_required(VERSION 3.16)
 project(weather_clock_sdl_preview C CXX)
 
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/../CMakeLists.txt"
+    WEATHER_CLOCK_PROJECT_VER_LINE
+    REGEX "^set\\(PROJECT_VER \"v[0-9]+\\.[0-9]+\\.[0-9]+\"\\)$")
+list(LENGTH WEATHER_CLOCK_PROJECT_VER_LINE WEATHER_CLOCK_PROJECT_VER_LINE_COUNT)
+if(NOT WEATHER_CLOCK_PROJECT_VER_LINE_COUNT EQUAL 1)
+    message(FATAL_ERROR "Unable to read one PROJECT_VER from the root CMakeLists.txt")
+endif()
+string(REGEX REPLACE
+    "^set\\(PROJECT_VER \"([^\"]+)\"\\)$"
+    "\\1"
+    WEATHER_CLOCK_PROJECT_VER
+    "${WEATHER_CLOCK_PROJECT_VER_LINE}")
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -67,5 +80,7 @@ target_include_directories(weather_clock_sdl PRIVATE
     ${SDL2_INCLUDE_DIRS})
 
 target_compile_options(weather_clock_sdl PRIVATE ${SDL2_CFLAGS_OTHER})
+target_compile_definitions(weather_clock_sdl PRIVATE
+    WEATHER_CLOCK_PROJECT_VER="${WEATHER_CLOCK_PROJECT_VER}")
 target_link_options(weather_clock_sdl PRIVATE ${SDL2_LDFLAGS})
 target_link_libraries(weather_clock_sdl PRIVATE lvgl)
