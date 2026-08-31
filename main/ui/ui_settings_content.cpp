@@ -134,5 +134,8 @@ void populate_settings_secondary_items(
         set_secondary_text(secondary_items,
                            kSystemSettingsCodexFeatureItem,
                            ui_language_text("Codex 功能", "Codex 功能"));
+        set_secondary_text(secondary_items,
+                           kSystemSettingsOtaItem,
+                           ui_language_text("檢查更新", "检查更新"));
     }
 }

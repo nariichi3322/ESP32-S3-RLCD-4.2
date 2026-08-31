@@ -2,7 +2,16 @@
 
 > **Language:** English (current) · [Chinese](README.md)
 
-This is a low-power weather clock firmware project built around the **ESP32-S3** and a **4.2-inch RLCD display**. It combines an always-readable clock, local temperature and humidity sensing, online weather data, a calendar, picture display, audio reminders, Xiaozhi AI, and OTA updates in one desktop device.
+This fork is a low-power local clock firmware for the **ESP32-S3** and a **4.2-inch RLCD display**. It exposes the original offline pages and uses Wi-Fi only for setup, NTP synchronization, and user-initiated OTA updates.
+
+## Current Build: Local UI + NTP + Manual OTA
+
+- Configure primary/backup Wi-Fi and the NTP server through the setup portal.
+- Open **System → Check Update** and press BOOT to check manually. If an update is available, press BOOT again within 60 seconds to install it.
+- Weather, Daily Saying, Xiaozhi AI, and Network Diagnostics have no user entry and do not start routine network activity. OTA is never checked automatically.
+- OTA manifests for this fork are published from the `nariichi3322` branch; `main` remains reserved for upstream synchronization.
+
+The full-feature description below is retained as an architectural reference. The current behavior is defined by the section above.
 
 ## Quick Links
 
