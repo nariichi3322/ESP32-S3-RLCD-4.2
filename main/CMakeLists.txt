@@ -253,4 +253,7 @@ idf_component_register(
         tcp_transport)
 
 string(TIMESTAMP WEATHER_CLOCK_BUILD_DATE "%Y-%m-%d")
-target_compile_definitions(${COMPONENT_LIB} PRIVATE WEATHER_CLOCK_BUILD_DATE="${WEATHER_CLOCK_BUILD_DATE}")
+idf_build_get_property(WEATHER_CLOCK_PROJECT_VER PROJECT_VER)
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    WEATHER_CLOCK_BUILD_DATE="${WEATHER_CLOCK_BUILD_DATE}"
+    PROJECT_VER="${WEATHER_CLOCK_PROJECT_VER}")

@@ -525,6 +525,7 @@ bool update_settings_secondary_items(
     int primary,
     int selected,
     bool selection_changed,
+    bool ota_detail_panel_visible,
     const SettingsNavigationSnapshot &navigation,
     const SettingsSecondaryStateSnapshot &secondary_state,
     char secondary_items[][kSettingsSecondaryTextSize])
@@ -558,11 +559,7 @@ bool update_settings_secondary_items(
         } else if (navigation.page_toggle_mode) {
             visible = i < kWorkPageCount;
         }
-        const bool ota_panel_active =
-            primary == kSettingsPrimarySystem &&
-            navigation.focus_secondary &&
-            selected == kSystemSettingsOtaItem;
-        if (ota_panel_active && i == kSystemSettingsOtaItem) {
+        if (ota_detail_panel_visible && i == kSystemSettingsOtaItem) {
             visible = false;
         }
         set_obj_visible(s_settings_labels[slot], visible);
@@ -648,6 +645,11 @@ bool update_settings_page()
         populate_settings_secondary_items(
             primary, secondary_state, workspace.secondary_items);
     }
+    const bool ota_item_selected = primary == kSettingsPrimarySystem &&
+                                   navigation.focus_secondary &&
+                                   selected == kSystemSettingsOtaItem;
+    const bool ota_detail_panel_visible =
+        settings_ota_panel_details_visible(ota_item_selected, ota.state);
     bool selection_changed =
         settings_render_selection_changed(primary, selected, navigation, ota);
     bool changed = selection_changed;
@@ -655,13 +657,11 @@ bool update_settings_page()
     changed |= update_settings_secondary_items(primary,
                                                selected,
                                                selection_changed,
+                                               ota_detail_panel_visible,
                                                navigation,
                                                secondary_state,
                                                workspace.secondary_items);
-    bool ota_panel_visible = primary == kSettingsPrimarySystem &&
-                             navigation.focus_secondary &&
-                             selected == kSystemSettingsOtaItem;
-    changed |= update_settings_ota_panel(ota_panel_visible, ota);
+    changed |= update_settings_ota_panel(ota_item_selected, ota);
     changed |= update_settings_feedback_label();
     return changed;
 }

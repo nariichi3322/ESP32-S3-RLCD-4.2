@@ -2,7 +2,11 @@
 #include "app_metadata.h"
 
 #ifndef PROJECT_VER
+#ifdef ESP_PLATFORM
+#error "PROJECT_VER must be provided by the main component CMake configuration"
+#else
 #define PROJECT_VER "unknown"
+#endif
 #endif
 
 const char *const TAG = "WeatherClock";

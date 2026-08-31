@@ -9,6 +9,7 @@ int main()
     assert(ota_compare_versions("v1.5.6", "v1.5.5") > 0);
     assert(ota_compare_versions("1.5.5", "v1.5.5") == 0);
     assert(ota_compare_versions("v1.4.9", "v1.5.0") < 0);
+    assert(ota_compare_versions("v100.0.2", "unknown") > 0);
     assert(ota_compare_versions(nullptr, "v1.5.5") == 0);
     assert(ota_compare_versions("v999999999999999999999.0.0", "v1.5.5") > 0);
     assert(ota_compare_versions("v999999999999999999999.1.0",
