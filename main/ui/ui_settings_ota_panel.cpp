@@ -4,7 +4,6 @@
 #include "app_metadata.h"
 #include "ota_runtime_state.h"
 #include "ui_page_state.h"
-#include "ui_language.h"
 #include "ui_text_format.h"
 #include "ui_widgets.h"
 
@@ -28,7 +27,6 @@ constexpr size_t kSettingsOtaLineTextSize = 96;
 constexpr size_t kSettingsOtaHintTextSize = 48;
 constexpr const char *kSettingsOtaUpdatingWithSpeedFormat = "OTA %d%%  %d KB/s";
 constexpr const char *kSettingsOtaUpdatingFormat = "OTA %d%%";
-constexpr const char *kSettingsOtaCurrentVersionFormat = "当前版本 %s";
 constexpr const char *kSettingsOtaLinePlaceholder = "OTA --";
 constexpr const char *kSettingsOtaHintDownloading = "下载中，请等待";
 constexpr const char *kSettingsOtaHintInstall = "BOOT安装更新";
@@ -36,6 +34,7 @@ constexpr const char *kSettingsOtaHintChecking = "正在检查，请等待";
 constexpr const char *kSettingsOtaHintRebooting = "即将重启";
 constexpr const char *kSettingsOtaHintRetry = "BOOT重新检查";
 constexpr const char *kSettingsOtaHintCheck = "BOOT开始检查";
+
 int settings_ota_progress_fill_width(int progress)
 {
     int clamped = progress;
@@ -112,6 +111,11 @@ void build_settings_ota_panel(lv_obj_t *screen, int panel_x, int panel_width)
                                                     "settings ota hint label create failed");
 }
 
+bool settings_ota_panel_details_visible(bool ota_item_selected, int ota_state)
+{
+    return ota_item_selected && ota_state != kOtaIdle;
+}
+
 bool update_settings_ota_panel(bool visible, const OtaRuntimeSnapshot &ota)
 {
     if (!s_settings_ota_status_label) {
@@ -156,12 +160,6 @@ bool update_settings_ota_panel(bool visible, const OtaRuntimeSnapshot &ota)
             ui_text::copy(ota_line, sizeof(ota_line), ota.status);
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintRetry);
         } else {
-            ui_text::format_or_fallback(ota_line,
-                                        sizeof(ota_line),
-                                        kSettingsOtaLinePlaceholder,
-                                        ui_language_text("目前版本 %s",
-                                                         kSettingsOtaCurrentVersionFormat),
-                                        APP_VERSION);
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintCheck);
         }
     }
