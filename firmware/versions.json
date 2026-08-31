@@ -1,6 +1,20 @@
 {
-  "latest": "v100.0.0",
+  "latest": "v100.0.1",
   "items": [
+    {
+      "version": "v100.0.1",
+      "notes": "v100.0.1：共 1 项更新。\n1. nariichi3322 version 修正版本顯示與 OTA 版本比較仍使用舊版號的問題。\n完整说明见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.1/weather_clock_v100.0.1.bin",
+        "sha256": "cbdec94cc0b5de573cd236291e027a697d92c6974a59935812b4efce284b6ed7",
+        "size": 5733440
+      },
+      "merged": {
+        "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.1/weather_clock_v100.0.1_merged.bin",
+        "sha256": "424a00a2a4d82cc1a8ee3855e43ae6300896c8bfe79bc1f47e591daa7aef67b3",
+        "size": 16509951
+      }
+    },
     {
       "version": "v100.0.0",
       "notes": "v100.0.0：共 1 项更新。\n1. nariichi3322 version 整合 codex-usage-display(https://github.com/nariichi3322/codex-usage-display…\n完整说明见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.33/weather_clock_v1.5.33_merged.bin",
         "sha256": "fa2d91882d18bad85e0b6a5cca89f867094dfc0244b57437149ec5191c0a3ace",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.32",
-      "notes": "v1.5.32：共 12 项更新。\n1. 修复冷启动天气、每日文字和 NTP 补拉在内存紧张、失败重试或请求交错时可能长期等待的…\n2. 修复手动同步、网络检测和可见页联网在切页、超时、离线、低电量或 OTA 阻断后可能残留…\n3. 修复配网连续提交、结果反馈、热点启停失败和 Captive DNS 瞬时故障下的恢复与…\n4. 修复 Wi-Fi 部分启动或停机失败、PM 锁驱动状态失配及启动异常时可能遗留射频、热…\n5. 修复设置试听和异步提示音可能在低电量或 OTA 保护状态下竞态启动，以及重试耗尽后仍短…\n其余 7 项见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.32/weather_clock_v1.5.32.bin",
-        "sha256": "913e0b9f24ba2be3fffe82c2045ae6799bdc524aa1989571b15551a0b7f1e53b",
-        "size": 6259200
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.32/weather_clock_v1.5.32_merged.bin",
-        "sha256": "21da71e102ad3ec08cc7354d91908063b6db25dbb10ef60cf424f30098508eb5",
         "size": 16509951
       }
     }
