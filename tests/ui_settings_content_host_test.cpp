@@ -52,6 +52,12 @@ int main()
                   "Xiaozhi auto return must use the left cell of the second row");
     static_assert(kDisplaySettingsAlarmItem == 3,
                   "alarm must use the right cell of the second row");
+    static_assert(kSystemSettingsGridItemCount == 6,
+                  "the first six system items must remain in the compact grid");
+    static_assert(kSystemSettingsOtaItem == kSystemSettingsGridItemCount,
+                  "OTA must follow the six compact system items");
+    static_assert(kSystemSettingsSecondaryCount == 7,
+                  "system settings must expose the OTA entry");
     SettingsSecondaryStateSnapshot state = {};
     state.volume_percent = 60;
     state.sound_index = 2;
@@ -112,6 +118,7 @@ int main()
     expect_text(items, kSystemSettingsClearCodexBondsItem, "清除配對");
     expect_text(items, kSystemSettingsLanguageItem, "語言 繁");
     expect_text(items, kSystemSettingsCodexFeatureItem, "Codex 功能");
+    expect_text(items, kSystemSettingsOtaItem, "檢查更新");
 
     ui_language_store(UiLanguage::Simplified);
     memset(items, 0, sizeof(items));
@@ -124,6 +131,7 @@ int main()
     expect_text(items, kSystemSettingsClearCodexBondsItem, "清除配对");
     expect_text(items, kSystemSettingsLanguageItem, "语言 简");
     expect_text(items, kSystemSettingsCodexFeatureItem, "Codex 功能");
+    expect_text(items, kSystemSettingsOtaItem, "检查更新");
 
     return 0;
 }

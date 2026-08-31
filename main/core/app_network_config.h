@@ -9,7 +9,8 @@ inline constexpr const char *kSetupPortalUrl = "http://192.168.4.1/";
 #if __has_include("ota_endpoint_local.h")
 #include "ota_endpoint_local.h"
 #else
-#define WEATHER_CLOCK_OTA_MANIFEST_URL "https://example.invalid/firmware/latest.json"
+#define WEATHER_CLOCK_OTA_MANIFEST_URL \
+    "https://raw.githubusercontent.com/nariichi3322/ESP32-S3-RLCD-4.2/nariichi3322/firmware/latest.json"
 #endif
 #endif
 inline constexpr const char *kOtaManifestUrl = WEATHER_CLOCK_OTA_MANIFEST_URL;

@@ -1,5 +1,9 @@
 # WeatherClock User Guide
 
+The current fork exposes the original local pages and uses Wi-Fi only for setup, NTP synchronization, and user-initiated OTA. Open **System → Check Update**, press BOOT to check, and press BOOT again within 60 seconds to install an available update. Weather, Daily Saying, Xiaozhi AI, and Network Diagnostics have no user entry in this build, and OTA is never checked automatically.
+
+OTA manifests are read from the public `nariichi3322` branch and firmware binaries come from this fork's GitHub Releases. The `main` branch remains reserved for upstream synchronization. The full-feature material below is retained as a historical and architectural reference; this paragraph defines the current build behavior.
+
 This guide explains first-time setup, the seven work pages, hardware keys, online/offline operation, reminders, Xiaozhi AI, OTA updates, DIY assets, and troubleshooting.
 
 > **Important upgrade notice:** `v1.5.x` uses a new flash partition table. A device still running `v1.4.59` or earlier must be fully flashed with the merged image or complete flash package before using `v1.5.x`. An App-only flash or ordinary OTA cannot update the partition table.

@@ -558,6 +558,13 @@ bool update_settings_secondary_items(
         } else if (navigation.page_toggle_mode) {
             visible = i < kWorkPageCount;
         }
+        const bool ota_panel_active =
+            primary == kSettingsPrimarySystem &&
+            navigation.focus_secondary &&
+            selected == kSystemSettingsOtaItem;
+        if (ota_panel_active && i == kSystemSettingsOtaItem) {
+            visible = false;
+        }
         set_obj_visible(s_settings_labels[slot], visible);
         if (visible) {
             changed |= set_label_text_if_changed(s_settings_labels[slot], secondary_items[i]);
@@ -651,7 +658,9 @@ bool update_settings_page()
                                                navigation,
                                                secondary_state,
                                                workspace.secondary_items);
-    bool ota_panel_visible = primary == kSettingsPrimarySystem && selected == kSystemSettingsOtaItem;
+    bool ota_panel_visible = primary == kSettingsPrimarySystem &&
+                             navigation.focus_secondary &&
+                             selected == kSystemSettingsOtaItem;
     changed |= update_settings_ota_panel(ota_panel_visible, ota);
     changed |= update_settings_feedback_label();
     return changed;

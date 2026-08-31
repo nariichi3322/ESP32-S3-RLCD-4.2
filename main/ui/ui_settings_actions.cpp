@@ -16,6 +16,7 @@
 #include "device_settings_persistence.h"
 #include "network_runtime_events.h"
 #include "offline_mode_state.h"
+#include "ota_services.h"
 #include "pomodoro_services.h"
 #include "setup_portal_control.h"
 #include "ui_info_page_state_internal.h"
@@ -433,6 +434,8 @@ void handle_system_settings_action(
         set_settings_feedback(enabled ? kCodexFeatureEnabledFeedback
                                       : kCodexFeatureDisabledFeedback,
                               kSettingsFeedbackDefaultMs);
+    } else if (selected == kSystemSettingsOtaItem) {
+        ota_handle_info_key();
     }
 }
 } // namespace
