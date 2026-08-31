@@ -1,3 +1,2 @@
-v1.5.40：共 1 项更新。
-1. 修复退出低电量极简模式后没有返回进入前工作页的问题；同一次开机中电量恢复到 13% 以…
-完整说明见源码仓库同版本 Release。
+v100.0.0：nariichi3322 version
+整合 codex-usage-display(https://github.com/nariichi3322/codex-usage-display) 功能
