@@ -1,7 +1,7 @@
 {
-  "version": "v1.5.40",
-  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.40/weather_clock_v1.5.40.bin",
-  "sha256": "5a968ac9246be47d8d239b349be9ebf81286e7866c1a81cef682799ab831f88b",
-  "size": 6266784,
-  "notes": "v1.5.40：共 1 项更新。\n1. 修复退出低电量极简模式后没有返回进入前工作页的问题；同一次开机中电量恢复到 13% 以…\n完整说明见源码仓库同版本 Release。"
+  "version": "v1.5.41",
+  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.41/weather_clock_v1.5.41.bin",
+  "sha256": "20d7e5047890bf634a4e10aab003cb1953b18a7b9d2a0f2b8860891360f2cc48",
+  "size": 6266880,
+  "notes": "v1.5.41：共 2 项更新。\n1. 修复 RLCD 像素 LUT 初始化中的循环类型边界，避免极端显示尺寸下窄类型与宽类型…\n2. 修复 Bosch SensorLib 在大长度 FIFO 和 KLIO 模式列表下可能…\n完整说明见源码仓库同版本 Release。"
 }
