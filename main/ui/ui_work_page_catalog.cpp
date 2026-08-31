@@ -245,11 +245,6 @@ bool is_work_page_enabled(int page)
     return (work_page_enabled_mask_load() & work_page_mask(page)) != 0;
 }
 
-bool codex_usage_feature_enabled()
-{
-    return is_work_page_enabled(kWorkPageCodexUsage);
-}
-
 uint8_t work_page_enabled_mask_load()
 {
     return s_work_page_enabled_mask.load(std::memory_order_acquire);

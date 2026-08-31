@@ -10,6 +10,8 @@
 #include "alarm_services.h"
 #include "chime_runtime_state_internal.h"
 #include "chime_settings.h"
+#include "codex_usage_ble.h"
+#include "codex_usage_feature_state_internal.h"
 #include "network_config_keys.h"
 #include "network_config_nvs.h"
 #include "network_config_internal.h"
@@ -142,6 +144,8 @@ static void reset_saved_config_runtime_state()
     gallery_rotation_period_store(kDefaultGalleryRotationPeriod);
     weather_clock_seconds_visible_store(kDefaultWeatherClockSecondsVisible);
     ui_language_store(kDefaultUiLanguage);
+    codex_usage_feature_enabled_store(kDefaultCodexUsageFeatureEnabled);
+    (void)codex_usage_ble_set_enabled(kDefaultCodexUsageFeatureEnabled);
     chime_runtime_snapshot_store({
         false,
         false,

@@ -230,9 +230,9 @@ int main()
     assert(!work_page_data_requirements(-1).daily_saying);
 
     const uint8_t all_pages = static_cast<uint8_t>((1U << kWorkPageCount) - 1U);
-    assert(codex_usage_feature_enabled());
+    assert(is_work_page_enabled(kWorkPageCodexUsage));
     work_page_enabled_mask_store(static_cast<uint8_t>(all_pages & ~page_bit(kWorkPageCodexUsage)));
-    assert(!codex_usage_feature_enabled());
+    assert(!is_work_page_enabled(kWorkPageCodexUsage));
     work_page_enabled_mask_store(all_pages);
     WorkPageDataRequirements enabled_data =
         enabled_work_page_data_requirements(all_pages);

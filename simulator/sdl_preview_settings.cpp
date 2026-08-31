@@ -276,6 +276,7 @@ void build_settings_preview_page(const char *mode)
         settings_layout::GridCell reset_cell = settings_layout::settings_grid_cell(2);
         settings_layout::GridCell info_cell = settings_layout::settings_grid_cell(3);
         settings_layout::GridCell language_cell = settings_layout::settings_grid_cell(4);
+        settings_layout::GridCell codex_cell = settings_layout::settings_grid_cell(5);
         make_settings_grid_item(screen, offline_cell.x, offline_cell.y,
                                 preview_text(simplified, "設定模式", "设置模式"), false);
         make_settings_grid_item(screen, diagnostic_cell.x, diagnostic_cell.y,
@@ -285,7 +286,15 @@ void build_settings_preview_page(const char *mode)
         make_settings_grid_item(screen, info_cell.x, info_cell.y,
                                 preview_text(simplified, "清除配對", "清除配对"), true);
         make_settings_grid_item(screen, language_cell.x, language_cell.y,
-                                preview_text(simplified, "語言 繁", "语言 简"), false);
+                                 preview_text(simplified, "語言 繁", "语言 简"), false);
+        make_settings_grid_item(screen, codex_cell.x, codex_cell.y,
+                                "Codex 功能", false, nullptr, true);
+        make_settings_switch_dot(
+            screen,
+            codex_cell.x + settings_layout::kSettingsGridSwitchDotXOffset,
+            codex_cell.y + settings_layout::kSettingsGridSwitchDotYOffset,
+            false,
+            false);
         feedback_label = make_label(screen, 24, 246, 352, 20, "");
     }
     lv_obj_set_style_text_align(feedback_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);

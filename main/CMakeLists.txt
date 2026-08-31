@@ -4,6 +4,8 @@ idf_component_register(
         "core/main.cpp"
         "codex/codex_usage_protocol.cpp"
         "codex/codex_usage_state.cpp"
+        "codex/codex_usage_feature_state.cpp"
+        "codex/codex_usage_feature_setting.cpp"
         "codex/codex_usage_ble.cpp"
         "core/app_task_startup.cpp"
         "core/app_metadata.cpp"

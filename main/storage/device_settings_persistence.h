@@ -16,3 +16,4 @@ bool set_xiaozhi_auto_return_setting(bool enabled);
 bool set_gallery_rotation_period_setting(uint8_t period);
 bool set_weather_clock_seconds_visible_setting(bool visible);
 bool set_ui_language_setting(UiLanguage language);
+bool set_codex_usage_feature_setting(bool enabled);

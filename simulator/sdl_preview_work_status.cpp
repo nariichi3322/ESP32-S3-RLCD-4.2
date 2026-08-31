@@ -201,6 +201,11 @@ void Bar::set_bluetooth_state(const char *state)
         lv_color_white());
 }
 
+void Bar::set_bluetooth_visible(bool visible)
+{
+    set_obj_visible(bluetooth_status_icon_canvas_, visible);
+}
+
 void Bar::build_battery(lv_obj_t *parent)
 {
     lv_obj_t *frame = lv_obj_create(parent);

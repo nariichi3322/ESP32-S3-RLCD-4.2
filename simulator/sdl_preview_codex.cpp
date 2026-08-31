@@ -33,6 +33,15 @@ CodexPreviewFixture codex_preview_fixture(const char *mode)
 
 void build_codex_preview_body(lv_obj_t *screen, const char *mode)
 {
+    if (sdl_preview_mode::is(mode, "codex_offline")) {
+        lv_obj_t *title = sdl_preview_widgets::make_label_with_font(
+            screen, 25, 123, 350, 34, "BLUETOOTH OFF", &lv_font_montserrat_24);
+        lv_obj_t *detail = sdl_preview_widgets::make_label_with_font(
+            screen, 25, 163, 350, 24, "(OFFLINE)", &lv_font_montserrat_16);
+        lv_obj_set_style_text_align(title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        lv_obj_set_style_text_align(detail, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+        return;
+    }
     const CodexPreviewFixture fixture = codex_preview_fixture(mode);
     char text[24];
     snprintf(text, sizeof(text), "CODEX LEFT (%s)", fixture.primary_window);

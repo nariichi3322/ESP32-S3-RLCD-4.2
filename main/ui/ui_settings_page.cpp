@@ -6,6 +6,7 @@
 #include "app_metadata.h"
 #include "app_tick_time.h"
 #include "chime_runtime_state.h"
+#include "codex_usage_feature_state.h"
 
 #include "ota_runtime_state.h"
 #include "ota_services.h"
@@ -92,6 +93,9 @@ SettingsSecondaryStateSnapshot settings_secondary_state_snapshot(
             snapshot.xiaozhi_auto_return_enabled =
                 xiaozhi_auto_return_enabled_load();
         }
+    } else if (primary == kSettingsPrimarySystem) {
+        snapshot.codex_usage_feature_enabled =
+            codex_usage_feature_enabled();
     }
     return snapshot;
 }
@@ -501,6 +505,11 @@ void update_settings_switch_slot(int index,
         dot_on = index == kDisplaySettingsAlarmItem
                      ? secondary_state.alarm_enabled
                      : secondary_state.xiaozhi_auto_return_enabled;
+    } else if (visible &&
+               primary == kSettingsPrimarySystem &&
+               index == kSystemSettingsCodexFeatureItem) {
+        dot_visible = true;
+        dot_on = secondary_state.codex_usage_feature_enabled;
     }
     if (s_settings_switch_dots[index]) {
         set_obj_visible(s_settings_switch_dots[index], dot_visible);
@@ -564,20 +573,23 @@ bool update_settings_secondary_items(
                     (primary == kSettingsPrimarySystem && i < kSystemSettingsGridItemCount) ||
                     (primary == kSettingsPrimaryDisplay && i < kDisplaySettingsGridItemCount);
                 if (compact_grid_item) {
-                    const bool display_switch_item =
-                        primary == kSettingsPrimaryDisplay &&
-                        !navigation.page_toggle_mode &&
-                        !navigation.page_order_mode &&
-                        i == kDisplaySettingsAlarmItem;
+                    const bool compact_switch_item =
+                        (primary == kSettingsPrimaryDisplay &&
+                         !navigation.page_toggle_mode &&
+                         !navigation.page_order_mode &&
+                         (i == kDisplaySettingsAlarmItem ||
+                          i == kDisplaySettingsXiaozhiAutoReturnItem)) ||
+                        (primary == kSettingsPrimarySystem &&
+                         i == kSystemSettingsCodexFeatureItem);
                     lv_obj_set_style_pad_left(
                         s_settings_labels[slot],
-                        display_switch_item
+                        compact_switch_item
                             ? settings_layout::kSettingsGridSwitchLabelLeftPadding
                             : settings_layout::kSettingsGridLabelPadding,
                         LV_PART_MAIN);
                     lv_obj_set_style_pad_right(
                         s_settings_labels[slot],
-                        display_switch_item
+                        compact_switch_item
                             ? settings_layout::kSettingsGridSwitchLabelRightPadding
                             : settings_layout::kSettingsGridLabelPadding,
                         LV_PART_MAIN);

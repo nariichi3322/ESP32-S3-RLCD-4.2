@@ -23,7 +23,8 @@ constexpr const char *kUiDatePlaceholder = "----/--/-- / 星期-";
 constexpr const char *kUiTimePlaceholder = "--:--";
 bool update_visible_work_page_body(const struct tm &local,
                                    const ClockUiTimeSnapshot &time_snapshot,
-                                   const ActiveWorkPageState &state)
+                                   const ActiveWorkPageState &state,
+                                   bool codex_feature_enabled)
 {
     bool changed = false;
     if (state.history) {
@@ -47,7 +48,9 @@ bool update_visible_work_page_body(const struct tm &local,
     if (state.codex_usage) {
         CodexUsageSnapshotView view{};
         if (codex_usage_snapshot_copy(&view)) {
-            changed |= update_codex_usage_page(local, view);
+            changed |= update_codex_usage_page(local,
+                                               view,
+                                               codex_feature_enabled);
         }
     }
     return changed;
@@ -136,7 +139,10 @@ bool update_active_work_page_content(const struct tm &local,
                                   status.chime_enabled,
                                   low_battery_mode,
                                   setup_portal_active);
-        changed |= update_visible_work_page_body(local, time_snapshot, state);
+        changed |= update_visible_work_page_body(local,
+                                                 time_snapshot,
+                                                 state,
+                                                 status.codex_enabled);
         changed |= update_work_page_day_progress(active_page, time_snapshot);
         changed |= update_weather_alert_state(local,
                                               state,

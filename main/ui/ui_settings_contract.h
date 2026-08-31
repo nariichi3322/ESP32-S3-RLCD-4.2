@@ -35,10 +35,11 @@ inline constexpr int kSystemSettingsFactoryResetItem = 1;
 inline constexpr int kSystemSettingsInfoItem = 2;
 inline constexpr int kSystemSettingsClearCodexBondsItem = 3;
 inline constexpr int kSystemSettingsLanguageItem = 4;
-inline constexpr int kSystemSettingsNetworkDiagItem = 5;
-inline constexpr int kSystemSettingsOtaItem = 6;
-inline constexpr int kSystemSettingsGridItemCount = 5;
-inline constexpr int kSystemSettingsSecondaryCount = 5;
+inline constexpr int kSystemSettingsCodexFeatureItem = 5;
+inline constexpr int kSystemSettingsNetworkDiagItem = 6;
+inline constexpr int kSystemSettingsOtaItem = 7;
+inline constexpr int kSystemSettingsGridItemCount = 6;
+inline constexpr int kSystemSettingsSecondaryCount = 6;
 
 enum SettingsSyncOp {
     kSettingsSyncNone = 0,

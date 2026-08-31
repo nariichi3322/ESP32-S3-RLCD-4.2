@@ -9,6 +9,7 @@
 #include "audio_services.h"
 #include "chime_runtime_state.h"
 #include "codex_usage_ble.h"
+#include "codex_usage_feature_state.h"
 #include "chime_settings.h"
 #include "custom_assets.h"
 #include "network_config.h"
@@ -63,6 +64,9 @@ constexpr const char *kPomodoroRunningFeedback = "请先取消番茄钟";
 constexpr const char *kXiaozhiAutoReturnEnabledFeedback = "小智自動返回已開啟";
 constexpr const char *kXiaozhiAutoReturnDisabledFeedback = "小智自動返回已關閉";
 constexpr const char *kGalleryRotationBuiltinFeedback = "預設圖片固定 24h";
+constexpr const char *kCodexFeatureEnabledFeedback = "Codex 功能已開啟";
+constexpr const char *kCodexFeatureDisabledFeedback = "Codex 功能已關閉";
+constexpr const char *kCodexFeatureSwitchFailedFeedback = "Codex 功能切換失敗";
 constexpr const char *kAlarmDisabledFeedback = "闹钟已关闭";
 constexpr const char *kAlarmSetByXiaozhiFeedback = "请通过小智AI设置";
 constexpr const char *kWorkPageFeedbackFormat = "%s%s";
@@ -289,22 +293,14 @@ void handle_display_settings_action(
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        const bool codex_runtime_ok = page != kWorkPageCodexUsage ||
-            codex_usage_ble_set_enabled(page_will_be_enabled);
-        if (!codex_runtime_ok) {
-            set_settings_feedback(kSettingsSaveFailedFeedback,
-                                  kSettingsFeedbackDefaultMs);
-        }
         notify_network_sync_runtime_state_changed();
         normalize_work_page_order();
         ensure_active_work_page_enabled();
-        if (codex_runtime_ok) {
-            set_formatted_settings_feedback(kWorkPageFeedbackFormat,
-                                            work_page_name(page),
-                                            page_will_be_enabled
-                                                ? ui_language_text("已開啟", kWorkPageEnabledSuffix)
-                                                : ui_language_text("已關閉", kWorkPageDisabledSuffix));
-        }
+        set_formatted_settings_feedback(kWorkPageFeedbackFormat,
+                                        work_page_name(page),
+                                        page_will_be_enabled
+                                            ? ui_language_text("已開啟", kWorkPageEnabledSuffix)
+                                            : ui_language_text("已關閉", kWorkPageDisabledSuffix));
         return;
     }
     if (selected == kDisplaySettingsPageSwitchItem) {
@@ -427,6 +423,16 @@ void handle_system_settings_action(
         clear_info_object_refs();
         build_settings_page();
         show_page(auxiliary_page_root(AuxiliaryPage::kSettings));
+    } else if (selected == kSystemSettingsCodexFeatureItem) {
+        const bool enabled = !codex_usage_feature_enabled();
+        if (!set_codex_usage_feature_setting(enabled)) {
+            set_settings_feedback(kCodexFeatureSwitchFailedFeedback,
+                                  kSettingsFeedbackDefaultMs);
+            return;
+        }
+        set_settings_feedback(enabled ? kCodexFeatureEnabledFeedback
+                                      : kCodexFeatureDisabledFeedback,
+                              kSettingsFeedbackDefaultMs);
     }
 }
 } // namespace

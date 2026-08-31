@@ -6,5 +6,6 @@
 
 void build_codex_usage_page();
 bool update_codex_usage_page(const struct tm &local,
-                             const CodexUsageSnapshotView &view);
+                             const CodexUsageSnapshotView &view,
+                             bool feature_enabled);
 void clear_codex_usage_page_object_refs();

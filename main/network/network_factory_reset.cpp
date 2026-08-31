@@ -30,6 +30,7 @@ using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
 using network_config_keys::kWeatherClockSecondsKey;
 using network_config_keys::kUiLanguageKey;
+using network_config_keys::kCodexUsageFeatureKey;
 using network_page_storage::kPageMaskV1Key;
 using network_page_storage::kPageMaskV2Key;
 using network_page_storage::kPageMaskV3Key;
@@ -80,9 +81,10 @@ constexpr const char *kSavedConfigKeys[] = {
     kGalleryRotationKey,
     kWeatherClockSecondsKey,
     kUiLanguageKey,
+    kCodexUsageFeatureKey,
 };
 
-static_assert(array_count(kSavedConfigKeys) == 31,
+static_assert(array_count(kSavedConfigKeys) == 32,
               "factory reset key registry count changed; update its host test");
 static_assert(cstr_array_nonempty(kSavedConfigKeys),
               "factory reset config keys must be non-empty");
@@ -130,6 +132,8 @@ static_assert(cstr_array_contains(kSavedConfigKeys, kWeatherClockSecondsKey),
               "factory reset must clear weather clock seconds setting");
 static_assert(cstr_array_contains(kSavedConfigKeys, kUiLanguageKey),
               "factory reset must clear UI language setting");
+static_assert(cstr_array_contains(kSavedConfigKeys, kCodexUsageFeatureKey),
+              "factory reset must clear Codex Usage feature setting");
 } // namespace
 
 esp_err_t erase_saved_config_keys(nvs_handle_t nvs)

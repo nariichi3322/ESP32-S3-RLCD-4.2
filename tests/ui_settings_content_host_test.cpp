@@ -111,6 +111,7 @@ int main()
     expect_text(items, kSystemSettingsInfoItem, "關於本機");
     expect_text(items, kSystemSettingsClearCodexBondsItem, "清除配對");
     expect_text(items, kSystemSettingsLanguageItem, "語言 繁");
+    expect_text(items, kSystemSettingsCodexFeatureItem, "Codex 功能");
 
     ui_language_store(UiLanguage::Simplified);
     memset(items, 0, sizeof(items));
@@ -122,6 +123,7 @@ int main()
     populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
     expect_text(items, kSystemSettingsClearCodexBondsItem, "清除配对");
     expect_text(items, kSystemSettingsLanguageItem, "语言 简");
+    expect_text(items, kSystemSettingsCodexFeatureItem, "Codex 功能");
 
     return 0;
 }

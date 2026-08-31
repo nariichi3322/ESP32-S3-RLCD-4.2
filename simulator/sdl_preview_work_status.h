@@ -22,6 +22,7 @@ public:
     void update_battery(int percent);
     void set_status_icons_visible(bool visible);
     void set_bluetooth_state(const char *state);
+    void set_bluetooth_visible(bool visible);
 
 private:
     void build_battery(lv_obj_t *parent);

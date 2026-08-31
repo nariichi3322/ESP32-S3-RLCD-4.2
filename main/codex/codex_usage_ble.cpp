@@ -1,9 +1,9 @@
 // Adapted from codex-usage-display (MIT); see THIRD_PARTY_NOTICES.md
 #include "codex_usage_ble.h"
 
+#include "codex_usage_feature_state.h"
 #include "codex_usage_state.h"
 #include "ui_task_notify.h"
-#include "ui_work_page_catalog.h"
 
 #include <esp_log.h>
 #include <esp_heap_caps.h>
@@ -491,6 +491,18 @@ void schedule_retry_task()
         s_retry_task_active.store(false, std::memory_order_release);
     }
 }
+
+void reset_transport_session_state()
+{
+    s_connection.store(kNoConnection, std::memory_order_release);
+    s_connection_secure.store(false, std::memory_order_release);
+    s_status_received.store(false, std::memory_order_release);
+    s_secure_since_tick.store(0, std::memory_order_release);
+    codex_usage_state_connection_changed(false, false);
+    codex_usage_state_reset();
+    clear_pairing();
+    notify_ui_task();
+}
 }
 
 bool codex_usage_ble_set_enabled(bool enabled)
@@ -506,6 +518,7 @@ bool codex_usage_ble_set_enabled(bool enabled)
     }
     s_advertising_retry_attempt.store(0, std::memory_order_release);
     if (!s_running.exchange(false, std::memory_order_acq_rel)) {
+        bool deinitialized = true;
         if (s_initialized.exchange(false, std::memory_order_acq_rel)) {
             if (s_first_status_timer) {
                 (void)esp_timer_stop(s_first_status_timer);
@@ -516,9 +529,10 @@ bool codex_usage_ble_set_enabled(bool enabled)
                 (void)esp_timer_delete(s_advertising_retry_timer);
                 s_advertising_retry_timer = nullptr;
             }
-            return nimble_port_deinit() == ESP_OK;
+            deinitialized = nimble_port_deinit() == ESP_OK;
         }
-        return true;
+        reset_transport_session_state();
+        return deinitialized;
     }
     s_stopping.store(true, std::memory_order_release);
     clear_pairing();
@@ -549,14 +563,8 @@ bool codex_usage_ble_set_enabled(bool enabled)
             }
         }
     }
-    s_connection.store(kNoConnection, std::memory_order_release);
-    s_connection_secure.store(false, std::memory_order_release);
-    s_status_received.store(false, std::memory_order_release);
-    s_secure_since_tick.store(0, std::memory_order_release);
-    codex_usage_state_connection_changed(false, false);
-    codex_usage_state_reset();
+    reset_transport_session_state();
     s_stopping.store(false, std::memory_order_release);
-    notify_ui_task();
     return rc == 0 && deinitialized;
 }
 

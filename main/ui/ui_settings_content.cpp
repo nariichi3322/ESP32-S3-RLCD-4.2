@@ -131,5 +131,8 @@ void populate_settings_secondary_items(
         set_secondary_text(secondary_items,
                            kSystemSettingsLanguageItem,
                            ui_language_text("語言 繁", "语言 简"));
+        set_secondary_text(secondary_items,
+                           kSystemSettingsCodexFeatureItem,
+                           ui_language_text("Codex 功能", "Codex 功能"));
     }
 }

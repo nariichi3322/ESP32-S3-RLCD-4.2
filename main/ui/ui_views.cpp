@@ -36,6 +36,7 @@
 #include "ui_setup_status.h"
 #include "ui_status_refresh_policy.h"
 #include "ui_settings_activity_state.h"
+#include "codex_usage_feature_state.h"
 #include "ui_settings_feedback.h"
 #include "ui_visible_cache.h"
 #include "ui_visible_data_sync.h"
