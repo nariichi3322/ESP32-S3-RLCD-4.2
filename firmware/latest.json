@@ -1,7 +1,7 @@
 {
-  "version": "v1.5.40",
-  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.40/weather_clock_v1.5.40.bin",
-  "sha256": "5a968ac9246be47d8d239b349be9ebf81286e7866c1a81cef682799ab831f88b",
-  "size": 6266784,
-  "notes": "v1.5.40：共 1 项更新。\n1. 修复退出低电量极简模式后没有返回进入前工作页的问题；同一次开机中电量恢复到 13% 以…\n完整说明见源码仓库同版本 Release。"
+  "version": "v100.0.0",
+  "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.0/weather_clock_v100.0.0.bin",
+  "sha256": "9bc5da0416673652469dd71cf3e704fa5909031f03cccd6c3be2252384924aea",
+  "size": 5733456,
+  "notes": "v100.0.0：共 1 项更新。\n1. nariichi3322 version 整合 codex-usage-display(https://github.com/nariichi3322/codex-usage-display…\n完整说明见源码仓库同版本 Release。"
 }

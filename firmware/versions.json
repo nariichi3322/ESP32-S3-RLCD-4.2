@@ -1,6 +1,20 @@
 {
-  "latest": "v1.5.40",
+  "latest": "v100.0.0",
   "items": [
+    {
+      "version": "v100.0.0",
+      "notes": "v100.0.0：共 1 项更新。\n1. nariichi3322 version 整合 codex-usage-display(https://github.com/nariichi3322/codex-usage-display…\n完整说明见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.0/weather_clock_v100.0.0.bin",
+        "sha256": "9bc5da0416673652469dd71cf3e704fa5909031f03cccd6c3be2252384924aea",
+        "size": 5733456
+      },
+      "merged": {
+        "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.0/weather_clock_v100.0.0_merged.bin",
+        "sha256": "ac8e24824bc335d8bcf9494d20b8f48182e9537989d19578d2e5e8bf80d3b49f",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.5.40",
       "notes": "v1.5.40：共 1 项更新。\n1. 修复退出低电量极简模式后没有返回进入前工作页的问题；同一次开机中电量恢复到 13% 以…\n完整说明见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.32/weather_clock_v1.5.32_merged.bin",
         "sha256": "21da71e102ad3ec08cc7354d91908063b6db25dbb10ef60cf424f30098508eb5",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.31",
-      "notes": "v1.5.31：共 14 项更新。\n1. 从旧版本升级后必须重新进入配网页补填“和风天气 API Host”；该字段在联网模式下…\n2. 修复账号专属 QWeather API Host 因证书链差异无法通过 TLS 校验的…\n3. 适配新版天气预警接口的 metadata + alerts 成功响应，修复合法空预警被…\n4. 将城市查询、实时天气、预警、逐日预报和空气质量全部切换到账号专属 API Host，并…\n5. 修复页面开关、页面排序、系统辅助页、网络检测及检查更新在快速按键或超时临界点可能使用过…\n6. 修复配网门户启停、主动断网、普通同步、网络检测和 OTA 异常收尾时可能遗留 Wi-F…\n其余 8 项见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.31/weather_clock_v1.5.31.bin",
-        "sha256": "17912f5a1b6da734d46acfb1acd94657ef02d996e07666330ba2cf7983843363",
-        "size": 6251920
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.31/weather_clock_v1.5.31_merged.bin",
-        "sha256": "ea238d4095709cb09b830ba50ef0edc4a27f673ec5658208f94d518b2b19e32f",
         "size": 16509951
       }
     }
