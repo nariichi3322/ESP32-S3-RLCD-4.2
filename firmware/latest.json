@@ -1,7 +1,7 @@
 {
-  "version": "v100.0.1",
-  "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.1/weather_clock_v100.0.1.bin",
-  "sha256": "cbdec94cc0b5de573cd236291e027a697d92c6974a59935812b4efce284b6ed7",
-  "size": 5733440,
-  "notes": "v100.0.1：共 1 项更新。\n1. nariichi3322 version 修正版本顯示與 OTA 版本比較仍使用舊版號的問題。\n完整说明见源码仓库同版本 Release。"
+  "version": "v100.0.2",
+  "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.2/weather_clock_v100.0.2.bin",
+  "sha256": "1c9a667c9c7013ca195e033de542b8879fb049d835e7c148c453bda273e0e36c",
+  "size": 5733520,
+  "notes": "v100.0.2：共 1 项更新。\n1. nariichi3322 version 修正裝置畫面與 OTA 版本比較顯示 unknown 的問題。\n完整说明见源码仓库同版本 Release。"
 }
