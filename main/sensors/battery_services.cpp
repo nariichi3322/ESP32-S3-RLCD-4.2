@@ -16,6 +16,7 @@
 #include "esp_log.h"
 #include "nvs.h"
 
+#include <algorithm>
 #include <time.h>
 
 #define BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT "battery adc calibration release failed: %s"
@@ -50,10 +51,9 @@ static constexpr float kBatteryMillivoltsToVolts = 0.001f;
 static constexpr int kBatteryChargingStopAdcSteps = 2;
 static constexpr float kBatteryEmptyVoltage = 3.00f;
 static constexpr float kBatteryFullVoltage = 4.12f;
-static constexpr float kBatteryVoltageRange = kBatteryFullVoltage - kBatteryEmptyVoltage;
-static constexpr float kBatteryPercentScale = 100.0f;
-static constexpr float kBatteryPercentRoundOffset = 0.5f;
 static constexpr float kBatteryValidPreviousVoltageMin = kBatteryEmptyVoltage;
+static constexpr int kBatteryAdcSampleCount = 5;
+static constexpr int kBatteryAdcTrimmedSampleCount = kBatteryAdcSampleCount - 2;
 static constexpr adc_unit_t kBatteryAdcUnit = ADC_UNIT_1;
 static constexpr adc_channel_t kBatteryAdcChannel = ADC_CHANNEL_3;
 static constexpr adc_bitwidth_t kBatteryAdcBitwidth = ADC_BITWIDTH_12;
@@ -87,15 +87,40 @@ struct BatteryReading {
     float voltage = 0.0f;
 };
 
+struct BatteryVoltageSocPoint {
+    float voltage;
+    int percent;
+};
+
+// Generic 18650 discharge curve based on the LPC54018 product profile.  The
+// full-scale point matches this board's existing 4.12 V full-scale voltage.
+static constexpr BatteryVoltageSocPoint kBatteryVoltageSocCurve[] = {
+    {kBatteryFullVoltage, 100},
+    {3.905f, 90},
+    {3.825f, 80},
+    {3.740f, 70},
+    {3.666f, 60},
+    {3.582f, 50},
+    {3.498f, 40},
+    {3.433f, 30},
+    {3.362f, 20},
+    {3.272f, 10},
+    {3.197f, 5},
+    {kBatteryEmptyVoltage, 0},
+};
+
 static_assert(kBatteryVoltageDivider > 0.0f, "battery voltage divider must be positive");
 static_assert(kBatteryMillivoltsToVolts > 0.0f, "millivolts-to-volts scale must be positive");
 static_assert(kBatteryFullVoltage > kBatteryEmptyVoltage, "battery voltage range must be positive");
-static_assert(kBatteryPercentScale > 0.0f, "battery percent scale must be positive");
-static_assert(kBatteryPercentRoundOffset >= 0.0f && kBatteryPercentRoundOffset < 1.0f,
-              "battery percent rounding offset must stay within one percent step");
 static_assert(kBatteryValidPreviousVoltageMin >= kBatteryEmptyVoltage &&
                   kBatteryValidPreviousVoltageMin < kBatteryFullVoltage,
               "battery previous voltage must stay within plausible battery range");
+static_assert(kBatteryAdcSampleCount == 5,
+              "battery sampling policy requires exactly five ADC readings");
+static_assert(kBatteryAdcTrimmedSampleCount == 3,
+              "battery sampling policy must average the middle three readings");
+static_assert(sizeof(kBatteryVoltageSocCurve) / sizeof(kBatteryVoltageSocCurve[0]) >= 2,
+              "battery voltage curve requires at least two points");
 static_assert(kBatteryAdcReferenceMv > 0, "battery ADC reference voltage must be positive");
 static_assert(kBatteryAdcRawMax == (1 << 12) - 1, "12-bit battery ADC raw max must stay 4095");
 static_assert(kBatteryPercentMin < kBatteryPercentMax, "battery percent range must be ordered");
@@ -121,17 +146,6 @@ static_assert(kBatteryChargingRiseVoltage > kBatteryChargingStopVoltage,
 static_assert(kBatteryChargingStopVoltage >=
                   kBatteryVoltageDivider * kBatteryMillivoltsToVolts * kBatteryChargingStopAdcSteps,
               "charging stop threshold must cover at least two scaled ADC millivolt steps");
-
-static int clamp_battery_percent(int percent)
-{
-    if (percent < kBatteryPercentMin) {
-        return kBatteryPercentMin;
-    }
-    if (percent > kBatteryPercentMax) {
-        return kBatteryPercentMax;
-    }
-    return percent;
-}
 
 static bool battery_time_valid(time_t value)
 {
@@ -323,9 +337,12 @@ static bool init_battery_gauge()
 
 static int battery_percent_from_voltage(float voltage)
 {
-    int percent = (int)(((voltage - kBatteryEmptyVoltage) * kBatteryPercentScale /
-                         kBatteryVoltageRange) + kBatteryPercentRoundOffset);
-    return clamp_battery_percent(percent);
+    for (const BatteryVoltageSocPoint &point : kBatteryVoltageSocCurve) {
+        if (voltage >= point.voltage) {
+            return point.percent;
+        }
+    }
+    return kBatteryPercentMin;
 }
 
 static int battery_adc_raw_to_mv(int raw)
@@ -338,6 +355,43 @@ static float battery_voltage_from_adc_mv(int adc_mv)
     return adc_mv * kBatteryMillivoltsToVolts * kBatteryVoltageDivider;
 }
 
+static bool read_trimmed_battery_adc_mv(int *adc_mv_out, int *raw_average_out)
+{
+    if (!adc_mv_out || !raw_average_out) {
+        return false;
+    }
+
+    int adc_mv_samples[kBatteryAdcSampleCount] = {};
+    int raw_sum = 0;
+    for (int i = 0; i < kBatteryAdcSampleCount; ++i) {
+        int raw = 0;
+        esp_err_t err = adc_oneshot_read(s_battery_adc, kBatteryAdcChannel, &raw);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, BATTERY_ADC_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
+            return false;
+        }
+        raw_sum += raw;
+
+        int adc_mv = battery_adc_raw_to_mv(raw);
+        if (s_battery_adc_cali_ready) {
+            err = adc_cali_raw_to_voltage(s_battery_adc_cali, raw, &adc_mv);
+            if (err != ESP_OK) {
+                ESP_LOGW(TAG, BATTERY_ADC_CALIBRATION_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
+            }
+        }
+        adc_mv_samples[i] = adc_mv;
+    }
+
+    std::sort(adc_mv_samples, adc_mv_samples + kBatteryAdcSampleCount);
+    int trimmed_sum = 0;
+    for (int i = 1; i < kBatteryAdcSampleCount - 1; ++i) {
+        trimmed_sum += adc_mv_samples[i];
+    }
+    *adc_mv_out = trimmed_sum / kBatteryAdcTrimmedSampleCount;
+    *raw_average_out = raw_sum / kBatteryAdcSampleCount;
+    return true;
+}
+
 static bool read_battery_reading(BatteryReading *reading)
 {
     if (!reading) {
@@ -348,25 +402,16 @@ static bool read_battery_reading(BatteryReading *reading)
         return false;
     }
 
-    int raw = 0;
-    esp_err_t err = adc_oneshot_read(s_battery_adc, kBatteryAdcChannel, &raw);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, BATTERY_ADC_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
+    int adc_mv = 0;
+    int raw_average = 0;
+    if (!read_trimmed_battery_adc_mv(&adc_mv, &raw_average)) {
         release_battery_gauge();
         return false;
     }
 
-    int adc_mv = battery_adc_raw_to_mv(raw);
-    if (s_battery_adc_cali_ready) {
-        err = adc_cali_raw_to_voltage(s_battery_adc_cali, raw, &adc_mv);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, BATTERY_ADC_CALIBRATION_READ_FAILED_LOG_FORMAT, esp_err_to_name(err));
-        }
-    }
-
     float voltage = battery_voltage_from_adc_mv(adc_mv);
     int soc = battery_percent_from_voltage(voltage);
-    ESP_LOGD(TAG, BATTERY_ADC_SAMPLE_LOG_FORMAT, raw, adc_mv, voltage, soc);
+    ESP_LOGD(TAG, BATTERY_ADC_SAMPLE_LOG_FORMAT, raw_average, adc_mv, voltage, soc);
     reading->percent = soc;
     reading->voltage = voltage;
     return true;
