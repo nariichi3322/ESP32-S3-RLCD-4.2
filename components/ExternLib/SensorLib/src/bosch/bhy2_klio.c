@@ -133,18 +133,19 @@ int8_t bhy2_klio_set_pattern_states(const bhy2_klio_pattern_state_t operation,
                                     const uint16_t count,
                                     struct bhy2_dev *dev)
 {
-    uint32_t buffer_size = sizeof(bhy2_klio_pattern_state_op_t) + count;
-    uint8_t buffer[buffer_size];
+    uint8_t buffer[UINT8_MAX + 2U];
 
-    if (!dev || count == 0)
+    if (!dev || !pattern_ids || count == 0 || count > UINT8_MAX)
     {
         return BHY2_E_INVALID_PARAM;
     }
 
+    const uint32_t buffer_size = (uint32_t)count + 2U;
+
     buffer[1] = (uint8_t)count;
     buffer[0] = operation;
 
-    for (uint8_t i = 0; i < count; i++)
+    for (uint16_t i = 0; i < count; i++)
     {
         buffer[i + 2] = pattern_ids[i];
     }

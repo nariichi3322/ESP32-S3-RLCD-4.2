@@ -1614,7 +1614,7 @@ static int8_t get_time_stamp(enum bhy2_fifo_type source, uint64_t **time_stamp, 
 
 static int8_t parse_fifo_support(struct bhy2_fifo_buffer *fifo_buf)
 {
-    uint8_t i;
+    uint32_t i;
 
     if (fifo_buf->read_length)
     {

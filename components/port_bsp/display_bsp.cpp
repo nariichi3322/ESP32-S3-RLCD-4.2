@@ -669,13 +669,15 @@ size_t DisplayPort::PixelLutOffset(uint16_t x, uint16_t y) const {
 }
 
 void DisplayPort::InitPortraitLUT() {
-    uint16_t W4 = width_ >> 2;
-    for (uint16_t y = 0; y < height_; y++)
+    const uint16_t width = static_cast<uint16_t>(width_);
+    const uint16_t height = static_cast<uint16_t>(height_);
+    uint16_t W4 = width >> 2;
+    for (uint16_t y = 0; y < height; y++)
     {
         uint16_t byte_y = y >> 1;
         uint8_t  local_y = y & 1;
 
-        for (uint16_t x = 0; x < width_; x++)
+        for (uint16_t x = 0; x < width; x++)
         {
             uint16_t byte_x = x >> 2;
             uint8_t  local_x = x & 3;
@@ -691,15 +693,17 @@ void DisplayPort::InitPortraitLUT() {
 }
 
 void DisplayPort::InitLandscapeLUT() {
-    uint16_t H4 = height_ >> 2;
+    const uint16_t width = static_cast<uint16_t>(width_);
+    const uint16_t height = static_cast<uint16_t>(height_);
+    uint16_t H4 = height >> 2;
 
-    for (uint16_t y = 0; y < height_; y++)
+    for (uint16_t y = 0; y < height; y++)
     {
-        uint16_t inv_y = height_ - 1 - y;
+        uint16_t inv_y = height - 1 - y;
         uint16_t block_y = inv_y >> 2;
         uint8_t  local_y  = inv_y & 3;
 
-        for (uint16_t x = 0; x < width_; x++)
+        for (uint16_t x = 0; x < width; x++)
         {
             uint16_t byte_x = x >> 1;
             uint8_t  local_x = x & 1;
