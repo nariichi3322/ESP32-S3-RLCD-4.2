@@ -1,4 +1,4 @@
-// 通过小智 MCP 校验并保存手动天气城市，复用现有 QWeather 和 NVS 配置路径。
+// 通过小智 MCP 校验并保存手动天气城市，使用 Open-Meteo 与现有 NVS 路径。
 #include "weather_city_mcp_internal.h"
 
 #include "app_event_group.h"
@@ -6,7 +6,7 @@
 #include "network_credentials_state.h"
 #include "network_sync_request_generation.h"
 #include "offline_mode_state.h"
-#include "qweather_client.h"
+#include "open_meteo_client.h"
 #include "ui_task_notify.h"
 #include "weather_city_contract.h"
 #include "weather_city_pending_state_internal.h"
@@ -17,7 +17,6 @@
 #include <strings.h>
 
 namespace {
-constexpr size_t kCityIdLen = 32;
 constexpr size_t kCityCoordinateLen = 24;
 
 bool handle_weather_city(const XiaozhiMcpWeatherCityRequest &request,
@@ -62,24 +61,21 @@ bool handle_weather_city(const XiaozhiMcpWeatherCityRequest &request,
         return false;
     }
 
-    char city_id[kCityIdLen] = {};
     char resolved_city[kManualWeatherCityLen] = {};
     char latitude[kCityCoordinateLen] = {};
     char longitude[kCityCoordinateLen] = {};
-    QweatherCityLookupStatus status = qweather_lookup_city_status(normalized,
-                                                                  city_id,
-                                                                  sizeof(city_id),
-                                                                  resolved_city,
-                                                                  sizeof(resolved_city),
-                                                                  latitude,
-                                                                  sizeof(latitude),
-                                                                  longitude,
-                                                                  sizeof(longitude));
-    if (status != kQweatherCityLookupOk || resolved_city[0] == '\0') {
+    OpenMeteoResult status = open_meteo_lookup_city(normalized,
+                                                              resolved_city,
+                                                              sizeof(resolved_city),
+                                                              latitude,
+                                                              sizeof(latitude),
+                                                              longitude,
+                                                              sizeof(longitude));
+    if (status != OpenMeteoResult::kOk || resolved_city[0] == '\0') {
         if (result && result_len > 0) {
             std::snprintf(result,
                           result_len,
-                          status == kQweatherCityLookupNotFound
+                          status == OpenMeteoResult::kNotFound
                               ? "weather city was not found"
                               : "weather city validation failed");
         }

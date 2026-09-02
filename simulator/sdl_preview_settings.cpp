@@ -132,6 +132,8 @@ void make_settings_grid_item(lv_obj_t *screen,
 void build_settings_preview_page(const char *mode)
 {
     const bool simplified = mode && strstr(mode, "_simplified") != nullptr;
+    const bool system_maintenance =
+        settings_preview_mode_is(mode, "settings_system_maintenance");
     lv_obj_t *screen = lv_scr_act();
     lv_obj_clean(screen);
     lv_obj_set_style_bg_color(screen, lv_color_white(), LV_PART_MAIN);
@@ -150,7 +152,8 @@ void build_settings_preview_page(const char *mode)
                settings_preview_mode_is(mode, "settings_pages") ||
                settings_preview_mode_is(mode, "settings_order")) {
         primary = 2;
-    } else if (settings_preview_mode_is(mode, "settings_system")) {
+    } else if (settings_preview_mode_is(mode, "settings_system") ||
+               system_maintenance) {
         primary = 3;
     }
 
@@ -271,30 +274,34 @@ void build_settings_preview_page(const char *mode)
         feedback_label = make_label(screen, 24, 246, 352, 20,
             preview_text(simplified, "僅自訂圖片可調整切換時間", "仅自定义图片可调整切换时间"));
     } else {
-        settings_layout::GridCell offline_cell = settings_layout::settings_grid_cell(0);
-        settings_layout::GridCell diagnostic_cell = settings_layout::settings_grid_cell(1);
-        settings_layout::GridCell reset_cell = settings_layout::settings_grid_cell(2);
-        settings_layout::GridCell info_cell = settings_layout::settings_grid_cell(3);
-        settings_layout::GridCell language_cell = settings_layout::settings_grid_cell(4);
-        settings_layout::GridCell codex_cell = settings_layout::settings_grid_cell(5);
-        make_settings_grid_item(screen, offline_cell.x, offline_cell.y,
-                                preview_text(simplified, "設定模式", "设置模式"), false);
-        make_settings_grid_item(screen, diagnostic_cell.x, diagnostic_cell.y,
-                                preview_text(simplified, "恢復原廠", "恢复出厂"), false);
-        make_settings_grid_item(screen, reset_cell.x, reset_cell.y,
-                                preview_text(simplified, "關於本機", "关于本机"), false);
-        make_settings_grid_item(screen, info_cell.x, info_cell.y,
-                                preview_text(simplified, "清除配對", "清除配对"), true);
-        make_settings_grid_item(screen, language_cell.x, language_cell.y,
-                                 preview_text(simplified, "語言 繁", "语言 简"), false);
-        make_settings_grid_item(screen, codex_cell.x, codex_cell.y,
-                                "Codex 功能", false, nullptr, true);
-        make_settings_switch_dot(
-            screen,
-            codex_cell.x + settings_layout::kSettingsGridSwitchDotXOffset,
-            codex_cell.y + settings_layout::kSettingsGridSwitchDotYOffset,
-            false,
-            false);
+        static const char *general_traditional[] = {
+            "離線模式 關", "語言 繁", "設定模式", "關於本機",
+        };
+        static const char *general_simplified[] = {
+            "离线模式 关", "语言 简", "设置模式", "关于本机",
+        };
+        static const char *maintenance_traditional[] = {
+            "檢查更新", "網路檢測", "清除配對", "恢復原廠",
+        };
+        static const char *maintenance_simplified[] = {
+            "检查更新", "网络检测", "清除配对", "恢复出厂",
+        };
+        const char *const *items = system_maintenance
+                                       ? (simplified ? maintenance_simplified
+                                                     : maintenance_traditional)
+                                       : (simplified ? general_simplified
+                                                     : general_traditional);
+        for (int i = 0; i < 4; ++i) {
+            settings_layout::GridCell cell = settings_layout::settings_grid_cell(i);
+            make_settings_grid_item(screen, cell.x, cell.y, items[i], i == 0);
+        }
+        lv_obj_t *page = make_label(screen,
+                                    settings_layout::kSettingsSystemPageIndicatorX,
+                                    settings_layout::kSettingsSystemPageIndicatorY,
+                                    settings_layout::kSettingsSystemPageIndicatorW,
+                                    settings_layout::kSettingsSystemPageIndicatorH,
+                                    system_maintenance ? "2/2" : "1/2");
+        lv_obj_set_style_text_align(page, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         feedback_label = make_label(screen, 24, 246, 352, 20, "");
     }
     lv_obj_set_style_text_align(feedback_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);

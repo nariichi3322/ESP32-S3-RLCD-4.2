@@ -5,12 +5,10 @@
 #include "app_metadata.h"
 #include "app_text_format.h"
 #include "http_response_policy.h"
-#include "http_tls_retry_policy.h"
 #include "http_timeout_policy.h"
 #include "network_boot_sync.h"
 #include "network_gzip.h"
 #include "network_task_guards.h"
-#include "qweather_ca.h"
 #include "scoped_heap_buffer.h"
 #include "scoped_http_client.h"
 
@@ -18,7 +16,6 @@
 #include "esp_crt_bundle.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "miniz.h"
 
 #include <stdint.h>
@@ -35,17 +32,12 @@ constexpr const char *kHttpAcceptHeaderName = "Accept";
 constexpr const char *kHttpAcceptHeader = "application/json,text/plain,*/*";
 constexpr const char *kHttpAcceptEncodingHeaderName = "Accept-Encoding";
 constexpr const char *kHttpAcceptEncodingHeader = "identity";
-constexpr const char *kQweatherApiKeyHeader = "X-QW-Api-Key";
-constexpr const char *kQweatherApiHostSuffix = ".qweatherapi.com/";
 constexpr const char *kHttpPreviewDefaultStage = "http";
 constexpr const char *kHttpDecodeInvalidArgLog = "decode http body invalid arg";
 constexpr const char *kHttpGetInvalidArgLog = "http get invalid arg";
 constexpr const char *kHttpBootBudgetExhaustedLog = "http get skipped: boot sync time budget exhausted";
 constexpr const char *kHttpClientInitFailedLog = "http client init failed";
 constexpr const char *kHttpTransactionLockTimeoutLog = "http transaction deferred: TLS session is busy";
-constexpr const char *kHttpQweatherTlsFallbackLog =
-    "qweather TLS bundle connection failed, retrying with legacy CA";
-constexpr TickType_t kHttpTlsFallbackDelay = pdMS_TO_TICKS(350);
 
 // All HTTPS/WSS activity is serialized by NetworkHttpTransactionGuard. Keep
 // the relatively large ESP-IDF request descriptor out of the network task
@@ -104,11 +96,6 @@ static_assert(kHttpPreviewBufferSize == kHttpPreviewMaxChars + kCStringTerminato
     "http response truncated status=%d content_len=%lld received=%u buffer=%u overflow=%d"
 #define HTTP_GET_OK_FORMAT "http get ok status=%d len=%u gzip=%d"
 #define HTTP_SET_HEADER_FAILED_FORMAT "http set header failed name=%s err=%s"
-
-bool is_qweather_url(const char *url)
-{
-    return url && strstr(url, kQweatherApiHostSuffix);
-}
 
 bool http_status_ok(int status)
 {
@@ -170,17 +157,13 @@ esp_err_t set_http_header_checked(esp_http_client_handle_t client,
     return err;
 }
 
-esp_err_t configure_http_request_headers(esp_http_client_handle_t client,
-                                         const char *api_key)
+esp_err_t configure_http_request_headers(esp_http_client_handle_t client)
 {
     esp_err_t err = set_http_header_checked(client, kHttpAcceptHeaderName, kHttpAcceptHeader);
     if (err == ESP_OK) {
         err = set_http_header_checked(client,
                                       kHttpAcceptEncodingHeaderName,
                                       kHttpAcceptEncodingHeader);
-    }
-    if (err == ESP_OK && cstr_nonempty(api_key)) {
-        err = set_http_header_checked(client, kQweatherApiKeyHeader, api_key);
     }
     return err;
 }
@@ -261,7 +244,7 @@ esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len)
     return ESP_OK;
 }
 
-esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *api_key)
+esp_err_t http_get_text(const char *url, char *out, size_t out_len)
 {
     if (!http_get_text_args_valid(url, out, out_len)) {
         ESP_LOGW(TAG, "%s", kHttpGetInvalidArgLog);
@@ -284,30 +267,22 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
     config.event_handler = http_event_handler;
     config.user_data = &buffer;
     config.timeout_ms = timeout_ms;
-    const bool qweather_url = is_qweather_url(url);
-    const size_t attempt_count = http_tls_attempt_count(qweather_url);
     esp_err_t err = ESP_FAIL;
     int status = 0;
     int64_t content_length = 0;
-    for (size_t attempt = 0; attempt < attempt_count; ++attempt) {
+    {
         buffer.len = 0;
         buffer.truncated = false;
         out[0] = '\0';
         config.cert_pem = nullptr;
-        config.crt_bundle_attach = nullptr;
-        if (http_tls_trust_mode(qweather_url, attempt) ==
-            HttpTlsTrustMode::kQweatherLegacyCa) {
-            config.cert_pem = kQweatherCaDvR36Pem;
-        } else {
-            config.crt_bundle_attach = esp_crt_bundle_attach;
-        }
+        config.crt_bundle_attach = esp_crt_bundle_attach;
         {
             ScopedHttpClient client(&config);
             if (!client) {
                 ESP_LOGW(TAG, "%s", kHttpClientInitFailedLog);
                 return ESP_FAIL;
             }
-            esp_err_t header_err = configure_http_request_headers(client.get(), api_key);
+            esp_err_t header_err = configure_http_request_headers(client.get());
             if (header_err != ESP_OK) {
                 return header_err;
             }
@@ -315,14 +290,6 @@ esp_err_t http_get_text(const char *url, char *out, size_t out_len, const char *
             status = esp_http_client_get_status_code(client.get());
             content_length = esp_http_client_get_content_length(client.get());
         }
-        if (err == ESP_OK || !http_tls_should_retry(
-                                 qweather_url,
-                                 attempt,
-                                 err == ESP_ERR_HTTP_CONNECT)) {
-            break;
-        }
-        ESP_LOGW(TAG, "%s", kHttpQweatherTlsFallbackLog);
-        vTaskDelay(kHttpTlsFallbackDelay);
     }
     if (err != ESP_OK || !http_status_ok(status)) {
         if (buffer.len > 0) {

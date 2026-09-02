@@ -6,7 +6,6 @@
 #include "app_metadata.h"
 #include "app_tick_time.h"
 #include "chime_runtime_state.h"
-#include "codex_usage_feature_state.h"
 
 #include "ota_runtime_state.h"
 #include "ota_services.h"
@@ -17,6 +16,7 @@
 #include "ui_language.h"
 #include "ui_settings_navigation.h"
 #include "ui_settings_ota_panel.h"
+#include "ui_settings_pagination.h"
 #include "ui_widgets.h"
 #include "ui_work_page_catalog.h"
 #include "work_page_ids.h"
@@ -33,6 +33,7 @@ namespace settings_layout = ui_settings_layout;
 EXT_RAM_BSS_ATTR lv_obj_t *s_settings_labels[kSettingsLabelCount];
 EXT_RAM_BSS_ATTR lv_obj_t *s_settings_switch_dots[kSettingsSecondaryMaxCount];
 lv_obj_t *s_settings_feedback_label;
+lv_obj_t *s_settings_system_page_label;
 
 struct SettingsRenderWorkspace {
     char secondary_items[kSettingsSecondaryMaxCount][kSettingsSecondaryTextSize];
@@ -93,9 +94,6 @@ SettingsSecondaryStateSnapshot settings_secondary_state_snapshot(
             snapshot.xiaozhi_auto_return_enabled =
                 xiaozhi_auto_return_enabled_load();
         }
-    } else if (primary == kSettingsPrimarySystem) {
-        snapshot.codex_usage_feature_enabled =
-            codex_usage_feature_enabled();
     }
     return snapshot;
 }
@@ -188,8 +186,8 @@ static_assert(settings_layout::kSettingsListRowCount == kSettingsSecondaryMaxCou
               "settings list rows must match secondary slot count");
 static_assert(settings_layout::kSettingsGridCapacity >= kWorkPageCount,
               "settings grid capacity must cover all work pages");
-static_assert(settings_layout::kSettingsGridCapacity >= kSystemSettingsGridItemCount,
-              "settings grid capacity must cover system grid items");
+static_assert(settings_layout::kSettingsGridCapacity >= kSystemSettingsPageItemCount,
+              "settings grid capacity must cover one system page");
 static_assert(settings_layout::kSettingsGridCapacity >= kDisplaySettingsGridItemCount,
               "settings grid capacity must cover display grid items");
 static_assert(array_count(s_settings_labels) == kSettingsLabelCount,
@@ -333,6 +331,15 @@ void build_settings_page()
                              settings_layout::kSettingsSecondaryX,
                              settings_layout::kSettingsSecondaryW);
 
+    s_settings_system_page_label = make_centered_label(
+        screen,
+        settings_layout::kSettingsSystemPageIndicatorX,
+        settings_layout::kSettingsSystemPageIndicatorY,
+        settings_layout::kSettingsSystemPageIndicatorW,
+        settings_layout::kSettingsSystemPageIndicatorH,
+        "",
+        "settings system page indicator create failed");
+
     s_settings_feedback_label = make_centered_label(screen,
                                                     24,
                                                     246,
@@ -434,11 +441,23 @@ bool layout_settings_secondary_slot(
             }
         }
     } else if (primary == kSettingsPrimarySystem || primary == kSettingsPrimaryDisplay) {
+        const int system_page =
+            system_settings_page_for_selection(navigation.selection);
+        if (primary == kSettingsPrimarySystem &&
+            !system_settings_item_on_page(index, system_page)) {
+            set_obj_visible(s_settings_labels[slot], false);
+            hide_settings_switch_slot(index);
+            return false;
+        }
         bool grid_item = primary == kSettingsPrimaryDisplay
                              ? index < kDisplaySettingsGridItemCount
-                             : index < kSystemSettingsGridItemCount;
+                             : true;
         if (grid_item) {
-            settings_layout::GridCell cell = settings_layout::settings_grid_cell(index);
+            const int grid_index = primary == kSettingsPrimarySystem
+                                       ? system_settings_page_slot(index)
+                                       : index;
+            settings_layout::GridCell cell =
+                settings_layout::settings_grid_cell(grid_index);
             lv_obj_set_pos(s_settings_labels[slot], cell.x, cell.y);
             lv_obj_set_size(s_settings_labels[slot],
                             settings_layout::kSettingsGridColW,
@@ -505,11 +524,6 @@ void update_settings_switch_slot(int index,
         dot_on = index == kDisplaySettingsAlarmItem
                      ? secondary_state.alarm_enabled
                      : secondary_state.xiaozhi_auto_return_enabled;
-    } else if (visible &&
-               primary == kSettingsPrimarySystem &&
-               index == kSystemSettingsCodexFeatureItem) {
-        dot_visible = true;
-        dot_on = secondary_state.codex_usage_feature_enabled;
     }
     if (s_settings_switch_dots[index]) {
         set_obj_visible(s_settings_switch_dots[index], dot_visible);
@@ -559,7 +573,7 @@ bool update_settings_secondary_items(
         } else if (navigation.page_toggle_mode) {
             visible = i < kWorkPageCount;
         }
-        if (ota_detail_panel_visible && i == kSystemSettingsOtaItem) {
+        if (ota_detail_panel_visible && primary == kSettingsPrimarySystem) {
             visible = false;
         }
         set_obj_visible(s_settings_labels[slot], visible);
@@ -574,7 +588,7 @@ bool update_settings_secondary_items(
                                          : (navigation.focus_secondary && i == selected);
                 style_settings_item(s_settings_labels[slot], selected_item);
                 const bool compact_grid_item =
-                    (primary == kSettingsPrimarySystem && i < kSystemSettingsGridItemCount) ||
+                    primary == kSettingsPrimarySystem ||
                     (primary == kSettingsPrimaryDisplay && i < kDisplaySettingsGridItemCount);
                 if (compact_grid_item) {
                     const bool compact_switch_item =
@@ -583,8 +597,7 @@ bool update_settings_secondary_items(
                          !navigation.page_order_mode &&
                          (i == kDisplaySettingsAlarmItem ||
                           i == kDisplaySettingsXiaozhiAutoReturnItem)) ||
-                        (primary == kSettingsPrimarySystem &&
-                         i == kSystemSettingsCodexFeatureItem);
+                        false;
                     lv_obj_set_style_pad_left(
                         s_settings_labels[slot],
                         compact_switch_item
@@ -662,6 +675,20 @@ bool update_settings_page()
                                                secondary_state,
                                                workspace.secondary_items);
     changed |= update_settings_ota_panel(ota_item_selected, ota);
+    if (s_settings_system_page_label) {
+        const bool indicator_visible =
+            primary == kSettingsPrimarySystem && !ota_detail_panel_visible;
+        changed |= set_obj_visible(s_settings_system_page_label,
+                                   indicator_visible);
+        if (indicator_visible) {
+            const char *page_text =
+                system_settings_page_for_selection(selected) == 0
+                    ? "1/2"
+                    : "2/2";
+            changed |= set_label_text_if_changed(s_settings_system_page_label,
+                                                 page_text);
+        }
+    }
     changed |= update_settings_feedback_label();
     return changed;
 }
@@ -675,5 +702,6 @@ void clear_settings_page_object_refs()
         dot = nullptr;
     }
     s_settings_feedback_label = nullptr;
+    s_settings_system_page_label = nullptr;
     reset_settings_render_cache();
 }

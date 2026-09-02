@@ -38,6 +38,10 @@ inline constexpr int kSettingsGridSwitchLabelRightPadding = 22;
 inline constexpr int kSettingsGridSwitchLabelDotGap = 4;
 inline constexpr int kSettingsSystemLongItemY = 183;
 inline constexpr int kSettingsDisplayLongItemY = 183;
+inline constexpr int kSettingsSystemPageIndicatorX = 150;
+inline constexpr int kSettingsSystemPageIndicatorY = 150;
+inline constexpr int kSettingsSystemPageIndicatorW = 228;
+inline constexpr int kSettingsSystemPageIndicatorH = 20;
 
 static_assert(kSettingsGridSwitchLabelRightPadding >=
                   kSettingsGridColW - kSettingsGridSwitchDotXOffset +

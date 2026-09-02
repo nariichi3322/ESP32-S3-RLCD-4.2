@@ -1,7 +1,7 @@
 // Adapted from codex-usage-display (MIT); see THIRD_PARTY_NOTICES.md
 #include "codex_usage_ble.h"
+#include "codex_ble_lifecycle_policy.h"
 
-#include "codex_usage_feature_state.h"
 #include "codex_usage_state.h"
 #include "ui_task_notify.h"
 
@@ -10,6 +10,7 @@
 #include <esp_random.h>
 #include <esp_timer.h>
 #include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 #include <freertos/task.h>
 #include <host/ble_gap.h>
 #include <host/ble_gatt.h>
@@ -37,7 +38,14 @@ constexpr size_t kDeviceNameLength = sizeof("Codex Display") - 1U;
 constexpr uint32_t kPairingOverlayMs = 75000;
 constexpr uint32_t kLogThrottleMs = 5000;
 constexpr uint32_t kFirstStatusTimeoutMs = 20000;
-constexpr uint32_t kAdvertisingRetryDelaysMs[] = {250, 1000, 5000, 15000, 30000};
+constexpr uint32_t kAdvertisingRetryDelaysMs[] = {1000, 5000, 15000, 30000};
+constexpr uint32_t kHostStopRetryMs = 1000;
+constexpr uint32_t kClearBondsTimeoutMs = 10000;
+constexpr uint32_t kControlTaskStackWords = 4096;
+constexpr UBaseType_t kControlTaskPriority = 3;
+constexpr uint32_t kControlNotifyDesired = 1U << 0;
+constexpr uint32_t kControlNotifyHostExited = 1U << 1;
+constexpr uint32_t kControlNotifyClearBonds = 1U << 2;
 constexpr uint16_t kNoConnection = BLE_HS_CONN_HANDLE_NONE;
 
 static_assert(3U + 2U + 16U <= 31U,
@@ -70,8 +78,11 @@ std::atomic<uint32_t> s_pairing_generation{0};
 std::atomic<bool> s_pairing_visible{false};
 std::atomic<uint32_t> s_last_reject_log_tick{0};
 std::atomic<bool> s_desired_enabled{false};
-std::atomic<bool> s_retry_task_active{false};
-std::atomic_flag s_starting = ATOMIC_FLAG_INIT;
+std::atomic<TaskHandle_t> s_control_task{nullptr};
+std::atomic_flag s_control_task_starting = ATOMIC_FLAG_INIT;
+SemaphoreHandle_t s_clear_bonds_done = nullptr;
+std::atomic<bool> s_clear_bonds_pending{false};
+std::atomic<bool> s_clear_bonds_result{false};
 uint16_t s_status_value_handle = 0;
 
 uint32_t monotonic_ms()
@@ -203,6 +214,7 @@ const ble_gatt_svc_def kServices[] = {
 int start_advertising();
 void start_advertising_with_retry();
 void advertising_retry_timer_callback(void *);
+void reset_transport_session_state();
 
 int gap_event(ble_gap_event *event, void *)
 {
@@ -397,8 +409,14 @@ void on_sync()
 void host_task(void *)
 {
     nimble_port_run();
-    nimble_port_freertos_deinit();
     s_host_exited.store(true, std::memory_order_release);
+    TaskHandle_t control = s_control_task.load(std::memory_order_acquire);
+    if (control) {
+        xTaskNotify(control, kControlNotifyHostExited, eSetBits);
+    }
+    // The control task owns nimble_port_freertos_deinit().  That function
+    // deletes this host task, so no code placed after it would ever run.
+    vTaskSuspend(nullptr);
 }
 
 bool initialize_transport()
@@ -457,39 +475,79 @@ bool initialize_transport()
     return true;
 }
 
-bool start_transport_once()
+bool start_transport_owned()
 {
     if (s_running.load(std::memory_order_acquire)) return true;
-    if (s_starting.test_and_set(std::memory_order_acquire)) return false;
     const bool initialized = initialize_transport();
     if (initialized && s_desired_enabled.load(std::memory_order_acquire)) {
         s_stopping.store(false, std::memory_order_release);
         s_running.store(true, std::memory_order_release);
         s_host_exited.store(false, std::memory_order_release);
         nimble_port_freertos_init(host_task);
+        ESP_LOGI(kTag, "%s", "transport host started");
     }
-    s_starting.clear(std::memory_order_release);
     return initialized && s_running.load(std::memory_order_acquire);
 }
 
-void retry_task(void *)
+void delete_transport_timers()
 {
-    constexpr uint32_t delays_ms[] = {1000, 5000, 15000, 30000, 30000};
-    for (uint32_t delay_ms : delays_ms) {
-        vTaskDelay(pdMS_TO_TICKS(delay_ms));
-        if (!s_desired_enabled.load(std::memory_order_acquire) ||
-            start_transport_once()) break;
+    if (s_first_status_timer) {
+        (void)esp_timer_stop(s_first_status_timer);
+        (void)esp_timer_delete(s_first_status_timer);
+        s_first_status_timer = nullptr;
     }
-    s_retry_task_active.store(false, std::memory_order_release);
-    vTaskDelete(nullptr);
+    if (s_advertising_retry_timer) {
+        (void)esp_timer_stop(s_advertising_retry_timer);
+        (void)esp_timer_delete(s_advertising_retry_timer);
+        s_advertising_retry_timer = nullptr;
+    }
 }
 
-void schedule_retry_task()
+bool stop_transport_owned()
 {
-    if (s_retry_task_active.exchange(true, std::memory_order_acq_rel)) return;
-    if (xTaskCreate(retry_task, "codex_ble_retry", 3072, nullptr, 3, nullptr) != pdPASS) {
-        s_retry_task_active.store(false, std::memory_order_release);
+    s_stopping.store(true, std::memory_order_release);
+    s_running.store(false, std::memory_order_release);
+    if (s_advertising_retry_timer) {
+        (void)esp_timer_stop(s_advertising_retry_timer);
     }
+    s_advertising_retry_attempt.store(0, std::memory_order_release);
+    clear_pairing();
+    (void)ble_gap_adv_stop();
+    const uint16_t connection = s_connection.load(std::memory_order_acquire);
+    if (connection != kNoConnection) {
+        (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+    }
+
+    if (s_initialized.load(std::memory_order_acquire) &&
+        !s_host_exited.load(std::memory_order_acquire)) {
+        int rc = nimble_port_stop();
+        ESP_LOGI(kTag, "host stop requested rc=%d", rc);
+        while (!s_host_exited.load(std::memory_order_acquire)) {
+            uint32_t notifications = 0;
+            (void)xTaskNotifyWait(0, UINT32_MAX, &notifications,
+                                  pdMS_TO_TICKS(kHostStopRetryMs));
+            if (!s_host_exited.load(std::memory_order_acquire)) {
+                rc = nimble_port_stop();
+                ESP_LOGW(kTag, "host still running; stop retry rc=%d", rc);
+            }
+        }
+        ESP_LOGI(kTag, "%s", "host event loop exited");
+        nimble_port_freertos_deinit();
+    }
+
+    bool deinitialized = true;
+    if (s_initialized.load(std::memory_order_acquire)) {
+        const esp_err_t result = nimble_port_deinit();
+        deinitialized = result == ESP_OK;
+        ESP_LOGI(kTag, "transport deinit result=%s", esp_err_to_name(result));
+        if (deinitialized) {
+            s_initialized.store(false, std::memory_order_release);
+            delete_transport_timers();
+        }
+    }
+    reset_transport_session_state();
+    s_stopping.store(false, std::memory_order_release);
+    return deinitialized;
 }
 
 void reset_transport_session_state()
@@ -503,98 +561,133 @@ void reset_transport_session_state()
     clear_pairing();
     notify_ui_task();
 }
-}
 
-bool codex_usage_ble_set_enabled(bool enabled)
+bool clear_bonds_owned()
 {
-    s_desired_enabled.store(enabled, std::memory_order_release);
-    if (enabled) {
-        if (start_transport_once()) return true;
-        schedule_retry_task();
+    if (s_running.load(std::memory_order_acquire) ||
+        s_initialized.load(std::memory_order_acquire)) {
+        while (!stop_transport_owned()) {
+            vTaskDelay(pdMS_TO_TICKS(kHostStopRetryMs));
+        }
+    }
+    const esp_err_t init_result = nimble_port_init();
+    if (init_result != ESP_OK) {
+        ESP_LOGW(kTag, "bond-clear init failed: %s",
+                 esp_err_to_name(init_result));
         return false;
     }
-    if (s_advertising_retry_timer) {
-        (void)esp_timer_stop(s_advertising_retry_timer);
-    }
-    s_advertising_retry_attempt.store(0, std::memory_order_release);
-    if (!s_running.exchange(false, std::memory_order_acq_rel)) {
-        bool deinitialized = true;
-        if (s_initialized.exchange(false, std::memory_order_acq_rel)) {
-            if (s_first_status_timer) {
-                (void)esp_timer_stop(s_first_status_timer);
-                (void)esp_timer_delete(s_first_status_timer);
-                s_first_status_timer = nullptr;
-            }
-            if (s_advertising_retry_timer) {
-                (void)esp_timer_delete(s_advertising_retry_timer);
-                s_advertising_retry_timer = nullptr;
-            }
-            deinitialized = nimble_port_deinit() == ESP_OK;
-        }
-        reset_transport_session_state();
-        return deinitialized;
-    }
-    s_stopping.store(true, std::memory_order_release);
-    clear_pairing();
-    (void)ble_gap_adv_stop();
-    const uint16_t connection = s_connection.load(std::memory_order_acquire);
-    if (connection != kNoConnection) {
-        (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
-    }
-    const int rc = nimble_port_stop();
-    for (int attempt = 0;
-         attempt < 50 && !s_host_exited.load(std::memory_order_acquire);
-         ++attempt) {
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-    bool deinitialized = false;
-    if (s_host_exited.load(std::memory_order_acquire)) {
-        deinitialized = nimble_port_deinit() == ESP_OK;
-        if (deinitialized) {
-            s_initialized.store(false, std::memory_order_release);
-            if (s_first_status_timer) {
-                (void)esp_timer_stop(s_first_status_timer);
-                (void)esp_timer_delete(s_first_status_timer);
-                s_first_status_timer = nullptr;
-            }
-            if (s_advertising_retry_timer) {
-                (void)esp_timer_delete(s_advertising_retry_timer);
-                s_advertising_retry_timer = nullptr;
-            }
-        }
-    }
+    ble_store_config_init();
+    const bool cleared = ble_store_clear() == 0;
+    const esp_err_t deinit_result = nimble_port_deinit();
+    ESP_LOGI(kTag, "bond clear=%u deinit=%s", cleared,
+             esp_err_to_name(deinit_result));
     reset_transport_session_state();
-    s_stopping.store(false, std::memory_order_release);
-    return rc == 0 && deinitialized;
+    return cleared && deinit_result == ESP_OK;
 }
 
-bool codex_usage_ble_start_if_enabled()
+void control_task(void *)
 {
-    return codex_usage_ble_set_enabled(codex_usage_feature_enabled());
+    uint32_t retry_attempt = 0;
+    for (;;) {
+        if (s_clear_bonds_pending.exchange(false, std::memory_order_acq_rel)) {
+            s_clear_bonds_result.store(clear_bonds_owned(),
+                                       std::memory_order_release);
+            if (s_clear_bonds_done) xSemaphoreGive(s_clear_bonds_done);
+            retry_attempt = 0;
+            continue;
+        }
+        const bool desired = s_desired_enabled.load(std::memory_order_acquire);
+        const bool initialized = s_initialized.load(std::memory_order_acquire);
+        const bool running = s_running.load(std::memory_order_acquire);
+        const CodexBleLifecycleAction action =
+            codex_ble_lifecycle_action(initialized, running, desired);
+        if (action == CodexBleLifecycleAction::kStop) {
+            if (running || initialized) {
+                if (!stop_transport_owned()) {
+                    vTaskDelay(pdMS_TO_TICKS(kHostStopRetryMs));
+                    continue;
+                }
+            }
+            retry_attempt = 0;
+            continue;
+        }
+        if (action == CodexBleLifecycleAction::kStart) {
+            if (start_transport_owned()) {
+                retry_attempt = 0;
+                continue;
+            }
+            const uint32_t delay_ms =
+                codex_ble_transport_retry_delay_ms(retry_attempt++);
+            ESP_LOGW(kTag, "transport start failed; retry in %u ms",
+                     static_cast<unsigned>(delay_ms));
+            uint32_t notifications = 0;
+            (void)xTaskNotifyWait(0, UINT32_MAX, &notifications,
+                                  pdMS_TO_TICKS(delay_ms));
+            continue;
+        }
+        retry_attempt = 0;
+        uint32_t notifications = 0;
+        (void)xTaskNotifyWait(0, UINT32_MAX, &notifications, portMAX_DELAY);
+    }
+}
+
+bool ensure_control_task()
+{
+    if (s_control_task.load(std::memory_order_acquire)) return true;
+    if (s_control_task_starting.test_and_set(std::memory_order_acquire)) {
+        return false;
+    }
+    if (!s_clear_bonds_done) {
+        s_clear_bonds_done = xSemaphoreCreateBinary();
+    }
+    TaskHandle_t task = nullptr;
+    const BaseType_t created = s_clear_bonds_done
+                                   ? xTaskCreate(control_task,
+                                                 "codex_ble_ctl",
+                                                 kControlTaskStackWords,
+                                                 nullptr,
+                                                 kControlTaskPriority,
+                                                 &task)
+                                   : pdFAIL;
+    if (created == pdPASS) {
+        s_control_task.store(task, std::memory_order_release);
+    }
+    s_control_task_starting.clear(std::memory_order_release);
+    return created == pdPASS;
+}
+}
+
+bool codex_usage_ble_request_enabled(bool enabled)
+{
+    s_desired_enabled.store(enabled, std::memory_order_release);
+    if (!enabled) {
+        clear_pairing();
+        reset_transport_session_state();
+    }
+    if (!enabled && !s_control_task.load(std::memory_order_acquire)) return true;
+    if (!ensure_control_task()) {
+        ESP_LOGW(kTag, "%s", "BLE control task unavailable");
+        return false;
+    }
+    xTaskNotify(s_control_task.load(std::memory_order_acquire),
+                kControlNotifyDesired, eSetBits);
+    return true;
 }
 
 bool codex_usage_ble_clear_bonds()
 {
-    if (!s_initialized.load(std::memory_order_acquire)) {
-        if (nimble_port_init() != ESP_OK) return false;
-        ble_store_config_init();
-        const bool cleared = ble_store_clear() == 0;
-        const bool deinitialized = nimble_port_deinit() == ESP_OK;
-        return cleared && deinitialized;
+    if (!ensure_control_task() || !s_clear_bonds_done ||
+        s_clear_bonds_pending.exchange(true, std::memory_order_acq_rel)) {
+        return false;
     }
-    (void)ble_gap_adv_stop();
-    const uint16_t connection = s_connection.load(std::memory_order_acquire);
-    if (connection != kNoConnection) {
-        (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
+    (void)xSemaphoreTake(s_clear_bonds_done, 0);
+    xTaskNotify(s_control_task.load(std::memory_order_acquire),
+                kControlNotifyClearBonds, eSetBits);
+    if (xSemaphoreTake(s_clear_bonds_done,
+                       pdMS_TO_TICKS(kClearBondsTimeoutMs)) != pdTRUE) {
+        return false;
     }
-    const bool cleared = ble_store_clear() == 0;
-    codex_usage_state_reset();
-    clear_pairing();
-    if (s_running.load(std::memory_order_acquire)) {
-        start_advertising_with_retry();
-    }
-    notify_ui_task();
-    return cleared;
+    return s_clear_bonds_result.load(std::memory_order_acquire);
 }
 
 bool codex_usage_ble_pairing_snapshot(CodexPairingSnapshot *out)

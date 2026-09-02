@@ -9,8 +9,6 @@
 
 namespace {
 bool g_wifi_configured = true;
-bool g_weather_api_key_configured = true;
-bool g_weather_api_host_configured = true;
 bool g_offline_mode = false;
 bool g_low_battery_mode = false;
 int g_ota_state = kOtaIdle;
@@ -19,8 +17,6 @@ bool g_setup_portal_start_requested = false;
 void reset_runtime()
 {
     g_wifi_configured = true;
-    g_weather_api_key_configured = true;
-    g_weather_api_host_configured = true;
     g_offline_mode = false;
     g_low_battery_mode = false;
     g_ota_state = kOtaIdle;
@@ -32,8 +28,6 @@ NetworkCredentialsAvailability network_credentials_availability()
 {
     return {
         g_wifi_configured,
-        g_weather_api_key_configured,
-        g_weather_api_host_configured,
     };
 }
 
@@ -71,20 +65,6 @@ int main()
     g_wifi_configured = false;
     NetworkSyncAvailability changed = capture_network_runtime_availability();
     assert(!changed.have_wifi_creds);
-    assert(network_sync_start_context_changed(availability, changed));
-
-    reset_runtime();
-    availability = capture_network_runtime_availability();
-    g_weather_api_host_configured = false;
-    changed = capture_network_runtime_availability();
-    assert(!changed.have_weather_config);
-    assert(network_sync_start_context_changed(availability, changed));
-
-    reset_runtime();
-    availability = capture_network_runtime_availability();
-    g_weather_api_key_configured = false;
-    changed = capture_network_runtime_availability();
-    assert(!changed.have_weather_config);
     assert(network_sync_start_context_changed(availability, changed));
 
     reset_runtime();

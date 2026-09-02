@@ -67,8 +67,8 @@ add_executable(weather_clock_sdl
     "sdl_preview_xiaozhi.cpp"
     "../main/ui/ui_dseg_render.cpp"
     "../main/assets/boot_anim.c"
-    "../main/assets/qweather_icons_36.c"
     "../main/assets/zh_font_16.c"
+    "../main/assets/weather_icons_36.c"
     "../main/assets/zh_flip_lunar_22.c"
     "../main/assets/zh_pomodoro_title_24.c")
 

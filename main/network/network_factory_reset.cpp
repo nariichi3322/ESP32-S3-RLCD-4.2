@@ -17,10 +17,8 @@ using network_chime_storage::kChimeSoundKey;
 using network_chime_storage::kChimeVolumeKey;
 using network_chime_storage::kHourlyAllDayKey;
 using network_chime_storage::kHourlyChimeKey;
-using network_config_keys::kQweatherApiHostKey;
 using network_config_keys::kOfflineModeKey;
 using network_config_keys::kNtpServerKey;
-using network_config_keys::kWeatherApiKeyKey;
 using network_config_keys::kWifiBackupPassKey;
 using network_config_keys::kWifiBackupSsidKey;
 using network_config_keys::kWifiPassKey;
@@ -30,7 +28,6 @@ using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
 using network_config_keys::kWeatherClockSecondsKey;
 using network_config_keys::kUiLanguageKey;
-using network_config_keys::kCodexUsageFeatureKey;
 using network_page_storage::kPageMaskV1Key;
 using network_page_storage::kPageMaskV2Key;
 using network_page_storage::kPageMaskV3Key;
@@ -55,10 +52,10 @@ constexpr const char *kSavedConfigKeys[] = {
     kWifiBackupSsidKey,
     kWifiBackupPassKey,
     kWifiPreferredSlotKey,
-    kWeatherApiKeyKey,
+    "api_key",
     kManualWeatherCityKey,
     kIgnoredAssetWeatherCityKey,
-    kQweatherApiHostKey,
+    "api_host",
     kOfflineModeKey,
     kNtpServerKey,
     kHourlyChimeKey,
@@ -81,7 +78,7 @@ constexpr const char *kSavedConfigKeys[] = {
     kGalleryRotationKey,
     kWeatherClockSecondsKey,
     kUiLanguageKey,
-    kCodexUsageFeatureKey,
+    "codex_ble_v1",
 };
 
 static_assert(array_count(kSavedConfigKeys) == 32,
@@ -100,14 +97,14 @@ static_assert(cstr_array_contains(kSavedConfigKeys, kWifiBackupPassKey),
               "factory reset must clear backup Wi-Fi password");
 static_assert(cstr_array_contains(kSavedConfigKeys, kWifiPreferredSlotKey),
               "factory reset must clear preferred Wi-Fi slot");
-static_assert(cstr_array_contains(kSavedConfigKeys, kWeatherApiKeyKey),
-              "factory reset must clear weather API key");
+static_assert(cstr_array_contains(kSavedConfigKeys, "api_key"),
+              "factory reset must clear obsolete weather API key");
 static_assert(cstr_array_contains(kSavedConfigKeys, kManualWeatherCityKey),
               "factory reset must clear manual weather city");
 static_assert(cstr_array_contains(kSavedConfigKeys, kIgnoredAssetWeatherCityKey),
               "factory reset must clear ignored asset weather city");
-static_assert(cstr_array_contains(kSavedConfigKeys, kQweatherApiHostKey),
-              "factory reset must clear QWeather API Host");
+static_assert(cstr_array_contains(kSavedConfigKeys, "api_host"),
+              "factory reset must clear obsolete weather API host");
 static_assert(cstr_array_contains(kSavedConfigKeys, kOfflineModeKey),
               "factory reset must clear offline mode");
 static_assert(cstr_array_contains(kSavedConfigKeys, kNtpServerKey),
@@ -132,8 +129,8 @@ static_assert(cstr_array_contains(kSavedConfigKeys, kWeatherClockSecondsKey),
               "factory reset must clear weather clock seconds setting");
 static_assert(cstr_array_contains(kSavedConfigKeys, kUiLanguageKey),
               "factory reset must clear UI language setting");
-static_assert(cstr_array_contains(kSavedConfigKeys, kCodexUsageFeatureKey),
-              "factory reset must clear Codex Usage feature setting");
+static_assert(cstr_array_contains(kSavedConfigKeys, "codex_ble_v1"),
+              "factory reset must clear obsolete Codex feature setting");
 } // namespace
 
 esp_err_t erase_saved_config_keys(nvs_handle_t nvs)

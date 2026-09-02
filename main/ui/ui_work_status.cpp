@@ -5,6 +5,7 @@
 #include "app_display_config.h"
 #include "app_metadata.h"
 #include "codex_usage_protocol.h"
+#include "codex_ble_page_policy.h"
 #include "local_sensor_state.h"
 #include "work_page_ids.h"
 #include "ui_bitmap.h"
@@ -72,14 +73,14 @@ int s_last_temp_trend_drawn = kTrendDrawCacheInvalid;
 int s_last_humi_trend_drawn = kTrendDrawCacheInvalid;
 lv_color_t *s_bluetooth_status_buffer = nullptr;
 static constexpr const char *kStatusDatePlaceholder = "----/--/-- / 星期-";
-static constexpr const char *kStatusSummaryPlaceholder = "--C --%";
+static constexpr const char *kStatusSummaryPlaceholder = "--°C --%";
 static constexpr size_t kStatusSensorSummaryTextSize = 32;
-static constexpr const char *kStatusSensorSummaryFormat = "%.0fC %.0f%%";
-static constexpr const char *kStatusSensorSummaryFallback = "--C --%%";
+static constexpr const char *kStatusSensorSummaryFormat = "%.0f°C %.0f%%";
+static constexpr const char *kStatusSensorSummaryFallback = "--°C --%%";
 static constexpr size_t kClockSensorValueTextSize = 32;
-static constexpr const char *kClockSensorTempFormat = "%.1f℃";
+static constexpr const char *kClockSensorTempFormat = "%.1f°C";
 static constexpr const char *kClockSensorHumidityFormat = "%.1f%%";
-static constexpr const char *kClockSensorTempPlaceholder = "--.-℃";
+static constexpr const char *kClockSensorTempPlaceholder = "--.-°C";
 static constexpr const char *kClockSensorHumidityPlaceholder = "--.-%%";
 static constexpr const char *kStatusTimePlaceholder = "--:--";
 static constexpr size_t kStatusTimeTextSize = 8;
@@ -501,7 +502,8 @@ bool update_work_page_status_icons(int page,
     changed |= set_obj_visible(chime, chime_visible);
     changed |= set_obj_visible(wifi, wifi_visible);
     changed |= set_obj_visible(alarm, allow && status.alarm_enabled);
-    const bool bluetooth_visible = allow && status.codex_enabled;
+    const bool bluetooth_visible =
+        codex_ble_icon_should_show(page, allow, status.codex_enabled);
     if (bluetooth_visible &&
         page_status.last_bluetooth_state != status.codex_link_state) {
         draw_1bit_icon(bluetooth,

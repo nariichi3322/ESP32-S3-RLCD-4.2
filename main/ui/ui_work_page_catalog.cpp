@@ -3,6 +3,7 @@
 
 #include "active_work_page_state_internal.h"
 #include "app_constexpr.h"
+#include "offline_mode_state.h"
 #include "scoped_semaphore_lock.h"
 #include "ui_work_page_order_policy.h"
 #include "ui_language.h"
@@ -242,7 +243,11 @@ bool is_work_page_enabled(int page)
     if (!work_page_order_policy::is_work_page(page)) {
         return false;
     }
-    return (work_page_enabled_mask_load() & work_page_mask(page)) != 0;
+    const uint8_t saved_mask = work_page_enabled_mask_load();
+    const uint8_t effective_mask = offline_mode_enabled_load()
+                                       ? work_page_mask_for_offline_mode(saved_mask)
+                                       : saved_mask;
+    return (effective_mask & work_page_mask(page)) != 0;
 }
 
 uint8_t work_page_enabled_mask_load()
@@ -328,7 +333,10 @@ const char *work_page_name(int page)
 
 int first_enabled_work_page()
 {
-    const uint8_t page_mask = work_page_enabled_mask_load();
+    const uint8_t saved_mask = work_page_enabled_mask_load();
+    const uint8_t page_mask = offline_mode_enabled_load()
+                                  ? work_page_mask_for_offline_mode(saved_mask)
+                                  : saved_mask;
     uint8_t order[kWorkPageCount] = {};
     if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
         return kFallbackWorkPage;
@@ -428,7 +436,10 @@ bool work_page_order_swapped_copy_preserving_home(int first_index,
 
 int next_enabled_work_page(int current_page)
 {
-    const uint8_t page_mask = work_page_enabled_mask_load();
+    const uint8_t saved_mask = work_page_enabled_mask_load();
+    const uint8_t page_mask = offline_mode_enabled_load()
+                                  ? work_page_mask_for_offline_mode(saved_mask)
+                                  : saved_mask;
     uint8_t order[kWorkPageCount] = {};
     if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
         return kFallbackWorkPage;
@@ -451,7 +462,10 @@ int next_enabled_work_page(int current_page)
 
 int first_enabled_work_page_order_index()
 {
-    const uint8_t page_mask = work_page_enabled_mask_load();
+    const uint8_t saved_mask = work_page_enabled_mask_load();
+    const uint8_t page_mask = offline_mode_enabled_load()
+                                  ? work_page_mask_for_offline_mode(saved_mask)
+                                  : saved_mask;
     uint8_t order[kWorkPageCount] = {};
     if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
         return 0;
@@ -463,7 +477,10 @@ int first_enabled_work_page_order_index()
 
 int next_enabled_work_page_order_index(int current_order_index)
 {
-    const uint8_t page_mask = work_page_enabled_mask_load();
+    const uint8_t saved_mask = work_page_enabled_mask_load();
+    const uint8_t page_mask = offline_mode_enabled_load()
+                                  ? work_page_mask_for_offline_mode(saved_mask)
+                                  : saved_mask;
     uint8_t order[kWorkPageCount] = {};
     if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
         return 0;
@@ -480,7 +497,10 @@ int next_enabled_work_page_order_index(int current_order_index)
 
 int valid_enabled_work_page_order_index(int current_order_index)
 {
-    const uint8_t page_mask = work_page_enabled_mask_load();
+    const uint8_t saved_mask = work_page_enabled_mask_load();
+    const uint8_t page_mask = offline_mode_enabled_load()
+                                  ? work_page_mask_for_offline_mode(saved_mask)
+                                  : saved_mask;
     uint8_t order[kWorkPageCount] = {};
     if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
         return 0;

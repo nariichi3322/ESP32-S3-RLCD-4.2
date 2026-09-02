@@ -1,4 +1,4 @@
-// 实现天气看板不依赖 LVGL 的日期、温度范围和预警文本格式化。
+// 實作天氣看板不依賴 LVGL 的日期、溫度、空氣品質與日照文字格式。
 #include "ui_weather_board_text.h"
 
 #include "app_constexpr.h"
@@ -22,25 +22,19 @@ constexpr const char *kWeatherBoardWeekdayNamesTraditional[kWeatherBoardWeekdayC
 };
 constexpr const char *kForecastShortDateFormat = "%d日";
 constexpr const char *kForecastDateLineFormat = "%s\n%s";
-constexpr const char *kForecastTempRangeFormat = "%s/%s";
-constexpr const char *kWeatherBoardTodayRangeFormat = "今日 %s/%sC";
-constexpr const char *kWeatherBoardAlertPrefix = "预警 ";
-constexpr const char *kWeatherBoardAlertSeparator = " / ";
+constexpr const char *kForecastTempRangeFormat = "%s/%s°C";
+constexpr const char *kWeatherBoardTodayRangeFormat = "今日 %s/%s°C";
 constexpr const char *kWeatherBoardTimePlaceholder = "--:--";
 constexpr const char *kWeatherBoardAirFormat = "AQI %s %s";
 constexpr const char *kWeatherBoardHumidityFormat = "湿度 %s%%";
 constexpr const char *kWeatherBoardWindFormat = "%s %s级";
 constexpr const char *kWeatherBoardSunriseFormat = "日出 %s";
 constexpr const char *kWeatherBoardSunsetFormat = "日落 %s";
-constexpr int kWeatherBoardMaxAlertTitles = 3;
 constexpr size_t kForecastShortDateSize = 8;
 
 static_assert(array_count(kWeatherBoardWeekdayNamesSimplified) == kWeatherBoardWeekdayCount &&
                   array_count(kWeatherBoardWeekdayNamesTraditional) == kWeatherBoardWeekdayCount,
               "weather board weekday names must match weekday count");
-static_assert(kWeatherBoardMaxAlertTitles > 0 &&
-                  kWeatherBoardMaxAlertTitles <= kMaxWeatherAlerts,
-              "weather board alert display limit must fit alert storage");
 
 bool parse_forecast_date(const char *date, int &year, int &month, int &day)
 {
@@ -109,7 +103,7 @@ void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len
     ui_text::format_or_fallback(out,
                                 out_len,
                                 kWeatherBoardTodayRangePlaceholder,
-                                ui_language_text("今日 %s/%sC", kWeatherBoardTodayRangeFormat),
+                                ui_language_text("今日 %s/%s°C", kWeatherBoardTodayRangeFormat),
                                 text_or_dash(day.temp_min),
                                 text_or_dash(day.temp_max));
 }
@@ -136,30 +130,10 @@ void format_forecast_temp_range(const WeatherForecastDay &day, char *out, size_t
     }
     ui_text::format_or_fallback(out,
                                 out_len,
-                                kWeatherBoardShortDatePlaceholder,
+                                kWeatherBoardForecastRangePlaceholder,
                                 kForecastTempRangeFormat,
                                 text_or_dash(day.temp_min),
                                 text_or_dash(day.temp_max));
-}
-
-void format_weather_board_alert_line(const WeatherAlertData &alert,
-                                     char *out,
-                                     size_t out_len)
-{
-    if (!ui_text::output_buffer_available(out, out_len)) {
-        return;
-    }
-    if (!alert.active || alert.count <= 0 || !alert.titles[0][0]) {
-        strlcpy(out, kWeatherBoardAlertPlaceholder, out_len);
-        return;
-    }
-    strlcpy(out, ui_language_text("預警 ", kWeatherBoardAlertPrefix), out_len);
-    for (int i = 0; i < alert.count && i < kWeatherBoardMaxAlertTitles; ++i) {
-        if (i > 0) {
-            strlcat(out, kWeatherBoardAlertSeparator, out_len);
-        }
-        strlcat(out, alert.titles[i], out_len);
-    }
 }
 
 void format_weather_board_air_line(const WeatherAirData &air, char *out, size_t out_len)

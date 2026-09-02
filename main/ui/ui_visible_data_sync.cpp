@@ -10,7 +10,7 @@
 #include "offline_mode_state.h"
 #include "network_sync_schedule.h"
 #include "ota_services.h"
-#include "qweather_icons.h"
+#include "weather_icons.h"
 #include "ui_clock.h"
 #include "ui_clock_weather_text.h"
 #include "ui_text_format.h"
@@ -24,7 +24,7 @@
 namespace {
 constexpr size_t kWeatherCityTextSize = 48;
 constexpr size_t kWeatherValueTextSize = 24;
-constexpr const char *kWeatherTempFormat = "%s℃";
+constexpr const char *kWeatherTempFormat = "%s°C";
 constexpr const char *kWeatherHumidityFormat = "%s%%";
 
 #define UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT "weather clock visible with %s weather, requesting sync"
@@ -60,13 +60,16 @@ bool update_clock_weather_panel_text(const char *city,
                                      const char *info,
                                      const char *temperature,
                                      const char *humidity,
-                                     const char *icon_code)
+                                     WeatherIconKind icon_kind,
+                                     bool icon_visible = true)
 {
     return set_clock_weather_panel_text(city,
                                         info,
                                         temperature,
                                         humidity,
-                                        weather_icon_text(icon_code).c_str());
+                                        icon_visible
+                                            ? weather_icon_text(icon_kind).c_str()
+                                            : "");
 }
 
 bool weather_cache_stale(time_t now_value,
@@ -302,7 +305,7 @@ bool update_weather_clock_network_status(EventBits_t bits)
                                                weather.text,
                                                weather_temp,
                                                weather_humi,
-                                               weather.icon);
+                                               weather.icon_kind);
     }
 
     const bool offline_mode = offline_mode_enabled_load();
@@ -312,16 +315,18 @@ bool update_weather_clock_network_status(EventBits_t bits)
                                        : kClockWeatherInfoWaitingText;
         return update_clock_weather_panel_text(kClockWeatherCityPlaceholder,
                                                weather_info_text,
-                                               kClockWeatherTempPlaceholder,
-                                               kClockWeatherHumidityPlaceholder,
-                                               kClockWeatherUnknownIconCode);
+                                                kClockWeatherTempPlaceholder,
+                                                kClockWeatherHumidityPlaceholder,
+                                                WeatherIconKind::kUnknown,
+                                                false);
     }
 
     return update_clock_weather_panel_text(
         kClockWeatherCityPlaceholder,
         offline_mode ? kClockWeatherInfoWaitingText
-                     : kClockWeatherInfoMissingApiKeyText,
+                     : kClockWeatherInfoConfigurationRequiredText,
         kClockWeatherTempPlaceholder,
         kClockWeatherHumidityPlaceholder,
-        kClockWeatherUnknownIconCode);
+        WeatherIconKind::kUnknown,
+        false);
 }

@@ -9,10 +9,11 @@
 #include "audio_services.h"
 #include "chime_runtime_state.h"
 #include "codex_usage_ble.h"
-#include "codex_usage_feature_state.h"
 #include "chime_settings.h"
 #include "custom_assets.h"
 #include "network_config.h"
+#include "network_diagnostics.h"
+#include "network_diagnostics_state.h"
 #include "device_settings_persistence.h"
 #include "network_runtime_events.h"
 #include "offline_mode_state.h"
@@ -47,9 +48,13 @@ constexpr int kSettingsFeedbackInstructionMs = 3500;
 constexpr const char *kSettingsSaveFailedFeedback = "保存失败";
 constexpr const char *kSettingsOrderSavedFeedback = "页面顺序已保存";
 constexpr const char *kSettingsSyncBusyFeedback = "请等待同步完成";
-constexpr const char *kSettingsOfflineEnabledFeedback = "目前僅開放校時網路";
-constexpr const char *kOfflinePageUnavailableFeedback = "此版本僅保留本機頁面";
+constexpr const char *kSettingsOfflineEnabledFeedback = "離線模式已開啟";
+constexpr const char *kSettingsOfflineDisabledFeedback = "離線模式已關閉";
+constexpr const char *kOfflinePageUnavailableFeedback = "目前處於離線模式";
 constexpr const char *kManualNtpSyncFeedback = "正在同步时间...";
+constexpr const char *kManualWeatherSyncFeedback = "正在同步天氣...";
+constexpr const char *kManualSayingSyncFeedback = "正在更新一言...";
+constexpr const char *kNetworkDiagSyncFeedback = "正在網路檢測...";
 constexpr const char *kSoundVolumeFeedbackFormat = "音量 %d%%";
 constexpr const char *kSoundMutedFeedback = "已靜音";
 constexpr const char *kHourlyChimeEnabledFeedback = "整点提醒已开启";
@@ -65,9 +70,6 @@ constexpr const char *kPomodoroRunningFeedback = "请先取消番茄钟";
 constexpr const char *kXiaozhiAutoReturnEnabledFeedback = "小智自動返回已開啟";
 constexpr const char *kXiaozhiAutoReturnDisabledFeedback = "小智自動返回已關閉";
 constexpr const char *kGalleryRotationBuiltinFeedback = "預設圖片固定 24h";
-constexpr const char *kCodexFeatureEnabledFeedback = "Codex 功能已開啟";
-constexpr const char *kCodexFeatureDisabledFeedback = "Codex 功能已關閉";
-constexpr const char *kCodexFeatureSwitchFailedFeedback = "Codex 功能切換失敗";
 constexpr const char *kAlarmDisabledFeedback = "闹钟已关闭";
 constexpr const char *kAlarmSetByXiaozhiFeedback = "请通过小智AI设置";
 constexpr const char *kWorkPageFeedbackFormat = "%s%s";
@@ -82,6 +84,8 @@ constexpr size_t kSettingsFeedbackTextSize = 32;
 #define CHIME_SETTING_ENABLED_LOG_VALUE "enabled"
 #define CHIME_SETTING_DISABLED_LOG_VALUE "disabled"
 #define MANUAL_NTP_SYNC_REQUESTED_LOG "manual ntp sync requested"
+#define MANUAL_WEATHER_SYNC_REQUESTED_LOG "manual weather sync requested"
+#define MANUAL_SAYING_SYNC_REQUESTED_LOG "manual daily saying sync requested"
 #define FACTORY_RESET_CONFIRM_REQUESTED_LOG "factory reset confirmation requested"
 #define FACTORY_RESET_REQUESTED_LOG "factory reset requested from settings"
 #define SYSTEM_INFO_REQUESTED_LOG "system info requested from settings"
@@ -209,6 +213,20 @@ void handle_network_settings_action(int selected)
                                    kManualNtpSyncFeedback,
                                    MANUAL_NTP_SYNC_REQUESTED_LOG,
                                    kManualNtpSyncBit);
+    } else if (selected == kNetworkSettingsWeatherItem) {
+        queue_manual_settings_sync(kSettingsSyncWeather,
+                                   kManualWeatherSyncFeedback,
+                                   MANUAL_WEATHER_SYNC_REQUESTED_LOG,
+                                   kManualWeatherSyncBit);
+    } else if (selected == kNetworkSettingsSayingItem) {
+        queue_manual_settings_sync(kSettingsSyncSaying,
+                                   kManualSayingSyncFeedback,
+                                   MANUAL_SAYING_SYNC_REQUESTED_LOG,
+                                   kManualSayingSyncBit);
+    } else if (selected == kNetworkSettingsWeatherCityItem) {
+        set_settings_feedback(
+            ui_language_text("請由設定網頁或小智修改", "请由设置网页或小智修改"),
+            kSettingsFeedbackInstructionMs);
     }
 }
 
@@ -367,6 +385,26 @@ void handle_system_settings_action(
     SettingsNavigationSnapshot navigation)
 {
     if (selected == kSystemSettingsOfflineItem) {
+        if (!offline_mode_enabled_load()) {
+            if (!set_offline_mode_enabled(true)) {
+                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+                return;
+            }
+            set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        if (can_leave_offline_mode_without_setup()) {
+            if (!set_offline_mode_enabled(false)) {
+                set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
+                return;
+            }
+            set_settings_feedback(kSettingsOfflineDisabledFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        set_settings_feedback(
+            ui_language_text("請先完成線上設定", "请先完成在线设置"),
+            kSettingsFeedbackInstructionMs);
+    } else if (selected == kSystemSettingsSetupItem) {
         if (!request_setup_portal_start()) {
             set_settings_feedback(kSetupStartFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
@@ -374,6 +412,17 @@ void handle_system_settings_action(
         settings_confirmation_clear(SettingsConfirmation::kOfflineDisable);
         set_settings_feedback(kSetupInstructionFeedback,
                               kSettingsFeedbackInstructionMs);
+    } else if (selected == kSystemSettingsNetworkDiagItem) {
+        if (offline_mode_enabled_load()) {
+            set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
+            return;
+        }
+        network_diag_reset();
+        settings_page_clear();
+        network_diag_page_request();
+        begin_settings_sync(kSettingsSyncNetworkDiag,
+                            kNetworkDiagSyncFeedback,
+                            kNetworkDiagBit);
     } else if (selected == kSystemSettingsFactoryResetItem) {
         if (!settings_confirmation_pending(SettingsConfirmation::kFactoryReset)) {
             settings_confirmation_request(SettingsConfirmation::kFactoryReset);
@@ -424,16 +473,6 @@ void handle_system_settings_action(
         clear_info_object_refs();
         build_settings_page();
         show_page(auxiliary_page_root(AuxiliaryPage::kSettings));
-    } else if (selected == kSystemSettingsCodexFeatureItem) {
-        const bool enabled = !codex_usage_feature_enabled();
-        if (!set_codex_usage_feature_setting(enabled)) {
-            set_settings_feedback(kCodexFeatureSwitchFailedFeedback,
-                                  kSettingsFeedbackDefaultMs);
-            return;
-        }
-        set_settings_feedback(enabled ? kCodexFeatureEnabledFeedback
-                                      : kCodexFeatureDisabledFeedback,
-                              kSettingsFeedbackDefaultMs);
     } else if (selected == kSystemSettingsOtaItem) {
         ota_handle_info_key();
     }

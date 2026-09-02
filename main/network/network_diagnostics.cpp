@@ -39,8 +39,9 @@ constexpr size_t kNetworkDiagPublicIpTextSize = 48;
 constexpr int kNetworkDiagNtpMaxRetries = 5;
 constexpr const char *kNetworkDiagPublicIpUrl = "https://uapis.cn/api/v1/network/myip";
 constexpr const char *kNetworkDiagGithubDnsHost = "raw.githubusercontent.com";
-constexpr const char *kNetworkDiagQweatherHostUnavailableLog =
-    "network diag QWeather API host unavailable";
+constexpr const char *kNetworkDiagForecastDnsHost = "api.open-meteo.com";
+constexpr const char *kNetworkDiagGeocodingDnsHost = "geocoding-api.open-meteo.com";
+constexpr const char *kNetworkDiagAirDnsHost = "air-quality-api.open-meteo.com";
 constexpr const char *kNetworkDiagStatusWaiting = "等待";
 constexpr const char *kNetworkDiagStatusChecking = "检测中";
 constexpr const char *kNetworkDiagStatusFailed = "超时/失败";
@@ -208,15 +209,6 @@ const char *diag_result_text(bool ok)
     return ok ? kNetworkDiagStatusOk : kNetworkDiagStatusFailed;
 }
 
-bool configured_qweather_dns_ok()
-{
-    char api_host[kQweatherApiHostLen] = {};
-    if (!network_weather_api_host_snapshot(api_host, sizeof(api_host))) {
-        ESP_LOGW(TAG, "%s", kNetworkDiagQweatherHostUnavailableLog);
-        return false;
-    }
-    return network_diagnostic_dns_lookup_ok(api_host);
-}
 } // namespace
 
 void network_diag_reset()
@@ -390,7 +382,9 @@ bool run_network_diagnostic_checks(uint32_t request_generation)
     }
 
     network_diag_set_checking_line(kNetworkDiagDnsLine, kNetworkDiagDnsFormat);
-    bool dns_ok = configured_qweather_dns_ok() &&
+    bool dns_ok = network_diagnostic_dns_lookup_ok(kNetworkDiagForecastDnsHost) &&
+                  network_diagnostic_dns_lookup_ok(kNetworkDiagGeocodingDnsHost) &&
+                  network_diagnostic_dns_lookup_ok(kNetworkDiagAirDnsHost) &&
                   network_diagnostic_dns_lookup_ok(kNetworkDiagGithubDnsHost);
     if (!network_diagnostics_should_continue(kNetworkDiagDnsLine,
                                              completed,

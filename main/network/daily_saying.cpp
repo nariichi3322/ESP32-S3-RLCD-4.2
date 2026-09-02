@@ -124,7 +124,7 @@ bool perform_daily_saying_update()
         }
         stats.record_attempt();
         response.clear();
-        esp_err_t err = http_get_text(kDailySayingUrl, response.get(), response.size(), nullptr);
+        esp_err_t err = http_get_text(kDailySayingUrl, response.get(), response.size());
         if (!network_sync_continuation_allowed()) {
             break;
         }

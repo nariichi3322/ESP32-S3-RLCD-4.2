@@ -8,11 +8,7 @@ void network_credentials_store(const char *ssid_a,
                                const char *password_a,
                                const char *ssid_b,
                                const char *password_b,
-                               WifiCredentialSlot preferred_slot,
-                               const char *weather_api_key,
-                               const char *weather_api_host,
-                               bool weather_api_key_configured,
-                               bool weather_api_host_configured);
+                               WifiCredentialSlot preferred_slot);
 void network_credentials_clear();
 bool network_wifi_credentials_for_slot_copy(WifiCredentialSlot slot,
                                             char *ssid,

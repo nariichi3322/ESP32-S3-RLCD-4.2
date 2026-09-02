@@ -13,7 +13,9 @@
 #include "battery_policy.h"
 #include "battery_runtime_state.h"
 #include "chime_runtime_state.h"
+#include "codex_usage_ble.h"
 #include "codex_usage_state.h"
+#include "codex_ble_page_policy.h"
 #include "daily_saying_state.h"
 #include "local_sensor_state.h"
 #include "input_button_config.h"
@@ -36,7 +38,6 @@
 #include "ui_setup_status.h"
 #include "ui_status_refresh_policy.h"
 #include "ui_settings_activity_state.h"
-#include "codex_usage_feature_state.h"
 #include "ui_settings_feedback.h"
 #include "ui_visible_cache.h"
 #include "ui_visible_data_sync.h"
@@ -121,6 +122,20 @@ void apply_xiaozhi_page_activation(bool requested_active,
     previous_valid = true;
 }
 
+void apply_codex_page_activation(bool requested_active,
+                                 bool &previous_requested_active)
+{
+    if (requested_active == previous_requested_active) {
+        return;
+    }
+    // The BLE transport owns a bounded retry task after a failed start. Record
+    // the requested state so leaving the page always sends a matching stop and
+    // cancels that retry path.
+    if (codex_usage_ble_request_enabled(requested_active)) {
+        previous_requested_active = requested_active;
+    }
+}
+
 } // namespace
 
 void ui_task(void *)
@@ -135,10 +150,7 @@ void ui_task(void *)
     bool setup_panel_visible = false;
     bool low_mode_visible = false;
     uint32_t applied_clock_seconds_version = UINT32_MAX;
-    bool alert_visible = false;
     int visible_work_page = kWorkPageWeatherClock;
-    int alert_index = -1;
-    uint32_t alert_version = 0;
     bool last_battery_charging = false;
     int last_battery_blink_phase = -1;
     uint32_t last_settings_action_seq = settings_activity_action_sequence();
@@ -157,6 +169,7 @@ void ui_task(void *)
     bool cached_local_valid = false;
     bool xiaozhi_activation_requested = false;
     bool xiaozhi_activation_request_valid = false;
+    bool codex_activation_requested = false;
     int low_battery_resume_page = kWorkPageWeatherClock;
     bool low_battery_resume_pending = false;
     uint8_t lvgl_lock_failures = 0;
@@ -198,6 +211,14 @@ void ui_task(void *)
             true,
             xiaozhi_activation_requested,
             xiaozhi_activation_request_valid);
+        apply_codex_page_activation(
+            codex_ble_page_should_run(active_page,
+                                      battery.low_battery_mode,
+                                      runtime_surfaces.setup_portal_active,
+                                      runtime_surfaces.auxiliary_page_requested(),
+                                      runtime_surfaces.settings_requested,
+                                      ota_runtime_state_load() == kOtaUpdating),
+            codex_activation_requested);
 
         TickType_t tick_now = xTaskGetTickCount();
         if (active_page == kWorkPageXiaozhiAI &&
@@ -212,11 +233,11 @@ void ui_task(void *)
             weather_network_bits = static_cast<uint32_t>(
                 app_event_group_get_bits() & kUiWeatherNetworkStatusBits);
         }
-        const bool codex_enabled = codex_usage_feature_enabled();
+        const bool codex_enabled = active_page == kWorkPageCodexUsage;
         uint8_t codex_link_state = static_cast<uint8_t>(
             CodexUsageLinkState::Disconnected);
         CodexUsageSnapshotView codex_view{};
-        if (codex_enabled && codex_usage_snapshot_copy(&codex_view)) {
+        if (codex_usage_snapshot_copy(&codex_view)) {
             const uint32_t codex_now_ms = static_cast<uint32_t>(
                 esp_timer_get_time() / 1000ULL);
             codex_link_state = static_cast<uint8_t>(codex_usage_link_state(
@@ -370,8 +391,6 @@ void ui_task(void *)
                                   current_status_snapshot,
                                   battery.low_battery_mode,
                                   runtime_surfaces.setup_portal_active);
-                alert_visible = false;
-                alert_index = -1;
                 status_due = true;
                 sensor_status_due = true;
                 battery_due = true;
@@ -674,10 +693,7 @@ void ui_task(void *)
                                                                status_due,
                                                                current_status_snapshot,
                                                                battery.low_battery_mode,
-                                                               setup_active_for_frame,
-                                                               alert_visible,
-                                                               alert_index,
-                                                               alert_version);
+                                                               setup_active_for_frame);
             } else if (is_tm_plausible(local)) {
                 refresh_now |= update_setup_clock_header_time_ui(local);
             } else {
@@ -710,8 +726,6 @@ void ui_task(void *)
                                       current_status_snapshot,
                                       battery.low_battery_mode,
                                       setup_active);
-                    alert_visible = false;
-                    alert_index = -1;
                     refresh_now = true;
                 }
                 if (setup_active) {
@@ -743,7 +757,7 @@ void ui_task(void *)
                     }
                     if (active_pages.weather_clock) {
                         content_changed |= update_top_status_icons(
-                            alert_visible,
+                            false,
                             current_status_snapshot,
                             battery.low_battery_mode,
                             setup_active);

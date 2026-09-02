@@ -14,8 +14,7 @@ NetworkSyncAvailability capture_network_runtime_availability()
         network_credentials_availability();
     return {
         credentials.wifi_configured,
-        credentials.weather_api_key_configured &&
-            credentials.weather_api_host_configured,
+        credentials.wifi_configured,
         offline_mode_enabled_load(),
         battery_low_mode_load(),
     };

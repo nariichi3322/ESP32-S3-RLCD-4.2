@@ -31,12 +31,14 @@ Module ownership:
 - `sdl_preview_flip_clock.*`: temperature/humidity clock sensor, mood and date preview body.
 - `sdl_preview_gallery.*`: gallery image, block-clock and daily-saying preview body.
 - `sdl_preview_history.*`: temperature/humidity history chart body.
-- `sdl_preview_weather.*`: weather-board body and shared QWeather icon conversion.
+- `sdl_preview_weather.*`: weather-board body and provider-neutral icon preview.
 - `sdl_preview_xiaozhi.*`: Xiaozhi dialogue, preparing and Pomodoro preview body.
 - `sdl_preview_codex.*`: Codex waiting, linked, stale, estimated-token, pairing and large-token fixtures.
 
 Codex fixture screenshots use `WEATHER_CLOCK_SDL_MODE` values
 `codex_offline`, `codex_waiting`, `codex_disconnect`, `codex_linked`, `codex_stale`,
-`codex_estimated`, `codex_pairing`, and `codex_large_tokens`. Settings modes
-also accept a `_simplified` suffix (for example `settings_system_simplified`)
-to preview the Simplified Chinese copy.
+`codex_estimated`, `codex_pairing`, and `codex_large_tokens`. Use
+`settings_system` for the general system page and `settings_system_maintenance`
+for the maintenance page. Settings modes also accept a `_simplified` suffix
+(for example `settings_system_maintenance_simplified`) to preview the
+Simplified Chinese copy.

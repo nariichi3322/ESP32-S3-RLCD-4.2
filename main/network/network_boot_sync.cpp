@@ -5,6 +5,7 @@
 #include "app_metadata.h"
 #include "app_text_format.h"
 #include "network_credentials_state.h"
+#include "offline_mode_state.h"
 #include "ntp_services.h"
 #include "network_sync_schedule.h"
 #include "network_task_guards.h"
@@ -114,6 +115,14 @@ int boot_sync_remaining_ms()
 void run_boot_connectivity_sync()
 {
     char wifi_ssid[kNetworkWifiSsidLen] = {};
+    if (offline_mode_enabled_load()) {
+        update_boot_screen(kBootScreenCompletePercent,
+                           "Offline mode",
+                           kBootDetailStartingClock);
+        request_wifi_radio_stop_if_running();
+        vTaskDelay(pdMS_TO_TICKS(kBootScreenShortDelayMs));
+        return;
+    }
     if (!network_wifi_credentials_configured() ||
         !network_wifi_ssid_snapshot(wifi_ssid, sizeof(wifi_ssid))) {
         char detail[kBootSetupDetailTextSize] = {};

@@ -161,11 +161,11 @@ void draw_preview_history_panel(lv_obj_t *canvas,
     float axis_max = max_value + pad;
     float axis_mid = (axis_min + axis_max) * 0.5f;
     char text[16];
-    snprintf(text, sizeof(text), temperature ? "%.0f℃" : "%.0f%%", axis_max);
+    snprintf(text, sizeof(text), temperature ? "%.0f°C" : "%.0f%%", axis_max);
     set_label_text_if_changed(axis_labels[0], text);
-    snprintf(text, sizeof(text), temperature ? "%.0f℃" : "%.0f%%", axis_mid);
+    snprintf(text, sizeof(text), temperature ? "%.0f°C" : "%.0f%%", axis_mid);
     set_label_text_if_changed(axis_labels[1], text);
-    snprintf(text, sizeof(text), temperature ? "%.0f℃" : "%.0f%%", axis_min);
+    snprintf(text, sizeof(text), temperature ? "%.0f°C" : "%.0f%%", axis_min);
     set_label_text_if_changed(axis_labels[2], text);
 
     int prev_x = 0;

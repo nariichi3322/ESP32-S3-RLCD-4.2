@@ -10,8 +10,7 @@ struct CodexPairingSnapshot {
     bool visible = false;
 };
 
-bool codex_usage_ble_set_enabled(bool enabled);
-bool codex_usage_ble_start_if_enabled();
+bool codex_usage_ble_request_enabled(bool enabled);
 bool codex_usage_ble_clear_bonds();
 bool codex_usage_ble_pairing_snapshot(CodexPairingSnapshot *out);
 void codex_usage_ble_clear_pairing_overlay();

@@ -15,7 +15,4 @@ bool update_active_work_page_content(const struct tm &local,
                                      bool status_due,
                                      const UiStatusRefreshSnapshot &status,
                                      bool low_battery_mode,
-                                     bool setup_portal_active,
-                                     bool &alert_visible,
-                                     int &alert_index,
-                                     uint32_t &alert_version);
+                                     bool setup_portal_active);

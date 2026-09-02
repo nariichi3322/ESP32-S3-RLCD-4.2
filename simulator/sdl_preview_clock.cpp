@@ -11,7 +11,6 @@
 #include "ui_dseg_render.h"
 #include "ui_icons.h"
 
-LV_FONT_DECLARE(qweather_icons_36);
 LV_FONT_DECLARE(zh_font_16);
 
 namespace {
@@ -223,7 +222,7 @@ void SdlPreviewClock::build_weather_summary(lv_obj_t *screen)
                                      kClockWeatherIconLabelHeight,
                                      "");
     remember_lower_panel_object(weather_icon_label_);
-    lv_obj_set_style_text_font(weather_icon_label_, &qweather_icons_36, LV_PART_MAIN);
+    lv_obj_set_style_text_font(weather_icon_label_, &lv_font_montserrat_24, LV_PART_MAIN);
     lv_obj_set_style_border_width(weather_icon_label_, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(weather_icon_label_, 0, LV_PART_MAIN);
     lv_obj_set_style_text_align(weather_icon_label_, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
@@ -241,7 +240,7 @@ void SdlPreviewClock::build_weather_summary(lv_obj_t *screen)
                                      kClockWeatherTempLabelY,
                                      kClockWeatherMetricLabelWidth,
                                      kClockWeatherMetricLabelHeight,
-                                     "--℃");
+                                     "--°C");
     weather_humi_label_ = make_label(screen,
                                      kClockWeatherMetricLabelX,
                                      kClockWeatherHumiLabelY,
@@ -287,7 +286,7 @@ void SdlPreviewClock::build_sensor_summary(lv_obj_t *screen)
                              kClockLocalTempLabelY,
                              kClockLocalMetricLabelWidth,
                              kClockLocalMetricLabelHeight,
-                             "--.-℃");
+                             "--.-°C");
     humi_label_ = make_label(screen,
                              kClockLocalMetricLabelX,
                              kClockLocalHumiLabelY,
@@ -425,13 +424,13 @@ void SdlPreviewClock::build(lv_obj_t *screen)
 
 void SdlPreviewClock::populate_sample_data()
 {
-    set_label_text_if_changed(temp_label_, "24.6℃");
+    set_label_text_if_changed(temp_label_, "24.6°C");
     set_label_text_if_changed(humi_label_, "58.0%");
     set_label_text_if_changed(weather_city_label_, "杭州");
     set_label_text_if_changed(weather_info_label_, "晴");
-    set_label_text_if_changed(weather_temp_label_, "26℃");
+    set_label_text_if_changed(weather_temp_label_, "26°C");
     set_label_text_if_changed(weather_humi_label_, "58%");
-    set_label_text_if_changed(weather_icon_label_, preview_weather_icon_text("100"));
+    set_label_text_if_changed(weather_icon_label_, preview_weather_icon_text("clear"));
     work_status_.update_battery(76);
 }
 

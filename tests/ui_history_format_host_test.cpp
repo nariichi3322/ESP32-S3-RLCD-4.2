@@ -47,7 +47,7 @@ int main()
     assert(strcmp(text, "07:00") == 0);
 
     format_history_axis_value(true, -3.6f, text, sizeof(text));
-    assert(strcmp(text, "-4℃") == 0);
+    assert(strcmp(text, "-4°C") == 0);
     format_history_axis_value(false, 58.4f, text, sizeof(text));
     assert(strcmp(text, "58%") == 0);
     format_history_badge_value(true, 25.64f, text, sizeof(text));

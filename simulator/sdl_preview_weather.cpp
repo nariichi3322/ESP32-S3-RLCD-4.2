@@ -1,14 +1,14 @@
-// 实现 SDL 天气看板主体和 QWeather 图标码到字体字符的转换。
+// 實作 SDL 天氣看板與供應商中立的單色天氣符號。
 #include "sdl_preview_weather.h"
 
-#include <stdlib.h>
+#include <string.h>
 
 #include "core/app_constexpr.h"
 #include "sdl_preview_widgets.h"
 #include "ui_weather_board_layout.h"
 
-LV_FONT_DECLARE(qweather_icons_36);
 LV_FONT_DECLARE(zh_font_16);
+LV_FONT_DECLARE(weather_icons_36);
 
 namespace {
 using namespace ui_weather_board_layout;
@@ -16,26 +16,6 @@ using namespace ui_weather_board_layout;
 using sdl_preview_widgets::make_black_bar;
 using sdl_preview_widgets::make_label;
 using sdl_preview_widgets::make_label_with_font;
-
-uint32_t weather_icon_codepoint(const char *code)
-{
-    int icon = atoi(code);
-    if (icon >= 100 && icon <= 104) return 0xF101 + static_cast<uint32_t>(icon - 100);
-    if (icon >= 150 && icon <= 153) return 0xF106 + static_cast<uint32_t>(icon - 150);
-    if (icon >= 300 && icon <= 318) return 0xF10A + static_cast<uint32_t>(icon - 300);
-    if (icon >= 350 && icon <= 351) return 0xF11D + static_cast<uint32_t>(icon - 350);
-    if (icon == 399) return 0xF11F;
-    if (icon >= 400 && icon <= 410) return 0xF120 + static_cast<uint32_t>(icon - 400);
-    if (icon >= 456 && icon <= 457) return 0xF12B + static_cast<uint32_t>(icon - 456);
-    if (icon == 499) return 0xF12D;
-    if (icon >= 500 && icon <= 504) return 0xF12E + static_cast<uint32_t>(icon - 500);
-    if (icon >= 507 && icon <= 515) return 0xF133 + static_cast<uint32_t>(icon - 507);
-    if (icon >= 800 && icon <= 807) return 0xF13C + static_cast<uint32_t>(icon - 800);
-    if (icon == 900) return 0xF144;
-    if (icon == 901) return 0xF145;
-    if (icon == 9999) return 0xF1CB;
-    return 0xF146;
-}
 
 void style_weather_preview_card(lv_obj_t *obj)
 {
@@ -48,15 +28,16 @@ void style_weather_preview_card(lv_obj_t *obj)
 }
 } // namespace
 
-const char *preview_weather_icon_text(const char *code)
+const char *preview_weather_icon_text(const char *kind)
 {
-    static char text[5];
-    uint32_t cp = weather_icon_codepoint(code);
-    text[0] = static_cast<char>(0xE0 | (cp >> 12));
-    text[1] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
-    text[2] = static_cast<char>(0x80 | (cp & 0x3F));
-    text[3] = '\0';
-    return text;
+    if (!kind) return "?";
+    if (strcmp(kind, "clear") == 0) return "O";
+    if (strcmp(kind, "partly") == 0) return "o";
+    if (strcmp(kind, "cloud") == 0) return "=";
+    if (strcmp(kind, "rain") == 0) return "/";
+    if (strcmp(kind, "snow") == 0) return "*";
+    if (strcmp(kind, "storm") == 0) return "!";
+    return "?";
 }
 
 void build_weather_board_preview_body(lv_obj_t *screen)
@@ -83,15 +64,15 @@ void build_weather_board_preview_body(lv_obj_t *screen)
                          kWeatherBoardCurrentUnitY,
                          kWeatherBoardCurrentUnitW,
                          kWeatherBoardCurrentUnitH,
-                         "C",
+                         "°C",
                          &lv_font_montserrat_24);
     lv_obj_t *icon = make_label(screen,
                                 kWeatherBoardCurrentIconX,
                                 kWeatherBoardCurrentIconY,
                                 kWeatherBoardCurrentIconW,
                                 kWeatherBoardCurrentIconH,
-                                preview_weather_icon_text("100"));
-    lv_obj_set_style_text_font(icon, &qweather_icons_36, LV_PART_MAIN);
+                                preview_weather_icon_text("clear"));
+    lv_obj_set_style_text_font(icon, &weather_icons_36, LV_PART_MAIN);
     lv_obj_set_style_text_align(icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     make_label(screen,
                kWeatherBoardCurrentTextX,
@@ -104,14 +85,14 @@ void build_weather_board_preview_body(lv_obj_t *screen)
                kWeatherBoardTodayRangeY,
                kWeatherBoardTodayRangeW,
                kWeatherBoardTodayRangeH,
-               "今日 22/29C");
+               "今日 22/29°C");
 
     static constexpr const char *kDays[] = {
         "周二\n23日", "周三\n24日", "周四\n25日", "周五\n26日", "周六\n27日", "周日\n28日",
     };
     static constexpr const char *kTexts[] = {"晴", "多云转晴", "小到中雨", "阴", "雨夹雪", "大到暴雨"};
-    static constexpr const char *kIcons[] = {"100", "101", "305", "104", "404", "306"};
-    static constexpr const char *kRanges[] = {"22/29", "23/30", "-3/2", "22/28", "-8/-2", "18/24"};
+    static constexpr const char *kIcons[] = {"clear", "partly", "rain", "cloud", "snow", "storm"};
+    static constexpr const char *kRanges[] = {"22/29°C", "23/30°C", "-3/2°C", "22/28°C", "-8/-2°C", "18/24°C"};
     static_assert(array_count(kDays) == array_count(kTexts) &&
                       array_count(kDays) == array_count(kIcons) &&
                       array_count(kDays) == array_count(kRanges) &&
@@ -138,7 +119,7 @@ void build_weather_board_preview_body(lv_obj_t *screen)
                                           kForecastCardW,
                                           kForecastCardIconH,
                                           preview_weather_icon_text(kIcons[i]));
-        lv_obj_set_style_text_font(small_icon, &qweather_icons_36, LV_PART_MAIN);
+        lv_obj_set_style_text_font(small_icon, &weather_icons_36, LV_PART_MAIN);
         lv_obj_set_style_text_align(small_icon, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
         lv_obj_t *text = make_label_with_font(screen,
                                               x,
@@ -200,12 +181,6 @@ void build_weather_board_preview_body(lv_obj_t *screen)
                kWeatherBoardSunCountdownLabelW,
                kWeatherBoardSunLabelH,
                "距日落 01:05");
-    make_label(screen,
-               kWeatherBoardAlertX,
-               kWeatherBoardAlertY,
-               kWeatherBoardAlertW,
-               kWeatherBoardAlertH,
-               "预警 大风蓝 / 暴雨黄 / 雷电橙");
     lv_obj_t *advice = make_label(screen,
                                   kWeatherBoardAdviceX,
                                   kWeatherBoardAdviceY,

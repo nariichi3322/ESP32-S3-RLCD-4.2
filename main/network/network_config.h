@@ -10,9 +10,9 @@ bool save_config(const char *ssid,
                  const char *backup_ssid,
                  const char *backup_pass,
                  const char *ntp_server,
-                 const char *api_key,
-                 const char *api_host,
                  const char *weather_city = nullptr);
+bool set_offline_mode_enabled(bool enabled);
+bool can_leave_offline_mode_without_setup();
 bool persist_preferred_wifi_slot(WifiCredentialSlot slot);
 bool save_manual_weather_city(const char *city);
 bool clear_manual_weather_city();

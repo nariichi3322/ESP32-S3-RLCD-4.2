@@ -1,7 +1,6 @@
 #include "ui_codex_usage.h"
 
 #include "battery_runtime_state.h"
-#include "codex_usage_feature_state.h"
 #include "ui_battery.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
@@ -130,9 +129,8 @@ void build_codex_usage_page()
     if (offline_detail) {
         lv_obj_set_style_text_align(offline_detail, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     }
-    const bool feature_enabled = codex_usage_feature_enabled();
-    set_obj_visible(s_online_content, feature_enabled);
-    set_obj_visible(s_offline_content, !feature_enabled);
+    set_obj_visible(s_online_content, true);
+    set_obj_visible(s_offline_content, false);
     build_work_page_day_progress(screen, kWorkPageCodexUsage);
     lv_obj_add_flag(screen, LV_OBJ_FLAG_HIDDEN);
     update_work_page_battery_icon(kWorkPageCodexUsage, battery_percent_load());

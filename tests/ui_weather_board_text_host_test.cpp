@@ -1,4 +1,4 @@
-// 验证天气看板日期、温度范围和多预警文本的既有格式规则。
+// 验证天气看板日期、温度范围、空气品质与日照格式规则。
 #include "ui_weather_board_text.h"
 #include "ui_language_internal.h"
 
@@ -24,9 +24,9 @@ int main()
     format_forecast_date_line(day, out, sizeof(out));
     assert(strcmp(out, "週日\n12日") == 0);
     format_forecast_temp_range(day, out, sizeof(out));
-    assert(strcmp(out, "17/26") == 0);
+    assert(strcmp(out, "17/26°C") == 0);
     format_today_range(day, out, sizeof(out));
-    assert(strcmp(out, "今日 17/26C") == 0);
+    assert(strcmp(out, "今日 17/26°C") == 0);
 
     strcpy(day.date, "invalid");
     day.temp_min[0] = '\0';
@@ -34,25 +34,9 @@ int main()
     format_forecast_date_line(day, out, sizeof(out));
     assert(strcmp(out, "--\n--/--") == 0);
     format_forecast_temp_range(day, out, sizeof(out));
-    assert(strcmp(out, "--/--") == 0);
+    assert(strcmp(out, "--/--°C") == 0);
     format_today_range(day, out, sizeof(out));
     assert(strcmp(out, kWeatherBoardTodayRangePlaceholder) == 0);
-
-    WeatherAlertData alert = {};
-    format_weather_board_alert_line(alert, out, sizeof(out));
-    assert(strcmp(out, kWeatherBoardAlertPlaceholder) == 0);
-    alert.active = true;
-    alert.count = 4;
-    strcpy(alert.titles[0], "大风黄色预警");
-    strcpy(alert.titles[1], "高温橙色预警");
-    strcpy(alert.titles[2], "暴雨蓝色预警");
-    strcpy(alert.titles[3], "雷电黄色预警");
-    format_weather_board_alert_line(alert, out, sizeof(out));
-    assert(strcmp(out,
-                  "預警 大风黄色预警 / 高温橙色预警 / 暴雨蓝色预警") == 0);
-    alert.titles[0][0] = '\0';
-    format_weather_board_alert_line(alert, out, sizeof(out));
-    assert(strcmp(out, kWeatherBoardAlertPlaceholder) == 0);
 
     WeatherAirData air = {};
     format_weather_board_air_line(air, out, sizeof(out));
@@ -72,7 +56,7 @@ int main()
     assert(strcmp(out, "溼度 61%") == 0);
 
     format_weather_board_wind_line(nullptr, out, sizeof(out));
-    assert(strcmp(out, kWeatherBoardWindPlaceholder) == 0);
+    assert(strcmp(out, "-- --級") == 0);
     strcpy(day.wind_dir, "东北风");
     strcpy(day.wind_scale, "3");
     format_weather_board_wind_line(&day, out, sizeof(out));
@@ -105,7 +89,6 @@ int main()
     format_today_range(day, nullptr, 0);
     format_forecast_date_line(day, nullptr, 0);
     format_forecast_temp_range(day, nullptr, 0);
-    format_weather_board_alert_line(alert, nullptr, 0);
     format_weather_board_air_line(air, nullptr, 0);
     format_weather_board_humidity_line(weather, &day, nullptr, 0);
     format_weather_board_wind_line(&day, nullptr, 0);

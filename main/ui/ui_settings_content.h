@@ -18,7 +18,6 @@ struct SettingsSecondaryStateSnapshot {
     uint8_t alarm_hour;
     uint8_t alarm_minute;
     bool xiaozhi_auto_return_enabled;
-    bool codex_usage_feature_enabled;
 };
 
 bool settings_secondary_index_valid(int index);

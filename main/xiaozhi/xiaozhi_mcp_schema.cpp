@@ -44,7 +44,7 @@ constexpr const char *kPomodoroControlDescription =
     "Use start to create or replace it, cancel to stop it, and status to query it. "
     "Do not use alarm tools for focus or Pomodoro requests, and do not use this tool for ordinary reminders.";
 constexpr const char *kSetWeatherCityDescription =
-    "Set the QWeather location from the user's spoken city name. Pass the city exactly as spoken, including an optional Chinese 市 suffix; the device normalizes and validates a manual city with QWeather before saving. To restore IP-based automatic location, call this same tool with city=自动. Never claim the location changed unless the tool returned success.";
+    "Set the Open-Meteo weather location from the user's spoken city name. Pass the city exactly as spoken, including an optional Chinese 市 suffix; the device normalizes and validates the city before saving. To restore IP-based automatic location, call this same tool with city=自动. Never claim the location changed unless the tool returned success.";
 constexpr int kHoursPerDay = 24;
 constexpr int kMinutesPerHour = 60;
 constexpr uint32_t kMaxCountdownSeconds = 7U * 24U * 60U * 60U;

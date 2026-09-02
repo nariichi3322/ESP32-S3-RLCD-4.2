@@ -11,6 +11,12 @@
 #include <string.h>
 #include <thread>
 
+std::atomic<bool> g_catalog_offline_mode{false};
+bool offline_mode_enabled_load()
+{
+    return g_catalog_offline_mode.load(std::memory_order_acquire);
+}
+
 namespace {
 
 constexpr uint8_t page_bit(int page)
@@ -280,6 +286,13 @@ int main()
            local_pages);
     assert(work_page_mask_for_offline_mode(page_bit(kWorkPageWeatherClock)) ==
            page_bit(kWorkPageFlipClock));
+    work_page_enabled_mask_store(all_pages);
+    g_catalog_offline_mode.store(true, std::memory_order_release);
+    assert(!is_work_page_enabled(kWorkPageWeatherClock));
+    assert(is_work_page_enabled(kWorkPageCodexUsage));
+    assert(work_page_enabled_mask_load() == all_pages);
+    g_catalog_offline_mode.store(false, std::memory_order_release);
+    assert(is_work_page_enabled(kWorkPageWeatherClock));
 
     const uint8_t xiaozhi_first[kWorkPageCount] = {
         kWorkPageXiaozhiAI,

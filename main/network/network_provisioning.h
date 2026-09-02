@@ -2,3 +2,4 @@
 #pragma once
 
 bool save_credentials_from_body(const char *body);
+bool save_offline_datetime_from_body(const char *body);
