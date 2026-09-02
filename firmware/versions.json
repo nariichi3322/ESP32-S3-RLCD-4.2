@@ -1,6 +1,20 @@
 {
-  "latest": "v100.0.2",
+  "latest": "v100.0.3",
   "items": [
+    {
+      "version": "v100.0.3",
+      "notes": "v100.0.3：共 13 项更新。\n1. 天氣服務全面改用免 API Key 的 Open-Meteo，提供目前天氣、六日預報與…\n2. 天氣城市改為選填：可手動輸入全球城市，留空時則以 IP 座標自動定位。\n3. 恢復可選的線上／離線模式；離線啟動可手動設定日期時間，重新儲存有效 Wi-Fi 設定後…\n4. 修正 CODEX 頁面第二次進入後 BLE 無法再次連線的問題，並改善快速切頁、啟動失…\n5. 從 CODEX 頁開啟一般設定時保持 BLE 連線；僅在停用 CODEX 頁、進入配置…\n6. 簡化 IP 自動定位的城市名稱，例如「中國 台灣 新北市」現在顯示為「新北」。\n其余 7 项见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.3/weather_clock_v100.0.3.bin",
+        "sha256": "bd26f4cc970b18023e372ef4825196a83c4a8079c023f4dcdb37f192938de77b",
+        "size": 6469840
+      },
+      "merged": {
+        "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.3/weather_clock_v100.0.3_merged.bin",
+        "sha256": "0cd08417df832b6f631af589840dc5998cfdf42deee29874f4958a8b15ecfc62",
+        "size": 16509951
+      }
+    },
     {
       "version": "v100.0.2",
       "notes": "v100.0.2：共 1 项更新。\n1. nariichi3322 version 修正裝置畫面與 OTA 版本比較顯示 unknown 的問題。\n完整说明见源码仓库同版本 Release。",
@@ -124,62 +138,6 @@
       "merged": {
         "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.36/weather_clock_v1.5.36_merged.bin",
         "sha256": "ffc683afa70bc05c79366e08b067a34277acc9c01e2eb0d4b41953bd095cb5ea",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.35",
-      "notes": "v1.5.35：共 1 项更新。\n1. 修复关于本机“最近充电时间”可能被未插入充电器时的短时电压反弹误改的问题；只有持续至少…\n完整说明见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.35/weather_clock_v1.5.35.bin",
-        "sha256": "2b437a4d96bfa913940e1d4726bb7bbe3c73643377047903c4fe81a9bdf43463",
-        "size": 6260784
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.35/weather_clock_v1.5.35_merged.bin",
-        "sha256": "0a9aafd67eed59cfb0e416322a3b5d8e7ae5bdb364313133543085dd9e6a143b",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.34",
-      "notes": "v1.5.34：共 11 项更新。\n1. 修复配网热点、Wi-Fi 初始化和联网结果切换在瞬时失败或并发操作后可能无法恢复、射频…\n2. 修复天气、每日文字、电池、设置反馈、关于本机和网络检测等跨任务快照在竞争或读取失败时可…\n3. 修复 RLCD/LVGL 初始化失败仍继续执行、异步颜色缓冲生命周期、像素查找表边界和…\n4. 修复闹钟延期保存与通知竞态、损坏记录清理失败，以及页面顺序持久化和农历、节气日期计算的…\n5. 修复电池 ADC 配置失败后的恢复、OTA 诊断快照未初始化、OTA 写入句柄收尾和小…\n其余 6 项见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.34/weather_clock_v1.5.34.bin",
-        "sha256": "b1ff52463e6892b67a21f52a6543b80612272e577491a24cb2ddc04d1285dcee",
-        "size": 6260560
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.34/weather_clock_v1.5.34_merged.bin",
-        "sha256": "281f556204ed8c977443d71199e4a89e0bc81e0b542dc5537db4d56a25266356",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.33",
-      "notes": "v1.5.33：共 3 项更新。\n1. 修复启动联网、OTA 或离线模式收尾遇到 Wi-Fi 生命周期锁暂时繁忙时，射频可能未…\n2. 收紧 OTA、联网凭据、网络检测、关于本机、配网门户、工作页目录、天气城市、设置活动与…\n3. 保持现有页面、交互、OTA 协议、NVS、同步频率和正常联网流程不变，并继续使用有界重…\n完整说明见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.33/weather_clock_v1.5.33.bin",
-        "sha256": "d2f667b041163311097df4438787608367f77e302fd5b8ce369c97d8c863ad26",
-        "size": 6259264
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.33/weather_clock_v1.5.33_merged.bin",
-        "sha256": "fa2d91882d18bad85e0b6a5cca89f867094dfc0244b57437149ec5191c0a3ace",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.32",
-      "notes": "v1.5.32：共 12 项更新。\n1. 修复冷启动天气、每日文字和 NTP 补拉在内存紧张、失败重试或请求交错时可能长期等待的…\n2. 修复手动同步、网络检测和可见页联网在切页、超时、离线、低电量或 OTA 阻断后可能残留…\n3. 修复配网连续提交、结果反馈、热点启停失败和 Captive DNS 瞬时故障下的恢复与…\n4. 修复 Wi-Fi 部分启动或停机失败、PM 锁驱动状态失配及启动异常时可能遗留射频、热…\n5. 修复设置试听和异步提示音可能在低电量或 OTA 保护状态下竞态启动，以及重试耗尽后仍短…\n其余 7 项见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.32/weather_clock_v1.5.32.bin",
-        "sha256": "913e0b9f24ba2be3fffe82c2045ae6799bdc524aa1989571b15551a0b7f1e53b",
-        "size": 6259200
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.32/weather_clock_v1.5.32_merged.bin",
-        "sha256": "21da71e102ad3ec08cc7354d91908063b6db25dbb10ef60cf424f30098508eb5",
         "size": 16509951
       }
     }
