@@ -1,7 +1,7 @@
 {
-  "version": "v100.0.2",
-  "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.2/weather_clock_v100.0.2.bin",
-  "sha256": "1c9a667c9c7013ca195e033de542b8879fb049d835e7c148c453bda273e0e36c",
-  "size": 5733520,
-  "notes": "v100.0.2：共 1 项更新。\n1. nariichi3322 version 修正裝置畫面與 OTA 版本比較顯示 unknown 的問題。\n完整说明见源码仓库同版本 Release。"
+  "version": "v100.0.3",
+  "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.3/weather_clock_v100.0.3.bin",
+  "sha256": "bd26f4cc970b18023e372ef4825196a83c4a8079c023f4dcdb37f192938de77b",
+  "size": 6469840,
+  "notes": "v100.0.3：共 13 项更新。\n1. 天氣服務全面改用免 API Key 的 Open-Meteo，提供目前天氣、六日預報與…\n2. 天氣城市改為選填：可手動輸入全球城市，留空時則以 IP 座標自動定位。\n3. 恢復可選的線上／離線模式；離線啟動可手動設定日期時間，重新儲存有效 Wi-Fi 設定後…\n4. 修正 CODEX 頁面第二次進入後 BLE 無法再次連線的問題，並改善快速切頁、啟動失…\n5. 從 CODEX 頁開啟一般設定時保持 BLE 連線；僅在停用 CODEX 頁、進入配置…\n6. 簡化 IP 自動定位的城市名稱，例如「中國 台灣 新北市」現在顯示為「新北」。\n其余 7 项见源码仓库同版本 Release。"
 }
