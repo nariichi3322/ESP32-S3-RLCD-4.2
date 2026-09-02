@@ -1,37 +1,41 @@
-// 定义天气实时数据、预警、预报和空气质量的共享值类型。
+// 定義目前天氣、預報和空氣品質的共享值類型。
 #pragma once
 
 #include <stdint.h>
 #include <time.h>
 
-inline constexpr int kMaxWeatherAlerts = 6;
-inline constexpr int kWeatherAlertTitleLen = 64;
 inline constexpr int kWeatherForecastDays = 6;
 inline constexpr int kWeatherAdviceLen = 96;
 
+enum class WeatherIconKind : uint8_t {
+    kClear,
+    kPartlyCloudy,
+    kCloudy,
+    kFog,
+    kDrizzle,
+    kRain,
+    kSnow,
+    kThunderstorm,
+    kUnknown,
+};
+
 struct WeatherData {
+    int weather_code = -1; // Provider-neutral WMO weather interpretation code.
     char city[32] = {};
     char text[32] = {};
-    char icon[8] = {};
+    WeatherIconKind icon_kind = WeatherIconKind::kUnknown;
     char temp[8] = {};
     char humidity[8] = {};
     char lat[16] = {};
     char lon[16] = {};
 };
 
-struct WeatherAlertData {
-    bool active = false;
-    int count = 0;
-    char titles[kMaxWeatherAlerts][kWeatherAlertTitleLen] = {};
-    int ranks[kMaxWeatherAlerts] = {};
-    time_t updated_at = 0;
-};
-
 struct WeatherForecastDay {
     bool valid = false;
+    int weather_code = -1;
     char date[12] = {};
     char text[24] = {};
-    char icon[8] = {};
+    WeatherIconKind icon_kind = WeatherIconKind::kUnknown;
     char temp_max[8] = {};
     char temp_min[8] = {};
     char humidity[8] = {};

@@ -308,11 +308,21 @@ inline constexpr char kFormHtmlTraditional[] = R"PORTAL(
       <input id='ntp-server' name='ntp_server' placeholder='pool.ntp.org' value='%s' autocomplete='off' aria-describedby='ntp-server-hint'>
       <p id='ntp-server-hint' class='hint'>請填主機名稱，例如 pool.ntp.org；不要包含 http://、https:// 或路徑。</p>
     </div>
+    <div class='field'>
+      <label for='weather-city'>天氣城市 <em>選填</em></label>
+      <input id='weather-city' name='weather_city' placeholder='留空時依 IP 自動定位' value='%s' autocomplete='off'>
+      <p class='hint'>使用 Open-Meteo 全球城市搜尋，不需要 API Key。</p>
+    </div>
   </div>
   <div class='actions'>
     <button class='submit' type='submit'>儲存並連線</button>
   </div>
   <p id='save-status' class='save-status' role='status' aria-live='polite'><span class='activity-dot' aria-hidden='true'></span><span>正在儲存設定並連線，請稍候…</span></p>
+</form>
+<form method='post' action='/save' accept-charset='UTF-8'>
+  <div class='form-section section-offline'><div class='section-heading'><span class='section-index'>03</span><div><h2>離線模式</h2><p>不連接 Wi-Fi，使用手動時間與 RTC</p></div></div>
+  <div class='field'><label for='manual-time'>本機日期時間</label><input id='manual-time' name='manual_time' type='datetime-local' step='1' required></div></div>
+  <div class='actions'><button class='submit' type='submit'>以離線模式啟動</button></div>
 </form>
 )PORTAL";
 
@@ -352,11 +362,21 @@ inline constexpr char kFormHtmlSimplified[] = R"PORTAL(
       <input id='ntp-server' name='ntp_server' placeholder='pool.ntp.org' value='%s' autocomplete='off' aria-describedby='ntp-server-hint'>
       <p id='ntp-server-hint' class='hint'>请填写主机名，例如 pool.ntp.org；不要包含 http://、https:// 或路径。</p>
     </div>
+    <div class='field'>
+      <label for='weather-city'>天气城市 <em>选填</em></label>
+      <input id='weather-city' name='weather_city' placeholder='留空时依 IP 自动定位' value='%s' autocomplete='off'>
+      <p class='hint'>使用 Open-Meteo 全球城市搜索，不需要 API Key。</p>
+    </div>
   </div>
   <div class='actions'>
     <button class='submit' type='submit'>保存并连接</button>
   </div>
   <p id='save-status' class='save-status' role='status' aria-live='polite'><span class='activity-dot' aria-hidden='true'></span><span>正在保存设置并连接，请稍候…</span></p>
+</form>
+<form method='post' action='/save' accept-charset='UTF-8'>
+  <div class='form-section section-offline'><div class='section-heading'><span class='section-index'>03</span><div><h2>离线模式</h2><p>不连接 Wi-Fi，使用手动时间与 RTC</p></div></div>
+  <div class='field'><label for='manual-time-zh'>本地日期时间</label><input id='manual-time-zh' name='manual_time' type='datetime-local' step='1' required></div></div>
+  <div class='actions'><button class='submit' type='submit'>以离线模式启动</button></div>
 </form>
 )PORTAL";
 

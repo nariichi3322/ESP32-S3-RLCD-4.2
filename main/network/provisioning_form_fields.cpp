@@ -11,15 +11,19 @@ constexpr size_t max_size(size_t a, size_t b)
 }
 
 constexpr size_t kMaxProvisioningFormFieldSize =
-    max_size(kProvisioningSsidFieldSize,
+    max_size(kProvisioningManualTimeFieldSize,
+             max_size(kProvisioningSsidFieldSize,
              max_size(kProvisioningPasswordFieldSize,
-                      kProvisioningNtpServerFieldSize));
+                      max_size(kProvisioningNtpServerFieldSize,
+                               kProvisioningWeatherCityFieldSize))));
 constexpr const char *kFormSsidKey = "ssid";
 constexpr const char *kFormPasswordKey = "pass";
 constexpr const char *kFormPasswordFallbackKey = "password";
 constexpr const char *kFormBackupSsidKey = "backup_ssid";
 constexpr const char *kFormBackupPasswordKey = "backup_pass";
 constexpr const char *kFormNtpServerKey = "ntp_server";
+constexpr const char *kFormWeatherCityKey = "weather_city";
+constexpr const char *kFormManualTimeKey = "manual_time";
 void form_value_fallback_trimmed(const char *body,
                                  const char *primary_key,
                                  const char *fallback_key,
@@ -58,4 +62,15 @@ void read_provisioning_form_fields(const char *body, ProvisioningFormFields *fie
                                 nullptr,
                                 fields->ntp_server,
                                 sizeof(fields->ntp_server));
+    form_value_fallback_trimmed(body,
+                                kFormWeatherCityKey,
+                                nullptr,
+                                fields->weather_city,
+                                sizeof(fields->weather_city));
+}
+
+void read_provisioning_manual_time(const char *body, char *out, size_t out_len)
+{
+    form_value_fallback(body, kFormManualTimeKey, "datetime", out, out_len);
+    trim_ascii_whitespace(out);
 }

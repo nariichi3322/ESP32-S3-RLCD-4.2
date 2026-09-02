@@ -3,12 +3,16 @@
 
 #include "app_event_group.h"
 #include "app_metadata.h"
+#include "alarm_services.h"
+#include "housekeeping_schedule_notify.h"
+#include "manual_time_parser.h"
 #include "network_config.h"
 #include "network_config_internal.h"
 #include "network_credentials_state.h"
 #include "network_credentials_state_internal.h"
 #include "ntp_server_config.h"
 #include "provisioning_form_fields.h"
+#include "rtc_services.h"
 #include "wifi_portal_state_internal.h"
 
 #include <esp_attr.h>
@@ -16,12 +20,18 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/time.h>
+#include <time.h>
 
 namespace {
 constexpr const char *kConfigEventReasonProvisioningSave = "provisioning save";
+constexpr const char *kConfigEventReasonOfflineManualTime = "offline manual time";
 #define PROVISIONING_EMPTY_BODY_LOG "provisioning ignored empty request body"
 #define PROVISIONING_EMPTY_SSID_LOG "provisioning ignored empty ssid"
 #define PROVISIONING_INVALID_NTP_SERVER_LOG "provisioning ignored invalid NTP server"
+#define PROVISIONING_INVALID_WEATHER_CITY_LOG "provisioning ignored invalid weather city"
+#define OFFLINE_SETUP_INVALID_MANUAL_TIME_LOG "offline setup ignored invalid manual time"
 #define PROVISIONING_DUPLICATE_WIFI_LOG \
     "provisioning ignored duplicate main and backup Wi-Fi SSID"
 #define PROVISIONING_SAVED_FORMAT \
@@ -35,7 +45,8 @@ static_assert(sizeof(s_provisioning_form_fields_workspace) >=
                       kProvisioningPasswordFieldSize +
                       kProvisioningSsidFieldSize +
                       kProvisioningPasswordFieldSize +
-                      kProvisioningNtpServerFieldSize,
+                      kProvisioningNtpServerFieldSize +
+                      kProvisioningWeatherCityFieldSize,
               "provisioning form workspace must contain every bounded field");
 
 void clear_provisioning_form_fields_workspace()
@@ -98,6 +109,32 @@ void preserve_saved_wifi_password(WifiCredentialSlot slot,
 }
 } // namespace
 
+bool save_offline_datetime_from_body(const char *body)
+{
+    if (!body) return false;
+    char manual_time[kProvisioningManualTimeFieldSize] = {};
+    read_provisioning_manual_time(body, manual_time, sizeof(manual_time));
+    struct tm local = {};
+    if (!parse_manual_datetime_text(manual_time, &local)) {
+        ESP_LOGW(TAG, "%s", OFFLINE_SETUP_INVALID_MANUAL_TIME_LOG);
+        return false;
+    }
+    const time_t epoch = mktime(&local);
+    if (epoch <= 0) return false;
+    struct timeval now = {};
+    now.tv_sec = epoch;
+    if (settimeofday(&now, nullptr) != 0) {
+        ESP_LOGW(TAG, "offline time update failed errno=%d", errno);
+        return false;
+    }
+    sync_rtc_from_system_time();
+    alarm_notify_time_changed();
+    notify_housekeeping_schedule_changed();
+    if (!set_offline_mode_enabled(true)) return false;
+    set_config_event_bits(kTimeSyncedBit, kConfigEventReasonOfflineManualTime);
+    return true;
+}
+
 bool save_credentials_from_body(const char *body)
 {
     if (!body) {
@@ -137,6 +174,10 @@ bool save_credentials_from_body(const char *body)
         ESP_LOGW(TAG, "%s", PROVISIONING_INVALID_NTP_SERVER_LOG);
         return false;
     }
+    if (!is_weather_city_input_valid(fields.weather_city)) {
+        ESP_LOGW(TAG, "%s", PROVISIONING_INVALID_WEATHER_CITY_LOG);
+        return false;
+    }
     ESP_LOGI(TAG, PROVISIONING_SAVED_FORMAT,
              fields.ssid,
              (unsigned)strlen(fields.pass),
@@ -150,9 +191,7 @@ bool save_credentials_from_body(const char *body)
                      fields.backup_ssid,
                      fields.backup_pass,
                      fields.ntp_server,
-                     "",
-                     "",
-                     "")) {
+                     fields.weather_city)) {
         return false;
     }
     return true;

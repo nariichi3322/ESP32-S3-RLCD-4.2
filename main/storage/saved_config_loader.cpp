@@ -5,7 +5,6 @@
 #include "app_metadata.h"
 #include "chime_runtime_state_internal.h"
 #include "chime_settings.h"
-#include "device_settings_persistence.h"
 #include "manual_weather_city_state_internal.h"
 #include "network_chime_storage.h"
 #include "network_config_keys.h"
@@ -13,11 +12,9 @@
 #include "network_credentials_state_internal.h"
 #include "network_page_storage.h"
 #include "network_page_storage_policy.h"
-#include "qweather_api_host.h"
 #include "network_weather_city_storage.h"
 #include "offline_mode_state_internal.h"
 #include "ntp_runtime_state_internal.h"
-#include "codex_usage_feature_state_internal.h"
 #include "ntp_server_config.h"
 #include "ui_gallery_rotation_state_internal.h"
 #include "ui_clock_seconds_state_internal.h"
@@ -38,8 +35,6 @@ using network_page_storage::read_saved_page_mask;
 using network_page_storage::read_saved_page_order;
 using network_config_keys::kOfflineModeKey;
 using network_config_keys::kNtpServerKey;
-using network_config_keys::kQweatherApiHostKey;
-using network_config_keys::kWeatherApiKeyKey;
 using network_config_keys::kWifiBackupPassKey;
 using network_config_keys::kWifiBackupSsidKey;
 using network_config_keys::kWifiPassKey;
@@ -49,7 +44,6 @@ using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
 using network_config_keys::kWeatherClockSecondsKey;
 using network_config_keys::kUiLanguageKey;
-using network_config_keys::kCodexUsageFeatureKey;
 
 namespace {
 constexpr uint8_t work_page_mask_bit(int page)
@@ -62,23 +56,22 @@ constexpr uint8_t kPageMaskV6KnownBits = network_page_storage::kCurrentKnownPage
 constexpr uint8_t kWeatherBoardPageMask = work_page_mask_bit(kWorkPageWeatherBoard);
 constexpr uint8_t kFlipClockPageMask = work_page_mask_bit(kWorkPageFlipClock);
 constexpr const char *kNvsActionLoadingConfig = "loading config";
-constexpr const char *kOfflinePageMaskPersistFailedLog =
-    "failed to persist offline-compatible page settings";
+constexpr const char *kObsoleteConfigKeys[] = {
+    "api_key",
+    "api_host",
+    "codex_ble_v1",
+};
 
 struct LoadedSavedConfig {
     esp_err_t ssid_err;
     esp_err_t pass_err;
     esp_err_t backup_ssid_err;
     esp_err_t backup_pass_err;
-    esp_err_t key_err;
-    esp_err_t host_err;
     esp_err_t ntp_server_err;
     char wifi_ssid[kNetworkWifiSsidLen];
     char wifi_password[kNetworkWifiPasswordLen];
     char backup_wifi_ssid[kNetworkWifiSsidLen];
     char backup_wifi_password[kNetworkWifiPasswordLen];
-    char weather_api_key[kNetworkWeatherApiKeyLen];
-    char weather_api_host[kQweatherApiHostLen];
     char ntp_server[kNtpServerNameLen];
     uint8_t chime;
     uint8_t all_day;
@@ -90,7 +83,6 @@ struct LoadedSavedConfig {
     uint8_t gallery_rotation;
     uint8_t weather_clock_seconds_visible;
     uint8_t ui_language;
-    uint8_t codex_usage_feature;
     uint8_t preferred_wifi_slot;
     uint8_t page_order[kWorkPageCount];
     char manual_weather_city[kManualWeatherCityLen];
@@ -133,12 +125,8 @@ bool apply_loaded_page_config(uint8_t page_mask,
     } else {
         normalize_work_page_order();
     }
-    const uint8_t runtime_mask = work_page_mask_for_offline_mode(saved_mask);
-    if (runtime_mask != saved_mask) {
-        work_page_enabled_mask_store(runtime_mask);
-    }
     active_work_page_store(first_enabled_work_page());
-    return runtime_mask != saved_mask;
+    return false;
 }
 
 void clear_loaded_saved_config(LoadedSavedConfig *loaded)
@@ -163,8 +151,6 @@ void initialize_loaded_saved_config(LoadedSavedConfig *loaded)
     loaded->pass_err = ESP_FAIL;
     loaded->backup_ssid_err = ESP_FAIL;
     loaded->backup_pass_err = ESP_FAIL;
-    loaded->key_err = ESP_FAIL;
-    loaded->host_err = ESP_FAIL;
     loaded->ntp_server_err = ESP_FAIL;
     loaded->volume = chime_settings::kDefaultVolumePercent;
     loaded->page_mask = kPageMaskV6KnownBits;
@@ -173,8 +159,6 @@ void initialize_loaded_saved_config(LoadedSavedConfig *loaded)
     loaded->weather_clock_seconds_visible =
         kDefaultWeatherClockSecondsVisible ? 1 : 0;
     loaded->ui_language = static_cast<uint8_t>(kDefaultUiLanguage);
-    loaded->codex_usage_feature =
-        kDefaultCodexUsageFeatureEnabled ? 1U : 0U;
     loaded->preferred_wifi_slot =
         static_cast<uint8_t>(WifiCredentialSlot::kSlotA);
 }
@@ -199,13 +183,6 @@ void read_saved_config(nvs_handle_t nvs, LoadedSavedConfig *loaded)
         kWifiBackupPassKey,
         loaded->backup_wifi_password,
         sizeof(loaded->backup_wifi_password));
-    loaded->key_err = read_nvs_string(
-        nvs, kWeatherApiKeyKey, loaded->weather_api_key, sizeof(loaded->weather_api_key));
-    loaded->host_err = read_nvs_string(
-        nvs,
-        kQweatherApiHostKey,
-        loaded->weather_api_host,
-        sizeof(loaded->weather_api_host));
     loaded->ntp_server_err = read_nvs_string(
         nvs,
         kNtpServerKey,
@@ -229,10 +206,6 @@ void read_saved_config(nvs_handle_t nvs, LoadedSavedConfig *loaded)
         kDefaultWeatherClockSecondsVisible ? 1 : 0);
     loaded->ui_language = read_nvs_u8_or_default(
         nvs, kUiLanguageKey, static_cast<uint8_t>(kDefaultUiLanguage));
-    loaded->codex_usage_feature = read_nvs_u8_or_default(
-        nvs,
-        kCodexUsageFeatureKey,
-        kDefaultCodexUsageFeatureEnabled ? 1U : 0U);
     loaded->preferred_wifi_slot = read_nvs_u8_or_default(
         nvs,
         kWifiPreferredSlotKey,
@@ -261,21 +234,11 @@ bool apply_loaded_config(const LoadedSavedConfig &loaded)
         preferred_slot = wifi_a_configured ? WifiCredentialSlot::kSlotA
                                            : WifiCredentialSlot::kSlotB;
     }
-    const bool weather_key_configured = loaded.key_err == ESP_OK &&
-                                        loaded.weather_api_key[0] != '\0';
-    const bool weather_host_configured = loaded.host_err == ESP_OK &&
-                                         loaded.weather_api_host[0] != '\0' &&
-                                         qweather_api_host_input_valid(
-                                             loaded.weather_api_host);
     network_credentials_store(loaded.wifi_ssid,
                               loaded.wifi_password,
                               loaded.backup_wifi_ssid,
                               loaded.backup_wifi_password,
-                              preferred_slot,
-                              loaded.weather_api_key,
-                              loaded.weather_api_host,
-                              weather_key_configured,
-                              weather_host_configured);
+                              preferred_slot);
     manual_weather_city_store(loaded.manual_weather_city);
     char ntp_server[kNtpServerNameLen] = {};
     const char *saved_ntp_server =
@@ -294,16 +257,12 @@ bool apply_loaded_config(const LoadedSavedConfig &loaded)
         static_cast<uint8_t>(normalize_chime_sound_index(loaded.sound)),
     };
     chime_runtime_snapshot_store(chime);
-    // This firmware always uses the local interface while still allowing
-    // short Wi-Fi windows for setup and NTP.
-    offline_mode_enabled_store(false);
+    offline_mode_enabled_store(nvs_u8_to_bool(loaded.offline));
     xiaozhi_auto_return_enabled_store(nvs_u8_to_bool(loaded.xiaozhi_auto_return));
     gallery_rotation_period_store(loaded.gallery_rotation);
     weather_clock_seconds_visible_store(
         nvs_u8_to_bool(loaded.weather_clock_seconds_visible));
     ui_language_store(normalize_ui_language(loaded.ui_language));
-    codex_usage_feature_enabled_store(
-        normalize_codex_usage_feature_setting(loaded.codex_usage_feature));
     return apply_loaded_page_config(loaded.page_mask, loaded.page_order, loaded.have_page_order);
 }
 } // namespace
@@ -312,18 +271,22 @@ bool load_saved_config()
 {
     LoadedSavedConfig &loaded = s_loaded_saved_config_workspace;
     ScopedNvsHandle nvs;
-    esp_err_t open_err = nvs.open(NVS_READONLY, kNvsActionLoadingConfig, false);
+    esp_err_t open_err = nvs.open(NVS_READWRITE, kNvsActionLoadingConfig, false);
     if (open_err != ESP_OK) {
         clear_loaded_saved_config(&loaded);
         return false;
     }
     read_saved_config(nvs.get(), &loaded);
-    nvs.close();
-    bool offline_page_mask_changed = apply_loaded_config(loaded);
-    clear_loaded_saved_config(&loaded);
-    if (offline_page_mask_changed &&
-        !set_work_page_enabled_mask_setting(work_page_enabled_mask_load())) {
-        ESP_LOGW(TAG, "%s", kOfflinePageMaskPersistFailedLog);
+    bool obsolete_changed = false;
+    for (const char *key : kObsoleteConfigKeys) {
+        const esp_err_t erase_err = nvs_erase_key(nvs.get(), key);
+        if (erase_err == ESP_OK) obsolete_changed = true;
     }
+    if (obsolete_changed) {
+        (void)nvs_commit(nvs.get());
+    }
+    nvs.close();
+    (void)apply_loaded_config(loaded);
+    clear_loaded_saved_config(&loaded);
     return network_wifi_credentials_configured();
 }

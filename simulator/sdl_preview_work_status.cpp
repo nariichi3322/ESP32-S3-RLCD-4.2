@@ -93,7 +93,7 @@ void Bar::build(lv_obj_t *screen,
     update_battery(battery_percent);
     if (show_summary) {
         lv_obj_t *summary = sdl_preview_widgets::make_label_with_font(
-            screen, 210, 36, 98, 18, "25C 46%", &lv_font_montserrat_16);
+            screen, 210, 36, 98, 18, "25°C 46%", &lv_font_montserrat_16);
         style_sensor_summary(summary);
     }
     if (show_time) {

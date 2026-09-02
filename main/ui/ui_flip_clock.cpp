@@ -73,7 +73,7 @@ static constexpr int kFlipLunarTextY = 249;
 static constexpr int kFlipLunarTextH = 42;
 static constexpr int kFlipDateBoldOffset = 1;
 static constexpr int kFlipDateBoldYOffset = 1;
-static constexpr const char *kFlipTempPlaceholder = "--.-C";
+static constexpr const char *kFlipTempPlaceholder = "--.-°C";
 static constexpr const char *kFlipHumiPlaceholder = "--%";
 static constexpr const char *kFlipDayPlaceholder = "--";
 EXT_RAM_BSS_ATTR lv_color_t *s_flip_clock_card_canvas_buffer[kCardCount];

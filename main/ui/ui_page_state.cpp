@@ -290,21 +290,13 @@ void update_alert_pill(bool show,
                        bool setup_active)
 {
     const ClockHeaderObjectRefs &header = clock_header_object_refs();
-    char title[kWeatherAlertTitleLen] = {};
-    bool visible = show &&
-                   !low_battery_mode &&
-                   !setup_active &&
-                   get_weather_alert_title_snapshot(alert_index,
-                                                    title,
-                                                    sizeof(title));
-    set_obj_visible(header.alert_pill, visible);
-    update_top_status_icons(visible,
+    (void)show;
+    (void)alert_index;
+    set_obj_visible(header.alert_pill, false);
+    update_top_status_icons(false,
                             status,
                             low_battery_mode,
                             setup_active);
-    if (visible) {
-        set_label_text_if_changed(header.alert_label, title);
-    }
 }
 
 bool update_top_status_icons(bool alert_visible,
@@ -321,7 +313,9 @@ bool update_top_status_icons(bool alert_visible,
                                allow && status.wifi_radio_on);
     changed |= set_obj_visible(header.alarm_status_icon_canvas,
                                allow && status.alarm_enabled);
-    const bool bluetooth_visible = allow && status.codex_enabled;
+    // The clock header never owns the CODEX transport indicator. BLE and its
+    // icon belong exclusively to the dedicated CODEX page.
+    const bool bluetooth_visible = false;
     if (bluetooth_visible &&
         header.bluetooth_status_state != status.codex_link_state) {
         const uint8_t *bits = codex_bt_disconnect_icon_bits;

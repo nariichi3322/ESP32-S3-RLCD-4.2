@@ -62,7 +62,7 @@ Every page follows a partial-refresh-first policy. Second-level pages update onl
 Initial configuration is completed through the device setup portal:
 
 - A primary Wi-Fi network and an optional backup network are supported. After repeated primary-network failures, the device can try the backup and promote it according to the existing failover policy.
-- Online weather requires both a QWeather API Key and the account-specific API Host shown in the QWeather Console.
+- Online weather uses the public Open-Meteo APIs without an API key. A city is optional; leaving it blank enables IP-coordinate location.
 - Weather location can use public-IP geolocation or a manually selected city configured through the setup portal, desktop client, or Xiaozhi AI.
 - Without Wi-Fi, the user can enter a local date and time and start the device in offline mode.
 
@@ -146,7 +146,7 @@ Before opening an issue or pull request, read:
 - [Contributing Guide](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)
 
-Do not publish Wi-Fi passwords, QWeather API keys, private API Host configuration, tokens, NVS images, device private keys, absolute local paths, or private service endpoints in issues, logs, screenshots, or commits.
+Do not publish Wi-Fi passwords, tokens, NVS images, device private keys, absolute local paths, or private service endpoints in issues, logs, screenshots, or commits.
 
 ## Usage Restrictions
 

@@ -67,7 +67,7 @@ bool network_diagnostic_http_probe_ok(const char *url, size_t buffer_len)
                  static_cast<unsigned>(buffer_len));
         return false;
     }
-    return http_get_text(url, response.get(), response.size(), nullptr) == ESP_OK;
+    return http_get_text(url, response.get(), response.size()) == ESP_OK;
 }
 
 NetworkDiagnosticPublicIpLookupResult network_diagnostic_lookup_public_ip(
@@ -93,8 +93,7 @@ NetworkDiagnosticPublicIpLookupResult network_diagnostic_lookup_public_ip(
     NetworkDiagnosticPublicIpLookupResult result = {};
     if (http_get_text(url,
                       response.get(),
-                      response.size(),
-                      nullptr) == ESP_OK) {
+                      response.size()) == ESP_OK) {
         result.request_ok = true;
         result.address_ok = network_public_ip_parse_response(response.get(),
                                                              out,

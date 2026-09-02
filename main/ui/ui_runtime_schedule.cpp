@@ -7,7 +7,6 @@
 #include "app_tick_time.h"
 #include "battery_runtime_state.h"
 #include "codex_usage_ble.h"
-#include "codex_usage_feature_state.h"
 #include "codex_usage_state.h"
 #include "network_diagnostics_state.h"
 #include "pomodoro_services.h"
@@ -145,7 +144,7 @@ TickType_t ui_runtime_next_loop_delay_ticks(time_t sampled_wall_second,
         delay_candidates[3] = second_delay_ticks;
     }
     UiCodexWaitInput codex_wait{};
-    if (codex_usage_feature_enabled()) {
+    {
         CodexPairingSnapshot pairing{};
         if (codex_usage_ble_pairing_snapshot(&pairing) && pairing.visible) {
             codex_wait.pairing_visible = true;

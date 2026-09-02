@@ -2,6 +2,7 @@
 #include "wifi_portal_http.h"
 
 #include "network_provisioning.h"
+#include "provisioning_form_fields.h"
 
 #include "app_constexpr.h"
 #include "app_event_group.h"
@@ -161,6 +162,20 @@ bool stop_http_server_handle()
 
 esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
 {
+    char manual_time[kProvisioningManualTimeFieldSize] = {};
+    read_provisioning_manual_time(body, manual_time, sizeof(manual_time));
+    if (manual_time[0] != '\0') {
+        const bool saved = save_offline_datetime_from_body(body);
+        wifi_portal_save_result_store(saved ? WifiPortalSaveResult::kSuccess
+                                            : WifiPortalSaveResult::kInvalidInput);
+        const esp_err_t response = send_save_result_page(
+            req, saved ? WifiPortalSaveResult::kSuccess
+                       : WifiPortalSaveResult::kInvalidInput,
+            saved ? ui_language_text("已啟用離線模式", "已启用离线模式")
+                  : ui_language_text("日期時間格式無效", "日期时间格式无效"));
+        if (saved) (void)request_setup_portal_stop();
+        return response;
+    }
     if (app_event_group_ready()) {
         // Retire any older level-triggered validation before publishing the
         // next save generation. A worker that already captured the old request

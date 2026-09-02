@@ -18,6 +18,7 @@ int main()
     assert(kSettingsSecondaryW == 228);
     assert(kSettingsSecondaryH == 30);
     assert(kSettingsSystemLongItemY == 183);
+    assert(kSettingsSystemPageIndicatorY > kSettingsGridRowY[1]);
     assert(kSettingsGridSwitchLabelRightPadding >=
            kSettingsGridColW - kSettingsGridSwitchDotXOffset +
                kSettingsGridSwitchLabelDotGap);

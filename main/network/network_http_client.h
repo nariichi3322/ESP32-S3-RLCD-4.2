@@ -17,6 +17,5 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt);
 esp_err_t decode_http_body(char *out, size_t out_len, size_t *body_len);
 esp_err_t http_get_text(const char *url,
                         char *out,
-                        size_t out_len,
-                        const char *api_key = nullptr);
+                        size_t out_len);
 void log_response_preview(const char *stage, const char *response);

@@ -9,7 +9,7 @@
 - 请先搜索现有 Issue，避免重复报告或重复实现。
 - 缺陷报告请说明固件版本、硬件版本、复现步骤、预期结果和实际结果。
 - 涉及崩溃、重启、联网、音频或显示异常时，请附经过脱敏的串口日志。
-- 请勿在 Issue、Pull Request、评论、日志、截图或提交中公开 Wi-Fi 密码、QWeather API Key、API Host 私有配置、Token、NVS 镜像、设备私钥、本机绝对路径或私有服务地址。截图和串口日志也必须先检查并脱敏。
+- 请勿在 Issue、Pull Request、评论、日志、截图或提交中公开 Wi-Fi 密码、Token、NVS 镜像、设备私钥、本机绝对路径或私有服务地址。截图和串口日志也必须先检查并脱敏。
 - 较大的功能、协议、分区、NVS 格式或 UI 变化，请先创建 Issue 说明目标、兼容性和验证方案，再开始实现。
 
 ### 开发环境
@@ -59,7 +59,7 @@ Thank you for contributing code, documentation, or tests to the ESP32-S3 RLCD 4.
 - Search existing issues before opening a new one.
 - Bug reports should include the firmware version, hardware revision, reproduction steps, expected behavior, and actual behavior.
 - For crashes, reboots, networking, audio, or display problems, attach sanitized serial logs.
-- Never expose Wi-Fi passwords, QWeather API keys, private API Host configuration, tokens, NVS images, device private keys, absolute local paths, or private service endpoints in issues, pull requests, comments, logs, screenshots, or commits. Inspect and redact screenshots and serial logs before uploading them.
+- Never expose Wi-Fi passwords, tokens, NVS images, device private keys, absolute local paths, or private service endpoints in issues, pull requests, comments, logs, screenshots, or commits. Inspect and redact screenshots and serial logs before uploading them.
 - For larger feature, protocol, partition, NVS format, or UI changes, open an issue first and describe the goal, compatibility impact, and validation plan.
 
 ### Development Environment

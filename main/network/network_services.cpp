@@ -53,7 +53,7 @@ static_assert(kNetworkDiagOtaLine == kNetworkDiagLineCount - 1,
 static constexpr const char *kNetworkDiagIpLocationWifiStartFailed = "IP定位: WiFi启动失败";
 static constexpr const char *kNetworkDiagIpLocationPowerLockUnavailable = "IP定位: 系统繁忙";
 static constexpr const char *kNetworkDiagIpLocationWifiConnectTimeout = "IP定位: WiFi连接超时";
-static constexpr const char *kNetworkSyncWeatherConfigMissing = "未配置 API Key";
+static constexpr const char *kNetworkSyncWeatherConfigMissing = "天氣同步不可用";
 #define NETWORK_BOOT_REFRESH_SCHEDULED_FORMAT "boot network refresh scheduled: weather=%d saying=%d"
 #define NETWORK_BOOT_HTTPS_MEMORY_DEFERRED_FORMAT \
     "background boot HTTPS deferred: delay=%llds deferrals=%u internal_free=%u internal_largest=%u dma_largest=%u"

@@ -6,6 +6,7 @@
 #include "app_text_format.h"
 #include "checked_size.h"
 #include "network_credentials_state.h"
+#include "manual_weather_city_state.h"
 #include "ntp_services.h"
 #include "scoped_heap_buffer.h"
 #include "wifi_portal_html_text.h"
@@ -29,6 +30,8 @@ constexpr size_t kPortalEscapedSsidSize =
     (kPortalSubmitSsidFieldSize - 1) * kPortalLongestHtmlEntitySize + 1;
 constexpr size_t kPortalEscapedNtpServerSize =
     (kNtpServerNameLen - 1) * kPortalLongestHtmlEntitySize + 1;
+constexpr size_t kPortalEscapedWeatherCitySize =
+    (kManualWeatherCityLen - 1) * kPortalLongestHtmlEntitySize + 1;
 constexpr size_t kPortalSaveExtraTextSize = 220;
 constexpr size_t kPortalRootHtmlSize = 24576;
 constexpr size_t kPortalSaveResultHtmlSize = 12288;
@@ -47,7 +50,7 @@ constexpr const char *kPortalSaveConnectedTitle = "网络连接成功";
 constexpr const char *kPortalSaveValidatingTitle = "正在验证网络配置";
 constexpr const char *kPortalSaveMissingTitle = "配置信息不完整";
 constexpr const char *kPortalSaveWifiFailedTitle = "Wi-Fi 连接失败";
-constexpr const char *kPortalSaveWeatherApiFailedTitle = "天气 API 验证失败";
+constexpr const char *kPortalSaveWeatherApiFailedTitle = "天气服务验证失败";
 constexpr const char *kPortalSaveWeatherCityInvalidTitle = "天气城市无效";
 constexpr const char *kPortalSaveConnectedBody =
     "Wi-Fi 與 NTP 設定已儲存，裝置將返回本機時鐘介面。";
@@ -58,9 +61,9 @@ constexpr const char *kPortalSaveMissingBody =
 constexpr const char *kPortalSaveWifiFailedBody =
     "设备未能连接主 Wi-Fi 或备用 Wi-Fi。请检查密码、信号和路由器状态后重新填写。";
 constexpr const char *kPortalSaveWeatherApiFailedBody =
-    "Wi-Fi 已连接，但和风天气验证失败。请检查 API 密钥和账号专属 API Host 后重新填写。";
+    "Wi-Fi 已连接，但 Open-Meteo 服务暂时无法访问，请稍后重试。";
 constexpr const char *kPortalSaveWeatherCityInvalidBody =
-    "Wi-Fi 与 API 密钥可用，但和风天气无法识别该城市。请修改城市，或留空使用自动定位。";
+    "Open-Meteo 无法识别该城市。请修改城市，或留空使用自动定位。";
 constexpr const char *kPortalWifiScanBusyMessage = "Wi-Fi 正在扫描，请稍后刷新页面。";
 constexpr const char *kPortalWifiScanFailedMessage = "Wi-Fi 扫描失败，请刷新页面重试。";
 constexpr const char *kPortalWifiScanEmptyMessage = "没有发现可用的 Wi-Fi 网络。";
@@ -90,6 +93,8 @@ struct PortalPageTextWorkspace {
     char safe_backup_ssid[kPortalEscapedSsidSize];
     char ntp_server[kNtpServerNameLen];
     char safe_ntp_server[kPortalEscapedNtpServerSize];
+    char weather_city[kManualWeatherCityLen];
+    char safe_weather_city[kPortalEscapedWeatherCitySize];
     char safe_extra[kPortalSaveExtraTextSize];
     char setup_ap_ssid[kWifiSetupApSsidTextLen];
 };
@@ -143,7 +148,7 @@ const char *portal_save_result_title(WifiPortalSaveResult result)
     case WifiPortalSaveResult::kWifiConnectionFailed:
         return ui_language_text("Wi-Fi 連線失敗", kPortalSaveWifiFailedTitle);
     case WifiPortalSaveResult::kWeatherApiFailed:
-        return ui_language_text("天氣 API 驗證失敗", kPortalSaveWeatherApiFailedTitle);
+        return ui_language_text("天氣服務驗證失敗", kPortalSaveWeatherApiFailedTitle);
     case WifiPortalSaveResult::kWeatherCityInvalid:
         return ui_language_text("天氣城市無效", kPortalSaveWeatherCityInvalidTitle);
     case WifiPortalSaveResult::kNone:
@@ -168,11 +173,11 @@ const char *portal_save_result_body(WifiPortalSaveResult result)
             kPortalSaveWifiFailedBody);
     case WifiPortalSaveResult::kWeatherApiFailed:
         return ui_language_text(
-            "Wi-Fi 已連線，但和風天氣驗證失敗。請檢查 API 金鑰和帳號專屬 API Host 後重新填寫。",
+            "Wi-Fi 已連線，但 Open-Meteo 服務暫時無法存取，請稍後重試。",
             kPortalSaveWeatherApiFailedBody);
     case WifiPortalSaveResult::kWeatherCityInvalid:
         return ui_language_text(
-            "Wi-Fi 與 API 金鑰可用，但和風天氣無法辨識該城市。請修改城市，或留空使用自動定位。",
+            "Open-Meteo 無法辨識該城市。請修改城市，或留空使用自動定位。",
             kPortalSaveWeatherCityInvalidBody);
     case WifiPortalSaveResult::kNone:
     case WifiPortalSaveResult::kInvalidInput:
@@ -346,6 +351,8 @@ esp_err_t root_get_handler(httpd_req_t *req)
 {
     PortalPageTextWorkspace &text = reset_portal_page_text_workspace();
     (void)get_ntp_server_name(text.ntp_server, sizeof(text.ntp_server));
+    (void)manual_weather_city_snapshot(text.weather_city,
+                                       sizeof(text.weather_city));
     (void)network_wifi_ssid_snapshot(text.wifi_ssid,
                                      sizeof(text.wifi_ssid));
     (void)network_wifi_alternate_ssid_snapshot(
@@ -360,6 +367,9 @@ esp_err_t root_get_handler(httpd_req_t *req)
     wifi_portal_html::escape_text(text.ntp_server,
                                   text.safe_ntp_server,
                                   sizeof(text.safe_ntp_server));
+    wifi_portal_html::escape_text(text.weather_city,
+                                  text.safe_weather_city,
+                                  sizeof(text.safe_weather_city));
     const WifiPortalSaveSnapshot save =
         wifi_portal_save_snapshot_load();
     const WifiPortalSaveResult save_result = save.result;
@@ -407,7 +417,8 @@ esp_err_t root_get_handler(httpd_req_t *req)
                     : wifi_portal_ui::kFormHtmlSimplified,
                 text.safe_ssid,
                 text.safe_backup_ssid,
-                text.safe_ntp_server);
+                text.safe_ntp_server,
+                text.safe_weather_city);
     html_append(html.data(), html.size(), "</section>");
     append_wifi_scan_list(html.data(), html.size());
     html_append(html.data(), html.size(), "</main></body></html>");

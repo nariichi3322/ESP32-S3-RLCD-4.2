@@ -11,7 +11,6 @@
 #include "chime_runtime_state_internal.h"
 #include "chime_settings.h"
 #include "codex_usage_ble.h"
-#include "codex_usage_feature_state_internal.h"
 #include "network_config_keys.h"
 #include "network_config_nvs.h"
 #include "network_config_internal.h"
@@ -26,9 +25,9 @@
 #include "network_sync_requests.h"
 #include "network_page_storage_policy.h"
 #include "network_weather_city_storage.h"
-#include "qweather_api_host.h"
 #include "ui_work_page_catalog_internal.h"
 #include "weather_city_text.h"
+#include "wifi_radio_services.h"
 #include "xiaozhi_ai.h"
 #include "xiaozhi_auto_return_state_internal.h"
 #include "ui_gallery_rotation_state_internal.h"
@@ -41,10 +40,8 @@ using network_config_nvs::commit_nvs_if_changed;
 using network_config_nvs::ScopedNvsHandle;
 using network_config_nvs::write_changed_nvs_string;
 using network_config_nvs::write_changed_nvs_u8;
-using network_config_keys::kQweatherApiHostKey;
 using network_config_keys::kOfflineModeKey;
 using network_config_keys::kNtpServerKey;
-using network_config_keys::kWeatherApiKeyKey;
 using network_config_keys::kWifiBackupPassKey;
 using network_config_keys::kWifiBackupSsidKey;
 using network_config_keys::kWifiPassKey;
@@ -59,10 +56,8 @@ constexpr const char *kNvsActionSavingWeatherCity = "saving weather city";
 constexpr const char *kNvsActionClearingWeatherCity = "clearing weather city";
 constexpr const char *kNvsActionClearingConfig = "clearing config";
 constexpr const char *kEmptyWifiSsidSaveLog = "skip saving empty wifi ssid";
-constexpr const char *kInvalidQweatherApiHostSaveLog =
-    "skip saving invalid QWeather API Host";
 constexpr const char *kInvalidWeatherCitySaveLog = "skip saving invalid weather city";
-constexpr size_t kSavedConfigScratchLen = kQweatherApiHostLen;
+constexpr size_t kSavedConfigScratchLen = kNtpServerNameLen;
 constexpr const char *kInvalidNtpServerSaveLog =
     "skip saving invalid NTP server";
 #define NVS_SAVE_CONFIG_FAILED_FORMAT "nvs save config failed: %s"
@@ -73,7 +68,6 @@ static_assert(kDefaultWorkPageMask != 0,
               "default work page mask must enable at least one known page");
 static_assert(kSavedConfigScratchLen >= kNetworkWifiSsidLen &&
                   kSavedConfigScratchLen >= kNetworkWifiPasswordLen &&
-                  kSavedConfigScratchLen >= kNetworkWeatherApiKeyLen &&
                   kSavedConfigScratchLen >= kNtpServerNameLen,
               "saved config comparison scratch must fit every credential field");
 
@@ -99,6 +93,36 @@ static void notify_network_runtime_state_changed()
 {
     notify_network_sync_runtime_state_changed();
     xiaozhi_ai_notify_network_configuration_changed();
+}
+
+bool set_offline_mode_enabled(bool enabled)
+{
+    ScopedNvsHandle nvs;
+    esp_err_t err = nvs.open(NVS_READWRITE, "saving offline mode");
+    if (err != ESP_OK) return false;
+    bool changed = false;
+    err = write_changed_nvs_u8(nvs.get(), err, kOfflineModeKey,
+                               enabled ? 1U : 0U, &changed);
+    err = commit_nvs_if_changed(nvs.get(), err, changed);
+    nvs.close();
+    if (err != ESP_OK) return false;
+
+    offline_mode_enabled_store(enabled);
+    if (enabled) {
+        ensure_active_work_page_enabled();
+        clear_network_request_bits();
+        if (!setup_portal_active_load()) {
+            stop_wifi_radio(true);
+            request_wifi_radio_stop_if_running();
+        }
+    }
+    notify_network_runtime_state_changed();
+    return true;
+}
+
+bool can_leave_offline_mode_without_setup()
+{
+    return network_all_online_credentials_configured();
 }
 
 bool is_weather_city_input_valid(const char *city)
@@ -144,16 +168,14 @@ static void reset_saved_config_runtime_state()
     gallery_rotation_period_store(kDefaultGalleryRotationPeriod);
     weather_clock_seconds_visible_store(kDefaultWeatherClockSecondsVisible);
     ui_language_store(kDefaultUiLanguage);
-    codex_usage_feature_enabled_store(kDefaultCodexUsageFeatureEnabled);
-    (void)codex_usage_ble_set_enabled(kDefaultCodexUsageFeatureEnabled);
+    (void)codex_usage_ble_request_enabled(false);
     chime_runtime_snapshot_store({
         false,
         false,
         static_cast<uint8_t>(chime_settings::kDefaultVolumePercent),
         0,
     });
-    work_page_enabled_mask_store(
-        work_page_mask_for_offline_mode(kDefaultWorkPageMask));
+    work_page_enabled_mask_store(kDefaultWorkPageMask);
     reset_work_page_order();
     active_work_page_store(first_enabled_work_page());
     clear_config_event_bits(kWifiConnectedBit | kWeatherReadyBit, kConfigEventReasonFactoryReset);
@@ -165,8 +187,6 @@ static void apply_saved_config_runtime_state(const char *ssid,
                                              const char *pass,
                                              const char *backup_ssid,
                                              const char *backup_pass,
-                                             const char *api_key,
-                                              const char *api_host,
                                               const char *weather_city,
                                               const char *ntp_server)
 {
@@ -174,17 +194,11 @@ static void apply_saved_config_runtime_state(const char *ssid,
     const char *saved_password = cstr_or_empty(pass);
     const char *saved_backup_ssid = cstr_or_empty(backup_ssid);
     const char *saved_backup_password = cstr_or_empty(backup_pass);
-    const char *saved_api_key = cstr_or_empty(api_key);
-    const char *saved_api_host = cstr_or_empty(api_host);
     network_credentials_store(saved_ssid,
                               saved_password,
                               saved_backup_ssid,
                               saved_backup_password,
-                              WifiCredentialSlot::kSlotA,
-                              saved_api_key,
-                              saved_api_host,
-                              saved_api_key[0] != '\0',
-                              saved_api_host[0] != '\0');
+                              WifiCredentialSlot::kSlotA);
     manual_weather_city_store(weather_city);
     ntp_server_name_store(ntp_server);
 }
@@ -195,8 +209,6 @@ static esp_err_t write_saved_config_nvs(nvs_handle_t nvs,
                                         const char *backup_ssid,
                                          const char *backup_pass,
                                          const char *ntp_server,
-                                         const char *api_key,
-                                        const char *api_host,
                                         const char *city,
                                         bool *changed)
 {
@@ -273,22 +285,6 @@ static esp_err_t write_saved_config_nvs(nvs_handle_t nvs,
                                    sizeof(scratch),
                                    &item_changed);
     any_changed = any_changed || item_changed;
-    err = write_changed_nvs_string(nvs,
-                                   err,
-                                   kWeatherApiKeyKey,
-                                   api_key,
-                                   scratch,
-                                   sizeof(scratch),
-                                   &item_changed);
-    any_changed = any_changed || item_changed;
-    err = write_changed_nvs_string(nvs,
-                                   err,
-                                   kQweatherApiHostKey,
-                                   api_host,
-                                   scratch,
-                                   sizeof(scratch),
-                                   &item_changed);
-    any_changed = any_changed || item_changed;
     err = network_weather_city_storage::write_provisioned_city(
         nvs, err, city, &item_changed);
     any_changed = any_changed || item_changed;
@@ -307,8 +303,6 @@ bool save_config(const char *ssid,
                  const char *backup_ssid,
                  const char *backup_pass,
                  const char *ntp_server,
-                 const char *api_key,
-                 const char *api_host,
                  const char *weather_city)
 {
     if (!ssid || ssid[0] == '\0') {
@@ -324,22 +318,11 @@ bool save_config(const char *ssid,
     if (!backup_pass) {
         backup_pass = "";
     }
-    if (!api_key) {
-        api_key = "";
-    }
     char normalized_ntp_server[kNtpServerNameLen] = {};
     if (!normalize_ntp_server_name(ntp_server,
                                    normalized_ntp_server,
                                    sizeof(normalized_ntp_server))) {
         ESP_LOGW(TAG, "%s", kInvalidNtpServerSaveLog);
-        return false;
-    }
-    char normalized_api_host[kQweatherApiHostLen] = {};
-    if (api_host && api_host[0] != '\0' &&
-        !normalize_qweather_api_host(api_host,
-                                     normalized_api_host,
-                                     sizeof(normalized_api_host))) {
-        ESP_LOGW(TAG, "%s", kInvalidQweatherApiHostSaveLog);
         return false;
     }
     char city[kManualWeatherCityLen] = {};
@@ -360,8 +343,6 @@ bool save_config(const char *ssid,
                                  backup_ssid,
                                  backup_pass,
                                  normalized_ntp_server,
-                                 api_key,
-                                 normalized_api_host,
                                  city,
                                  &changed);
     err = commit_nvs_if_changed(nvs.get(), err, changed);
@@ -375,8 +356,6 @@ bool save_config(const char *ssid,
         pass,
         backup_ssid,
         backup_pass,
-        api_key,
-        normalized_api_host,
         city,
         normalized_ntp_server);
     offline_mode_enabled_store(false);

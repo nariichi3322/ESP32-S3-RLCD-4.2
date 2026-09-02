@@ -1,4 +1,4 @@
-// 声明小智语音设置天气城市的 QWeather 校验与延迟持久化入口。
+// 声明小智语音设置天气城市的 Open-Meteo 校验与延迟持久化入口。
 #pragma once
 
 bool weather_city_mcp_save_pending();

@@ -30,13 +30,13 @@
 - 经过脱敏的日志、请求和响应。
 - 你已经尝试过的缓解措施。
 
-请勿在 Issue、Pull Request、评论、日志、截图或提交中公开 Wi-Fi 密码、QWeather API Key、API Host 私有配置、Token、NVS 镜像、设备私钥、本机绝对路径、私有服务地址或其它用户数据。需要说明字段结构时，请使用虚构值或删除敏感部分；截图和串口日志在上传前也必须逐项检查并脱敏。若已误提交，请立即撤销或轮换对应凭据，并通过私密漏洞报告告知维护者，因为删除当前文件不能清除 Git 历史中的泄露内容。
+请勿在 Issue、Pull Request、评论、日志、截图或提交中公开 Wi-Fi 密码、Token、NVS 镜像、设备私钥、本机绝对路径、私有服务地址或其它用户数据。需要说明字段结构时，请使用虚构值或删除敏感部分；截图和串口日志在上传前也必须逐项检查并脱敏。若已误提交，请立即撤销或轮换对应凭据，并通过私密漏洞报告告知维护者，因为删除当前文件不能清除 Git 历史中的泄露内容。
 
 ### 处理与披露
 
 维护者会尽力确认报告、评估影响并协调修复时间。响应速度取决于问题复杂度和硬件复现条件，因此不承诺固定 SLA。报告被确认后，维护者会在适当范围内告知处理状态，并在修复发布后决定是否公开安全说明。
 
-对于来自 ESP-IDF、LVGL、`xiaozhi-esp32`、QWeather 或其它第三方依赖的问题，维护者可能要求同时向相应上游项目报告。请遵循上游项目的安全政策，不要把尚未修复的第三方漏洞提前公开。
+对于来自 ESP-IDF、LVGL、`xiaozhi-esp32`、Open-Meteo 或其它第三方依赖的问题，维护者可能要求同时向相应上游项目报告。请遵循上游项目的安全政策，不要把尚未修复的第三方漏洞提前公开。
 
 ## English
 
@@ -68,10 +68,10 @@ A useful report should include:
 - Sanitized logs, requests, and responses.
 - Any mitigations you have already tested.
 
-Never expose Wi-Fi passwords, QWeather API keys, private API Host configuration, tokens, NVS images, device private keys, absolute local paths, private service endpoints, or other user data in issues, pull requests, comments, logs, screenshots, or commits. Use fictional values or redact sensitive fields when describing a format, and inspect screenshots and serial logs before upload. If a secret is committed accidentally, revoke or rotate it immediately and notify maintainers through private vulnerability reporting, because deleting the current file does not remove the value from Git history.
+Never expose Wi-Fi passwords, tokens, NVS images, device private keys, absolute local paths, private service endpoints, or other user data in issues, pull requests, comments, logs, screenshots, or commits. Use fictional values or redact sensitive fields when describing a format, and inspect screenshots and serial logs before upload. If a secret is committed accidentally, revoke or rotate it immediately and notify maintainers through private vulnerability reporting, because deleting the current file does not remove the value from Git history.
 
 ### Handling and Disclosure
 
 Maintainers will make a reasonable effort to acknowledge the report, assess the impact, and coordinate a fix. Response time depends on complexity and hardware reproduction requirements, so no fixed SLA is promised. Once confirmed, maintainers will share status when practical and decide whether to publish a security advisory after the fix is released.
 
-For vulnerabilities originating in ESP-IDF, LVGL, `xiaozhi-esp32`, QWeather, or another third-party dependency, maintainers may ask you to report the issue to the relevant upstream project as well. Follow the upstream security policy and avoid disclosing an unpatched third-party vulnerability prematurely.
+For vulnerabilities originating in ESP-IDF, LVGL, `xiaozhi-esp32`, Open-Meteo, or another third-party dependency, maintainers may ask you to report the issue to the relevant upstream project as well. Follow the upstream security policy and avoid disclosing an unpatched third-party vulnerability prematurely.

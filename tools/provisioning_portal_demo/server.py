@@ -22,7 +22,7 @@ SCENARIOS = {
     "validating": (
         "pending",
         "正在验证网络配置",
-        "设备正在连接 Wi-Fi，并验证天气 API 密钥、API Host 和天气城市，请稍候。",
+        "设备正在连接 Wi-Fi，并验证 Open-Meteo 服务与天气城市，请稍候。",
     ),
     "success": (
         "success",
@@ -36,13 +36,13 @@ SCENARIOS = {
     ),
     "api-failed": (
         "",
-        "天气 API 验证失败",
-        "Wi-Fi 已连接，但和风天气验证失败。请检查 API 密钥和账号专属 API Host 后重新填写。",
+        "天气服务验证失败",
+        "Wi-Fi 已连接，但 Open-Meteo 服务暂时无法访问，请稍后重试。",
     ),
     "city-failed": (
         "",
         "天气城市无效",
-        "Wi-Fi 与 API 密钥可用，但和风天气无法识别该城市。请修改城市，或留空使用自动定位。",
+        "Open-Meteo 无法识别该城市。请修改城市，或留空使用自动定位。",
     ),
 }
 
@@ -181,8 +181,8 @@ def render_result(state: str) -> str:
         ),
         "api-failed": (
             "失败",
-            "天气 API 验证失败",
-            "请检查 API 密钥和账号专属 API Host 后重新填写。",
+            "天气服务验证失败",
+            "Open-Meteo 服务暂时无法访问，请稍后重试。",
         ),
     }
     badge, title, body = states.get(state, states["validating"])
@@ -209,7 +209,7 @@ setTimeout(poll,600);
         "<main class='result-shell'><section class='portal-panel result-panel'>"
         f"<div class='result-state'>{html.escape(badge)}</div>"
         f"<h1>{html.escape(title)}</h1><p>{html.escape(body)}</p>"
-        "<div class='meta'>主 Wi-Fi：Redmi_8FA2<br>备用 Wi-Fi：备用热点<br>API Host：已保存<br>"
+        "<div class='meta'>主 Wi-Fi：Redmi_8FA2<br>备用 Wi-Fi：备用热点<br>"
         "天气城市：杭州<br>最近一次 Wi-Fi 断开原因：0</div>"
         "<a class='primary-link' href='/'>返回配网页</a>"
         "</section></main></body></html>"

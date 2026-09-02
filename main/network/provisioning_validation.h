@@ -1,4 +1,4 @@
-// 声明配网保存后由网络任务执行的天气凭据校验。
+// 聲明配網儲存後由網路任務執行的 Open-Meteo 可用性檢查。
 #pragma once
 
 #include "wifi_portal_state.h"

@@ -337,7 +337,7 @@ void build_clock_weather_panel(lv_obj_t *screen)
     remember_lower_panel_object(objects.icon_label);
     if (objects.icon_label) {
         lv_obj_set_style_text_font(objects.icon_label,
-                                   &qweather_icons_36,
+                                   &weather_icons_36,
                                    LV_PART_MAIN);
         lv_obj_set_style_border_width(objects.icon_label, 0, LV_PART_MAIN);
         lv_obj_set_style_pad_all(objects.icon_label, 0, LV_PART_MAIN);
@@ -408,7 +408,7 @@ void build_clock_local_sensor_panel(lv_obj_t *screen)
                                                               kClockLocalTempLabelY,
                                                               kClockLocalMetricLabelWidth,
                                                               kClockLocalMetricLabelHeight,
-                                                              "--.-℃",
+                                                              "--.-°C",
                                                               kClockComponentTempValue);
     objects.humidity_label = make_clock_lower_center_label(screen,
                                                            kClockLocalMetricLabelX,

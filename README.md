@@ -66,7 +66,7 @@
 首次使用通过设备配网页完成配置：
 
 - 支持主 Wi-Fi 和可选备用 Wi-Fi；主网络连续不可用时会尝试备用网络，成功后可按既有策略晋升。
-- 联网天气需要 QWeather API Key 和账号专属 API Host；API Host 在 QWeather 控制台中查看。
+- 聯網天氣使用 Open-Meteo 公開 API，不需要 API Key；可選填城市，留空時以 IP 座標自動定位。
 - 天气城市可以使用公网 IP 自动定位，也可以通过配网页、上位机或小智 AI 设置手动城市。
 - 不配置 Wi-Fi 时，可以填写本地日期时间并进入离线模式。
 
@@ -150,7 +150,7 @@ OTA 不能更新分区表。版本说明明确要求完整刷写时，请不要�
 - [贡献指南 / Contributing Guide](CONTRIBUTING.md)
 - [安全政策 / Security Policy](SECURITY.md)
 
-请勿在 Issue、日志、截图或提交中公开 Wi-Fi 密码、QWeather API Key、API Host 私有配置、Token、NVS 镜像、设备私钥、本机绝对路径或私有服务地址。
+請勿在 Issue、日誌、截圖或提交中公開 Wi-Fi 密碼、Token、NVS 映像、裝置私鑰、本機絕對路徑或私有服務位址。
 
 ## 使用限制
 
