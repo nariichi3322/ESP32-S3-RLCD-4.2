@@ -15,6 +15,7 @@
 #include "task_notification_target.h"
 #include "ui_info_page_state.h"
 #include "ui_clock_seconds_state.h"
+#include "ui_weather_board_mode.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_feedback.h"
 #include "ui_settings_navigation.h"
@@ -38,6 +39,7 @@
 #define BUTTON_SHOW_SETTINGS_LOG_FORMAT "key button clicked, showing settings page"
 #define BUTTON_CLOCK_SECONDS_LOG_FORMAT "weather clock seconds display: %s"
 #define BUTTON_CLOCK_SECONDS_SAVE_FAILED_LOG "failed to save weather clock seconds display"
+#define BUTTON_WEATHER_BOARD_FORECAST_MODE_LOG_FORMAT "weather board forecast mode: %s"
 
 namespace {
 constexpr int kButtonDebounceMs = 18;
@@ -116,6 +118,21 @@ void toggle_weather_clock_seconds()
     if (!saved) {
         ESP_LOGW(TAG, "%s", BUTTON_CLOCK_SECONDS_SAVE_FAILED_LOG);
     }
+}
+
+void handle_boot_long_press()
+{
+    if (active_work_page_load() == kWorkPageWeatherBoard) {
+        toggle_weather_board_forecast_mode();
+        ESP_LOGI(TAG,
+                 BUTTON_WEATHER_BOARD_FORECAST_MODE_LOG_FORMAT,
+                 weather_board_forecast_mode_load() == WeatherBoardForecastMode::kHourly
+                     ? "hourly"
+                     : "daily");
+        notify_ui_task();
+        return;
+    }
+    toggle_weather_clock_seconds();
 }
 
 void IRAM_ATTR notify_button_edge(void *)
@@ -264,7 +281,7 @@ void button_task(void *)
                        !setup_portal_active_load() &&
                        !battery_low_mode_load() &&
                        button_press_is_long(now - boot_pressed_since)) {
-                toggle_weather_clock_seconds();
+                handle_boot_long_press();
                 boot_long_handled = true;
             }
         } else {
@@ -291,7 +308,7 @@ void button_task(void *)
                     ESP_LOGI(TAG, BUTTON_SWITCH_WORK_PAGE_LOG_FORMAT, next_page + 1);
                     notify_ui_task();
                 } else if (button_press_is_long(held)) {
-                    toggle_weather_clock_seconds();
+                    handle_boot_long_press();
                 }
             }
             boot_pressed_since = 0;

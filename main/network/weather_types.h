@@ -5,6 +5,8 @@
 #include <time.h>
 
 inline constexpr int kWeatherForecastDays = 6;
+inline constexpr int kWeatherBoardForecastCardCount = 5;
+inline constexpr int kWeatherHourlyForecastCount = 5;
 inline constexpr int kWeatherAdviceLen = 96;
 
 enum class WeatherIconKind : uint8_t {
@@ -45,10 +47,21 @@ struct WeatherForecastDay {
     char sunset[8] = {};
 };
 
+struct WeatherForecastHour {
+    bool valid = false;
+    int weather_code = -1;
+    char time[8] = {};
+    char text[24] = {};
+    WeatherIconKind icon_kind = WeatherIconKind::kUnknown;
+    char temp[8] = {};
+};
+
 struct WeatherForecastData {
     bool ready = false;
     int count = 0;
     WeatherForecastDay days[kWeatherForecastDays] = {};
+    int hourly_count = 0;
+    WeatherForecastHour hours[kWeatherHourlyForecastCount] = {};
     char advice[kWeatherAdviceLen] = {};
     time_t updated_at = 0;
 };

@@ -15,7 +15,7 @@ constexpr size_t kResponseSize = 16384;
 constexpr char kGeocodingUrl[] =
     "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=zh&format=json";
 constexpr char kForecastUrl[] =
-    "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&timezone=auto&forecast_days=6&temperature_unit=celsius&wind_speed_unit=kmh&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,wind_direction_10m_dominant,wind_speed_10m_max";
+    "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&timezone=auto&forecast_days=6&forecast_hours=8&temperature_unit=celsius&wind_speed_unit=kmh&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,wind_direction_10m_dominant,wind_speed_10m_max";
 constexpr char kAirUrl[] =
     "https://air-quality-api.open-meteo.com/v1/air-quality?latitude=%s&longitude=%s&current=us_aqi,pm2_5,us_aqi_pm2_5,us_aqi_pm10,us_aqi_nitrogen_dioxide,us_aqi_ozone,us_aqi_sulphur_dioxide,us_aqi_carbon_monoxide";
 

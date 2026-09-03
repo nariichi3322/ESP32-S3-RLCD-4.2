@@ -13,6 +13,7 @@
 #include "ui_progress.h"
 #include "ui_weather_board_sun.h"
 #include "ui_weather_board_layout.h"
+#include "ui_weather_board_mode.h"
 #include "ui_weather_board_text.h"
 #include "ui_weather_icon_visibility.h"
 #include "ui_widgets.h"
@@ -43,6 +44,7 @@ static_assert(sizeof(WeatherBoardSnapshot) > 900,
 
 struct WeatherBoardRefreshCache {
     uint32_t last_weather_state_version;
+    uint32_t last_forecast_mode_version;
     int64_t last_minute_key;
     EventBits_t last_content_state;
     WeatherBoardSunSchedule sun_schedule;
@@ -80,7 +82,7 @@ struct ForecastCardUi {
     lv_obj_t *range = nullptr;
 };
 
-EXT_RAM_BSS_ATTR ForecastCardUi s_cards[kWeatherForecastDays];
+EXT_RAM_BSS_ATTR ForecastCardUi s_cards[kWeatherBoardForecastCardCount];
 constexpr const char *kWeatherBoardWaitingData = "等待数据";
 constexpr const char *kWeatherBoardSyncing = "同步中";
 constexpr const char *kWeatherBoardCurrentUnitText = "°C";
@@ -124,12 +126,12 @@ static_assert(sizeof(WeatherBoardTextWorkspace) == kWeatherBoardTextWorkspaceSiz
 constexpr EventBits_t kWeatherBoardContentStateMask =
     kWeatherReadyBit | kWifiConnectedBit;
 #define WEATHER_BOARD_FORECAST_CARD_CREATE_FAILED_FORMAT "weather forecast card %d create failed"
-static_assert(array_count(kForecastCardX) == kWeatherForecastDays,
-              "weather forecast card positions must match forecast day count");
-static_assert(array_count(s_cards) == kWeatherForecastDays,
-              "weather forecast card storage must match forecast day count");
-static_assert(kForecastCardX[kWeatherForecastDays - 1] + kForecastCardW <= kDisplayWidth,
-              "weather forecast cards must fit display width");
+static_assert(array_count(kForecastCardX) == kWeatherBoardForecastCardCount,
+               "weather forecast card positions must match forecast day count");
+static_assert(array_count(s_cards) == kWeatherBoardForecastCardCount,
+               "weather forecast card storage must match forecast day count");
+static_assert(kForecastCardX[kWeatherBoardForecastCardCount - 1] + kForecastCardW <= kDisplayWidth,
+               "weather forecast cards must fit display width");
 static_assert(kWeatherBoardCurrentUnitW > 0 && kWeatherBoardCurrentUnitH > 0,
               "weather board current unit label size must be positive");
 static_assert(kWeatherBoardCurrentTextW > 0 && kWeatherBoardCurrentTextH > 0,
@@ -150,6 +152,7 @@ EventBits_t weather_board_content_state(EventBits_t bits)
 void invalidate_weather_board_refresh_cache()
 {
     s_weather_board_refresh_cache.last_weather_state_version = UINT32_MAX;
+    s_weather_board_refresh_cache.last_forecast_mode_version = UINT32_MAX;
     s_weather_board_refresh_cache.last_minute_key = -1;
     s_weather_board_refresh_cache.last_content_state =
         static_cast<EventBits_t>(~0U);
@@ -200,27 +203,39 @@ WeatherIconText weather_icon_or_default(WeatherIconKind icon)
 
 bool update_forecast_card(ForecastCardUi &card,
                           const WeatherForecastDay *day,
+                          const WeatherForecastHour *hour,
+                          WeatherBoardForecastMode mode,
                           bool weather_ready)
 {
     bool changed = false;
-    if (!day || !day->valid) {
+    const bool hourly = mode == WeatherBoardForecastMode::kHourly;
+    const bool valid = hourly ? hour && hour->valid : day && day->valid;
+    if (!valid) {
         changed |= set_label_text_if_changed(card.date, kWeatherBoardDash);
         changed |= set_label_text_if_changed(card.icon, "");
         changed |= set_label_text_if_changed(card.text, kWeatherBoardDash);
-        changed |= set_label_text_if_changed(card.range, kWeatherBoardForecastRangePlaceholder);
+        changed |= set_label_text_if_changed(card.range,
+                                             hourly ? kWeatherBoardHourlyTempPlaceholder
+                                                    : kWeatherBoardForecastRangePlaceholder);
         return changed;
     }
     auto &date_line = s_weather_board_text_workspace.forecast_date_line;
     auto &temp_range = s_weather_board_text_workspace.forecast_temp_range;
-    format_forecast_date_line(*day, date_line, sizeof(date_line));
-    format_forecast_temp_range(*day, temp_range, sizeof(temp_range));
+    if (hourly) {
+        format_forecast_hour_time(*hour, date_line, sizeof(date_line));
+        format_forecast_hour_temp(*hour, temp_range, sizeof(temp_range));
+    } else {
+        format_forecast_date_line(*day, date_line, sizeof(date_line));
+        format_forecast_temp_range(*day, temp_range, sizeof(temp_range));
+    }
     changed |= set_label_text_if_changed(card.date, date_line);
     changed |= set_label_text_if_changed(
         card.icon,
-        weather_ui_icon_visible(weather_ready, day->valid)
-            ? weather_icon_or_default(day->icon_kind).c_str()
+        weather_ui_icon_visible(weather_ready, valid)
+            ? weather_icon_or_default(hourly ? hour->icon_kind : day->icon_kind).c_str()
             : "");
-    changed |= set_label_text_if_changed(card.text, text_or_dash(day->text));
+    changed |= set_label_text_if_changed(card.text,
+                                         text_or_dash(hourly ? hour->text : day->text));
     changed |= set_label_text_if_changed(card.range, temp_range);
     return changed;
 }
@@ -229,7 +244,7 @@ void build_forecast_card(lv_obj_t *screen,
                          ForecastCardUi &card,
                          int index)
 {
-    if (!screen || index < 0 || index >= kWeatherForecastDays) {
+    if (!screen || index < 0 || index >= kWeatherBoardForecastCardCount) {
         return;
     }
     int x = kForecastCardX[index];
@@ -431,12 +446,16 @@ bool update_current_weather_panel(const WeatherData &weather,
 }
 
 bool update_forecast_cards(const WeatherForecastData &forecast,
+                           WeatherBoardForecastMode mode,
                            bool weather_ready)
 {
     bool changed = false;
-    for (int i = 0; i < kWeatherForecastDays; ++i) {
+    for (int i = 0; i < kWeatherBoardForecastCardCount; ++i) {
         const WeatherForecastDay *day = weather_board_forecast_day_or_null(forecast, i);
-        changed |= update_forecast_card(s_cards[i], day, weather_ready);
+        const WeatherForecastHour *hour = forecast.hourly_count > i && forecast.hours[i].valid
+                                              ? &forecast.hours[i]
+                                              : nullptr;
+        changed |= update_forecast_card(s_cards[i], day, hour, mode, weather_ready);
     }
     return changed;
 }
@@ -514,7 +533,8 @@ bool update_weather_board_full_content(const struct tm &local,
 
     bool changed = update_current_weather_panel(weather, forecast, bits);
     changed |= update_forecast_cards(forecast,
-                                     (bits & kWeatherReadyBit) != 0);
+                                      weather_board_forecast_mode_load(),
+                                      (bits & kWeatherReadyBit) != 0);
     changed |= update_weather_detail_panel(local,
                                            weather,
                                            forecast,
@@ -547,7 +567,7 @@ void build_weather_board_page()
     build_current_weather_panel(screen);
     build_work_page_day_progress(screen, kWorkPageWeatherBoard);
 
-    for (int i = 0; i < kWeatherForecastDays; ++i) {
+    for (int i = 0; i < kWeatherBoardForecastCardCount; ++i) {
         build_forecast_card(screen, s_cards[i], i);
     }
 
@@ -563,12 +583,15 @@ bool update_weather_board_page(const struct tm &local)
     }
 
     const uint32_t weather_version = weather_state_version_load();
+    const uint32_t forecast_mode_version = weather_board_forecast_mode_version_load();
     const EventBits_t bits = app_event_group_get_bits();
     const EventBits_t content_state = weather_board_content_state(bits);
     const int64_t minute_key = weather_board_minute_key(local);
     const bool full_refresh_due =
         weather_version !=
             s_weather_board_refresh_cache.last_weather_state_version ||
+        forecast_mode_version !=
+            s_weather_board_refresh_cache.last_forecast_mode_version ||
         content_state !=
             s_weather_board_refresh_cache.last_content_state;
     const bool minute_refresh_due =
@@ -590,6 +613,7 @@ bool update_weather_board_page(const struct tm &local)
     if (full_refresh_due && full_snapshot_loaded) {
         s_weather_board_refresh_cache.last_weather_state_version =
             weather_version;
+        s_weather_board_refresh_cache.last_forecast_mode_version = forecast_mode_version;
         s_weather_board_refresh_cache.last_content_state = content_state;
     }
     if (minute_refresh_due) {

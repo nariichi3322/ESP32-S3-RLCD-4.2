@@ -90,6 +90,59 @@ OpenMeteoResult validate_daily(const cJSON *daily)
     return OpenMeteoResult::kOk;
 }
 
+bool hourly_time_after(const char *candidate, const char *current_time)
+{
+    return candidate && current_time && strlen(candidate) >= 16 &&
+           strlen(current_time) >= 16 && strcmp(candidate, current_time) > 0;
+}
+
+const char *wmo_text(int code);
+void format_number(char *out, size_t out_len, double value, bool decimal = false);
+
+bool parse_hourly(const cJSON *current,
+                  const cJSON *hourly,
+                  WeatherForecastData *forecast)
+{
+    if (!current || !hourly || !forecast) return false;
+    const cJSON *current_time = field(current, "time");
+    const cJSON *times = array_field(hourly, "time");
+    const cJSON *codes = array_field(hourly, "weather_code");
+    const cJSON *temperatures = array_field(hourly, "temperature_2m");
+    if (!cJSON_IsString(current_time) || !current_time->valuestring || !times || !codes ||
+        !temperatures) return false;
+
+    const int item_count = cJSON_GetArraySize(times);
+    if (cJSON_GetArraySize(codes) != item_count ||
+        cJSON_GetArraySize(temperatures) != item_count) return false;
+
+    WeatherForecastHour hours[kWeatherHourlyForecastCount] = {};
+    int count = 0;
+    for (int i = 0; i < item_count && count < kWeatherHourlyForecastCount; ++i) {
+        const cJSON *time = cJSON_GetArrayItem(times, i);
+        const cJSON *code = cJSON_GetArrayItem(codes, i);
+        const cJSON *temperature = cJSON_GetArrayItem(temperatures, i);
+        if (!cJSON_IsString(time) || !time->valuestring ||
+            !hourly_time_after(time->valuestring, current_time->valuestring)) continue;
+        if (!cJSON_IsNumber(code) || !std::isfinite(code->valuedouble) ||
+            code->valuedouble < 0 || code->valuedouble > 99 ||
+            std::floor(code->valuedouble) != code->valuedouble ||
+            !cJSON_IsNumber(temperature) || !std::isfinite(temperature->valuedouble) ||
+            temperature->valuedouble < -100 || temperature->valuedouble > 100) return false;
+
+        WeatherForecastHour &hour = hours[count++];
+        hour.valid = true;
+        hour.weather_code = static_cast<int>(code->valuedouble);
+        hour.icon_kind = open_meteo_icon_for_wmo_code(hour.weather_code);
+        strlcpy(hour.text, wmo_text(hour.weather_code), sizeof(hour.text));
+        strlcpy(hour.time, time->valuestring + 11, sizeof(hour.time));
+        format_number(hour.temp, sizeof(hour.temp), temperature->valuedouble);
+    }
+    if (count != kWeatherHourlyForecastCount) return false;
+    memcpy(forecast->hours, hours, sizeof(hours));
+    forecast->hourly_count = count;
+    return true;
+}
+
 double array_number(const cJSON *object, const char *key, int index)
 {
     return cJSON_GetArrayItem(array_field(object, key), index)->valuedouble;
@@ -149,7 +202,7 @@ const char *weather_advice(int code)
     return "天氣可能變化，外出前請留意最新資訊。";
 }
 
-void format_number(char *out, size_t out_len, double value, bool decimal = false)
+void format_number(char *out, size_t out_len, double value, bool decimal)
 {
     if (out && out_len) snprintf(out, out_len, decimal ? "%.1f" : "%.0f", value);
 }
@@ -208,6 +261,7 @@ OpenMeteoResult parse_open_meteo_forecast(const char *json,
     if (!root.get()) return OpenMeteoResult::kInvalidJson;
     const cJSON *current = field(root.get(), "current");
     const cJSON *daily = field(root.get(), "daily");
+    const cJSON *hourly = field(root.get(), "hourly");
     if (!current || !daily) return OpenMeteoResult::kMissingField;
     double temperature = 0, humidity = 0, code_value = 0, wind = 0, direction = 0;
     if (!ranged_number(current, "temperature_2m", -100.0, 100.0, &temperature) ||
@@ -256,6 +310,7 @@ OpenMeteoResult parse_open_meteo_forecast(const char *json,
     strlcpy(forecast->advice,
             weather_advice(forecast->days[0].weather_code),
             sizeof(forecast->advice));
+    (void)parse_hourly(current, hourly, forecast);
     return OpenMeteoResult::kOk;
 }
 

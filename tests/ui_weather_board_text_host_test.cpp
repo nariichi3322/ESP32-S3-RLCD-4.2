@@ -25,6 +25,14 @@ int main()
     assert(strcmp(out, "週日\n12日") == 0);
     format_forecast_temp_range(day, out, sizeof(out));
     assert(strcmp(out, "17/26°C") == 0);
+    WeatherForecastHour hour = {};
+    hour.valid = true;
+    strcpy(hour.time, "15:00");
+    strcpy(hour.temp, "24");
+    format_forecast_hour_time(hour, out, sizeof(out));
+    assert(strcmp(out, "15:00") == 0);
+    format_forecast_hour_temp(hour, out, sizeof(out));
+    assert(strcmp(out, "24°C") == 0);
     format_today_range(day, out, sizeof(out));
     assert(strcmp(out, "今日 17/26°C") == 0);
 
@@ -89,6 +97,8 @@ int main()
     format_today_range(day, nullptr, 0);
     format_forecast_date_line(day, nullptr, 0);
     format_forecast_temp_range(day, nullptr, 0);
+    format_forecast_hour_time(hour, nullptr, 0);
+    format_forecast_hour_temp(hour, nullptr, 0);
     format_weather_board_air_line(air, nullptr, 0);
     format_weather_board_humidity_line(weather, &day, nullptr, 0);
     format_weather_board_wind_line(&day, nullptr, 0);

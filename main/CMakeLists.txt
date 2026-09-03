@@ -59,6 +59,7 @@ idf_component_register(
         "ui/ui_calendar.cpp"
         "ui/ui_calendar_layout.cpp"
         "ui/ui_weather_board.cpp"
+        "ui/ui_weather_board_mode.cpp"
         "ui/ui_weather_board_sun.cpp"
         "ui/ui_weather_board_text.cpp"
         "ui/ui_clock.cpp"

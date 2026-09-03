@@ -3,9 +3,9 @@
 
 namespace ui_weather_board_layout {
 
-inline constexpr int kForecastCardX[] = {138, 180, 222, 264, 306, 348};
+inline constexpr int kForecastCardX[] = {138, 187, 236, 285, 334};
 inline constexpr int kForecastCardY = 66;
-inline constexpr int kForecastCardW = 34;
+inline constexpr int kForecastCardW = 46;
 inline constexpr int kForecastCardH = 126;
 inline constexpr int kForecastCardDateH = 30;
 inline constexpr int kForecastCardIconY = 35;
