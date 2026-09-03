@@ -24,8 +24,13 @@ int main()
            OpenMeteoResult::kInvalidValue);
 
     const char *forecast_json = R"({
-      "current":{"temperature_2m":26.4,"relative_humidity_2m":58,
+      "current":{"time":"2026-09-01T14:24","temperature_2m":26.4,"relative_humidity_2m":58,
         "weather_code":2,"wind_speed_10m":12,"wind_direction_10m":45},
+      "hourly":{
+        "time":["2026-09-01T14:00","2026-09-01T15:00","2026-09-01T16:00","2026-09-01T17:00","2026-09-01T18:00","2026-09-01T19:00"],
+        "weather_code":[2,3,61,61,2,0],
+        "temperature_2m":[26,25,24,23,23,22]
+      },
       "daily":{
         "time":["2026-09-01","2026-09-02","2026-09-03","2026-09-04","2026-09-05","2026-09-06"],
         "weather_code":[0,2,3,61,71,95],
@@ -44,6 +49,9 @@ int main()
     assert(forecast.ready && forecast.count == 6 && forecast.days[5].valid);
     assert(weather.icon_kind == WeatherIconKind::kPartlyCloudy);
     assert(forecast.days[3].icon_kind == WeatherIconKind::kRain);
+    assert(forecast.hourly_count == kWeatherHourlyForecastCount);
+    assert(strcmp(forecast.hours[0].time, "15:00") == 0);
+    assert(strcmp(forecast.hours[4].temp, "22") == 0);
     assert(parse_open_meteo_forecast(
         R"({"current":{},"daily":{}})", "0", "0", "", &weather, &forecast) ==
            OpenMeteoResult::kInvalidValue);
@@ -58,6 +66,18 @@ int main()
            OpenMeteoResult::kShortArray);
     assert(parse_open_meteo_forecast(forecast_json, "91", "0", "", &weather, &forecast) ==
            OpenMeteoResult::kInvalidArgument);
+
+    const char *missing_hourly_json = R"({
+      "current":{"temperature_2m":1,"relative_humidity_2m":2,"weather_code":0,
+        "wind_speed_10m":1,"wind_direction_10m":1},
+      "daily":{"time":["2026-09-01","2026-09-02","2026-09-03","2026-09-04","2026-09-05","2026-09-06"],
+        "weather_code":[0,0,0,0,0,0],"temperature_2m_max":[2,2,2,2,2,2],"temperature_2m_min":[1,1,1,1,1,1],
+        "sunrise":["2026-09-01T05:30","2026-09-02T05:30","2026-09-03T05:30","2026-09-04T05:30","2026-09-05T05:30","2026-09-06T05:30"],
+        "sunset":["2026-09-01T18:10","2026-09-02T18:10","2026-09-03T18:10","2026-09-04T18:10","2026-09-05T18:10","2026-09-06T18:10"],
+        "wind_direction_10m_dominant":[0,0,0,0,0,0],"wind_speed_10m_max":[1,1,1,1,1,1]}})";
+    assert(parse_open_meteo_forecast(missing_hourly_json, "0", "0", "", &weather, &forecast) ==
+           OpenMeteoResult::kOk);
+    assert(forecast.ready && forecast.count == kWeatherForecastDays && forecast.hourly_count == 0);
 
     WeatherAirData air = {};
     assert(parse_open_meteo_air_quality(

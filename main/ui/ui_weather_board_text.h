@@ -8,6 +8,8 @@
 inline constexpr const char *kWeatherBoardDash = "--";
 inline constexpr const char *kWeatherBoardShortDatePlaceholder = "--/--";
 inline constexpr const char *kWeatherBoardForecastRangePlaceholder = "--/--°C";
+inline constexpr const char *kWeatherBoardHourlyTimePlaceholder = "--:--";
+inline constexpr const char *kWeatherBoardHourlyTempPlaceholder = "--°C";
 inline constexpr const char *kWeatherBoardTodayRangePlaceholder = "今日 --/--°C";
 inline constexpr const char *kWeatherBoardAirPlaceholder = "AQI --";
 inline constexpr const char *kWeatherBoardHumidityPlaceholder = "湿度 --%";
@@ -20,6 +22,8 @@ const char *text_or_dash(const char *text);
 void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len);
 void format_forecast_date_line(const WeatherForecastDay &day, char *out, size_t out_len);
 void format_forecast_temp_range(const WeatherForecastDay &day, char *out, size_t out_len);
+void format_forecast_hour_time(const WeatherForecastHour &hour, char *out, size_t out_len);
+void format_forecast_hour_temp(const WeatherForecastHour &hour, char *out, size_t out_len);
 void format_weather_board_air_line(const WeatherAirData &air, char *out, size_t out_len);
 void format_weather_board_humidity_line(const WeatherData &weather,
                                         const WeatherForecastDay *today,

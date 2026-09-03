@@ -23,6 +23,7 @@ constexpr const char *kWeatherBoardWeekdayNamesTraditional[kWeatherBoardWeekdayC
 constexpr const char *kForecastShortDateFormat = "%d日";
 constexpr const char *kForecastDateLineFormat = "%s\n%s";
 constexpr const char *kForecastTempRangeFormat = "%s/%s°C";
+constexpr const char *kForecastHourTempFormat = "%s°C";
 constexpr const char *kWeatherBoardTodayRangeFormat = "今日 %s/%s°C";
 constexpr const char *kWeatherBoardTimePlaceholder = "--:--";
 constexpr const char *kWeatherBoardAirFormat = "AQI %s %s";
@@ -134,6 +135,26 @@ void format_forecast_temp_range(const WeatherForecastDay &day, char *out, size_t
                                 kForecastTempRangeFormat,
                                 text_or_dash(day.temp_min),
                                 text_or_dash(day.temp_max));
+}
+
+void format_forecast_hour_time(const WeatherForecastHour &hour, char *out, size_t out_len)
+{
+    ui_text::copy(out,
+                  out_len,
+                  hour.valid && hour.time[0] ? hour.time : kWeatherBoardHourlyTimePlaceholder);
+}
+
+void format_forecast_hour_temp(const WeatherForecastHour &hour, char *out, size_t out_len)
+{
+    if (!hour.valid) {
+        ui_text::copy(out, out_len, kWeatherBoardHourlyTempPlaceholder);
+        return;
+    }
+    ui_text::format_or_fallback(out,
+                                out_len,
+                                kWeatherBoardHourlyTempPlaceholder,
+                                kForecastHourTempFormat,
+                                text_or_dash(hour.temp));
 }
 
 void format_weather_board_air_line(const WeatherAirData &air, char *out, size_t out_len)
