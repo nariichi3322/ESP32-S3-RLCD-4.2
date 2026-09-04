@@ -2,6 +2,8 @@
 
 #include "battery_runtime_state.h"
 #include "ui_battery.h"
+#include "ui_fonts.h"
+#include "ui_language.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
 #include "ui_widgets.h"
@@ -27,6 +29,43 @@ lv_obj_t *s_paid;
 lv_obj_t *s_reset_credits;
 lv_obj_t *s_reset_expiry;
 
+struct CodexUsageText {
+    const char *traditional;
+    const char *simplified;
+    const char *english;
+};
+
+const char *codex_usage_text(const CodexUsageText &text)
+{
+    return ui_language_text(text.traditional, text.simplified, text.english);
+}
+
+constexpr CodexUsageText kDurationDaysHoursFormat = {
+    "%lu天 %lu小時", "%lu天 %lu小时", "%lud %luh"};
+constexpr CodexUsageText kDurationHoursMinutesFormat = {
+    "%lu小時 %lu分", "%lu小时 %lu分", "%luh %lum"};
+constexpr CodexUsageText kDurationMinutesFormat = {
+    "%lu分", "%lu分", "%lum"};
+constexpr CodexUsageText kQuotaTitleFormat = {
+    "CODEX 剩餘 (%s)", "CODEX 剩余 (%s)", "CODEX LEFT (%s)"};
+constexpr CodexUsageText kResetFormat = {
+    "重設於 %s", "重置 %s", "RESET %s"};
+constexpr CodexUsageText kResetPlaceholder = {
+    "重設於 --", "重置 --", "RESET --"};
+constexpr CodexUsageText kPrimaryTitlePlaceholder = {
+    "CODEX 剩餘 (--)", "CODEX 剩余 (--)", "CODEX LEFT (--)"};
+constexpr CodexUsageText kPaidCreditsTitle = {
+    "付費額度", "付费额度", "PAID CREDITS"};
+constexpr CodexUsageText kTodayTitle = {"今日", "今日", "TODAY"};
+constexpr CodexUsageText kSevenDaysTitle = {"7 天", "7 天", "7 DAYS"};
+constexpr CodexUsageText kRunTitle = {"正在執行", "线程", "RUN"};
+constexpr CodexUsageText kResetCreditsTitle = {"重設額度", "重置额度", "RESET CR"};
+constexpr CodexUsageText kResetExpiryTitle = {"額度到期", "额度到期", "RESET EXP"};
+constexpr CodexUsageText kBluetoothOffTitle = {
+    "藍牙已關閉", "蓝牙关闭", "BLUETOOTH OFF"};
+constexpr CodexUsageText kOfflineDetail = {"(離線)", "(离线)", "(OFFLINE)"};
+constexpr CodexUsageText kUnlimitedCredits = {"無限", "无限", "UNLIM"};
+
 lv_obj_t *make_content_container(lv_obj_t *screen)
 {
     lv_obj_t *content = lv_obj_create(screen);
@@ -42,7 +81,7 @@ lv_obj_t *make_content_container(lv_obj_t *screen)
 
 lv_obj_t *metric(lv_obj_t *parent, int x, int y, const char *title, int width = 92)
 {
-    make_label_with_font(parent, x, y, width, 18, title, &lv_font_montserrat_12);
+    make_label_with_font(parent, x, y, width, 18, title, &zh_font_16);
     lv_obj_t *value = make_label_with_font(parent, x, y + 19, width, 29, "--", &lv_font_montserrat_16);
     if (value) lv_obj_set_style_text_align(value, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     return value;
@@ -53,9 +92,18 @@ void format_duration(uint32_t seconds, char *out, size_t size)
     const uint32_t minutes = seconds / 60U;
     const uint32_t hours = minutes / 60U;
     const uint32_t days = hours / 24U;
-    if (days) snprintf(out, size, "%lud %luh", static_cast<unsigned long>(days), static_cast<unsigned long>(hours % 24U));
-    else if (hours) snprintf(out, size, "%luh %lum", static_cast<unsigned long>(hours), static_cast<unsigned long>(minutes % 60U));
-    else snprintf(out, size, "%lum", static_cast<unsigned long>(minutes));
+    if (days) {
+        snprintf(out, size, codex_usage_text(kDurationDaysHoursFormat),
+                 static_cast<unsigned long>(days),
+                 static_cast<unsigned long>(hours % 24U));
+    } else if (hours) {
+        snprintf(out, size, codex_usage_text(kDurationHoursMinutesFormat),
+                 static_cast<unsigned long>(hours),
+                 static_cast<unsigned long>(minutes % 60U));
+    } else {
+        snprintf(out, size, codex_usage_text(kDurationMinutesFormat),
+                 static_cast<unsigned long>(minutes));
+    }
 }
 
 bool update_quota_block(lv_obj_t *title,
@@ -71,11 +119,12 @@ bool update_quota_block(lv_obj_t *title,
     char text[32];
     char window[16];
     codex_usage_format_window(window_minutes, window, sizeof(window));
-    snprintf(text, sizeof(text), "CODEX LEFT (%s)", window);
+    snprintf(text, sizeof(text), codex_usage_text(kQuotaTitleFormat), window);
     bool changed = set_label_text_if_changed(title, text);
     if (!available) {
         changed |= set_label_text_if_changed(percent, "--");
-        changed |= set_label_text_if_changed(reset, "RESET --");
+        changed |= set_label_text_if_changed(reset,
+                                             codex_usage_text(kResetPlaceholder));
         return changed;
     }
     snprintf(text, sizeof(text), "%u%%", remaining_percent);
@@ -83,7 +132,7 @@ bool update_quota_block(lv_obj_t *title,
     format_duration(codex_usage_countdown_seconds(
         reset_seconds, received_tick_ms, now), text, sizeof(text));
     char reset_text[40];
-    snprintf(reset_text, sizeof(reset_text), "RESET %s", text);
+    snprintf(reset_text, sizeof(reset_text), codex_usage_text(kResetFormat), text);
     changed |= set_label_text_if_changed(reset, reset_text);
     return changed;
 }
@@ -102,27 +151,41 @@ void build_codex_usage_page()
     s_online_content = make_content_container(screen);
     s_offline_content = make_content_container(screen);
     if (!s_online_content || !s_offline_content) return;
-    s_primary_title = make_label_with_font(s_online_content, 18, 6, 170, 18, "CODEX LEFT (--)", &lv_font_montserrat_12);
+    s_primary_title = make_label_with_font(s_online_content, 18, 6, 170, 18,
+                                           codex_usage_text(kPrimaryTitlePlaceholder),
+                                           &zh_font_16);
     s_percent = make_label_with_font(s_online_content, 18, 24, 170, 32, "--", &lv_font_montserrat_24);
-    s_reset = make_label_with_font(s_online_content, 18, 54, 170, 20, "RESET --", &lv_font_montserrat_12);
+    s_reset = make_label_with_font(s_online_content, 18, 54, 170, 20,
+                                   codex_usage_text(kResetPlaceholder),
+                                   &zh_font_16);
     make_black_bar(s_online_content, 18, 79, 170, 2);
-    s_secondary_title = make_label_with_font(s_online_content, 18, 85, 170, 18, "CODEX LEFT (--)", &lv_font_montserrat_12);
+    s_secondary_title = make_label_with_font(s_online_content, 18, 85, 170, 18,
+                                             codex_usage_text(kPrimaryTitlePlaceholder),
+                                             &zh_font_16);
     s_secondary_percent = make_label_with_font(s_online_content, 18, 103, 170, 32, "--", &lv_font_montserrat_24);
-    s_secondary_reset = make_label_with_font(s_online_content, 18, 133, 170, 20, "RESET --", &lv_font_montserrat_12);
+    s_secondary_reset = make_label_with_font(s_online_content, 18, 133, 170, 20,
+                                             codex_usage_text(kResetPlaceholder),
+                                             &zh_font_16);
     make_black_bar(s_online_content, 18, 157, 170, 2);
-    make_label_with_font(s_online_content, 18, 162, 108, 18, "PAID CREDITS", &lv_font_montserrat_12);
+    make_label_with_font(s_online_content, 18, 162, 108, 18,
+                         codex_usage_text(kPaidCreditsTitle),
+                         &zh_font_16);
     s_paid = make_label_with_font(s_online_content, 126, 159, 62, 24, "--", &lv_font_montserrat_16);
     if (s_paid) lv_obj_set_style_text_align(s_paid, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     make_black_bar(s_online_content, 198, 9, 2, 174);
-    s_today = metric(s_online_content, 212, 9, "TODAY");
-    s_week = metric(s_online_content, 302, 9, "7 DAYS");
-    s_run = metric(s_online_content, 212, 65, "RUN", 182);
-    s_reset_credits = metric(s_online_content, 212, 121, "RESET CR");
-    s_reset_expiry = metric(s_online_content, 302, 121, "RESET EXP");
+    s_today = metric(s_online_content, 212, 9, codex_usage_text(kTodayTitle));
+    s_week = metric(s_online_content, 302, 9, codex_usage_text(kSevenDaysTitle));
+    s_run = metric(s_online_content, 212, 65, codex_usage_text(kRunTitle), 182);
+    s_reset_credits = metric(s_online_content, 212, 121,
+                             codex_usage_text(kResetCreditsTitle));
+    s_reset_expiry = metric(s_online_content, 302, 121,
+                            codex_usage_text(kResetExpiryTitle));
     lv_obj_t *offline_title = make_label_with_font(
-        s_offline_content, 25, 56, 350, 34, "BLUETOOTH OFF", &lv_font_montserrat_24);
+        s_offline_content, 25, 56, 350, 34,
+        codex_usage_text(kBluetoothOffTitle), &zh_font_16);
     lv_obj_t *offline_detail = make_label_with_font(
-        s_offline_content, 25, 96, 350, 24, "(OFFLINE)", &lv_font_montserrat_16);
+        s_offline_content, 25, 96, 350, 24,
+        codex_usage_text(kOfflineDetail), &zh_font_16);
     if (offline_title) {
         lv_obj_set_style_text_align(offline_title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     }
@@ -179,7 +242,8 @@ bool update_codex_usage_page(const struct tm &local,
     snprintf(text, sizeof(text), "%u", view.snapshot.active_threads);
     changed |= set_label_text_if_changed(s_run, text);
     if (view.snapshot.paid_credits_state == CodexPaidCreditsState::Unlimited) {
-        changed |= set_label_text_if_changed(s_paid, "UNLIM");
+        changed |= set_label_text_if_changed(s_paid,
+                                             codex_usage_text(kUnlimitedCredits));
     } else if (view.snapshot.paid_credits_state == CodexPaidCreditsState::Finite) {
         codex_usage_format_credits(view.snapshot.paid_credits_balance, text, sizeof(text));
         changed |= set_label_text_if_changed(s_paid, text);

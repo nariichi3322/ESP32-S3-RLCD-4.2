@@ -380,4 +380,25 @@ inline constexpr char kFormHtmlSimplified[] = R"PORTAL(
 </form>
 )PORTAL";
 
+inline constexpr char kCommonScriptEnglish[] = R"PORTAL(
+function pick(ssid){var field=document.querySelector("[name=ssid]");if(!field){return;}field.value=ssid;var password=document.querySelector("[name=pass]");if(password){password.focus();}}
+function beginSave(form){var button=form.querySelector(".submit");var status=document.getElementById("save-status");if(button){button.disabled=true;button.textContent="Saving, please wait…";}if(status){status.classList.add("show");}setTimeout(function(){form.submit();},80);return false;}
+)PORTAL";
+
+inline constexpr char kFormHtmlEnglish[] = R"PORTAL(
+<form method='post' action='/save' accept-charset='UTF-8' onsubmit='return beginSave(this)'>
+  <div class='form-section section-network'><div class='section-heading'><span class='section-index'>01</span><div><h2>Wi-Fi Settings</h2><p>Network is enabled for time sync and setup</p></div></div>
+  <div class='field'><label for='wifi-ssid'>Primary Wi-Fi (SSID)</label><input id='wifi-ssid' name='ssid' placeholder='Select or enter a Wi-Fi name' value='%s' autocomplete='off'></div>
+  <div class='field'><label for='wifi-pass'>Primary Wi-Fi password</label><input id='wifi-pass' name='pass' placeholder='Enter the Wi-Fi password' type='password' autocomplete='current-password'><p class='hint'>When the SSID is unchanged, leave the password blank to keep using the current password.</p></div>
+  <div class='field'><label for='backup-wifi-ssid'>Backup Wi-Fi <em>Optional</em></label><input id='backup-wifi-ssid' name='backup_ssid' placeholder='Try automatically if primary Wi-Fi is unavailable' value='%s' autocomplete='off'></div>
+  <div class='field'><label for='backup-wifi-pass'>Backup Wi-Fi password <em>Optional</em></label><input id='backup-wifi-pass' name='backup_pass' placeholder='Enter the backup Wi-Fi password' type='password' autocomplete='off'><p class='hint'>Optional; after a successful backup connection, it becomes the preferred Wi-Fi.</p></div></div>
+  <div class='form-section section-weather'><div class='section-heading'><span class='section-index'>02</span><div><h2>Time sync</h2><p>Automatic sync at boot and every 24 hours</p></div></div>
+  <div class='field'><label for='ntp-server'>NTP server</label><input id='ntp-server' name='ntp_server' placeholder='pool.ntp.org' value='%s' autocomplete='off' aria-describedby='ntp-server-hint'><p id='ntp-server-hint' class='hint'>Enter a host name such as pool.ntp.org; do not include http://, https://, or a path.</p></div>
+  <div class='field'><label for='weather-city'>Weather city <em>Optional</em></label><input id='weather-city' name='weather_city' placeholder='Leave blank to locate by IP' value='%s' autocomplete='off'><p class='hint'>Uses the global Open-Meteo city search; no API key is required.</p></div></div>
+  <div class='actions'><button class='submit' type='submit'>Save and connect</button></div>
+  <p id='save-status' class='save-status' role='status' aria-live='polite'><span class='activity-dot' aria-hidden='true'></span><span>Saving settings and connecting, please wait…</span></p>
+</form>
+<form method='post' action='/save' accept-charset='UTF-8'><div class='form-section section-offline'><div class='section-heading'><span class='section-index'>03</span><div><h2>Offline mode</h2><p>Use manual time and RTC without Wi-Fi</p></div></div><div class='field'><label for='manual-time-en'>Local date and time</label><input id='manual-time-en' name='manual_time' type='datetime-local' step='1' required></div></div><div class='actions'><button class='submit' type='submit'>Start offline mode</button></div></form>
+)PORTAL";
+
 } // namespace wifi_portal_ui

@@ -9,6 +9,7 @@
 #include "work_page_ids.h"
 #include "ui_battery.h"
 #include "ui_fonts.h"
+#include "ui_i18n.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
 #include "ui_weather_board_sun.h"
@@ -159,6 +160,16 @@ void invalidate_weather_board_refresh_cache()
     s_weather_board_refresh_cache.sun_schedule = {};
 }
 
+void clear_weather_board_object_refs_internal()
+{
+    s_weather_board_objects = {};
+    for (ForecastCardUi &card : s_cards) {
+        card = {};
+    }
+    s_weather_board_text_workspace = {};
+    invalidate_weather_board_refresh_cache();
+}
+
 void set_weather_label_align(lv_obj_t *label, lv_text_align_t align)
 {
     if (!label) {
@@ -234,8 +245,10 @@ bool update_forecast_card(ForecastCardUi &card,
         weather_ui_icon_visible(weather_ready, valid)
             ? weather_icon_or_default(hourly ? hour->icon_kind : day->icon_kind).c_str()
             : "");
-    changed |= set_label_text_if_changed(card.text,
-                                         text_or_dash(hourly ? hour->text : day->text));
+    changed |= set_label_text_if_changed(
+        card.text,
+        hourly ? ui_weather_text(hour->weather_code)
+               : ui_weather_text(day->weather_code));
     changed |= set_label_text_if_changed(card.range, temp_range);
     return changed;
 }
@@ -424,7 +437,7 @@ bool update_current_weather_panel(const WeatherData &weather,
         changed |= set_label_text_if_changed(objects.current_icon_label,
                                              weather_icon_or_default(weather.icon_kind).c_str());
         changed |= set_label_text_if_changed(objects.current_text_label,
-                                             text_or_dash(weather.text));
+                                             ui_weather_text(weather.weather_code));
         if (forecast.ready && forecast.count > 0 && forecast.days[0].valid) {
             format_today_range(forecast.days[0], today_range, sizeof(today_range));
         } else {
@@ -545,6 +558,11 @@ bool update_weather_board_full_content(const struct tm &local,
 }
 
 } // namespace
+
+void clear_weather_board_object_refs()
+{
+    clear_weather_board_object_refs_internal();
+}
 
 void build_weather_board_page()
 {

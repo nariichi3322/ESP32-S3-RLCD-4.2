@@ -33,10 +33,17 @@ inline constexpr int kDayTextY = 2;
 inline constexpr int kDayTextWidthInset = 4;
 inline constexpr int kDayTextHeight = 14;
 inline constexpr int kSubTextY = 20;
-inline constexpr int kSubTextHeight = 12;
+inline constexpr int kSubTextHeight = 17;
 inline constexpr int kDayTextSize = 4;
-inline constexpr const char *kWeekdays[kCalendarWeekdayCount] = {
-    "日", "一", "二", "三", "四", "五", "六",
+struct CalendarWeekdayLabel {
+    const char *traditional;
+    const char *simplified;
+    const char *english;
+};
+inline constexpr CalendarWeekdayLabel kWeekdays[kCalendarWeekdayCount] = {
+    {"日", "日", "S"}, {"一", "一", "M"}, {"二", "二", "T"},
+    {"三", "三", "W"}, {"四", "四", "T"}, {"五", "五", "F"},
+    {"六", "六", "S"},
 };
 
 static_assert(kCanvasWidth > 0 && kCanvasHeight > 0,

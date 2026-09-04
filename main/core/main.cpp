@@ -35,6 +35,7 @@
 #include "ui_boot_screen.h"
 #include "ui_display_flush.h"
 #include "ui_info_page_state_internal.h"
+#include "ui_language.h"
 #include "ui_settings_feedback_internal.h"
 #include "ui_settings_activity_state_internal.h"
 #include "ui_work_page_catalog_internal.h"
@@ -109,8 +110,6 @@ constexpr const char *kBootAnimTaskName = "boot_anim_task";
 constexpr const char *kBootSyncTaskName = "boot_sync";
 constexpr const char *kBootAnimTaskCreateFailed = "boot animation task create failed";
 constexpr const char *kBootConnectivityTaskCreateFailed = "boot connectivity task create failed";
-constexpr const char *kBootReadyStatus = "Ready";
-constexpr const char *kBootReadyDetail = "Starting clock";
 struct AppInitializerSpec {
     bool (*initialize)();
     const char *failure_log;
@@ -392,7 +391,9 @@ extern "C" void app_main(void)
         kBootSyncDoneBit,
         pdMS_TO_TICKS(kBootStartupBudgetMs + kBootSyncWaitMarginMs),
         kBootSyncTaskName);
-    update_boot_screen(100, kBootReadyStatus, kBootReadyDetail);
+    update_boot_screen(100,
+                       ui_language_text("準備完成", "准备完成", "Ready"),
+                       ui_language_text("啟動時鐘", "启动时钟", "Starting clock"));
     request_boot_animation_stop();
     wait_for_boot_task_completion(kBootAnimDoneBit,
                                   pdMS_TO_TICKS(kBootAnimStopWaitMs),

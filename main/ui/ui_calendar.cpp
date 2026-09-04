@@ -2,6 +2,7 @@
 #include "ui_work_pages.h"
 
 #include "app_metadata.h"
+#include "app_text_format.h"
 #include "app_time_constants.h"
 #include "battery_runtime_state.h"
 #include "calendar_lunar.h"
@@ -10,6 +11,7 @@
 #include "ui_calendar_layout.h"
 #include "ui_canvas_primitives.h"
 #include "ui_fonts.h"
+#include "ui_language.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
 #include "ui_widgets.h"
@@ -17,6 +19,9 @@
 #include "ui_work_status.h"
 
 #include <esp_log.h>
+
+#include <stdio.h>
+#include <string.h>
 
 #define CALENDAR_CANVAS_CREATE_FAILED_LOG "calendar canvas create failed"
 #define CALENDAR_LAYOUT_INVALID_LOG "calendar layout invalid"
@@ -115,7 +120,96 @@ static void draw_calendar_text(lv_obj_t *canvas,
     dsc.color = color;
     dsc.font = font;
     dsc.align = align;
+    // lv_canvas_draw_text only bounds the label horizontally; callers must
+    // provide a one-line string because its canvas area has no row limit.
+    (void)h;
     lv_canvas_draw_text(canvas, x, y, w, &dsc, text);
+}
+
+struct CalendarEnglishCompactLabel {
+    const char *full;
+    const char *compact;
+};
+
+static constexpr CalendarEnglishCompactLabel kCalendarEnglishCompactLabels[] = {
+    {"New Year's Day", "New Yr"},
+    {"Valentine's Day", "V-Day"},
+    {"Women's Day", "W-Day"},
+    {"Labour Day", "Labour"},
+    {"Children's Day", "Kids"},
+    {"Teachers' Day", "Teach."},
+    {"National Day", "Nation"},
+    {"Christmas", "Xmas"},
+    {"Spring Festival", "Spring"},
+    {"Lantern Festival", "Lantern"},
+    {"Dragon Boat Festival", "Dragon"},
+    {"Qixi Festival", "Qixi"},
+    {"Mid-Autumn Festival", "M-Aut."},
+    {"Double Ninth Festival", "Ninth"},
+    {"Laba Festival", "Laba"},
+    {"Minor Cold", "Minor"},
+    {"Major Cold", "Major"},
+    {"Start of Spring", "Spring"},
+    {"Rain Water", "Rain"},
+    {"Awakening of Insects", "Insects"},
+    {"Spring Equinox", "Eqx."},
+    {"Pure Brightness", "Bright"},
+    {"Grain Rain", "Rain"},
+    {"Start of Summer", "Sum."},
+    {"Grain Full", "Grain"},
+    {"Grain in Ear", "Grain"},
+    {"Summer Solstice", "Sum."},
+    {"Minor Heat", "Minor"},
+    {"Major Heat", "Major"},
+    {"Start of Autumn", "Fall"},
+    {"End of Heat", "Heat"},
+    {"White Dew", "Dew"},
+    {"Autumn Equinox", "Eqx."},
+    {"Cold Dew", "Dew"},
+    {"Frost Descent", "Frost"},
+    {"Start of Winter", "Winter"},
+    {"Minor Snow", "Snow"},
+    {"Major Snow", "Snow"},
+    {"Winter Solstice", "Winter"},
+};
+
+static const char *calendar_english_compact_subtext(const char *text)
+{
+    if (!text) return nullptr;
+    for (const auto &label : kCalendarEnglishCompactLabels) {
+        if (strcmp(text, label.full) == 0) return label.compact;
+    }
+    return nullptr;
+}
+
+static bool calendar_text_starts_with(const char *text, const char *prefix)
+{
+    return text && prefix && strncmp(text, prefix, strlen(prefix)) == 0;
+}
+
+static const char *calendar_subtext_for_canvas(const CalendarDayInfo &info,
+                                               char *buffer,
+                                               size_t buffer_size)
+{
+    if (!ui_language_is_english()) return info.subtext;
+
+    const char *format = nullptr;
+    if (calendar_text_starts_with(info.subtext, "Leap lunar month ")) {
+        format = "Le%d";
+    } else if (calendar_text_starts_with(info.subtext, "Lunar month ")) {
+        format = "LM%d";
+    } else if (calendar_text_starts_with(info.subtext, "Lunar day ")) {
+        format = "LD%d";
+    }
+    if (format && buffer && buffer_size > 0) {
+        const int value = format[1] == 'D' ? info.lunar_day : info.lunar_month;
+        const int written = snprintf(buffer, buffer_size, format, value);
+        if (!app_text::format_failed(written, buffer_size)) return buffer;
+        return "?";
+    }
+
+    const char *compact = calendar_english_compact_subtext(info.subtext);
+    return compact ? compact : info.subtext;
 }
 
 static void draw_calendar_weekday_header(lv_img_dsc_t *image)
@@ -144,26 +238,32 @@ static void draw_calendar_weekday_header(lv_img_dsc_t *image)
                     kCellWidth * (kCalendarWeekdayCount - 2),
                     kHeaderHeight);
 
+    const bool english = ui_language_is_english();
+    const lv_font_t *header_font = english ? &lv_font_montserrat_16 : &zh_font_16;
     for (int col = 0; col < kCalendarWeekdayCount; ++col) {
         int x = kGridX + col * kCellWidth;
+        const CalendarWeekdayLabel &weekday = kWeekdays[col];
+        const char *weekday_text = ui_language_text(weekday.traditional,
+                                                    weekday.simplified,
+                                                    weekday.english);
         if (col == kSundayColumn || col == kSaturdayColumn) {
             draw_calendar_text(s_calendar_canvas,
-                               kWeekdays[col],
+                               weekday_text,
                                x,
                                kHeaderY,
                                kCellWidth,
                                kHeaderHeight,
-                               &zh_font_16,
+                               header_font,
                                lv_color_white(),
                                LV_TEXT_ALIGN_CENTER);
         } else {
             draw_calendar_text(s_calendar_canvas,
-                               kWeekdays[col],
+                               weekday_text,
                                x,
                                kHeaderY,
                                kCellWidth,
                                kHeaderHeight,
-                               &zh_font_16,
+                               header_font,
                                lv_color_black(),
                                LV_TEXT_ALIGN_CENTER);
         }
@@ -216,13 +316,20 @@ static void draw_calendar_day_cell(const struct tm &local,
     mktime(&day_tm);
     CalendarDayInfo info;
     calendar_day_info(day_tm, &info);
+    char canvas_subtext[kCalendarLunarSubtextSize] = {};
+    const char *subtext = calendar_subtext_for_canvas(info,
+                                                      canvas_subtext,
+                                                      sizeof(canvas_subtext));
+    const lv_font_t *subtext_font = ui_language_is_english()
+                                        ? &lv_font_montserrat_12
+                                        : &zh_font_16;
     draw_calendar_text(s_calendar_canvas,
-                       info.subtext,
+                       subtext,
                        x + kDayTextXInset,
                        y + kSubTextY,
                        kCellWidth - kDayTextWidthInset,
                        kSubTextHeight,
-                       &zh_font_16,
+                       subtext_font,
                        is_today ? lv_color_white() : lv_color_black(),
                        LV_TEXT_ALIGN_CENTER);
 }

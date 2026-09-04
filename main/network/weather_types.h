@@ -24,6 +24,7 @@ enum class WeatherIconKind : uint8_t {
 struct WeatherData {
     int weather_code = -1; // Provider-neutral WMO weather interpretation code.
     char city[32] = {};
+    // Kept for snapshot compatibility; UI text is derived from weather_code.
     char text[32] = {};
     WeatherIconKind icon_kind = WeatherIconKind::kUnknown;
     char temp[8] = {};
@@ -35,7 +36,9 @@ struct WeatherData {
 struct WeatherForecastDay {
     bool valid = false;
     int weather_code = -1;
+    int wind_direction_degrees = -1;
     char date[12] = {};
+    // Kept for snapshot compatibility; UI text is derived from weather_code.
     char text[24] = {};
     WeatherIconKind icon_kind = WeatherIconKind::kUnknown;
     char temp_max[8] = {};
@@ -62,14 +65,17 @@ struct WeatherForecastData {
     WeatherForecastDay days[kWeatherForecastDays] = {};
     int hourly_count = 0;
     WeatherForecastHour hours[kWeatherHourlyForecastCount] = {};
+    // Kept for snapshot compatibility; UI advice is derived from weather_code.
     char advice[kWeatherAdviceLen] = {};
     time_t updated_at = 0;
 };
 
 struct WeatherAirData {
     bool ready = false;
+    int aqi_value = -1;
     char aqi[8] = {};
-    char category[16] = {};
+    // Kept for snapshot compatibility; UI category is derived from aqi_value.
+    char category[48] = {};
     char primary[16] = {};
     char pm2p5[8] = {};
     time_t updated_at = 0;

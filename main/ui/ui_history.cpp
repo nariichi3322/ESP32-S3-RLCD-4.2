@@ -15,6 +15,7 @@
 #include "ui_history_format.h"
 #include "ui_history_layout.h"
 #include "ui_history_window.h"
+#include "ui_language.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
 #include "ui_widgets.h"
@@ -90,9 +91,7 @@ static lv_obj_t *make_history_title(lv_obj_t *screen,
                                  kTitleWidth,
                                  kTitleHeight,
                                  text);
-    if (label) {
-        lv_obj_set_style_text_font(label, &zh_font_16, LV_PART_MAIN);
-    } else {
+    if (!label) {
         ESP_LOGW(TAG, "%s", failure_log);
     }
     return label;
@@ -266,11 +265,11 @@ static void build_history_chart_area(lv_obj_t *screen)
                    ui_work_page_layout::kTopSeparatorHeight);
     lv_obj_t *temp_title = make_history_title(screen,
                                               kTempTitleY,
-                                              kTempTitle,
+                                              ui_language_text("溫度", "温度", "Temp"),
                                               HISTORY_TEMP_TITLE_CREATE_FAILED_LOG);
     lv_obj_t *humi_title = make_history_title(screen,
                                               kHumiTitleY,
-                                              kHumiTitle,
+                                              ui_language_text("溼度", "湿度", "Humi"),
                                               HISTORY_HUMI_TITLE_CREATE_FAILED_LOG);
 
     ensure_history_chart_canvas(screen);

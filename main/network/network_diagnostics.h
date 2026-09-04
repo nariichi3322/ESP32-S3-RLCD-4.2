@@ -2,3 +2,4 @@
 #pragma once
 
 void network_diag_reset();
+void network_diag_begin();

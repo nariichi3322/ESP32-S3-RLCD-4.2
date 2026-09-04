@@ -11,6 +11,7 @@
 #include "ui_canvas_primitives.h"
 #include "ui_object_refs.h"
 #include "ui_page_state.h"
+#include "ui_language.h"
 #include "ui_widgets.h"
 #include "ui_work_page_catalog.h"
 
@@ -35,9 +36,23 @@ constexpr int kBootDetailY = 256;
 constexpr int kBootDetailH = 22;
 constexpr int kBootAnimCanvasX = 144;
 constexpr int kBootAnimCanvasY = 100;
-constexpr const char *kBootTitleText = "RLCD Weather Clock";
-constexpr const char *kBootInitialStatusText = "Starting...";
-constexpr const char *kBootInitialDetailText = "Preparing system";
+struct BootScreenText {
+    const char *traditional;
+    const char *simplified;
+    const char *english;
+};
+
+const char *boot_screen_text(const BootScreenText &text)
+{
+    return ui_language_text(text.traditional, text.simplified, text.english);
+}
+
+constexpr BootScreenText kBootTitleText = {
+    "RLCD 天氣時鐘", "RLCD 天气时钟", "RLCD Weather Clock"};
+constexpr BootScreenText kBootInitialStatusText = {
+    "啟動中...", "启动中...", "Starting..."};
+constexpr BootScreenText kBootInitialDetailText = {
+    "準備系統", "准备系统", "Preparing system"};
 #define BOOT_ANIM_DONE_EVENT_SKIPPED_LOG "boot anim done event skipped: app events unavailable"
 #define BOOT_ANIM_CANVAS_CREATE_FAILED_LOG "boot anim canvas create failed"
 lv_color_t *s_boot_anim_canvas_buffer;
@@ -137,12 +152,15 @@ void show_boot_screen()
     lv_obj_clear_flag(screen, LV_OBJ_FLAG_SCROLLABLE);
 
     make_centered_label_with_font(screen, kBootContentX, kBootTitleY, kBootContentW, kBootTitleH,
-                                  kBootTitleText, &lv_font_montserrat_16, "boot title create failed");
+                                  boot_screen_text(kBootTitleText), &lv_font_montserrat_16,
+                                  "boot title create failed");
     s_boot_status_label = make_centered_label_with_font(screen, kBootContentX, kBootStatusY, kBootContentW,
-                                                        kBootStatusH, kBootInitialStatusText,
+                                                        kBootStatusH,
+                                                        boot_screen_text(kBootInitialStatusText),
                                                         &lv_font_montserrat_16, "boot status label create failed");
     s_boot_detail_label = make_centered_label_with_font(screen, kBootContentX, kBootDetailY, kBootContentW,
-                                                        kBootDetailH, kBootInitialDetailText,
+                                                        kBootDetailH,
+                                                        boot_screen_text(kBootInitialDetailText),
                                                         &lv_font_montserrat_14, "boot detail label create failed");
     make_centered_label_with_font(screen, kBootContentX, kBootVersionY, kBootContentW, kBootVersionH,
                                   APP_VERSION, &lv_font_montserrat_16, "boot version label create failed");

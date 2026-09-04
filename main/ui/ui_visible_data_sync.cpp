@@ -13,6 +13,7 @@
 #include "weather_icons.h"
 #include "ui_clock.h"
 #include "ui_clock_weather_text.h"
+#include "ui_i18n.h"
 #include "ui_text_format.h"
 #include "ui_visible_cache.h"
 #include "ui_work_page_catalog.h"
@@ -302,7 +303,7 @@ bool update_weather_clock_network_status(EventBits_t bits)
                                    weather_humi,
                                    sizeof(weather_humi));
         return update_clock_weather_panel_text(city,
-                                               weather.text,
+                                               ui_weather_text(weather.weather_code),
                                                weather_temp,
                                                weather_humi,
                                                weather.icon_kind);

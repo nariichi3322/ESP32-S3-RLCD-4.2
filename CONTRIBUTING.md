@@ -33,6 +33,7 @@ idf.py build
 - 优先复用现有模块和接口；只有职责确实过重或边界混乱时才拆分，不为拆分而拆分。
 - 不得无意改变现有 UI、交互、OTA 协议、NVS 数据、分区表、资源格式或用户使用方式。
 - 小智 AI 相关修改应尽量保持与上游 [`78/xiaozhi-esp32`](https://github.com/78/xiaozhi-esp32) 一致，避免无必要的拆分、合并和协议偏离。
+- UI 多語系修改請遵循 [i18n 協作指南 / i18n Collaboration Guide](docs/I18N_COLLABORATION_GUIDE.md)。
 - 用户可见功能发生变化时，请同步更新 `docs/User_zh.md` 和 `docs/User.md`。
 - 公开项目介绍发生变化时，请同步更新中文 `README.md` 与英文 `README_EN.md`，并保持两份主页的功能、链接和许可说明一致。
 - 新增日志不得输出完整凭据、鉴权头或用户隐私数据。
@@ -83,6 +84,7 @@ Do not commit `build/`, `.temp/`, firmware binaries, generated OTA manifests, pe
 - Reuse existing modules and interfaces. Split code only when responsibilities are genuinely overloaded or unclear.
 - Do not unintentionally change the current UI, interaction model, OTA protocol, NVS data, partition table, resource format, or user workflow.
 - Xiaozhi AI changes should remain close to upstream [`78/xiaozhi-esp32`](https://github.com/78/xiaozhi-esp32) and avoid unnecessary splitting, merging, or protocol divergence.
+- Follow the [i18n Collaboration Guide](docs/I18N_COLLABORATION_GUIDE.md) for UI localization changes.
 - Update both `docs/User_zh.md` and `docs/User.md` when user-visible behavior changes.
 - Update both the Chinese `README.md` and English `README_EN.md` when the public project overview changes, keeping features, links, and licensing information aligned.
 - New logs must never expose complete credentials, authorization headers, or private user data.

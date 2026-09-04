@@ -51,11 +51,10 @@ constexpr const char *kSettingsSyncBusyFeedback = "请等待同步完成";
 constexpr const char *kSettingsOfflineEnabledFeedback = "離線模式已開啟";
 constexpr const char *kSettingsOfflineDisabledFeedback = "離線模式已關閉";
 constexpr const char *kOfflinePageUnavailableFeedback = "目前處於離線模式";
-constexpr const char *kManualNtpSyncFeedback = "正在同步时间...";
+constexpr const char *kManualNtpSyncFeedback = "正在同步時間...";
 constexpr const char *kManualWeatherSyncFeedback = "正在同步天氣...";
 constexpr const char *kManualSayingSyncFeedback = "正在更新一言...";
 constexpr const char *kNetworkDiagSyncFeedback = "正在網路檢測...";
-constexpr const char *kSoundVolumeFeedbackFormat = "音量 %d%%";
 constexpr const char *kSoundMutedFeedback = "已靜音";
 constexpr const char *kHourlyChimeEnabledFeedback = "整点提醒已开启";
 constexpr const char *kHourlyChimeDisabledFeedback = "整点提醒已关闭";
@@ -72,14 +71,12 @@ constexpr const char *kXiaozhiAutoReturnDisabledFeedback = "小智自動返回�
 constexpr const char *kGalleryRotationBuiltinFeedback = "預設圖片固定 24h";
 constexpr const char *kAlarmDisabledFeedback = "闹钟已关闭";
 constexpr const char *kAlarmSetByXiaozhiFeedback = "请通过小智AI设置";
-constexpr const char *kWorkPageFeedbackFormat = "%s%s";
 constexpr const char *kWorkPageEnabledSuffix = "已开启";
 constexpr const char *kWorkPageDisabledSuffix = "已关闭";
 constexpr const char *kSetupStartFailedFeedback = "配网启动失败";
 constexpr const char *kSetupInstructionFeedback = "設定模式已開啟，請連線 AP";
 constexpr const char *kFactoryResetConfirmFeedback = "再次按 BOOT 确认";
 constexpr const char *kFactoryResetFailedFeedback = "恢复失败";
-constexpr size_t kSettingsFeedbackTextSize = 32;
 #define CHIME_BOOLEAN_SETTING_LOG_FORMAT "%s %s"
 #define CHIME_SETTING_ENABLED_LOG_VALUE "enabled"
 #define CHIME_SETTING_DISABLED_LOG_VALUE "disabled"
@@ -105,7 +102,7 @@ void set_formatted_settings_feedback(const char *format, ...)
         set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
         return;
     }
-    char feedback[kSettingsFeedbackTextSize] = {};
+    char feedback[kSettingsFeedbackTextLen] = {};
     va_list args;
     va_start(args, format);
     int written = vsnprintf(feedback, sizeof(feedback), format, args);
@@ -225,7 +222,8 @@ void handle_network_settings_action(int selected)
                                    kManualSayingSyncBit);
     } else if (selected == kNetworkSettingsWeatherCityItem) {
         set_settings_feedback(
-            ui_language_text("請由設定網頁或小智修改", "请由设置网页或小智修改"),
+            ui_language_text("請由設定網頁或小智修改", "请由设置网页或小智修改",
+                             "Change this from the setup page or Xiaozhi"),
             kSettingsFeedbackInstructionMs);
     }
 }
@@ -244,7 +242,8 @@ void handle_sound_settings_action(int selected)
             set_settings_feedback(kSoundMutedFeedback,
                                   kSettingsFeedbackDefaultMs);
         } else {
-            set_formatted_settings_feedback(kSoundVolumeFeedbackFormat,
+            set_formatted_settings_feedback(
+                ui_language_text("音量 %d%%", "音量 %d%%", "Volume %d%%"),
                                             next.volume_percent);
         }
         request_settings_confirmation_chime();
@@ -257,7 +256,7 @@ void handle_sound_settings_action(int selected)
             return;
         }
         set_formatted_settings_feedback(
-            ui_language_text("聲音 %d", "声音 %d"), next.sound_index + 1);
+            ui_language_text("聲音 %d", "声音 %d", "Sound %d"), next.sound_index + 1);
         request_settings_confirmation_chime();
     } else if (selected == kSoundSettingsHourlyItem) {
         toggle_chime_boolean_setting(
@@ -290,7 +289,9 @@ void handle_display_settings_action(
             (previous_mask & static_cast<uint8_t>(1U << page)) != 0;
         const bool page_will_be_enabled = !page_was_enabled;
         if (!page_was_enabled && work_page_requires_network(page)) {
-            set_settings_feedback(kOfflinePageUnavailableFeedback, kSettingsFeedbackDefaultMs);
+            set_settings_feedback(
+                ui_language_text("目前處於離線模式", "目前处于离线模式", "Currently offline"),
+                kSettingsFeedbackDefaultMs);
             return;
         }
         const uint8_t next_mask = toggled_work_page_mask(previous_mask, page);
@@ -315,11 +316,14 @@ void handle_display_settings_action(
         notify_network_sync_runtime_state_changed();
         normalize_work_page_order();
         ensure_active_work_page_enabled();
-        set_formatted_settings_feedback(kWorkPageFeedbackFormat,
+        set_formatted_settings_feedback(
+            ui_language_text("%s%s", "%s%s", "%s: %s"),
                                         work_page_name(page),
                                         page_will_be_enabled
-                                            ? ui_language_text("已開啟", kWorkPageEnabledSuffix)
-                                            : ui_language_text("已關閉", kWorkPageDisabledSuffix));
+                                            ? ui_language_text("已開啟", kWorkPageEnabledSuffix,
+                                                               "Enabled")
+                                            : ui_language_text("已關閉", kWorkPageDisabledSuffix,
+                                                               "Disabled"));
         return;
     }
     if (selected == kDisplaySettingsPageSwitchItem) {
@@ -373,7 +377,8 @@ void handle_display_settings_action(
             set_settings_feedback(kSettingsSaveFailedFeedback, kSettingsFeedbackDefaultMs);
             return;
         }
-        set_formatted_settings_feedback(ui_language_text("自訂圖 %s", "自定义图 %s"),
+        set_formatted_settings_feedback(
+            ui_language_text("自訂圖 %s", "自定义图 %s", "Custom image %s"),
                                         gallery_rotation_period_label(next));
         return;
     }
@@ -402,7 +407,8 @@ void handle_system_settings_action(
             return;
         }
         set_settings_feedback(
-            ui_language_text("請先完成線上設定", "请先完成在线设置"),
+            ui_language_text("請先完成線上設定", "请先完成在线设置",
+                             "Complete online setup first"),
             kSettingsFeedbackInstructionMs);
     } else if (selected == kSystemSettingsSetupItem) {
         if (!request_setup_portal_start()) {
@@ -454,25 +460,25 @@ void handle_system_settings_action(
         ESP_LOGI(TAG, "%s", SYSTEM_INFO_REQUESTED_LOG);
     } else if (selected == kSystemSettingsClearCodexBondsItem) {
         set_settings_feedback(codex_usage_ble_clear_bonds()
-                                  ? ui_language_text("Codex 配對已清除", "Codex 配对已清除")
-                                  : ui_language_text("清除 Codex 配對失敗", "清除 Codex 配对失败"),
+                                  ? ui_language_text("Codex 配對已清除", "Codex 配对已清除",
+                                                     "Codex pairing cleared")
+                                  : ui_language_text("清除 Codex 配對失敗", "清除 Codex 配对失败",
+                                                     "Failed to clear Codex pairing"),
                                kSettingsFeedbackDefaultMs);
     } else if (selected == kSystemSettingsLanguageItem) {
-        const UiLanguage next = ui_language_is_traditional()
+        const UiLanguage current = ui_language_load();
+        const UiLanguage next = current == UiLanguage::Traditional
                                     ? UiLanguage::Simplified
-                                    : UiLanguage::Traditional;
+                                    : current == UiLanguage::Simplified
+                                          ? UiLanguage::English
+                                          : UiLanguage::Traditional;
         if (!set_ui_language_setting(next)) {
-            set_settings_feedback(ui_language_text("儲存失敗", "保存失败"),
+            set_settings_feedback(ui_language_text("儲存失敗", "保存失败", "Save failed"),
                                   kSettingsFeedbackDefaultMs);
             return;
         }
-        set_settings_feedback(ui_language_text("已切換繁體中文", "已切换简体中文"),
+        set_settings_feedback(ui_language_text("已切換語言", "已切换语言", "Language changed"),
                               kSettingsFeedbackDefaultMs);
-        lv_obj_clean(lv_scr_act());
-        clear_clock_object_refs();
-        clear_info_object_refs();
-        build_settings_page();
-        show_page(auxiliary_page_root(AuxiliaryPage::kSettings));
     } else if (selected == kSystemSettingsOtaItem) {
         ota_handle_info_key();
     }
