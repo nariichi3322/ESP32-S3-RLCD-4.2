@@ -74,7 +74,6 @@ constexpr const char *kAlarmSetByXiaozhiFeedback = "请通过小智AI设置";
 constexpr const char *kWorkPageEnabledSuffix = "已开启";
 constexpr const char *kWorkPageDisabledSuffix = "已关闭";
 constexpr const char *kSetupStartFailedFeedback = "配网启动失败";
-constexpr const char *kSetupInstructionFeedback = "設定模式已開啟，請連線 AP";
 constexpr const char *kFactoryResetConfirmFeedback = "再次按 BOOT 确认";
 constexpr const char *kFactoryResetFailedFeedback = "恢复失败";
 #define CHIME_BOOLEAN_SETTING_LOG_FORMAT "%s %s"
@@ -416,8 +415,13 @@ void handle_system_settings_action(
             return;
         }
         settings_confirmation_clear(SettingsConfirmation::kOfflineDisable);
-        set_settings_feedback(kSetupInstructionFeedback,
-                              kSettingsFeedbackInstructionMs);
+        // Leave the settings page as soon as the portal start request is
+        // accepted. The UI task will then show the clock page, whose setup
+        // panel is populated when the AP becomes active.
+        settings_page_clear();
+        reset_settings_navigation_state();
+        active_work_page_store(kWorkPageWeatherClock);
+        clear_settings_feedback();
     } else if (selected == kSystemSettingsNetworkDiagItem) {
         if (offline_mode_enabled_load()) {
             set_settings_feedback(kSettingsOfflineEnabledFeedback, kSettingsFeedbackDefaultMs);
