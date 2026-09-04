@@ -95,6 +95,11 @@ static constexpr int kSolarTermsPerYear = kLastGregorianMonth * kSolarTermsPerMo
 static constexpr const char *kCalendarLunarPlaceholder = "--";
 static constexpr const char *kLunarMonthDisplayFormat = "%s%s";
 
+static_assert(kCalendarLunarSubtextSize >= sizeof("Dragon Boat Festival") &&
+                  kCalendarLunarSubtextSize >= sizeof("Awakening of Insects") &&
+                  kCalendarLunarSubtextSize >= sizeof("Leap lunar month 12"),
+              "calendar English text must fit the subtext buffer");
+
 static const int kGregorianMonthDays[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 static_assert(array_count(kGregorianMonthDays) == kLastGregorianMonth,
               "gregorian month days must cover January through December");
@@ -160,6 +165,55 @@ static int days_from_civil(int year, unsigned month, unsigned day)
     const unsigned doy = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1;
     const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
     return era * 146097 + (int)doe - 719468;
+}
+
+static size_t utf8_character_size(const unsigned char *text, size_t remaining)
+{
+    if (!text || remaining == 0) return 0;
+    size_t size = 1;
+    if (text[0] < 0x80) {
+        return 1;
+    }
+    if ((text[0] & 0xe0) == 0xc0) {
+        size = 2;
+    } else if ((text[0] & 0xf0) == 0xe0) {
+        size = 3;
+    } else if ((text[0] & 0xf8) == 0xf0) {
+        size = 4;
+    } else {
+        return 0;
+    }
+    if (size > remaining) return 0;
+    for (size_t index = 1; index < size; ++index) {
+        if ((text[index] & 0xc0) != 0x80) return 0;
+    }
+    return size;
+}
+
+static void utf8_safe_copy(char *out, size_t out_len, const char *text)
+{
+    if (!out || out_len == 0) return;
+    out[0] = '\0';
+    if (!text) return;
+
+    const unsigned char *source = reinterpret_cast<const unsigned char *>(text);
+    const size_t source_len = strlen(text);
+    size_t source_offset = 0;
+    size_t output_offset = 0;
+    while (source_offset < source_len && output_offset + 1 < out_len) {
+        const size_t character_size = utf8_character_size(source + source_offset,
+                                                          source_len - source_offset);
+        if (character_size == 0) {
+            out[output_offset++] = '?';
+            ++source_offset;
+            continue;
+        }
+        if (output_offset + character_size >= out_len) break;
+        memcpy(out + output_offset, source + source_offset, character_size);
+        output_offset += character_size;
+        source_offset += character_size;
+    }
+    out[output_offset] = '\0';
 }
 
 static const LunarYearInfo *find_lunar_year(int year)
@@ -297,15 +351,56 @@ static const char *lunar_festival(int lunar_month, int lunar_day)
 
 static void set_calendar_subtext(CalendarDayInfo *info, const char *text)
 {
-    strlcpy(info->subtext,
-            ui_language_localize(text ? text : kCalendarLunarPlaceholder),
-            sizeof(info->subtext));
+    if (ui_language_is_english() && text) {
+        struct CalendarEnglishName { const char *source; const char *english; };
+        static constexpr CalendarEnglishName kNames[] = {
+            {"元旦", "New Year's Day"}, {"情人節", "Valentine's Day"},
+            {"情人节", "Valentine's Day"}, {"婦女節", "Women's Day"},
+            {"妇女节", "Women's Day"}, {"勞動節", "Labour Day"},
+            {"劳动节", "Labour Day"}, {"兒童節", "Children's Day"},
+            {"儿童节", "Children's Day"}, {"教師節", "Teachers' Day"},
+            {"教师节", "Teachers' Day"}, {"國慶", "National Day"},
+            {"国庆", "National Day"}, {"聖誕", "Christmas"}, {"圣诞", "Christmas"},
+            {"春節", "Spring Festival"}, {"春节", "Spring Festival"},
+            {"元宵", "Lantern Festival"}, {"端午", "Dragon Boat Festival"},
+            {"七夕", "Qixi Festival"}, {"中秋", "Mid-Autumn Festival"},
+            {"重陽", "Double Ninth Festival"}, {"重阳", "Double Ninth Festival"},
+            {"臘八", "Laba Festival"}, {"腊八", "Laba Festival"},
+            {"小寒", "Minor Cold"}, {"大寒", "Major Cold"}, {"立春", "Start of Spring"},
+            {"雨水", "Rain Water"}, {"驚蟄", "Awakening of Insects"}, {"惊蛰", "Awakening of Insects"},
+            {"春分", "Spring Equinox"}, {"清明", "Pure Brightness"}, {"穀雨", "Grain Rain"},
+            {"谷雨", "Grain Rain"}, {"立夏", "Start of Summer"}, {"小滿", "Grain Full"},
+            {"小满", "Grain Full"}, {"芒種", "Grain in Ear"}, {"芒种", "Grain in Ear"},
+            {"夏至", "Summer Solstice"}, {"小暑", "Minor Heat"}, {"大暑", "Major Heat"},
+            {"立秋", "Start of Autumn"}, {"處暑", "End of Heat"}, {"处暑", "End of Heat"},
+            {"白露", "White Dew"}, {"秋分", "Autumn Equinox"}, {"寒露", "Cold Dew"},
+            {"霜降", "Frost Descent"}, {"立冬", "Start of Winter"}, {"小雪", "Minor Snow"},
+            {"大雪", "Major Snow"}, {"冬至", "Winter Solstice"},
+        };
+        for (const auto &name : kNames) {
+            if (strcmp(text, name.source) == 0) {
+                utf8_safe_copy(info->subtext, sizeof(info->subtext), name.english);
+                return;
+            }
+        }
+    }
+    utf8_safe_copy(info->subtext,
+                   sizeof(info->subtext),
+                   ui_language_localize(text ? text : kCalendarLunarPlaceholder));
 }
 
 static void set_calendar_lunar_month_subtext(CalendarDayInfo *info)
 {
+    if (ui_language_is_english()) {
+        const int written = snprintf(info->subtext, sizeof(info->subtext),
+                                     info->lunar_leap ? "Leap lunar month %d" : "Lunar month %d",
+                                     info->lunar_month);
+        if (!app_text::format_failed(written, sizeof(info->subtext))) return;
+        set_calendar_subtext(info, nullptr);
+        return;
+    }
     int written = snprintf(info->subtext, sizeof(info->subtext), kLunarMonthDisplayFormat,
-                           info->lunar_leap ? ui_language_text("閏", "闰") : "",
+                           info->lunar_leap ? ui_language_text("閏", "闰", "Leap ") : "",
                            ui_language_localize(kLunarMonthNames[info->lunar_month]));
     if (app_text::format_failed(written, sizeof(info->subtext))) {
         set_calendar_subtext(info, nullptr);
@@ -359,6 +454,11 @@ bool calendar_day_info(const struct tm &local, CalendarDayInfo *info)
             return true;
         }
         if (info->lunar_day >= kFirstLunarDay && info->lunar_day <= kLunarLargeMonthDays) {
+            if (ui_language_is_english()) {
+                const int written = snprintf(info->subtext, sizeof(info->subtext),
+                                             "Lunar day %d", info->lunar_day);
+                if (!app_text::format_failed(written, sizeof(info->subtext))) return lunar_ok;
+            }
             text = kLunarDayNames[info->lunar_day];
         }
     }

@@ -4,10 +4,13 @@
 #include "app_metadata.h"
 #include "ota_runtime_state.h"
 #include "ui_page_state.h"
+#include "ui_language.h"
 #include "ui_text_format.h"
 #include "ui_widgets.h"
 
 #include <esp_log.h>
+
+#include <string.h>
 
 namespace {
 lv_obj_t *s_settings_ota_status_label;
@@ -34,6 +37,26 @@ constexpr const char *kSettingsOtaHintChecking = "正在检查，请等待";
 constexpr const char *kSettingsOtaHintRebooting = "即将重启";
 constexpr const char *kSettingsOtaHintRetry = "BOOT重新检查";
 constexpr const char *kSettingsOtaHintCheck = "BOOT开始检查";
+
+void format_ota_status_line(const char *status, char *out, size_t out_len)
+{
+    if (!status) {
+        ui_text::copy(out, out_len, kSettingsOtaLinePlaceholder);
+        return;
+    }
+    constexpr const char *kNewVersionPrefix = "新版本 ";
+    if (strncmp(status, kNewVersionPrefix, strlen(kNewVersionPrefix)) == 0) {
+        const char *version = status + strlen(kNewVersionPrefix);
+        ui_text::format_or_fallback(
+            out,
+            out_len,
+            ui_language_text("新版本 --", "新版本 --", "New version --"),
+            ui_language_text("新版本 %s", "新版本 %s", "New version %s"),
+            version);
+        return;
+    }
+    ui_text::copy(out, out_len, status);
+}
 
 int settings_ota_progress_fill_width(int progress)
 {
@@ -131,33 +154,39 @@ bool update_settings_ota_panel(bool visible, const OtaRuntimeSnapshot &ota)
         if (ota.state == kOtaUpdating && progress >= 0) {
             progress_visible = true;
             if (ota.speed_kbps > 0) {
-                ui_text::format_or_fallback(ota_line,
-                                            sizeof(ota_line),
-                                            kSettingsOtaLinePlaceholder,
-                                            kSettingsOtaUpdatingWithSpeedFormat,
-                                            progress,
-                                            ota.speed_kbps);
+                ui_text::format_or_fallback(
+                    ota_line,
+                    sizeof(ota_line),
+                    ui_language_text("OTA --", "OTA --", "OTA --"),
+                    ui_language_text("正在安装 %d%%  %d KB/s",
+                                     "正在安装 %d%%  %d KB/s",
+                                     kSettingsOtaUpdatingWithSpeedFormat),
+                    progress,
+                    ota.speed_kbps);
             } else {
-                ui_text::format_or_fallback(ota_line,
-                                            sizeof(ota_line),
-                                            kSettingsOtaLinePlaceholder,
-                                            kSettingsOtaUpdatingFormat,
-                                            progress);
+                ui_text::format_or_fallback(
+                    ota_line,
+                    sizeof(ota_line),
+                    ui_language_text("OTA --", "OTA --", "OTA --"),
+                    ui_language_text("正在安装 %d%%",
+                                     "正在安装 %d%%",
+                                     kSettingsOtaUpdatingFormat),
+                    progress);
             }
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintDownloading);
         } else if (ota.state == kOtaAvailable) {
-            ui_text::copy(ota_line, sizeof(ota_line), ota.status);
+            format_ota_status_line(ota.status, ota_line, sizeof(ota_line));
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintInstall);
         } else if (ota.state == kOtaChecking) {
-            ui_text::copy(ota_line, sizeof(ota_line), ota.status);
+            format_ota_status_line(ota.status, ota_line, sizeof(ota_line));
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintChecking);
         } else if (ota.state == kOtaSucceeded) {
             progress_visible = true;
             progress = kSettingsOtaProgressMax;
-            ui_text::copy(ota_line, sizeof(ota_line), ota.status);
+            format_ota_status_line(ota.status, ota_line, sizeof(ota_line));
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintRebooting);
         } else if (ota.state == kOtaFailed || ota.state == kOtaNoUpdate) {
-            ui_text::copy(ota_line, sizeof(ota_line), ota.status);
+            format_ota_status_line(ota.status, ota_line, sizeof(ota_line));
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintRetry);
         } else {
             ui_text::copy(ota_hint, sizeof(ota_hint), kSettingsOtaHintCheck);

@@ -71,6 +71,7 @@ idf_component_register(
         "ui/ui_visible_data_sync.cpp"
         "ui/ui_loop_schedule.cpp"
         "ui/ui_language.cpp"
+        "ui/ui_i18n.cpp"
         "ui/ui_codex_usage.cpp"
         "ui/ui_codex_pairing.cpp"
         "ui/ui_runtime_schedule.cpp"

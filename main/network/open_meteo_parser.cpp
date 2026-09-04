@@ -96,7 +96,6 @@ bool hourly_time_after(const char *candidate, const char *current_time)
            strlen(current_time) >= 16 && strcmp(candidate, current_time) > 0;
 }
 
-const char *wmo_text(int code);
 void format_number(char *out, size_t out_len, double value, bool decimal = false);
 
 bool parse_hourly(const cJSON *current,
@@ -133,7 +132,6 @@ bool parse_hourly(const cJSON *current,
         hour.valid = true;
         hour.weather_code = static_cast<int>(code->valuedouble);
         hour.icon_kind = open_meteo_icon_for_wmo_code(hour.weather_code);
-        strlcpy(hour.text, wmo_text(hour.weather_code), sizeof(hour.text));
         strlcpy(hour.time, time->valuestring + 11, sizeof(hour.time));
         format_number(hour.temp, sizeof(hour.temp), temperature->valuedouble);
     }
@@ -153,53 +151,12 @@ const char *array_text(const cJSON *object, const char *key, int index)
     return cJSON_GetArrayItem(array_field(object, key), index)->valuestring;
 }
 
-const char *wmo_text(int code)
-{
-    if (code == 0) return "晴";
-    if (code >= 1 && code <= 2) return "多雲";
-    if (code == 3) return "陰";
-    if (code == 45 || code == 48) return "霧";
-    if (code >= 51 && code <= 57) return "毛毛雨";
-    if ((code >= 61 && code <= 67) || (code >= 80 && code <= 82)) return "雨";
-    if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return "雪";
-    if (code >= 95 && code <= 99) return "雷雨";
-    return "未知";
-}
-
-const char *wind_direction(int degrees)
-{
-    static constexpr const char *kDirections[] =
-        {"北", "東北", "東", "東南", "南", "西南", "西", "西北"};
-    return kDirections[((degrees + 22) % 360) / 45];
-}
-
 int beaufort_scale(double kmh)
 {
     static constexpr double kUpper[] = {1, 5, 11, 19, 28, 38, 49, 61, 74, 88, 102, 117};
     for (int i = 0; i < static_cast<int>(sizeof(kUpper) / sizeof(kUpper[0])); ++i)
         if (kmh <= kUpper[i]) return i;
     return 12;
-}
-
-const char *aqi_category(int value)
-{
-    if (value <= 50) return "優";
-    if (value <= 100) return "良";
-    if (value <= 150) return "敏感不健康";
-    if (value <= 200) return "不健康";
-    if (value <= 300) return "非常不健康";
-    return "危害";
-}
-
-const char *weather_advice(int code)
-{
-    const WeatherIconKind icon = open_meteo_icon_for_wmo_code(code);
-    if (icon == WeatherIconKind::kThunderstorm || icon == WeatherIconKind::kRain ||
-        icon == WeatherIconKind::kDrizzle) return "外出請攜帶雨具並留意路況。";
-    if (icon == WeatherIconKind::kSnow) return "天氣寒冷，請注意保暖與路面結冰。";
-    if (icon == WeatherIconKind::kClear) return "天氣晴朗，戶外活動請注意防曬。";
-    if (icon == WeatherIconKind::kFog) return "能見度較低，行車請減速並保持距離。";
-    return "天氣可能變化，外出前請留意最新資訊。";
 }
 
 void format_number(char *out, size_t out_len, double value, bool decimal)
@@ -278,7 +235,6 @@ OpenMeteoResult parse_open_meteo_forecast(const char *json,
     strlcpy(weather->city, city_name ? city_name : "", sizeof(weather->city));
     weather->weather_code = static_cast<int>(code_value);
     weather->icon_kind = open_meteo_icon_for_wmo_code(weather->weather_code);
-    strlcpy(weather->text, wmo_text(weather->weather_code), sizeof(weather->text));
     format_number(weather->temp, sizeof(weather->temp), temperature);
     format_number(weather->humidity, sizeof(weather->humidity), humidity);
     strlcpy(weather->lat, latitude, sizeof(weather->lat));
@@ -293,12 +249,10 @@ OpenMeteoResult parse_open_meteo_forecast(const char *json,
         strlcpy(day.date, array_text(daily, "time", i), sizeof(day.date));
         day.weather_code = static_cast<int>(array_number(daily, "weather_code", i));
         day.icon_kind = open_meteo_icon_for_wmo_code(day.weather_code);
-        strlcpy(day.text, wmo_text(day.weather_code), sizeof(day.text));
         format_number(day.temp_max, sizeof(day.temp_max), array_number(daily, "temperature_2m_max", i));
         format_number(day.temp_min, sizeof(day.temp_min), array_number(daily, "temperature_2m_min", i));
-        strlcpy(day.wind_dir,
-                wind_direction(static_cast<int>(array_number(daily, "wind_direction_10m_dominant", i))),
-                sizeof(day.wind_dir));
+        day.wind_direction_degrees =
+            static_cast<int>(array_number(daily, "wind_direction_10m_dominant", i));
         format_number(day.wind_scale, sizeof(day.wind_scale),
                       beaufort_scale(array_number(daily, "wind_speed_10m_max", i)));
         const char *sunrise = array_text(daily, "sunrise", i);
@@ -307,9 +261,6 @@ OpenMeteoResult parse_open_meteo_forecast(const char *json,
         strlcpy(day.sunrise, sunrise + 11, sizeof(day.sunrise));
         strlcpy(day.sunset, sunset + 11, sizeof(day.sunset));
     }
-    strlcpy(forecast->advice,
-            weather_advice(forecast->days[0].weather_code),
-            sizeof(forecast->advice));
     (void)parse_hourly(current, hourly, forecast);
     return OpenMeteoResult::kOk;
 }
@@ -340,9 +291,9 @@ OpenMeteoResult parse_open_meteo_air_quality(const char *json, WeatherAirData *a
     }
     *air = WeatherAirData{};
     air->ready = true;
+    air->aqi_value = static_cast<int>(aqi);
     format_number(air->aqi, sizeof(air->aqi), aqi);
     format_number(air->pm2p5, sizeof(air->pm2p5), pm25, true);
-    strlcpy(air->category, aqi_category(static_cast<int>(aqi)), sizeof(air->category));
     strlcpy(air->primary, kNames[primary], sizeof(air->primary));
     return OpenMeteoResult::kOk;
 }

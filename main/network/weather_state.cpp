@@ -80,6 +80,6 @@ void commit_weather_update_snapshot(const WeatherData &next,
         s_weather_version.fetch_add(1, std::memory_order_release);
     }
     publish_ready();
-    ESP_LOGI(TAG, "weather updated: %s %s %sC forecast=%d air=%d",
-             next.city, next.text, next.temp, forecast_ok, air_ok);
+    ESP_LOGI(TAG, "weather updated: %s code=%d %sC forecast=%d air=%d",
+             next.city, next.weather_code, next.temp, forecast_ok, air_ok);
 }

@@ -142,8 +142,10 @@ const char *settings_primary_item(int index)
         {"校時", "聲音", "顯示", "系統"};
     static constexpr const char *simplified[kSettingsPrimaryCount] =
         {"校时", "声音", "显示", "系统"};
+    static constexpr const char *english[kSettingsPrimaryCount] =
+        {"Time", "Sound", "Display", "System"};
     if (index < 0 || index >= kSettingsPrimaryCount) return "";
-    return ui_language_text(traditional[index], simplified[index]);
+    return ui_language_text(traditional[index], simplified[index], english[index]);
 }
 constexpr const char *kSettingsPageOrderEntryFormat = "%d %s";
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"

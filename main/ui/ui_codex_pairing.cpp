@@ -3,6 +3,8 @@
 #include "app_display_config.h"
 #include "app_tick_time.h"
 #include "codex_usage_ble.h"
+#include "ui_fonts.h"
+#include "ui_language.h"
 #include "ui_widgets.h"
 
 #include "lvgl.h"
@@ -13,6 +15,24 @@ namespace {
 lv_obj_t *s_overlay;
 lv_obj_t *s_passkey;
 uint32_t s_generation = UINT32_MAX;
+
+struct CodexPairingText {
+    const char *traditional;
+    const char *simplified;
+    const char *english;
+};
+
+const char *codex_pairing_text(const CodexPairingText &text)
+{
+    return ui_language_text(text.traditional, text.simplified, text.english);
+}
+
+constexpr CodexPairingText kPairingTitle = {
+    "藍牙配對", "蓝牙配对", "BLUETOOTH PAIRING"};
+constexpr CodexPairingText kPairingInstruction = {
+    "請在 Windows 輸入此代碼", "请在 Windows 输入此代码", "Enter this code in Windows"};
+constexpr CodexPairingText kPairingSecurity = {
+    "需要安全連線", "需要安全连接", "Secure connection required"};
 
 bool ensure_overlay()
 {
@@ -28,20 +48,20 @@ bool ensure_overlay()
     lv_obj_set_style_bg_color(s_overlay, lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(s_overlay, LV_OPA_COVER, LV_PART_MAIN);
     make_centered_label_with_font(s_overlay, 25, 45, 350, 35,
-                                  "BLUETOOTH PAIRING",
-                                  &lv_font_montserrat_24,
+                                  codex_pairing_text(kPairingTitle),
+                                  &zh_font_16,
                                   "pairing title create failed");
     make_centered_label_with_font(s_overlay, 25, 91, 350, 25,
-                                  "Enter this code in Windows",
-                                  &lv_font_montserrat_14,
+                                  codex_pairing_text(kPairingInstruction),
+                                  &zh_font_16,
                                   "pairing instruction create failed");
     s_passkey = make_centered_label_with_font(s_overlay, 25, 125, 350, 75,
                                                "------",
                                                &lv_font_montserrat_48,
                                                "pairing passkey create failed");
     make_centered_label_with_font(s_overlay, 25, 218, 350, 25,
-                                  "Secure connection required",
-                                  &lv_font_montserrat_14,
+                                  codex_pairing_text(kPairingSecurity),
+                                  &zh_font_16,
                                   "pairing security label create failed");
     lv_obj_add_flag(s_overlay, LV_OBJ_FLAG_HIDDEN);
     return true;

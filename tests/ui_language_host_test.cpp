@@ -7,6 +7,7 @@ int main()
 {
     assert(normalize_ui_language(0) == UiLanguage::Traditional);
     assert(normalize_ui_language(1) == UiLanguage::Simplified);
+    assert(normalize_ui_language(2) == UiLanguage::English);
     assert(normalize_ui_language(255) == UiLanguage::Traditional);
     assert(ui_language_load() == UiLanguage::Traditional);
     assert(strcmp(ui_language_text("設定", "设置"), "設定") == 0);
@@ -18,5 +19,14 @@ int main()
     assert(strcmp(ui_language_text("設定", "设置"), "设置") == 0);
     assert(strcmp(ui_language_localize("網路檢測"), "网络检测") == 0);
     assert(strcmp(ui_language_localize("dynamic text"), "dynamic text") == 0);
+    const uint32_t revision = ui_language_revision();
+    ui_language_store(UiLanguage::English);
+    assert(ui_language_load() == UiLanguage::English);
+    assert(ui_language_revision() != revision);
+    assert(strcmp(ui_language_text("設定", "设置", "Settings"), "Settings") == 0);
+    assert(strcmp(ui_language_localize("天氣同步中"), "Sync weather") == 0);
+    assert(strcmp(ui_language_localize("等待資料"), "Waiting") == 0);
+    assert(strcmp(ui_language_localize("請設定 Wi-Fi"), "Set Wi-Fi") == 0);
+    ui_language_store(UiLanguage::Traditional);
     return 0;
 }

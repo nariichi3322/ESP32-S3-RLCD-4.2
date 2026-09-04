@@ -3,6 +3,7 @@
 
 #include "app_time_constants.h"
 #include "ui_text_format.h"
+#include "ui_i18n.h"
 
 namespace {
 constexpr int kSecondsPerMinute = 60;
@@ -16,21 +17,15 @@ constexpr int kHourlyChimeLastAcceptedSecond = 2;
 constexpr int kWeekdayCount = 7;
 constexpr const char *kClockDateFormat = "%04d/%02d/%02d / %s";
 constexpr const char *kClockDatePlaceholder = "--";
-constexpr const char *kWeekdayNames[kWeekdayCount] = {
-    "星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六",
-};
 
 static_assert(kProgressSegmentCount > 0, "clock day progress segment count must be positive");
 static_assert(kSecondsPerDay > 0, "clock seconds per day must be positive");
 static_assert(kHourlyChimeLastAcceptedSecond < kSecondsPerMinute,
               "hourly chime window must fit the first minute");
-static_assert(sizeof(kWeekdayNames) / sizeof(kWeekdayNames[0]) == kWeekdayCount,
-              "weekday table must contain seven entries");
-
 const char *weekday_name_or_placeholder(int weekday)
 {
     return weekday >= 0 && weekday < kWeekdayCount
-               ? kWeekdayNames[weekday]
+               ? ui_weekday_text(weekday)
                : kClockDatePlaceholder;
 }
 } // namespace

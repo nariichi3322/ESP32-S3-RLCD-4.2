@@ -5,6 +5,7 @@
 #include "app_metadata.h"
 #include "ui_battery.h"
 #include "ui_fonts.h"
+#include "ui_language.h"
 #include "ui_work_page_layout.h"
 #include "ui_xiaozhi_face.h"
 #include "ui_xiaozhi_subtitle.h"
@@ -39,7 +40,9 @@ constexpr int kDetailY = 224;
 constexpr int kDetailW = 248;
 constexpr int kDetailH = 58;
 constexpr uint32_t kPreparingDotsIntervalMs = 400;
-constexpr const char *kBindingPrefix = "绑定 ID: ";
+constexpr const char *kBindingPrefixTraditional = "綁定 ID: ";
+constexpr const char *kBindingPrefixSimplified = "绑定 ID: ";
+constexpr const char *kBindingPrefixEnglish = "Binding ID: ";
 constexpr const char *kPreparingStatus = "小智准备中";
 constexpr int kPomodoroTitleY = 8;
 constexpr int kPomodoroStateY = 44;
@@ -350,9 +353,17 @@ bool update_xiaozhi_page(const struct tm &local)
 
     char detail[192] = {};
     if (snapshot.binding_code[0] != '\0') {
-        snprintf(detail, sizeof(detail), "%s%s", kBindingPrefix, snapshot.binding_code);
+        snprintf(detail,
+                 sizeof(detail),
+                 "%s%s",
+                 ui_language_text(kBindingPrefixTraditional,
+                                  kBindingPrefixSimplified,
+                                  kBindingPrefixEnglish),
+                 snapshot.binding_code);
     } else {
-        strlcpy(detail, snapshot.detail, sizeof(detail));
+        strlcpy(detail,
+                ui_language_localize(snapshot.detail),
+                sizeof(detail));
     }
     const char *display_detail = xiaozhi_latest_visible_subtitle(
         xiaozhi_progressive_subtitle(snapshot.state == kXiaozhiAiSpeaking, detail),

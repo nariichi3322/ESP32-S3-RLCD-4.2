@@ -30,26 +30,28 @@ struct WorkPageDescriptor {
     uint8_t page;
     const char *traditional_name;
     const char *simplified_name;
+    const char *english_name;
     uint8_t traits;
 };
 
 constexpr WorkPageDescriptor kWorkPageDescriptors[kWorkPageCount] = {
     {kWorkPageWeatherClock,
-     "天氣時鐘", "天气时钟",
+      "天氣時鐘", "天气时钟", "Weather",
      kWorkPageTraitRequiresNetwork | kWorkPageTraitWeatherData},
     {kWorkPageGallery,
-     "圖片時鐘", "图片时钟",
+      "圖片時鐘", "图片时钟", "Picture",
      kWorkPageTraitRequiresNetwork | kWorkPageTraitLowRefreshIdle |
          kWorkPageTraitDailySaying},
     {kWorkPageWeatherBoard,
-     "天氣看板", "天气看板",
+     "天氣看板", "天气看板", "Board",
      kWorkPageTraitRequiresNetwork | kWorkPageTraitLowRefreshIdle |
          kWorkPageTraitWeatherData | kWorkPageTraitExtendedWeatherData},
-    {kWorkPageFlipClock, "溫溼時鐘", "温湿时钟", 0},
-    {kWorkPageCalendar, "日曆", "日历", kWorkPageTraitLowRefreshIdle},
-    {kWorkPageHistory, "溫溼歷史", "温湿历史", kWorkPageTraitLowRefreshIdle},
-    {kWorkPageXiaozhiAI, "小智AI", "小智AI", kWorkPageTraitRequiresNetwork},
-    {kWorkPageCodexUsage, "Codex", "Codex", kWorkPageTraitLowRefreshIdle},
+    {kWorkPageFlipClock, "溫溼時鐘", "温湿时钟", "Temp/Humi", 0},
+    {kWorkPageCalendar, "日曆", "日历", "Calendar", kWorkPageTraitLowRefreshIdle},
+    {kWorkPageHistory, "溫溼歷史", "温湿历史", "History",
+     kWorkPageTraitLowRefreshIdle},
+    {kWorkPageXiaozhiAI, "小智AI", "小智AI", "Xiaozhi AI", kWorkPageTraitRequiresNetwork},
+    {kWorkPageCodexUsage, "Codex", "Codex", "Codex", kWorkPageTraitLowRefreshIdle},
 };
 
 constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
@@ -75,6 +77,7 @@ uint8_t s_work_page_order[kWorkPageCount] = {
 };
 constexpr const char *kUnknownWorkPageNameTraditional = "未知頁面";
 constexpr const char *kUnknownWorkPageNameSimplified = "未知页面";
+constexpr const char *kUnknownWorkPageNameEnglish = "Unknown page";
 
 constexpr uint8_t work_page_mask(int page)
 {
@@ -325,10 +328,12 @@ const char *work_page_name(int page)
 {
     if (!work_page_order_policy::is_work_page(page)) {
         return ui_language_text(kUnknownWorkPageNameTraditional,
-                                kUnknownWorkPageNameSimplified);
+                                kUnknownWorkPageNameSimplified,
+                                kUnknownWorkPageNameEnglish);
     }
     return ui_language_text(kWorkPageDescriptors[page].traditional_name,
-                            kWorkPageDescriptors[page].simplified_name);
+                            kWorkPageDescriptors[page].simplified_name,
+                            kWorkPageDescriptors[page].english_name);
 }
 
 int first_enabled_work_page()

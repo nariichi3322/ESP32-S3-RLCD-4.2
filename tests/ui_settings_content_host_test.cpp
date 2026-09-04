@@ -114,7 +114,7 @@ int main()
     expect_text(items, kSystemSettingsFactoryResetItem, "確認恢復");
     expect_text(items, kSystemSettingsInfoItem, "關於本機");
     expect_text(items, kSystemSettingsClearCodexBondsItem, "清除配對");
-    expect_text(items, kSystemSettingsLanguageItem, "語言 繁");
+    expect_text(items, kSystemSettingsLanguageItem, "語言 繁體");
     expect_text(items, kSystemSettingsOtaItem, "檢查更新");
     expect_text(items, kSystemSettingsNetworkDiagItem, "網路檢測");
 
@@ -127,9 +127,23 @@ int main()
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
     expect_text(items, kSystemSettingsClearCodexBondsItem, "清除配对");
-    expect_text(items, kSystemSettingsLanguageItem, "语言 简");
+    expect_text(items, kSystemSettingsLanguageItem, "语言 简体");
     expect_text(items, kSystemSettingsOtaItem, "检查更新");
     expect_text(items, kSystemSettingsNetworkDiagItem, "网络检测");
+
+    ui_language_store(UiLanguage::English);
+    state.volume_percent = 60;
+    memset(items, 0, sizeof(items));
+    populate_settings_secondary_items(kSettingsPrimarySound, state, items);
+    expect_text(items, kSoundSettingsVolumeItem, "Vol 60%");
+    expect_text(items, kSoundSettingsHourlyItem, "Hourly 7-22");
+    expect_text(items, kSoundSettingsAllDayItem, "All-day 0-24");
+    memset(items, 0, sizeof(items));
+    populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
+    expect_text(items, kSystemSettingsFactoryResetItem, "Confirm reset");
+    expect_text(items, kSystemSettingsClearCodexBondsItem, "Clear pair");
+    expect_text(items, kSystemSettingsOtaItem, "Check OTA");
+    expect_text(items, kSystemSettingsNetworkDiagItem, "Net test");
 
     return 0;
 }

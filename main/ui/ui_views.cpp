@@ -21,6 +21,7 @@
 #include "input_button_config.h"
 #include "lvgl_bsp.h"
 #include "network_diagnostics_state.h"
+#include "network_diagnostics.h"
 #include "ota_download_policy.h"
 #include "ota_runtime_state.h"
 #include "ota_services.h"
@@ -33,6 +34,8 @@
 #include "ui_settings_page.h"
 #include "ui_draw_cache.h"
 #include "ui_info_page_state_internal.h"
+#include "ui_object_refs.h"
+#include "ui_language.h"
 #include "ui_loop_schedule.h"
 #include "ui_runtime_schedule.h"
 #include "ui_setup_status.h"
@@ -173,6 +176,7 @@ void ui_task(void *)
     int low_battery_resume_page = kWorkPageWeatherClock;
     bool low_battery_resume_pending = false;
     uint8_t lvgl_lock_failures = 0;
+    uint32_t applied_language_revision = ui_language_revision();
 
     for (;;) {
         time_t now;
@@ -303,6 +307,8 @@ void ui_task(void *)
         if (lvgl_locked) {
             lvgl_lock_failures = 0;
             bool refresh_now = false;
+            const bool language_changed =
+                ui_language_revision() != applied_language_revision;
             bool info_requested = runtime_surfaces.info_requested;
             InfoPageStateSnapshot info_state = {};
             OtaRuntimeTimingSnapshot info_ota = {};
@@ -325,6 +331,43 @@ void ui_task(void *)
             bool network_diag_requested = runtime_surfaces.network_diag_requested;
             bool settings_requested = runtime_surfaces.settings_requested;
             TickType_t info_until = info_state.hold_until_tick;
+
+            if (language_changed && !runtime_surfaces.setup_portal_active) {
+                // Network diagnostics stores formatted lines in its shared
+                // snapshot. Re-seed a running diagnostic or clear a completed
+                // one so rebuilt labels cannot display the previous locale.
+                if (network_diag_requested) {
+                    const NetworkDiagState state = network_diag_state_load();
+                    if (state == kNetworkDiagRunning) {
+                        network_diag_begin();
+                    } else if (state == kNetworkDiagDone) {
+                        network_diag_reset();
+                    }
+                }
+                // LVGL objects are owned by this task. Rebuild the visible
+                // surface so labels created with the previous language do
+                // not survive a runtime language change.
+                lv_obj_clean(lv_scr_act());
+                clear_clock_object_refs();
+                clear_info_object_refs();
+                clear_setup_status_object_refs();
+                visible_auxiliary_page = VisibleAuxiliaryPage::kNone;
+                if (settings_requested) {
+                    show_settings_aux_page(visible_auxiliary_page);
+                } else if (network_diag_requested) {
+                    show_network_diag_aux_page(visible_auxiliary_page);
+                } else if (info_requested) {
+                    show_boot_info_aux_page(visible_auxiliary_page);
+                } else {
+                    show_active_work_page();
+                    visible_work_page = active_page;
+                }
+                applied_language_revision = ui_language_revision();
+                status_due = true;
+                sensor_status_due = true;
+                battery_due = true;
+                refresh_now = true;
+            }
             auto restore_active_work_page_after_aux = [&](bool clear_info_timeout) {
                 show_active_work_page();
                 if (clear_info_timeout) {

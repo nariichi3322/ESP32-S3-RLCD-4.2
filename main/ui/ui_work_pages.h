@@ -11,3 +11,4 @@ bool update_calendar_page(const struct tm &local);
 void build_calendar_page();
 bool update_weather_board_page(const struct tm &local);
 void build_weather_board_page();
+void clear_weather_board_object_refs();

@@ -210,6 +210,9 @@ int main()
     assert(strcmp(work_page_name(kWorkPageWeatherClock), "天气时钟") == 0);
     assert(strcmp(work_page_name(kWorkPageCodexUsage), "Codex") == 0);
     assert(strcmp(work_page_name(-1), "未知页面") == 0);
+    ui_language_store(UiLanguage::English);
+    assert(strcmp(work_page_name(kWorkPageFlipClock), "Temp/Humi") == 0);
+    assert(strcmp(work_page_name(kWorkPageHistory), "History") == 0);
     ui_language_store(UiLanguage::Traditional);
 
     assert(work_page_requires_network(kWorkPageWeatherClock));

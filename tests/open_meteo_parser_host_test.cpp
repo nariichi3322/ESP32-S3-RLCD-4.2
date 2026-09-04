@@ -48,7 +48,10 @@ int main()
            OpenMeteoResult::kOk);
     assert(forecast.ready && forecast.count == 6 && forecast.days[5].valid);
     assert(weather.icon_kind == WeatherIconKind::kPartlyCloudy);
+    assert(weather.text[0] == '\0');
     assert(forecast.days[3].icon_kind == WeatherIconKind::kRain);
+    assert(forecast.days[1].wind_direction_degrees == 45);
+    assert(forecast.days[1].text[0] == '\0');
     assert(forecast.hourly_count == kWeatherHourlyForecastCount);
     assert(strcmp(forecast.hours[0].time, "15:00") == 0);
     assert(strcmp(forecast.hours[4].temp, "22") == 0);
@@ -83,7 +86,8 @@ int main()
     assert(parse_open_meteo_air_quality(
         R"({"current":{"us_aqi":42,"pm2_5":8.5,"us_aqi_pm2_5":42,"us_aqi_pm10":20}})",
         &air) == OpenMeteoResult::kOk);
-    assert(air.ready && strcmp(air.aqi, "42") == 0);
+    assert(air.ready && air.aqi_value == 42 && strcmp(air.aqi, "42") == 0);
+    assert(air.category[0] == '\0');
     assert(parse_open_meteo_air_quality(R"({"current":{"us_aqi":900,"pm2_5":8}})",
                                         &air) == OpenMeteoResult::kInvalidValue);
     return 0;

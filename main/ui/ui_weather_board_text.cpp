@@ -5,6 +5,7 @@
 #include "app_time_constants.h"
 #include "ui_text_format.h"
 #include "ui_language.h"
+#include "ui_i18n.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -13,14 +14,6 @@
 namespace {
 constexpr const char *kForecastDateFormat = "%d-%d-%d";
 constexpr int kForecastDateFieldCount = 3;
-constexpr int kWeatherBoardWeekdayCount = 7;
-constexpr const char *kWeatherBoardWeekdayNamesSimplified[kWeatherBoardWeekdayCount] = {
-    "周日", "周一", "周二", "周三", "周四", "周五", "周六",
-};
-constexpr const char *kWeatherBoardWeekdayNamesTraditional[kWeatherBoardWeekdayCount] = {
-    "週日", "週一", "週二", "週三", "週四", "週五", "週六",
-};
-constexpr const char *kForecastShortDateFormat = "%d日";
 constexpr const char *kForecastDateLineFormat = "%s\n%s";
 constexpr const char *kForecastTempRangeFormat = "%s/%s°C";
 constexpr const char *kForecastHourTempFormat = "%s°C";
@@ -32,10 +25,13 @@ constexpr const char *kWeatherBoardWindFormat = "%s %s级";
 constexpr const char *kWeatherBoardSunriseFormat = "日出 %s";
 constexpr const char *kWeatherBoardSunsetFormat = "日落 %s";
 constexpr size_t kForecastShortDateSize = 8;
+constexpr int kWeekdayCount = 7;
 
-static_assert(array_count(kWeatherBoardWeekdayNamesSimplified) == kWeatherBoardWeekdayCount &&
-                  array_count(kWeatherBoardWeekdayNamesTraditional) == kWeatherBoardWeekdayCount,
-              "weather board weekday names must match weekday count");
+const char *weather_board_advice_placeholder()
+{
+    return ui_language_text("等待更多天氣資料", "等待更多天气数据",
+                            "Waiting for more weather data");
+}
 
 bool parse_forecast_date(const char *date, int &year, int &month, int &day)
 {
@@ -64,11 +60,15 @@ const char *weekday_name_from_date(const char *date)
         return kWeatherBoardDash;
     }
     localtime_r(&epoch, &tm_value);
-    if (tm_value.tm_wday < 0 || tm_value.tm_wday >= kWeatherBoardWeekdayCount) {
+    if (tm_value.tm_wday < 0 || tm_value.tm_wday >= kWeekdayCount) {
         return kWeatherBoardDash;
     }
-    return ui_language_text(kWeatherBoardWeekdayNamesTraditional[tm_value.tm_wday],
-                            kWeatherBoardWeekdayNamesSimplified[tm_value.tm_wday]);
+    if (ui_language_is_english()) {
+        static constexpr const char *kShortWeekdays[] = {
+            "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+        return kShortWeekdays[tm_value.tm_wday];
+    }
+    return ui_weekday_text(tm_value.tm_wday);
 }
 
 void format_short_date(const char *date, char *out, size_t out_len)
@@ -86,7 +86,7 @@ void format_short_date(const char *date, char *out, size_t out_len)
     ui_text::format_or_fallback(out,
                                 out_len,
                                 kWeatherBoardShortDatePlaceholder,
-                                kForecastShortDateFormat,
+                                ui_language_text("%d日", "%d日", "%d"),
                                 day);
 }
 } // namespace
@@ -103,8 +103,10 @@ void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len
     }
     ui_text::format_or_fallback(out,
                                 out_len,
-                                kWeatherBoardTodayRangePlaceholder,
-                                ui_language_text("今日 %s/%s°C", kWeatherBoardTodayRangeFormat),
+                                ui_language_text("今日 --/--°C", "今日 --/--°C",
+                                                 "Today --/--°C"),
+                                ui_language_text("今日 %s/%s°C", kWeatherBoardTodayRangeFormat,
+                                                 "Today %s/%s°C"),
                                 text_or_dash(day.temp_min),
                                 text_or_dash(day.temp_max));
 }
@@ -160,15 +162,19 @@ void format_forecast_hour_temp(const WeatherForecastHour &hour, char *out, size_
 void format_weather_board_air_line(const WeatherAirData &air, char *out, size_t out_len)
 {
     if (!air.ready) {
-        ui_text::copy(out, out_len, kWeatherBoardAirPlaceholder);
+        ui_text::copy(out, out_len,
+                      ui_language_text("AQI --", "AQI --", "AQI --"));
         return;
     }
+    const char *category = air.aqi_value >= 0
+                               ? ui_air_quality_category(air.aqi_value)
+                               : text_or_dash(air.category);
     ui_text::format_or_fallback(out,
                                 out_len,
-                                kWeatherBoardAirPlaceholder,
+                                ui_language_text("AQI --", "AQI --", "AQI --"),
                                 kWeatherBoardAirFormat,
                                 text_or_dash(air.aqi),
-                                text_or_dash(air.category));
+                                category);
 }
 
 void format_weather_board_humidity_line(const WeatherData &weather,
@@ -181,8 +187,9 @@ void format_weather_board_humidity_line(const WeatherData &weather,
                                : text_or_dash(weather.humidity);
     ui_text::format_or_fallback(out,
                                 out_len,
-                                kWeatherBoardHumidityPlaceholder,
-                                ui_language_text("溼度 %s%%", kWeatherBoardHumidityFormat),
+                                ui_language_text("溼度 --%", "湿度 --%", "Hum --%"),
+                                ui_language_text("溼度 %s%%", kWeatherBoardHumidityFormat,
+                                                 "Hum %s%%"),
                                 humidity);
 }
 
@@ -190,11 +197,18 @@ void format_weather_board_wind_line(const WeatherForecastDay *today,
                                     char *out,
                                     size_t out_len)
 {
+    const char *direction = kWeatherBoardDash;
+    if (today) {
+        direction = today->wind_direction_degrees >= 0
+                        ? ui_wind_direction(today->wind_direction_degrees)
+                        : text_or_dash(today->wind_dir);
+    }
     ui_text::format_or_fallback(out,
                                 out_len,
-                                kWeatherBoardWindPlaceholder,
-                                ui_language_text("%s %s級", kWeatherBoardWindFormat),
-                                today ? text_or_dash(today->wind_dir) : kWeatherBoardDash,
+                                ui_language_text("-- --級", "-- --级", "-- level --"),
+                                ui_language_text("%s %s級", kWeatherBoardWindFormat,
+                                                 "%s level %s"),
+                                direction,
                                 today ? text_or_dash(today->wind_scale) : kWeatherBoardDash);
 }
 
@@ -204,8 +218,9 @@ void format_weather_board_sunrise_line(const WeatherForecastDay *today,
 {
     ui_text::format_or_fallback(out,
                                 out_len,
-                                kWeatherBoardSunrisePlaceholder,
-                                ui_language_text("日出 %s", kWeatherBoardSunriseFormat),
+                                ui_language_text("日出 --:--", "日出 --:--", "Sunrise --:--"),
+                                ui_language_text("日出 %s", kWeatherBoardSunriseFormat,
+                                                 "Sunrise %s"),
                                 today && today->sunrise[0]
                                     ? today->sunrise
                                     : kWeatherBoardTimePlaceholder);
@@ -217,8 +232,9 @@ void format_weather_board_sunset_line(const WeatherForecastDay *today,
 {
     ui_text::format_or_fallback(out,
                                 out_len,
-                                kWeatherBoardSunsetPlaceholder,
-                                ui_language_text("日落 %s", kWeatherBoardSunsetFormat),
+                                ui_language_text("日落 --:--", "日落 --:--", "Sunset --:--"),
+                                ui_language_text("日落 %s", kWeatherBoardSunsetFormat,
+                                                 "Sunset %s"),
                                 today && today->sunset[0]
                                     ? today->sunset
                                     : kWeatherBoardTimePlaceholder);
@@ -226,7 +242,10 @@ void format_weather_board_sunset_line(const WeatherForecastDay *today,
 
 const char *weather_board_advice_text(const WeatherForecastData &forecast)
 {
+    if (forecast.ready && forecast.count > 0 && forecast.days[0].valid) {
+        return ui_weather_advice(forecast.days[0].weather_code);
+    }
     return forecast.ready && forecast.advice[0]
-               ? forecast.advice
-               : kWeatherBoardAdvicePlaceholder;
+               ? ui_language_localize(forecast.advice)
+               : weather_board_advice_placeholder();
 }

@@ -21,6 +21,66 @@ const char *label_text_or_empty(const char *text)
     return text ? text : "";
 }
 
+bool text_contains_cjk(const char *text)
+{
+    if (!text) {
+        return false;
+    }
+    const unsigned char *cursor = reinterpret_cast<const unsigned char *>(text);
+    while (*cursor) {
+        uint32_t codepoint = *cursor++;
+        if (codepoint < 0x80U) {
+            // ASCII is already represented by every UI font in use here.
+        } else if ((codepoint & 0xe0U) == 0xc0U && cursor[0]) {
+            codepoint = ((codepoint & 0x1fU) << 6) |
+                        (static_cast<uint32_t>(cursor[0]) & 0x3fU);
+            ++cursor;
+        } else if ((codepoint & 0xf0U) == 0xe0U && cursor[0] && cursor[1]) {
+            codepoint = ((codepoint & 0x0fU) << 12) |
+                        ((static_cast<uint32_t>(cursor[0]) & 0x3fU) << 6) |
+                        (static_cast<uint32_t>(cursor[1]) & 0x3fU);
+            cursor += 2;
+        } else if ((codepoint & 0xf8U) == 0xf0U && cursor[0] && cursor[1] && cursor[2]) {
+            codepoint = ((codepoint & 0x07U) << 18) |
+                        ((static_cast<uint32_t>(cursor[0]) & 0x3fU) << 12) |
+                        ((static_cast<uint32_t>(cursor[1]) & 0x3fU) << 6) |
+                        (static_cast<uint32_t>(cursor[2]) & 0x3fU);
+            cursor += 3;
+        } else {
+            // Skip malformed UTF-8 without treating the continuation byte as
+            // an independent character.
+            continue;
+        }
+        if ((codepoint >= 0x3000U && codepoint <= 0x303fU) ||
+            (codepoint >= 0x3400U && codepoint <= 0x4dbfU) ||
+            (codepoint >= 0x4e00U && codepoint <= 0x9fffU) ||
+            (codepoint >= 0xf900U && codepoint <= 0xfaffU) ||
+            (codepoint >= 0xff00U && codepoint <= 0xffefU)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const lv_font_t *font_for_label_text(const char *text, const lv_font_t *font)
+{
+    if (!font) {
+        return nullptr;
+    }
+    if (text_contains_cjk(text) && !font->fallback) {
+        // Montserrat has no CJK glyphs. zh_font_16 covers both Traditional
+        // and Simplified Chinese and falls back to Montserrat for ASCII.
+        return &zh_font_16;
+    }
+    if (ui_language_is_english() && font == &zh_font_16 && !text_contains_cjk(text)) {
+        // The shared Chinese font embeds ASCII at 16 px. Use the smaller
+        // Montserrat face for English labels so fixed-width panels retain
+        // useful margins.
+        return &lv_font_montserrat_14;
+    }
+    return font;
+}
+
 void warn_if_center_align_failed(lv_obj_t *label, const char *warning)
 {
     if (!center_align_label(label)) {
@@ -94,17 +154,20 @@ lv_obj_t *make_label_with_font(lv_obj_t *parent,
         ESP_LOGW(TAG, UI_LABEL_INVALID_SIZE_FORMAT, w, h);
         return nullptr;
     }
+    const char *localized_text = ui_language_localize(label_text_or_empty(text));
     lv_obj_t *label = lv_label_create(parent);
     if (!label) {
         ESP_LOGW(TAG, "%s", UI_LABEL_CREATE_FAILED_LOG);
         return nullptr;
     }
     set_obj_box(label, x, y, w, h);
-    lv_label_set_text(label, ui_language_localize(label_text_or_empty(text)));
+    lv_label_set_text(label, localized_text);
     lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(label, lv_color_black(), LV_PART_MAIN);
     if (font) {
-        lv_obj_set_style_text_font(label, font, LV_PART_MAIN);
+        lv_obj_set_style_text_font(label,
+                                   font_for_label_text(localized_text, font),
+                                   LV_PART_MAIN);
     }
     lv_obj_set_style_text_letter_space(label, 0, LV_PART_MAIN);
     return label;
@@ -157,6 +220,10 @@ bool set_label_text_if_changed(lv_obj_t *label, const char *text)
         return false;
     }
     text = ui_language_localize(label_text_or_empty(text));
+    const lv_font_t *current_font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
+    if (text_contains_cjk(text) && current_font && !current_font->fallback) {
+        lv_obj_set_style_text_font(label, &zh_font_16, LV_PART_MAIN);
+    }
     const char *current = lv_label_get_text(label);
     if (current == nullptr || strcmp(current, text) != 0) {
         lv_label_set_text(label, text);

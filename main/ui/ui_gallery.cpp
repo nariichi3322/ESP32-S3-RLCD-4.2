@@ -17,6 +17,7 @@
 #include "ui_gallery_rotation_state.h"
 #include "ui_gallery_selection.h"
 #include "ui_fonts.h"
+#include "ui_language.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
 #include "ui_widgets.h"
@@ -263,7 +264,14 @@ static void style_gallery_saying_label(lv_obj_t *label)
     if (!label) {
         return;
     }
-    lv_obj_set_style_text_font(label, &zh_font_16, LV_PART_MAIN);
+    // The saying may be supplied in either Chinese or ASCII English. Keep
+    // CJK glyph coverage while avoiding the wider 16 px embedded ASCII face
+    // for English strings in this fixed-width panel.
+    lv_obj_set_style_text_font(label,
+                               ui_language_is_english()
+                                   ? &lv_font_montserrat_14
+                                   : &zh_font_16,
+                               LV_PART_MAIN);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
 }

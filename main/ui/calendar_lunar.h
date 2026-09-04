@@ -4,7 +4,7 @@
 #include <stddef.h>
 #include <time.h>
 
-constexpr size_t kCalendarLunarSubtextSize = 16;
+constexpr size_t kCalendarLunarSubtextSize = 32;
 
 struct CalendarDayInfo {
     int year = 0;
