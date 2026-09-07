@@ -1,5 +1,7 @@
 # WeatherClock User Guide
 
+Web client: [open the browser tool](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/). Firmware and web client sources now share one repository, under `RLCD_CLOCK/` and `host_web/`. The previous web site remains available. This repository migration does not require reflashing or resetting device settings.
+
 This guide explains first-time setup, the seven work pages, hardware keys, online/offline operation, reminders, Xiaozhi AI, OTA updates, DIY assets, and troubleshooting.
 
 > **Important upgrade notice:** `v1.5.x` uses a new flash partition table. A device still running `v1.4.59` or earlier must be fully flashed with the merged image or complete flash package before using `v1.5.x`. An App-only flash or ordinary OTA cannot update the partition table.

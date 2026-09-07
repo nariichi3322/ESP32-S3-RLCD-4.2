@@ -1,0 +1,115 @@
+# WeatherClock Host Web AI Guide
+
+This document is for future AI agents or developers taking over `host_web/`.
+
+## Scope
+
+Work in this branch is limited to `host_web/`.
+
+Read the repository-root AGENTS.md, TASK.md, HANDOFF.md and docs/DECISIONS.md before development. Ordinary changes follow the same rules as firmware: validate, commit and push Gitea only. Keep firmware versions unchanged for web-only work.
+
+With explicit one-time authorization, use the unified source publisher with GITHUB_CLOCK_SOURCE_ONLY=1. The only active public repository is `wickenzh/ESP32-S3-RLCD-4.2`, with firmware under `RLCD_CLOCK/` and this app under `host_web/`. Never push to the old `_Web` repository unless the user explicitly requests maintenance of that legacy site. Its existing history and Pages remain untouched.
+
+## Product Focus
+
+The host web app is mainly a browser-based resource tool for WeatherClock:
+
+- Convert a user GIF into the device main-page GIF resource.
+- Convert user still images into gallery-page image resources.
+- Preview converted 1-bit results before writing.
+- Build `custom_assets.bin`.
+- Write `custom_assets.bin` to the ESP32-S3 `assets` flash partition.
+
+Firmware flashing and serial logs exist only as auxiliary tools.
+
+## Device Resource Format
+
+The firmware reads a custom asset package from the `assets` partition:
+
+- Partition name: `assets`
+- Offset: read dynamically from the device partition table.
+- Size: read dynamically from the device partition table; WCA1 package generation still keeps a `2M` upper bound.
+- Package filename used by the app: `custom_assets.bin`
+
+Package magic/version:
+
+- Magic: `WCA1`, little-endian `0x31414357`
+- Version: `1`
+
+Supported entry types:
+
+- `1`: `main_gif`
+  - Fixed size: `84 x 84`
+  - Fixed frames: `60`
+  - Continuous full-frame 1-bit bitstream. Do not pad each row.
+  - Frame size: `84 * 84 / 8 = 882` bytes.
+  - Total payload size: `882 * 60 = 52920` bytes.
+  - `bytes_per_row` should be `0`; firmware does not use row stride for GIF.
+- `2`: `gallery_image`
+  - Fixed size: `220 x 208`
+  - Up to `24` images.
+  - Packed 1-bit rows.
+  - Row stride: `ceil(220 / 8) = 28` bytes.
+  - Payload size per image: `28 * 208 = 5824` bytes.
+- `3`: `weather_city`
+  - Optional UTF-8 fallback text payload, `1..31` bytes.
+  - `index`, `width`, `height`, `frame_count`, and `bytes_per_row` are `0`.
+  - Omit this entry when the user leaves the city empty. It is only a fallback and does not write NVS.
+- `4`: `ota_manifest_url`
+  - Optional UTF-8 fallback text payload, `1..255` bytes.
+  - `index`, `width`, `height`, `frame_count`, and `bytes_per_row` are `0`.
+  - Omit this entry when empty. If the user enters a base URL, normalize it to `/firmware/latest.json`.
+
+The browser app builds the header, entry table, payload, header CRC32, payload CRC32, and per-entry CRC32 in `host_web/app.js`.
+
+## Current UI
+
+The app has five tabs:
+
+- `资源制作`: Primary tab and default view. Handles GIF and still-image conversion.
+- `设置`: Optional fallback config written into `custom_assets.bin` as WCA1 text entries. Weather city is used only when device NVS has no manual city. OTA manifest URL is a fallback after firmware built-in OTA sources. These settings do not write NVS.
+- `资源写入`: Selects a Web Serial device, reads the ESP-IDF partition table from `0x8000`, verifies `assets` as `data / subtype 0x40`, then writes generated `custom_assets.bin` to the actual `assets` address from the device partition table.
+- `固件烧录`: Auxiliary serial flashing. `merged` firmware is written only to `0x0`. OTA App firmware is written only to dynamically discovered `ota_0` / `ota_1` partitions after reading the device partition table. Never use a fixed App slot address.
+- `串口日志`: Auxiliary serial log and manual command console.
+
+Do not reintroduce Wi-Fi provisioning, default AP/IP panels, device info sidebars, OTA manifest reading, or notes pages unless the user asks.
+
+All baud-rate selectors currently default to `115200`.
+
+Update the footer version in `index.html` on every user-visible development change.
+
+## GitHub Pages Preview
+
+Use the deployed GitHub Pages URL for preview and testing:
+
+```text
+https://wickenzh.github.io/ESP32-S3-RLCD-4.2/
+```
+
+Do not add local HTTP/HTTPS preview servers back into `host_web/` unless the user explicitly asks.
+
+## Important Files
+
+- `index.html`: Static UI structure.
+- `styles.css`: Layout and visual styling.
+- `app.js`: All client-side conversion, package building, serial writing, and flashing logic.
+- `firmware/manifest.example.json`: Example ESP Web Tools manifest for dedicated Pages deployment.
+- `README.md`: User-facing usage/deployment summary.
+
+## Known Constraints
+
+- GIF decoding first uses the local parser in `app.js`, including global/local palettes, transparency, interlaced frames, and GIF disposal modes. Keep this local path so conversion preview works on intranet Gitea/GitHub Pages without a runtime CDN dependency.
+- If local GIF decoding fails, the app tries the browser `ImageDecoder` API, then falls back to a single-frame image preview repeated across 60 frames.
+- GIF conversion must output exactly 60 frames. The local decoder samples those frames evenly across the full GIF playback timeline using frame delays, so long animations are represented from start to end instead of only taking the first 60 source frames.
+- Converted GIF preview is animated by replaying the 60 converted 1-bit frames on the preview canvas.
+- Original GIF preview uses a normal `<img>` element with an object URL, so the uploaded GIF should animate before conversion.
+- File selection immediately draws the uploaded GIF first frame or the currently selected still image on the source canvas so users can see what was loaded before conversion.
+- Still images support selecting up to 24 files and converting them together. The preview selector shows one chosen image at a time; the converted preview is reconstructed from that image's packed 1-bit data.
+- Still image conversion applies a configurable edge fade before 1-bit packing. The default is 18 px and blends the four edges toward white so non-transparent image backgrounds do not leave a hard rectangle on the device screen.
+- The resource writer's erase action writes an erased 4 KB sector header (`0xFF`) at the actual `assets` address read from the device partition table, invalidating the custom asset package so firmware falls back to built-in resources after reset.
+- Web Serial and browser flashing need Chrome/Edge or another Chromium browser with serial support.
+- The serial writing path uses repository-local pinned copies of `esptool-js 0.5.6` and `esp-web-tools 10.0.1` under `host_web/vendor/`; do not replace them with runtime CDN imports. Preserve their license files and update the service-worker asset list whenever either version changes. `esptool-js` expects file data as a binary string, so `Uint8Array` payloads are converted before calling `writeFlash`.
+- After `writeFlash`, the app explicitly pulses serial RTS/DTR signals to reset the ESP32-S3. Keep this behavior unless hardware reset wiring changes.
+- The resource writer must keep the partition-table preflight: read flash `0x8000..0x8FFF`, parse 32-byte ESP-IDF partition entries, and only enable resource write/erase after finding `assets` with type `data`, subtype `0x40`, and enough space for the generated resource package.
+- Firmware flashing uses GitHub Release assets from `wickenzh/ESP32-S3-RLCD-4.2` as the sole online source. GitHub's final Release asset CDN does not expose CORS headers for JavaScript byte access, so the page must never fetch Release binaries directly. `.github/workflows/static.yml` runs `scripts/build_pages_site.mjs` to mirror the latest 10 complete releases into the ephemeral Pages artifact, after checking size and GitHub asset `digest` (`sha256:...`); do not commit mirrored bin files to Git history. The deployed page reads same-origin `firmware/releases.json` and same-origin firmware bytes, then verifies size and SHA256 again in browser memory before enabling flashing. Online firmware remains fully automatic; only the separate custom-firmware source uses a file picker. Accept the merged asset only for the `0x0` target and the App asset only for dynamically discovered App targets.
+- WeatherClock v1.5.x adds a `model` partition. The web host must not write App binaries to `assets`, `model`, `nvs`, bootloader, partition-table, or any fixed legacy address. Future standalone model flashing must also discover `model` address and size from the device partition table.

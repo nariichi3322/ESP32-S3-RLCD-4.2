@@ -1,0 +1,125 @@
+# WeatherClock GitHub Pages 上位机
+
+这是一个纯静态网页上位机，可直接通过 GitHub Pages 使用，用于给 WeatherClock 制作并写入自定义首页 GIF 动图、图库静图资源，也可辅助进行固件烧录和串口日志查看。
+
+## 快速使用
+
+访问：
+
+```text
+https://wickenzh.github.io/ESP32-S3-RLCD-4.2/
+```
+
+请使用 Edge 或 Chrome 浏览器打开页面，并通过 USB 连接 ESP32-S3 设备。
+
+## 烧录自定义 GIF 动图
+
+首页 GIF 会被转换成设备固件要求的 `84×84`、`60` 帧、1-bit 资源。
+
+1. 打开页面后进入 `资源制作`。
+2. 在 `GIF 动图` 区域选择一个 `.gif` 文件。
+3. 根据需要调整 `适配方式`、`阈值`、`抖动`、`反色`。
+4. 查看 `原始 GIF` 和 `转换预览`，确认 1-bit 效果。
+5. 点击 `转换 GIF`。
+6. 如需同时写入静图，也继续完成静图转换；否则直接点击页面顶部的 `生成资源包`。
+7. 页面提示资源包生成完成后，切换到 `资源写入`。
+8. 点击 `选择并核对设备`，浏览器会请求选择串口设备，并读取设备分区表。
+9. 确认分区表中 `assets` 分区核对通过后，点击 `串口写入资源`。
+10. 写入完成后设备会自动复位，固件会优先加载写入的自定义 GIF。
+
+## 烧录自定义静图
+
+图库静图会被转换成设备固件要求的 `220×208`、1-bit packed 资源，最多支持一次选择并转换前 `24` 张。
+
+1. 打开页面后进入 `资源制作`。
+2. 在 `静图` 区域选择 JPG、PNG、WebP、BMP 等图片文件，可多选。
+3. 在 `预览图片` 下拉框中选择当前要查看的图片。
+4. 根据需要调整 `适配方式`、`阈值`、`边缘淡化`、`抖动`、`反色`。
+5. 查看 `原图裁剪` 和 `转换预览`，确认边缘和黑白效果。
+6. 点击 `转换静图`，页面会转换最多前 `24` 张图片。
+7. 如需同时写入首页 GIF，也继续完成 GIF 转换；否则直接点击页面顶部的 `生成资源包`。
+8. 切换到 `资源写入`，点击 `选择并核对设备`。
+9. 分区表核对通过后点击 `串口写入资源`。
+10. 写入完成并重启后，设备会优先加载自定义图库静图。
+
+## 资源写入注意事项
+
+- GIF 和静图可以单独写入，也可以一起打包到同一个 `custom_assets.bin`。
+- 上位机会读取设备分区表，并只写入真实的 `assets` 分区。
+- v1.5.x 及后续版本不再使用旧固定地址写入资源，避免覆盖 App、NVS 或 model 分区。
+- 如果想恢复内置素材，可以在 `资源写入` 中点击 `清空资源分区`，或重新生成不包含对应资源的资源包再写入。
+- 写入资源不会擦除 NVS，不会覆盖 Wi-Fi、天气城市等设备端已保存配置。
+
+## 发布方式
+
+1. 普通开发与固件采用相同规则：验证后提交并同步 Gitea。
+2. 获得单次 GitHub 同步授权后，通过统一源码同步入口更新 `wickenzh/ESP32-S3-RLCD-4.2` 的 `host_web/`。
+3. 统一仓库 `Settings / Pages` 使用 `GitHub Actions`，根目录 `.github/workflows/pages.yml` 部署本站。
+4. 旧 `_Web` 仓库与旧站点保留，本轮不再作为开发同步目标。
+5. 新站地址：
+
+```text
+https://wickenzh.github.io/ESP32-S3-RLCD-4.2/
+```
+
+`assets/` 中的预览图已经包含在上位机目录内，不依赖本项目仓库的其他路径。
+
+## 在线预览
+
+当前 GitHub Pages 访问地址：
+
+```text
+https://wickenzh.github.io/ESP32-S3-RLCD-4.2/
+```
+
+## 当前功能
+
+- Web Serial 串口日志读取、命令发送、日志保存。
+- 图片资源制作：静图支持 JPG、PNG、WebP、BMP 等浏览器可读图片，转换为 `220×208`、1-bit packed。
+- GIF 资源制作：动图只支持 GIF，转换为 `84×84`、60 帧、整帧连续 1-bit bitstream。
+- 设置：可在 `custom_assets.bin` 中附带天气城市和 OTA 清单地址兜底配置；留空则不生成对应 entry，不写 NVS，也不覆盖设备端已有手动配置。
+- 资源写入：先选择设备并读取分区表，确认 `assets` 为 `data / subtype 0x40` 且资源包不超过分区大小后，才会使用设备分区表中的真实地址写入或清空资源分区。
+- 固件烧录：merged bin 只写入 `0x0`；OTA App bin 只允许写入读取到的 `ota_0` / `ota_1`，并会检查文件大小不超过目标 App 分区。首次迁移到 v1.5.x 分区表时必须使用 merged bin 完整写入。
+- 浏览器烧录依赖使用仓库内固定版本的 `esptool-js 0.5.6` 和 `esp-web-tools 10.0.1`，不会在运行时加载第三方 CDN 脚本。
+- 离线缓存，便于打开页面后再切换到设备 AP。
+
+## 在线固件仓库
+
+默认在线固件来源：
+
+```text
+https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases
+```
+
+上位机读取 GitHub Release 最近版本列表。每个可用 Release 需要同时包含：
+
+- `weather_clock_vX.Y.Z.bin`：OTA App 固件，用于写入读取到的 `ota_0` / `ota_1`。
+- `weather_clock_vX.Y.Z_merged.bin`：完整 merged 固件，只写入 `0x0`。
+
+GitHub Pages 部署工作流会读取 GitHub Release，下载最近 10 个完整版本，在部署阶段核对文件大小和 Release asset 的 `sha256` digest，再把固件放入 Pages 部署产物。大体积 bin 不会提交到 Git 历史。网页从同源 Pages 地址自动读取固件到浏览器内存，再次计算 SHA-256；大小和摘要完全一致后才会启用烧录，用户不需要把在线固件下载到本地或手动选择文件。自定义固件仍通过“自定义固件文件”来源手动选择。
+
+部署模板在 `host_web/.github/workflows/static.yml`，同步到公开仓库根目录 `.github/workflows/pages.yml`。上位机文件更新或正式固件构建成功后部署，另保留手动入口，不使用定时同步。`host_web/scripts/build_pages_site.mjs` 只复制站点文件，并生成最近 10 个完整正式版本的同源固件镜像。部署校验失败时保留上一版站点。
+
+## 自定义资源包配置
+
+`custom_assets.bin` 使用 WCA1 格式，除 GIF 和静图外，还可包含两个可选 UTF-8 文本 entry：
+
+- `type=3`：天气城市兜底，1 到 31 bytes，只填写城市名。
+- `type=4`：OTA 清单地址兜底，1 到 255 bytes；输入服务器基础地址时会自动规范化为 `/firmware/latest.json`。
+
+这两项只作为资源包配置，不直接写入 NVS。若设备 NVS 中已有手动天气城市，固件优先使用 NVS；OTA 的具体优先级遵循对应固件版本，内置分发源为 GitHub OTA 和 Gitee OTA。若要恢复不带资源包配置的状态，请重新生成不含对应字段的资源包，或清空 assets 分区。
+
+`firmware/manifest.example.json` 是 ESP Web Tools 示例。ESP-IDF v4+ 固件推荐使用 `esptool merge_bin` 生成的单个 merged bin，并写入 `0x0`。
+
+## v1.5.x 分区兼容
+
+上位机不再使用旧版固定地址写入资源或 App。连接设备后会读取 `0x8000` 分区表：
+
+- `custom_assets.bin` 只允许写入分区表中的 `assets`。
+- OTA App 只允许写入分区表中的 `ota_0` 或 `ota_1`。
+- `model` 分区由 merged bin 覆盖，单独更新 App 时不会擦除 `model`。
+- 分区表读取失败或找不到目标分区时，禁止对应写入。
+
+## 浏览器要求
+
+Web Serial 需要 HTTPS 和 Chromium 内核浏览器，例如 Chrome 或 Edge。

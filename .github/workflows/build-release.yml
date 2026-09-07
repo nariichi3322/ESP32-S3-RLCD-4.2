@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          project_version="$(sed -n 's/.*PROJECT_VER "\(v[^"]*\)".*/\1/p' CMakeLists.txt | head -n 1)"
+          project_version="$(sed -n 's/.*PROJECT_VER "\(v[^"]*\)".*/\1/p' RLCD_CLOCK/CMakeLists.txt | head -n 1)"
           if [[ "$project_version" != "$EXPECTED_VERSION" ]]; then
             echo "标签版本 $EXPECTED_VERSION 与工程版本 $project_version 不一致" >&2
             exit 1
@@ -71,8 +71,8 @@ jobs:
         run: |
           set -euo pipefail
           python3 .github/scripts/prepare_ota_endpoint.py \
-            --output main/core/ota_endpoint_local.h
-          test -s main/core/ota_endpoint_local.h
+            --output RLCD_CLOCK/main/core/ota_endpoint_local.h
+          test -s RLCD_CLOCK/main/core/ota_endpoint_local.h
           echo "Private OTA endpoint configuration prepared"
 
       - name: 编译并生成双固件
@@ -80,13 +80,13 @@ jobs:
         with:
           esp_idf_version: v5.5.3
           target: esp32s3
-          path: .
+          path: RLCD_CLOCK
           command: >-
             set -euo pipefail;
             idf.py build;
-            cp build/weather_clock.bin "weather_clock_${{ steps.version.outputs.version }}.bin";
+            cp build/weather_clock.bin "../weather_clock_${{ steps.version.outputs.version }}.bin";
             cd build;
-            esptool.py --chip esp32s3 merge_bin -o "../weather_clock_${{ steps.version.outputs.version }}_merged.bin" @flash_args
+            esptool.py --chip esp32s3 merge_bin -o "../../weather_clock_${{ steps.version.outputs.version }}_merged.bin" @flash_args
 
       - name: 校验构建产物
         env:

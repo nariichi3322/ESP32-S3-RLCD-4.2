@@ -2,6 +2,8 @@
 
 ## 中文
 
+固件源码位于 `RLCD_CLOCK/`，网页版上位机位于 `host_web/`。请在对应目录提交修改；固件编译从 `RLCD_CLOCK/` 执行，网页改动无需迭代固件版本。旧 `_Web` 仓库仅保留历史。
+
 感谢你愿意为 ESP32-S3 RLCD 4.2 天气时钟贡献代码、文档或测试。本仓库是 `RLCD_CLOCK` 固件的公开源码镜像，提交内容应围绕设备固件本身，并以稳定性、可验证性和向后兼容为优先。
 
 ### 开始之前
@@ -51,6 +53,8 @@ idf.py build
 提交贡献即表示你有权提供这些内容，并同意你的贡献按照仓库中适用于相应代码的许可条款发布。项目维护者原创部分的非商业限制不会覆盖第三方组件原许可证已经授予的权利。
 
 ## English
+
+Firmware lives in `RLCD_CLOCK/` and the browser client in `host_web/`. Submit changes to the relevant directory; build firmware from `RLCD_CLOCK/`. Web-only changes do not require a firmware version increment. The legacy `_Web` repository is retained for history.
 
 Thank you for contributing code, documentation, or tests to the ESP32-S3 RLCD 4.2 Weather Clock. This repository is the public source mirror of the `RLCD_CLOCK` firmware. Contributions should focus on the device firmware and prioritize stability, verifiability, and backward compatibility.
 

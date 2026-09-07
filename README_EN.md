@@ -20,7 +20,15 @@ This is a low-power weather clock firmware project built around the **ESP32-S3**
 - [Official Waveshare ESP32-S3-RLCD-4.2 product page](https://www.waveshare.com/product/esp32-s3-rlcd-4.2.htm): official board overview, specifications, and purchasing information.
 - [Official Waveshare ESP32-S3-RLCD-4.2 documentation](https://docs.waveshare.com/ESP32-S3-RLCD-4.2): interfaces, schematic, examples, and hardware resources.
 - [ESP32-S3-RLCD-4.2_UP](https://github.com/wickenzh/ESP32-S3-RLCD-4.2_UP): OTA firmware mirror with available firmware and version information.
-- [ESP32-S3-RLCD-4.2_Web](https://github.com/wickenzh/ESP32-S3-RLCD-4.2_Web): web-based desktop client for device configuration and custom resource management.
+- [Open the web client](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/): convert images/GIFs, configure resources, verify and flash firmware, and read serial logs. [Source and guide](host_web/README.md).
+- [Legacy web repository](https://github.com/wickenzh/ESP32-S3-RLCD-4.2_Web): retained with its history and existing site; new development lives in this repository.
+
+## Source Layout
+
+- `RLCD_CLOCK/`: ESP-IDF firmware, components, fonts, simulator and tests. Run `idf.py build` from this directory.
+- `host_web/`: browser client. Pages publishes only website files and the latest 10 verified firmware releases.
+- `firmware/`: OTA manifests; `docs/`: user guides and Power Demo; `previews/`: SDL previews.
+- `.github/`: firmware builds and website deployment. Web updates deploy independently without creating firmware versions.
 
 ## Project Scope
 
