@@ -21,7 +21,6 @@ This is a low-power weather clock firmware project built around the **ESP32-S3**
 - [Official Waveshare ESP32-S3-RLCD-4.2 documentation](https://docs.waveshare.com/ESP32-S3-RLCD-4.2): interfaces, schematic, examples, and hardware resources.
 - [ESP32-S3-RLCD-4.2_UP](https://github.com/wickenzh/ESP32-S3-RLCD-4.2_UP): OTA firmware mirror with available firmware and version information.
 - [Open the web client](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/): convert images/GIFs, configure resources, verify and flash firmware, and read serial logs. [Source and guide](host_web/README.md).
-- [Legacy web repository](https://github.com/wickenzh/ESP32-S3-RLCD-4.2_Web): retained with its history and existing site; new development lives in this repository.
 
 ## Source Layout
 

@@ -21,7 +21,6 @@
 - [微雪 ESP32-S3-RLCD-4.2 官方文档](https://docs.waveshare.com/ESP32-S3-RLCD-4.2)：开发板接口、原理图、示例和硬件资料。
 - [ESP32-S3-RLCD-4.2_UP](https://github.com/wickenzh/ESP32-S3-RLCD-4.2_UP)：OTA 固件镜像仓库，可查看可用固件及版本信息。
 - [在线上位机](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/)：配置资源、转换图片/GIF、校验并烧录固件、查看串口日志；[源码与说明](host_web/README.md)。
-- [旧上位机仓库](https://github.com/wickenzh/ESP32-S3-RLCD-4.2_Web)：保留历史与旧站点，后续开发统一在本仓库进行。
 
 ## 源码目录
 
