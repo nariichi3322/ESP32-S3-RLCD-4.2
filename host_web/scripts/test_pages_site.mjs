@@ -42,13 +42,13 @@ try {
   const prefix = 'weather-clock-unified:/ESP32-S3-RLCD-4.2/sw.js:';
   const context = { self: { location: { pathname: '/ESP32-S3-RLCD-4.2/sw.js' },
     addEventListener: (name, handler) => { handlers[name] = handler; }, clients: { claim() {} } },
-    caches: { keys: async () => ['weather-clock-host-v43', prefix + 'v43', prefix + 'v44'],
+    caches: { keys: async () => ['weather-clock-host-v43', prefix + 'old', vm.runInNewContext('CACHE_NAME', context)],
       delete: async key => { deleted.push(key); } } };
   vm.runInNewContext(await readFile(new URL('../sw.js', import.meta.url), 'utf8'), context);
   let complete;
   handlers.activate({ waitUntil: promise => { complete = promise; } });
   await complete;
-  assert.deepEqual(deleted, [prefix + 'v43']);
+  assert.deepEqual(deleted, [prefix + 'old']);
   console.log('Pages mirror and cache isolation tests passed');
 } finally {
   await rm(directory, { recursive: true, force: true });

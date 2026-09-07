@@ -64,6 +64,8 @@ The browser app builds the header, entry table, payload, header CRC32, payload C
 
 ## Current UI
 
+Version v0.0.27 uses a default dark desktop theme. Validate at 1440x900 and 1024x768; mobile is not a supported acceptance target per the user's scope. Keep preview pixels unchanged: light canvas backgrounds represent device output, not missing dark styling. Keep hover geometry stable, visible keyboard focus, reduced-motion support, and table overflow inside its own wrapper. Business code in app.js is unchanged by this theme update. The isolated Service Worker cache suffix is v45; its prefix and cleanup ownership remain unchanged.
+
 The app has five tabs:
 
 - `资源制作`: Primary tab and default view. Handles GIF and still-image conversion.
@@ -76,7 +78,7 @@ Do not reintroduce Wi-Fi provisioning, default AP/IP panels, device info sidebar
 
 All baud-rate selectors currently default to `115200`.
 
-Update the footer version in `index.html` on every user-visible development change.
+Update the displayed web version in `index.html` on every user-visible development change; do not change the firmware version for web-only updates.
 
 ## GitHub Pages Preview
 
