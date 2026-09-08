@@ -41,7 +41,7 @@ Core goals:
 - **Stability first:** OTA, audio, display, and network tasks use explicit state and resource guards.
 - **Maintainable structure:** pages, weather, configuration, audio, sensors, OTA, and Xiaozhi AI are maintained by responsibility.
 
-## Seven Work Pages
+## Eight Work Pages
 
 The default order is shown below. Pages can be disabled or reordered in Settings, while the firmware always keeps at least one work page enabled.
 
@@ -52,6 +52,9 @@ The default order is shown below. Pages can be disabled or reordered in Settings
 5. **Calendar:** current-month calendar, lunar dates, festivals, and today highlighting; six-row months keep the current date visible.
 6. **Temperature/Humidity History:** local temperature and humidity history with trend information.
 7. **Xiaozhi AI:** local wake word, voice conversations, captions, spoken replies, one-shot alarms, Pomodoro timers, and weather-city configuration.
+8. **Aggregate Clock:** second-level time, current weather and daily high/low, Gregorian day number and lunar month/day, plus local temperature/humidity in stippled gray panels with bold digits.
+
+Aggregate Clock is appended to the default order and can be disabled or reordered. It shares hourly weather data and existing sensor sampling (every minute by day, every two minutes at night). Only changing time digits redraw. Upgrading preserves page settings without a factory reset. Offline mode disables this network-dependent page.
 
 Every page follows a partial-refresh-first policy. Second-level pages update only changing digits, minute-level pages redraw only when time, data, or visible state changes, and hidden pages do not continue unnecessary rendering.
 
@@ -66,7 +69,7 @@ Initial configuration is completed through the device setup portal:
 
 Network activity is demand-driven:
 
-- Weather Clock and Weather Board request weather only when the page is enabled and data is missing or due for synchronization.
+- Weather Clock, Weather Board, and Aggregate Clock share cached weather with hourly and missing-data updates; startup prefetch for enabled pages is staggered.
 - Picture Clock requests the daily saying only when needed.
 - NTP runs during startup, manual synchronization, and scheduled time-maintenance points.
 - OTA, Network Diagnostics, and manual synchronization run only after explicit user actions.
@@ -111,11 +114,11 @@ The standalone [Power Demo](docs/Power%20Demo/README.md) under `docs/Power Demo/
 
 ## Source Layout
 
-- `main/`: application entry point and firmware business modules.
-- `components/`: board support, display, audio, resources, and third-party components.
-- `partitions.csv`: ESP32-S3 partition table.
-- `CMakeLists.txt`: ESP-IDF project entry point.
-- `sdkconfig.defaults`: default project configuration.
+- `RLCD_CLOCK/main/`: application entry point and firmware business modules.
+- `RLCD_CLOCK/components/`: board support, display, audio, resources, and third-party components.
+- `RLCD_CLOCK/partitions.csv`: ESP32-S3 partition table.
+- `RLCD_CLOCK/CMakeLists.txt`: ESP-IDF project entry point.
+- `RLCD_CLOCK/sdkconfig.defaults`: default project configuration.
 - `docs/`: user guides and the standalone Power Demo.
 - `previews/`: every detailed SDL page preview and the generated contact sheets.
 - `.github/`: public firmware build and source-release workflow.

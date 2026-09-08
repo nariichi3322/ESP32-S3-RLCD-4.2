@@ -2,7 +2,7 @@
 
 The Aggregate Clock date panel shows the Gregorian day number and the lunar month/day, including leap months. Single-digit dates have no leading zero. Upgrading preserves the existing page settings and appends the new page; no factory reset is required.
 
-The local test build adds an Aggregate Clock page: hours/minutes/seconds, today's weather, date/lunar day, and local temperature/humidity. It is appended to the page order and can be toggled or reordered in Display settings. Weather shares the existing hourly cache; sensor sampling remains every minute by day and every two minutes at night. Offline mode disables this network-dependent page. Static black-and-white patterns simulate gray backgrounds.
+Version v1.6.0 adds an Aggregate Clock page: hours/minutes/seconds, today's weather, date/lunar day, and local temperature/humidity. It is appended to the page order and can be toggled or reordered in Display settings. Weather shares the existing hourly cache; sensor sampling remains every minute by day and every two minutes at night. Offline mode disables this network-dependent page. Static black-and-white patterns simulate gray backgrounds.
 
 Web client: [open the browser tool](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/). Firmware and web client sources now share one repository, under `RLCD_CLOCK/` and `host_web/`. The previous web site remains available. This repository migration does not require reflashing or resetting device settings.
 
@@ -65,7 +65,7 @@ Depending on the page, the status area shows date, weekday, battery, Wi-Fi, remi
 - Enabling offline mode or restoring factory settings still cancels pending manual synchronization, diagnostics, and OTA requests before networking is stopped or configuration is reset. This maintenance does not change any user-visible result or confirmation flow.
 - **Battery icon:** shows the shared battery state on all eight work pages while refreshing only the visible page. During detected charging it blinks on whole-second boundaries. The hardware has no dedicated CHG/VBUS input, so plug/unplug detection based on ADC voltage trends can be delayed briefly.
 - Page rendering, charging animation, and low-power scheduling reuse one battery snapshot per UI loop, reducing idle overhead without changing sampling intervals, icons, or controls.
-- **Day-progress strip:** shared by all seven pages. Its 60 segments each represent about 24 minutes and refresh only on page entry or when crossing a new segment.
+- **Day-progress strip:** shared by all eight pages. Its 60 segments each represent about 24 minutes and refresh only on page entry or when crossing a new segment.
 - Every page uses the same internal drawing and boundary rules for this strip. A changed segment is written to the shared canvas buffer as one batch and only that segment is refreshed. Segment count, placement, refresh timing, and visible behavior remain unchanged.
 
 The display favors partial refreshes. Second-level pages redraw only changing digits or small regions; low-frequency pages wait until the next minute, date, sensor, or network-data change before waking for an update.
@@ -76,11 +76,11 @@ Sound, Wi-Fi, and alarm icon changes no longer reprocess an unchanged sensor sna
 
 The firmware still tracks display refresh behavior internally, but a normal minute window containing only partial refreshes no longer emits a periodic diagnostic log. A diagnostic is written only when a full-screen refresh occurred; page content and refresh timing are unchanged.
 
-## 3. Seven Work Pages
+## 3. Eight Work Pages
 
 Press **BOOT** to follow the saved page order. Disabled pages are skipped. Every page can be disabled, but the device prevents disabling the final enabled page.
 
-The seven page identities now share one internal definition across display, storage, and tests. This maintenance does not change the saved order, page switches, controls, or upgrade data.
+The eight page identities now share one internal definition across display, storage, and tests. This maintenance does not change the saved order, page switches, controls, or upgrade data.
 
 ### 3.1 Weather Clock
 
@@ -177,6 +177,15 @@ Provides local wake-word detection, voice conversations, on-screen transcripts, 
 - Xiaozhi reply queues and playback tasks still run only during a conversation. Their small control metadata now reuses fixed storage to reduce internal-heap fragmentation across repeated conversations without changing page-exit cleanup.
 - The intermediate wake-word and speech-processing queue, plus the two recognition tasks' small control blocks, reuse fixed storage. Their larger task stacks still exist only while the Xiaozhi page is active and are released on exit. Leaving the page still stops the microphone, recognition tasks, and audio hardware; fixed control metadata does not mean the device keeps listening.
 - This page consumes substantially more power and warms the PCB, which may make the onboard temperature/humidity reading higher than the surrounding air.
+
+### 3.8 Aggregate Clock
+
+Combines second-level time, current weather and daily high/low, Gregorian day number, lunar month/day, and local temperature/humidity. It is appended to the default page order and supports toggling and reordering in Display settings.
+
+- Only changed time blocks redraw. The date updates on date changes, without a leading zero.
+- Weather shares hourly caching and missing-data requests, without retrying solely because air-quality data is absent.
+- Local sampling runs every minute from 06:00 to 21:59 and every two minutes from 22:00 to 05:59. Hidden pages stop drawing while necessary background sampling continues.
+- Offline mode disables this page. Upgrading appends it while preserving existing settings; no NVS erase is needed.
 
 ## 4. Setup Portal
 
@@ -662,7 +671,7 @@ The SDL weather-clock preview now maintains its time, weather, sensor, GIF, aler
 
 Internal work-page order validation and enabled-page lookup are now maintained by a separate pure policy, while the runtime page catalog remains the sole owner of page names, switches, and user order. Default order, Settings controls, BOOT page switching, disabled-page skipping, offline mode, and NVS data formats are unchanged; no user reconfiguration is required.
 
-The seven page names, Settings mapping, network requirements, and minute-level low-refresh classification now come from one internal page description table. The default page order remains an independently checked user-facing policy. This reduces the chance that a future page is added to Settings but omitted from offline or power-saving rules without tying future default-order changes to page IDs. The current page order, labels, refresh timing, controls, and saved configuration are unchanged.
+The eight page names, Settings mapping, network requirements, and minute-level low-refresh classification now come from one internal page description table. The default page order remains an independently checked user-facing policy. This reduces the chance that a future page is added to Settings but omitted from offline or power-saving rules without tying future default-order changes to page IDs. The current page order, labels, refresh timing, controls, and saved configuration are unchanged.
 
 Weather and Daily Saying data requirements for Weather Clock, Weather Board, and Gallery Clock now also come from that single internal page description table. On-demand visible-page refresh and staggered startup prefetch share the same rule, reducing the risk of unnecessary Wi-Fi activation or missed data after future maintenance. Current synchronization timing, traffic, page switches, offline restrictions, and displayed content are unchanged.
 
