@@ -88,7 +88,6 @@ async function copyStaticSite() {
     await cp(path.join(SOURCE_ROOT, name), path.join(OUTPUT_ROOT, name), { recursive: true });
   }
   await mkdir(path.join(OUTPUT_ROOT, "firmware"), { recursive: true });
-  await cp(path.join(SOURCE_ROOT, "firmware/manifest.example.json"), path.join(OUTPUT_ROOT, "firmware/manifest.example.json"));
 }
 
 async function buildFirmwareMirror() {

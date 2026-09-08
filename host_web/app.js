@@ -48,7 +48,6 @@ let writer;
 let keepReading = false;
 let receivedBytes = 0;
 let deferredInstallPrompt;
-let installerScriptLoaded = false;
 let convertedGif;
 let convertedImages = [];
 let generatedAssetPackage;
@@ -1117,8 +1116,10 @@ function buildAssetPackage() {
   }
   $("#downloadAssetsBtn").disabled = false;
   updateAssetWriteButtons();
-  $("#assetWriteState").textContent = `资源包已生成：${formatBytes(totalSize)}，请进行资源写入`;
-  $("#assetResult").textContent = `资源包已生成：${entries.length} 个资源，${formatBytes(totalSize)}。请切换到“资源写入”，选择设备并读取分区表后写入。`;
+  $("#assetResult").textContent = `资源包已生成：${entries.length} 个资源，${formatBytes(totalSize)}。已准备好进行资源写入；也可在此下载 BIN 留存。`;
+  activateTab("writer");
+  $("#assetWriteState").textContent = `资源包已就绪：${formatBytes(totalSize)}。下一步：① 选择并核对设备，再点击② 串口写入资源。`;
+  $("#selectAssetDeviceBtn").focus();
 }
 
 function downloadBlob(blob, filename) {
@@ -1945,33 +1946,14 @@ async function writeFirmware() {
   }
 }
 
-async function loadInstaller() {
-  const mount = $("#installerMount");
-  if (!installerScriptLoaded) {
-    await new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.type = "module";
-      script.src = "./vendor/esp-web-tools/10.0.1/install-button.js";
-      script.onload = resolve;
-      script.onerror = () => reject(new Error("烧录器组件加载失败，请确认本地依赖完整。"));
-      document.head.appendChild(script);
-    });
-    installerScriptLoaded = true;
-  }
-  mount.textContent = "";
-  const button = document.createElement("esp-web-install-button");
-  button.setAttribute("manifest", "./firmware/manifest.json");
-  mount.appendChild(button);
+function activateTab(tabId) {
+  $$(".tab").forEach((tab) => tab.classList.toggle("is-active", tab.dataset.tab === tabId));
+  $$(".tab-panel").forEach((panel) => panel.classList.toggle("is-active", panel.id === tabId));
 }
 
 function bindTabs() {
   $$(".tab").forEach((tab) => {
-    tab.addEventListener("click", () => {
-      $$(".tab").forEach((item) => item.classList.remove("is-active"));
-      $$(".tab-panel").forEach((panel) => panel.classList.remove("is-active"));
-      tab.classList.add("is-active");
-      $(`#${tab.dataset.tab}`).classList.add("is-active");
-    });
+    tab.addEventListener("click", () => activateTab(tab.dataset.tab));
   });
 }
 
@@ -2150,6 +2132,3 @@ $("#firmwareInput").addEventListener("change", () => {
     : firmwareTargetHint(target);
 });
 $("#writeFirmwareBtn").addEventListener("click", writeFirmware);
-$("#loadInstallerBtn").addEventListener("click", () => {
-  loadInstaller().catch((error) => { $("#flashResult").textContent = error.message; });
-});

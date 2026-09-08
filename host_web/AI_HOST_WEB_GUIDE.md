@@ -64,6 +64,10 @@ The browser app builds the header, entry table, payload, header CRC32, payload C
 
 ## Current UI
 
+Web v0.0.29 / cache v47 removes the ESP Web Tools fallback entry, loader, bundled dependency and example manifest. Main esptool-js flashing remains. Number only primary steps: resource creation 1 select, 2 convert, 3 build (BIN download optional); resource writing 1 inspect device, 2 write; firmware 1 source/version, 2 inspect partitions, 3 download/verify or select custom file, 4 flash. Refresh and clearing are unnumbered alternatives, never required steps.
+
+Successful WCA1 generation activates the writer tab and focuses its inspect-device button with next-step status text. Validation failures stay on the creation tab. This navigation never requests a serial port or starts writing automatically; users can return to creation to download the BIN.
+
 Version v0.0.27 uses a default dark desktop theme. Validate at 1440x900 and 1024x768; mobile is not a supported acceptance target per the user's scope. Keep preview pixels unchanged: light canvas backgrounds represent device output, not missing dark styling. Keep hover geometry stable, visible keyboard focus, reduced-motion support, and table overflow inside its own wrapper. Business code in app.js is unchanged by this theme update. The isolated Service Worker cache suffix is v45; its prefix and cleanup ownership remain unchanged.
 
 The app has five tabs, ordered as 资源制作, 资源写入, 固件烧录, 串口日志, 设置 since web v0.0.28 (isolated cache v46):
@@ -95,7 +99,6 @@ Do not add local HTTP/HTTPS preview servers back into `host_web/` unless the use
 - `index.html`: Static UI structure.
 - `styles.css`: Layout and visual styling.
 - `app.js`: All client-side conversion, package building, serial writing, and flashing logic.
-- `firmware/manifest.example.json`: Example ESP Web Tools manifest for dedicated Pages deployment.
 - `README.md`: User-facing usage/deployment summary.
 
 ## Known Constraints
@@ -110,7 +113,7 @@ Do not add local HTTP/HTTPS preview servers back into `host_web/` unless the use
 - Still image conversion applies a configurable edge fade before 1-bit packing. The default is 18 px and blends the four edges toward white so non-transparent image backgrounds do not leave a hard rectangle on the device screen.
 - The resource writer's erase action writes an erased 4 KB sector header (`0xFF`) at the actual `assets` address read from the device partition table, invalidating the custom asset package so firmware falls back to built-in resources after reset.
 - Web Serial and browser flashing need Chrome/Edge or another Chromium browser with serial support.
-- The serial writing path uses repository-local pinned copies of `esptool-js 0.5.6` and `esp-web-tools 10.0.1` under `host_web/vendor/`; do not replace them with runtime CDN imports. Preserve their license files and update the service-worker asset list whenever either version changes. `esptool-js` expects file data as a binary string, so `Uint8Array` payloads are converted before calling `writeFlash`.
+- The serial writing path uses a repository-local pinned copy of `esptool-js 0.5.6` under `host_web/vendor/`; do not replace it with runtime CDN imports. Preserve its license and update the service-worker asset list when changing versions. `esptool-js` expects file data as a binary string, so `Uint8Array` payloads are converted before calling `writeFlash`.
 - After `writeFlash`, the app explicitly pulses serial RTS/DTR signals to reset the ESP32-S3. Keep this behavior unless hardware reset wiring changes.
 - The resource writer must keep the partition-table preflight: read flash `0x8000..0x8FFF`, parse 32-byte ESP-IDF partition entries, and only enable resource write/erase after finding `assets` with type `data`, subtype `0x40`, and enough space for the generated resource package.
 - Firmware flashing uses GitHub Release assets from `wickenzh/ESP32-S3-RLCD-4.2` as the sole online source. GitHub's final Release asset CDN does not expose CORS headers for JavaScript byte access, so the page must never fetch Release binaries directly. `.github/workflows/static.yml` runs `scripts/build_pages_site.mjs` to mirror the latest 10 complete releases into the ephemeral Pages artifact, after checking size and GitHub asset `digest` (`sha256:...`); do not commit mirrored bin files to Git history. The deployed page reads same-origin `firmware/releases.json` and same-origin firmware bytes, then verifies size and SHA256 again in browser memory before enabling flashing. Online firmware remains fully automatic; only the separate custom-firmware source uses a file picker. Accept the merged asset only for the `0x0` target and the App asset only for dynamically discovered App targets.

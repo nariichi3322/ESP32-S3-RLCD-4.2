@@ -18,7 +18,7 @@
     </div>
     <div class="top-meta">
       <span>使用此服务需要 Edge 浏览器或 Chrome 浏览器。</span>
-      <span><b>v0.0.28</b> · <span id="cacheState">离线缓存准备中</span></span>
+      <span><b>v0.0.29</b> · <span id="cacheState">离线缓存准备中</span></span>
     </div>
     <div class="top-actions">
       <span id="serialSupport" class="status-pill">检测中</span>
@@ -46,15 +46,15 @@
           </div>
           <p id="summaryNote" class="summary-note">资源包可同时包含 GIF 动图和静图；写入设备后重启，固件会优先加载自定义资源。</p>
           <div class="summary-actions">
-            <button id="buildAssetsBtn" class="primary-button" type="button">生成资源包</button>
-            <button id="downloadAssetsBtn" class="secondary-button" type="button" disabled>下载 BIN</button>
+            <button id="buildAssetsBtn" class="primary-button" type="button">③ 生成资源包</button>
+            <button id="downloadAssetsBtn" class="secondary-button" type="button" disabled>下载 BIN（可选）</button>
           </div>
         </div>
         <div class="asset-grid">
           <div class="asset-card gif-asset-card">
             <h2>GIF 动图</h2>
             <label class="file-picker">
-              <span>只支持 GIF 文件</span>
+              <span>① 选择 GIF（只支持 GIF 文件）</span>
               <input id="gifInput" type="file" accept="image/gif">
             </label>
             <div class="mini-settings">
@@ -84,7 +84,7 @@
               <div><span>转换预览</span><canvas id="gifPreviewCanvas" width="84" height="84"></canvas></div>
             </div>
             <div class="action-strip">
-              <button id="previewGifBtn" class="primary-button" type="button">转换 GIF</button>
+              <button id="previewGifBtn" class="primary-button" type="button">② 转换 GIF</button>
               <button id="clearGifBtn" class="secondary-button" type="button">清除 GIF</button>
             </div>
           </div>
@@ -92,7 +92,7 @@
           <div class="asset-card image-asset-card">
             <h2>静图</h2>
             <label class="file-picker">
-              <span>支持 JPG / PNG / WebP / BMP 等图片</span>
+              <span>① 选择静图（JPG / PNG / WebP / BMP 等）</span>
               <input id="imageInput" type="file" accept="image/*" multiple>
             </label>
             <div class="mini-settings">
@@ -131,7 +131,7 @@
               </div>
             </div>
             <div class="action-strip">
-              <button id="previewImagesBtn" class="primary-button" type="button">转换静图</button>
+              <button id="previewImagesBtn" class="primary-button" type="button">② 转换静图</button>
               <button id="clearImagesBtn" class="secondary-button" type="button">清除静图</button>
             </div>
           </div>
@@ -201,8 +201,8 @@
               <option value="921600">921600</option>
             </select>
           </label>
-          <button id="selectAssetDeviceBtn" class="primary-button" type="button">选择并核对设备</button>
-          <button id="writeAssetsBtn" class="primary-button" type="button" disabled>串口写入资源</button>
+          <button id="selectAssetDeviceBtn" class="primary-button" type="button">① 选择并核对设备</button>
+          <button id="writeAssetsBtn" class="primary-button" type="button" disabled>② 串口写入资源</button>
           <button id="eraseAssetsBtn" class="secondary-button" type="button" disabled>清空资源分区</button>
         </div>
         <div class="device-panel">
@@ -239,20 +239,20 @@
       <section id="firmware" class="tab-panel">
         <div class="form-grid">
           <label>
-            <span>固件来源</span>
+            <span>① 固件来源</span>
             <select id="firmwareSource">
               <option value="remote" selected>GitHub Release</option>
               <option value="local">自定义固件文件</option>
             </select>
           </label>
           <label>
-            <span>在线固件</span>
+            <span>① 选择在线固件</span>
             <select id="remoteFirmwareSelect">
               <option value="">正在加载固件清单</option>
             </select>
           </label>
           <label class="wide-field file-picker">
-            <span>选择自定义 bin 文件</span>
+            <span>③ 选择自定义 bin 文件</span>
             <input id="firmwareInput" type="file" accept=".bin,application/octet-stream" disabled>
           </label>
           <label>
@@ -272,11 +272,10 @@
           </label>
         </div>
         <div class="action-strip">
-          <button id="selectFirmwareDeviceBtn" class="secondary-button" type="button">选择并读取分区表</button>
+          <button id="selectFirmwareDeviceBtn" class="secondary-button" type="button">② 选择并读取分区表</button>
           <button id="refreshFirmwareBtn" class="secondary-button" type="button">刷新在线固件</button>
-          <button id="downloadFirmwareBtn" class="secondary-button" type="button">下载并校验固件</button>
-          <button id="writeFirmwareBtn" class="primary-button" type="button" disabled>串口烧录固件</button>
-          <button id="loadInstallerBtn" class="secondary-button" type="button">网页烧录器备用入口</button>
+          <button id="downloadFirmwareBtn" class="secondary-button" type="button">③ 下载并校验固件</button>
+          <button id="writeFirmwareBtn" class="primary-button" type="button" disabled>④ 串口烧录固件</button>
         </div>
         <div class="device-panel">
           <div class="metrics writer-metrics">
@@ -302,7 +301,6 @@
             </table>
           </div>
         </div>
-        <div id="installerMount" class="installer-box">如浏览器串口烧录不可用，可加载 ESP Web Tools 备用入口。</div>
         <div class="progress-block">
           <div class="progress-head"><span id="firmwareWriteState">等待固件文件</span><strong id="firmwareWritePercent">0%</strong></div>
           <progress id="firmwareWriteProgress" value="0" max="100"></progress>
