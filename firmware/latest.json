@@ -1,7 +1,7 @@
 {
-  "version": "v1.5.41",
-  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.41/weather_clock_v1.5.41.bin",
-  "sha256": "20d7e5047890bf634a4e10aab003cb1953b18a7b9d2a0f2b8860891360f2cc48",
-  "size": 6266880,
-  "notes": "v1.5.41：共 2 项更新。\n1. 修复 RLCD 像素 LUT 初始化中的循环类型边界，避免极端显示尺寸下窄类型与宽类型…\n2. 修复 Bosch SensorLib 在大长度 FIFO 和 KLIO 模式列表下可能…\n完整说明见源码仓库同版本 Release。"
+  "version": "v1.6.0",
+  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.0/weather_clock_v1.6.0.bin",
+  "sha256": "67b00e2f571ab32ec0ae5f9c0cdefe10c711d60294934ed646b6471f7ad280eb",
+  "size": 6285968,
+  "notes": "v1.6.0：共 8 项更新。\n1. 新增“聚合时钟”页面，将秒级时间、当天天气、日期农历和本地温湿度集中显示，支持页面开关…\n2. 聚合时钟采用灰度点阵信息区、天气图标与温湿度图标，数字和农历加粗，单日日期不补零。\n3. 修复连续浏览多个页面后进入设置可能崩溃的问题，完善界面内存分配与低内存保护。\n4. 修复聚合时钟日期被裁切、冒号偏移及图标边缘异常，统一信息区留白和边界。\n5. 修正农历月份与日期的对应关系，并支持闰月显示。\n6. 补充时间画布申请失败后的恢复机制，避免时间区持续空白。\n其余 2 项见源码仓库同版本 Release。"
 }
