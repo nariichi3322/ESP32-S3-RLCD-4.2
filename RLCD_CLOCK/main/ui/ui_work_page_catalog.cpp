@@ -46,6 +46,8 @@ constexpr WorkPageDescriptor kWorkPageDescriptors[kWorkPageCount] = {
     {kWorkPageCalendar, "日历", kWorkPageTraitLowRefreshIdle},
     {kWorkPageHistory, "温湿历史", kWorkPageTraitLowRefreshIdle},
     {kWorkPageXiaozhiAI, "小智AI", kWorkPageTraitRequiresNetwork},
+    {kWorkPageAggregateClock, "聚合时钟", kWorkPageTraitRequiresNetwork |
+         kWorkPageTraitWeatherData | kWorkPageTraitExtendedWeatherData},
 };
 
 constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
@@ -56,6 +58,7 @@ constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
     kWorkPageCalendar,
     kWorkPageHistory,
     kWorkPageXiaozhiAI,
+    kWorkPageAggregateClock,
 };
 StaticTaskMutex s_work_page_order_mutex;
 uint8_t s_work_page_order[kWorkPageCount] = {
@@ -66,6 +69,7 @@ uint8_t s_work_page_order[kWorkPageCount] = {
     kWorkPageCalendar,
     kWorkPageHistory,
     kWorkPageXiaozhiAI,
+    kWorkPageAggregateClock,
 };
 constexpr const char *kUnknownWorkPageName = "未知页面";
 
@@ -264,6 +268,7 @@ WorkPageDataRequirements work_page_data_requirements(int page)
         work_page_has_trait(page, kWorkPageTraitWeatherData),
         work_page_has_trait(page, kWorkPageTraitExtendedWeatherData),
         work_page_has_trait(page, kWorkPageTraitDailySaying),
+        page == kWorkPageWeatherBoard,
     };
 }
 
@@ -274,6 +279,7 @@ WorkPageDataRequirements enabled_work_page_data_requirements(uint8_t page_mask)
         (page_mask & kWeatherDataWorkPageMask) != 0,
         (page_mask & kExtendedWeatherDataWorkPageMask) != 0,
         (page_mask & kDailySayingWorkPageMask) != 0,
+        (page_mask & work_page_mask(kWorkPageWeatherBoard)) != 0,
     };
 }
 

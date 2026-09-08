@@ -27,6 +27,7 @@ void expect_default_order()
         kWorkPageCalendar,
         kWorkPageHistory,
         kWorkPageXiaozhiAI,
+        kWorkPageAggregateClock,
     };
     uint8_t actual[kWorkPageCount] = {};
     assert(work_page_order_copy(actual, sizeof(actual)));
@@ -43,6 +44,7 @@ void expect_order_policy_boundaries()
         kWorkPageCalendar,
         kWorkPageHistory,
         kWorkPageXiaozhiAI,
+        kWorkPageAggregateClock,
     };
     assert(!work_page_order_policy::order_is_valid(nullptr, kWorkPageCount));
     assert(!work_page_order_policy::order_is_valid(default_order,
@@ -75,6 +77,7 @@ void expect_order_policy_boundaries()
         kWorkPageWeatherBoard,
         kWorkPageGallery,
         kWorkPageWeatherClock,
+        kWorkPageAggregateClock,
     };
     const uint8_t enabled = page_bit(kWorkPageXiaozhiAI) |
                             page_bit(kWorkPageHistory) |
@@ -125,6 +128,7 @@ void expect_order_policy_boundaries()
         kWorkPageCalendar,
         kWorkPageHistory,
         kWorkPageXiaozhiAI,
+        kWorkPageAggregateClock,
     };
     memcpy(swap_candidate, preserved_candidate, sizeof(swap_candidate));
     assert(!work_page_order_policy::swap_entries_preserving_home(
@@ -172,7 +176,7 @@ int main()
         "温湿时钟",
         "日历",
         "温湿历史",
-        "小智AI",
+        "小智AI", "聚合时钟",
     };
     const WorkPageDataRequirements expected_data[kWorkPageCount] = {
         {true, false, false},
@@ -182,6 +186,7 @@ int main()
         {false, false, false},
         {false, false, false},
         {false, false, false},
+        {true, true, false},
     };
     for (int page = 0; page < kWorkPageCount; ++page) {
         assert(strcmp(work_page_name(page), expected_names[page]) == 0);
@@ -237,13 +242,13 @@ int main()
     assert(!enabled_data.extended_weather);
     assert(enabled_data.daily_saying);
     enabled_data = enabled_work_page_data_requirements(
-        page_bit(kWorkPageCalendar) | 0x80);
+        page_bit(kWorkPageCalendar));
     assert(!enabled_data.weather);
     assert(!enabled_data.extended_weather);
     assert(!enabled_data.daily_saying);
     assert(normalize_work_page_enabled_mask(all_pages) == all_pages);
     assert(normalize_work_page_enabled_mask(0) == all_pages);
-    assert(normalize_work_page_enabled_mask(0x80) == all_pages);
+    assert(normalize_work_page_enabled_mask(0x80) == 0x80);
     assert(normalize_work_page_enabled_mask(page_bit(kWorkPageXiaozhiAI)) ==
            (page_bit(kWorkPageWeatherClock) | page_bit(kWorkPageXiaozhiAI)));
     assert(normalize_work_page_enabled_mask(page_bit(kWorkPageCalendar) |
@@ -270,6 +275,7 @@ int main()
         kWorkPageWeatherBoard,
         kWorkPageGallery,
         kWorkPageWeatherClock,
+        kWorkPageAggregateClock,
     };
     work_page_order_replace(xiaozhi_first, sizeof(xiaozhi_first));
     uint8_t normalized[kWorkPageCount] = {};
@@ -298,6 +304,7 @@ int main()
     const uint8_t invalid_order[kWorkPageCount] = {
         kWorkPageWeatherClock,
         kWorkPageWeatherClock,
+        kWorkPageAggregateClock,
     };
     work_page_order_replace(invalid_order, sizeof(invalid_order));
     expect_default_order();
@@ -310,6 +317,7 @@ int main()
         kWorkPageCalendar,
         kWorkPageHistory,
         kWorkPageXiaozhiAI,
+        kWorkPageAggregateClock,
     };
     const uint8_t alternate_order[kWorkPageCount] = {
         kWorkPageHistory,
@@ -319,6 +327,7 @@ int main()
         kWorkPageGallery,
         kWorkPageWeatherClock,
         kWorkPageXiaozhiAI,
+        kWorkPageAggregateClock,
     };
     work_page_enabled_mask_store(all_pages);
     std::atomic<bool> writer_done{false};

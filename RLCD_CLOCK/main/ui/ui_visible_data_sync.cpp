@@ -136,6 +136,7 @@ ActiveWorkPageState active_work_page_state_for_mode(int active_page,
     state.weather_board = normal_mode && active_page == kWorkPageWeatherBoard;
     state.flip_clock = normal_mode && active_page == kWorkPageFlipClock;
     state.xiaozhi = normal_mode && active_page == kWorkPageXiaozhiAI;
+    state.aggregate_clock = normal_mode && active_page == kWorkPageAggregateClock;
     // Low-battery and setup overlays historically retain the weather clock as
     // their active base page; keep that distinction outside normal-page gates.
     state.weather_clock = active_page == kWorkPageWeatherClock;
@@ -164,7 +165,8 @@ void update_visible_weather_sync(const ActiveWorkPageState &state,
     const bool weather_ready = weather_ready_state_load();
     bool details_missing = state.uses_extended_weather_data &&
                            cache_status &&
-                           !cache_status->extended_data_ready;
+                           !(state.aggregate_clock ? cache_status->forecast_data_ready
+                                                   : cache_status->extended_data_ready);
     bool cache_fresh = weather_ready &&
                        cache_status &&
                        !weather_cache_stale(now, *cache_status) &&

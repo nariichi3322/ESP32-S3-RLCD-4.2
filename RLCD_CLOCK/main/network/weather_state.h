@@ -17,6 +17,7 @@ struct WeatherCacheStatusSnapshot {
     time_t last_sync_time = 0;
     uint32_t version = 0;
     bool extended_data_ready = false;
+    bool forecast_data_ready = false;
 };
 
 // 读取失败时返回 false，并保留调用方已有输出，便于 UI 继续显示上一份有效缓存。

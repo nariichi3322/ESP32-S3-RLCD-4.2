@@ -10,6 +10,7 @@ struct WorkPageDataRequirements {
     bool weather = false;
     bool extended_weather = false;
     bool daily_saying = false;
+    bool air_quality = false;
 };
 
 bool is_work_page_enabled(int page);

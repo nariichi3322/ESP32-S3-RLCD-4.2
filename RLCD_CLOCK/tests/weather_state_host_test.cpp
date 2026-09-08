@@ -111,6 +111,7 @@ int main()
     assert(cache_status.last_sync_time == 0);
     assert(cache_status.version == 0);
     assert(!cache_status.extended_data_ready);
+    assert(!cache_status.forecast_data_ready);
     assert(init_weather_state());
     assert(init_weather_state());
     assert(g_weather_mutex_create_count.load() == 1);
@@ -141,6 +142,7 @@ int main()
     assert(cache_status.last_sync_time > 0);
     assert(cache_status.version == alert_status.version);
     assert(cache_status.extended_data_ready);
+    assert(cache_status.forecast_data_ready);
 
     char alert_title[kWeatherAlertTitleLen] = {};
     assert(get_weather_alert_title_snapshot(-1,

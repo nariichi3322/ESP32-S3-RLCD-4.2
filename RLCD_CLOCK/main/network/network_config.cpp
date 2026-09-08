@@ -36,7 +36,7 @@ using network_config_nvs::commit_nvs_if_changed;
 using network_config_nvs::ScopedNvsHandle;
 using network_config_nvs::write_changed_nvs_string;
 using network_config_nvs::write_changed_nvs_u8;
-using network_page_storage::kPageMaskV5Key;
+using network_page_storage::kPageMaskV6Key;
 using network_config_keys::kQweatherApiHostKey;
 using network_config_keys::kOfflineModeKey;
 using network_config_keys::kWeatherApiKeyKey;
@@ -116,7 +116,7 @@ bool set_offline_mode_enabled(bool enabled)
     bool page_mask_changed = false;
     err = write_changed_nvs_u8(nvs.get(), err, kOfflineModeKey, next_value, &offline_changed);
     if (enabled) {
-        err = write_changed_nvs_u8(nvs.get(), err, kPageMaskV5Key, next_page_mask, &page_mask_changed);
+        err = write_changed_nvs_u8(nvs.get(), err, kPageMaskV6Key, next_page_mask, &page_mask_changed);
     }
     err = commit_nvs_if_changed(nvs.get(), err, offline_changed || page_mask_changed);
     if (!nvs.close_save_ok(err)) {

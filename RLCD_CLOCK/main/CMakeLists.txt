@@ -1,6 +1,8 @@
 # 固件主组件的源码清单和构建依赖配置。
 idf_component_register(
     SRCS
+        "ui/ui_aggregate_clock.cpp"
+        "ui/ui_aggregate_clock_view.cpp"
         "core/main.cpp"
         "core/app_task_startup.cpp"
         "core/app_metadata.cpp"
@@ -205,6 +207,7 @@ idf_component_register(
         "assets/qweather_icons_36.c"
         "assets/zh_font_16.c"
         "assets/zh_flip_lunar_22.c"
+        "assets/aggregate_numeric_20.c"
         "assets/zh_pomodoro_title_24.c"
     INCLUDE_DIRS
         "."

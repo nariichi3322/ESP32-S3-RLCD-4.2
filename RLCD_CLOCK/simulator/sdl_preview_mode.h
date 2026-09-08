@@ -23,11 +23,12 @@ struct Selection {
     bool calendar = false;
     bool weather_board = false;
     bool info = false;
+    bool aggregate_clock = false;
 
     bool alternate_work_page() const
     {
         return history || gallery || flip_clock || xiaozhi || calendar ||
-               weather_board || info;
+               weather_board || info || aggregate_clock;
     }
 };
 
@@ -41,6 +42,7 @@ inline Selection selection_for(const char *mode)
         is(mode, "calendar"),
         is(mode, "weather_board"),
         is(mode, "info"),
+        is(mode, "aggregate_clock"),
     };
 }
 

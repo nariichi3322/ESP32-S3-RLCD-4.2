@@ -199,6 +199,8 @@ bool weather_cache_status_snapshot_load(WeatherCacheStatusSnapshot *out)
         s_weather_alert_status.load(std::memory_order_acquire));
     out->extended_data_ready =
         weather_snapshot_store_extended_ready(s_weather_store);
+    out->forecast_data_ready = s_weather_store.forecast.ready &&
+        s_weather_store.forecast.count > 0 && s_weather_store.forecast.days[0].valid;
     return true;
 }
 

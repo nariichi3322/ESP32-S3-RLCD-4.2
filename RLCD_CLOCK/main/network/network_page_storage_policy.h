@@ -30,13 +30,14 @@ inline bool migrate_v4_page_order(const uint8_t *legacy_order,
     }
     memcpy(current_order, legacy_order, legacy_order_size);
     current_order[kWorkPageXiaozhiAI] = kWorkPageXiaozhiAI;
+    current_order[kWorkPageAggregateClock] = kWorkPageAggregateClock;
     return true;
 }
 
 static_assert(kWorkPageXiaozhiAI == static_cast<int>(kLegacyV4WorkPageCount),
               "v5 migration expects Xiaozhi AI after every v4 page");
-static_assert(kWorkPageCount == kWorkPageXiaozhiAI + 1,
-              "v5 migration expects Xiaozhi AI to be the final work page");
+static_assert(kWorkPageCount == kWorkPageAggregateClock + 1,
+              "v6 migration expects aggregate clock to be the final page");
 static_assert((kLegacyV4KnownPageMask & (1U << kWorkPageXiaozhiAI)) == 0,
               "v4 mask must not contain the Xiaozhi AI page");
 } // namespace network_page_storage

@@ -1,5 +1,6 @@
 // 组合刷新当前工作页的时间、正文、全天进度和天气预警。
 #include "ui_work_page_update.h"
+#include "ui_aggregate_clock.h"
 
 #include "sensor_time.h"
 #include "ui_clock_alert_state.h"
@@ -24,6 +25,9 @@ bool update_visible_work_page_body(const struct tm &local,
                                    const ActiveWorkPageState &state)
 {
     bool changed = false;
+    if (state.aggregate_clock) {
+        changed |= update_aggregate_clock_page(local);
+    }
     if (state.history) {
         changed |= update_history_page(local);
     }
@@ -145,6 +149,7 @@ bool update_active_work_page_content(const struct tm &local,
     changed |= update_active_work_page_invalid_time_labels(
         active_page,
         low_battery_mode || setup_portal_active);
+    if (state.aggregate_clock) changed |= update_aggregate_clock_page(local);
     invalidate_clock_date_draw_cache();
     update_alert_pill(false,
                       0,

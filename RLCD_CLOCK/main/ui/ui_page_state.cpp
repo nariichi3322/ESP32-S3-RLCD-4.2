@@ -1,5 +1,6 @@
 // 管理页面根对象、可见性、工作页顺序和低电量显示状态。
 #include "ui_page_state.h"
+#include "ui_aggregate_clock.h"
 
 #include "active_work_page_state_internal.h"
 #include "app_display_config.h"
@@ -72,6 +73,9 @@ lv_obj_t *build_work_page_root(int page)
         break;
     case kWorkPageXiaozhiAI:
         build_xiaozhi_page();
+        break;
+    case kWorkPageAggregateClock:
+        build_aggregate_clock_page();
         break;
     default:
         return work_page_root(kFallbackWorkPage);

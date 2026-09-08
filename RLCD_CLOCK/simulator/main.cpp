@@ -11,6 +11,8 @@
 #include "sdl_preview_calendar.h"
 #include "sdl_preview_clock.h"
 #include "sdl_preview_flip_clock.h"
+#include "ui_aggregate_clock_view.h"
+#include "qweather_icons.h"
 #include "sdl_preview_gallery.h"
 #include "sdl_preview_history.h"
 #include "sdl_preview_mode.h"
@@ -28,7 +30,7 @@ using sdl_preview_widgets::make_label_with_font;
 static constexpr int kDisplayWidth = 400;
 static constexpr int kDisplayHeight = 300;
 static constexpr int kWindowScale = 2;
-static const char *APP_VERSION = "v1.5.41";
+static const char *APP_VERSION = "v1.6.0";
 
 static SdlPreviewBackend g_sdl_preview(kDisplayWidth, kDisplayHeight);
 static sdl_preview_progress::Canvas g_work_page_day_progress;
@@ -155,6 +157,33 @@ static void build_flip_clock_preview_ui()
     build_flip_clock_preview_body(screen, &local);
 }
 
+static void build_aggregate_clock_preview_ui()
+{
+    lv_obj_t *screen=lv_scr_act();
+    lv_obj_clean(screen);
+    lv_obj_set_style_bg_color(screen,lv_color_white(),0);
+    lv_obj_clear_flag(screen,LV_OBJ_FLAG_SCROLLABLE);
+    time_t now=preview_time(); struct tm local={}; localtime_r(&now,&local);
+    g_work_status.build(screen,local,false,false); g_work_status.update_date(local);
+    make_black_bar(screen,18,54,364,4);
+    g_work_page_day_progress.build_day(screen,local,59);
+    static lv_color_t pixels[3][kAggregateDigitWidth*kAggregateDigitHeight];
+    lv_color_t *buffers[3]={pixels[0],pixels[1],pixels[2]};
+    static AggregateClockView view;
+    aggregate_clock_view_build(screen,view,buffers);
+    aggregate_clock_view_time(view,local.tm_hour,local.tm_min,local.tm_sec);
+    aggregate_clock_set_text(view.city,"杭州");
+    aggregate_clock_set_text(view.weather,"多云");
+    aggregate_clock_set_text(view.icon,weather_icon_text("101").c_str());
+    aggregate_clock_set_text(view.temperature,"26 C");
+    aggregate_clock_set_text(view.range,"最高 29 C  最低 22 C");
+    aggregate_clock_set_text(view.day,"8");
+    aggregate_clock_set_text(view.month,"五月");
+    aggregate_clock_set_text(view.lunar,"初八");
+    aggregate_clock_set_text(view.local_temp,"25.6 C");
+    aggregate_clock_set_text(view.humidity,"58%");
+}
+
 static void build_xiaozhi_preview_ui(const char *preview_mode)
 {
     lv_obj_t *screen = lv_scr_act();
@@ -265,6 +294,8 @@ static sdl_preview_mode::Selection build_selected_preview(const char *preview_mo
         build_history_preview_ui();
     } else if (selection.gallery) {
         build_gallery_preview_ui();
+    } else if (selection.aggregate_clock) {
+        build_aggregate_clock_preview_ui();
     } else if (selection.flip_clock) {
         build_flip_clock_preview_ui();
     } else if (selection.xiaozhi) {

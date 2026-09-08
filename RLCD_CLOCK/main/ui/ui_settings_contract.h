@@ -2,7 +2,7 @@
 #pragma once
 
 inline constexpr int kSettingsPrimaryCount = 4;
-inline constexpr int kSettingsSecondaryMaxCount = 7;
+inline constexpr int kSettingsSecondaryMaxCount = 8;
 inline constexpr int kSettingsLabelCount =
     kSettingsPrimaryCount + kSettingsSecondaryMaxCount;
 

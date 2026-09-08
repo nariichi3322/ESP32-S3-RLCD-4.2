@@ -5,6 +5,15 @@
 #include <esp_err.h>
 #include <esp_log.h>
 #include <esp_heap_caps.h>
+#include "lvgl_memory_pool.h"
+#include <esp_attr.h>
+#include <assert.h>
+
+alignas(8) static EXT_RAM_BSS_ATTR uint8_t s_lvgl_pool[256 * 1024];
+extern "C" void *weather_clock_lvgl_pool(size_t size) {
+    assert(size == sizeof(s_lvgl_pool));
+    return s_lvgl_pool;
+}
 #include <esp_timer.h>
 #include <limits>
 #include "lvgl_bsp.h"

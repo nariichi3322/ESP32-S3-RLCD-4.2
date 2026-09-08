@@ -95,6 +95,7 @@ void show_network_diag_aux_page(
 void show_settings_aux_page(VisibleAuxiliaryPage &visible_auxiliary_page)
 {
     build_settings_page();
+    if (!auxiliary_page_root(AuxiliaryPage::kSettings)) return;
     show_page(auxiliary_page_root(AuxiliaryPage::kSettings));
     visible_auxiliary_page = VisibleAuxiliaryPage::kSettings;
 }

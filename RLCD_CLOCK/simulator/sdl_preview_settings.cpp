@@ -158,9 +158,9 @@ void build_settings_preview_page(const char *mode)
     if (settings_preview_mode_is(mode, "settings_order")) {
         static const char *order_items[] = {
             "1 天气时钟", "2 图片时钟", "3 天气看板",
-            "4 温湿时钟", "5 日历", "6 温湿历史", "7 小智AI",
+            "4 温湿时钟", "5 日历", "6 温湿历史", "7 小智AI", "8 聚合时钟",
         };
-        for (int i = 0; i < 7; ++i) {
+        for (int i = 0; i < 8; ++i) {
             settings_layout::GridCell cell = settings_layout::settings_grid_cell(i);
             make_settings_grid_item(screen, cell.x, cell.y, order_items[i], i == 3);
         }
@@ -199,9 +199,9 @@ void build_settings_preview_page(const char *mode)
     } else if (settings_preview_mode_is(mode, "settings_pages")) {
         static const char *display_items[] = {
             "天气时钟", "图片时钟", "天气看板",
-            "温湿时钟", "日历", "温湿历史", "小智AI",
+            "温湿时钟", "日历", "温湿历史", "小智AI", "聚合时钟",
         };
-        for (int i = 0; i < 7; ++i) {
+        for (int i = 0; i < 8; ++i) {
             settings_layout::GridCell cell = settings_layout::settings_grid_cell(i);
             make_settings_grid_item(screen, cell.x, cell.y, display_items[i], i == 2, "开");
         }

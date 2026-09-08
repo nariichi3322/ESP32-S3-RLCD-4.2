@@ -1,5 +1,6 @@
 // 集中清理工作页、辅助页对象引用和对应绘制缓存。
 #include "ui_object_refs.h"
+#include "ui_aggregate_clock.h"
 
 #include "ui_aux_pages.h"
 #include "ui_battery.h"
@@ -51,6 +52,7 @@ void clear_clock_object_refs()
     clear_weather_clock_refs();
     clear_flip_clock_object_refs();
     clear_xiaozhi_page_object_refs();
+    clear_aggregate_clock_refs();
     clear_work_page_day_progress_refs();
     clear_work_page_battery_refs();
     clear_history_object_refs();

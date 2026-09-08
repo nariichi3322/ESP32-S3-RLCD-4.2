@@ -122,12 +122,15 @@ static void finish_ntp_attempt(bool succeeded,
 }
 
 static bool weather_cache_complete_for_current_hour(time_t now,
-                                                    bool require_extended_weather)
+                                                    bool require_extended_weather,
+                                                    bool require_air)
 {
     WeatherCacheStatusSnapshot snapshot;
     return weather_cache_status_snapshot_load(&snapshot) &&
            network_weather_cache_current_hour(now, snapshot.last_sync_time) &&
-           (!require_extended_weather || snapshot.extended_data_ready);
+           (!require_extended_weather ||
+            (require_air ? snapshot.extended_data_ready
+                                                       : snapshot.forecast_data_ready));
 }
 
 static bool saying_cache_current_day(time_t now)
@@ -157,7 +160,7 @@ static void reconcile_automatic_boot_refreshes(
     const bool weather_cache_current =
         runtime.boot_refresh.weather_due &&
         weather_cache_complete_for_current_hour(now,
-                                                pages.extended_weather);
+                                                pages.extended_weather, pages.air_quality);
     const bool saying_cache_current =
         runtime.boot_refresh.saying_due &&
         saying_cache_current_day(now);

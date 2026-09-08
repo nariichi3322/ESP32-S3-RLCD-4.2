@@ -18,5 +18,7 @@ struct CalendarDayInfo {
 };
 
 bool calendar_day_info(const struct tm &local, CalendarDayInfo *info);
+const char *calendar_lunar_day_text(const CalendarDayInfo &info);
+const char *calendar_lunar_month_text(const CalendarDayInfo &info);
 int calendar_days_in_month(int year, int month);
 int calendar_first_weekday(int year, int month);

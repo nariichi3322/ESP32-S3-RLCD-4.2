@@ -52,10 +52,13 @@ add_executable(weather_clock_sdl
     "sdl_preview_work_status.cpp"
     "sdl_preview_xiaozhi.cpp"
     "../main/ui/ui_dseg_render.cpp"
+    "../main/ui/ui_aggregate_clock_view.cpp"
+    "../main/network/qweather_icons.cpp"
     "../main/assets/boot_anim.c"
     "../main/assets/qweather_icons_36.c"
     "../main/assets/zh_font_16.c"
     "../main/assets/zh_flip_lunar_22.c"
+    "../main/assets/aggregate_numeric_20.c"
     "../main/assets/zh_pomodoro_title_24.c")
 
 target_include_directories(weather_clock_sdl PRIVATE
@@ -63,8 +66,20 @@ target_include_directories(weather_clock_sdl PRIVATE
     "../main"
     "../main/assets"
     "../main/ui"
+    "../main/network"
+    "../main/core"
     ${SDL2_INCLUDE_DIRS})
 
 target_compile_options(weather_clock_sdl PRIVATE ${SDL2_CFLAGS_OTHER})
 target_link_options(weather_clock_sdl PRIVATE ${SDL2_LDFLAGS})
 target_link_libraries(weather_clock_sdl PRIVATE lvgl)
+
+add_executable(aggregate_clock_view_test
+    "../main/assets/aggregate_numeric_20.c"
+    "../main/assets/zh_flip_lunar_22.c"
+    "../tests/aggregate_clock_view_host_test.cpp"
+    "../main/ui/ui_aggregate_clock_view.cpp"
+    "../main/assets/zh_font_16.c"
+    "../main/assets/qweather_icons_36.c")
+target_include_directories(aggregate_clock_view_test PRIVATE "../main/ui" "../main/assets")
+target_link_libraries(aggregate_clock_view_test PRIVATE lvgl)

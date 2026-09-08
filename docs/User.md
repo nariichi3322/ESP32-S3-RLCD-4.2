@@ -1,8 +1,12 @@
 # WeatherClock User Guide
 
+The Aggregate Clock date panel shows the Gregorian day number and the lunar month/day, including leap months. Single-digit dates have no leading zero. Upgrading preserves the existing page settings and appends the new page; no factory reset is required.
+
+The local test build adds an Aggregate Clock page: hours/minutes/seconds, today's weather, date/lunar day, and local temperature/humidity. It is appended to the page order and can be toggled or reordered in Display settings. Weather shares the existing hourly cache; sensor sampling remains every minute by day and every two minutes at night. Offline mode disables this network-dependent page. Static black-and-white patterns simulate gray backgrounds.
+
 Web client: [open the browser tool](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/). Firmware and web client sources now share one repository, under `RLCD_CLOCK/` and `host_web/`. The previous web site remains available. This repository migration does not require reflashing or resetting device settings.
 
-This guide explains first-time setup, the seven work pages, hardware keys, online/offline operation, reminders, Xiaozhi AI, OTA updates, DIY assets, and troubleshooting.
+This guide explains first-time setup, the eight work pages, hardware keys, online/offline operation, reminders, Xiaozhi AI, OTA updates, DIY assets, and troubleshooting.
 
 > **Important upgrade notice:** `v1.5.x` uses a new flash partition table. A device still running `v1.4.59` or earlier must be fully flashed with the merged image or complete flash package before using `v1.5.x`. An App-only flash or ordinary OTA cannot update the partition table.
 
@@ -53,13 +57,13 @@ Depending on the page, the status area shows date, weekday, battery, Wi-Fi, remi
 - **Sound icon:** shown when an hourly or all-day reminder is enabled.
 - **Alarm icon:** shown while the one-shot alarm is enabled.
 - Every work page uses the same date, local sensor, minute-time, sound, Wi-Fi, and alarm state sources through one per-page status-bar registry. The Wi-Fi icon directly reflects the actual radio state. Internally, each page now declares the network state it needs instead of receiving it through the shared UI header; switching pages or rebuilding the UI does not change their content, position, visibility rules, or icon-buffer reuse.
-- Work pages, System Info, Network Diagnostics, and Settings share one page-lifecycle manager for switching and UI rebuilding. This structural maintenance does not change the seven work pages or the entry, return, and timeout behavior of auxiliary pages.
+- Work pages, System Info, Network Diagnostics, and Settings share one page-lifecycle manager for switching and UI rebuilding. This structural maintenance does not change the eight work pages or the entry, return, and timeout behavior of auxiliary pages.
 - Shared bitmap, digit-clock, day-progress, OTA-panel, visible-data-sync, and base-widget interfaces now declare only their actual dependencies. This internal maintenance reduces unrelated coupling without changing page pixels, refresh timing, network rules, or controls.
 - Display dimensions and partial-refresh parameters now have one lightweight internal contract, while display, weather, settings, and Xiaozhi activation implementations include only the interfaces they use. Page dimensions, refresh decisions, weather synchronization, and controls are unchanged.
 - Provisioning, weather, NTP, HTTP, and background synchronization keep the same public behavior while their internal helpers now declare dependencies directly. Request order, weather data, failure handling, and controls are unchanged.
 - Offline, unconfigured, OTA-blocked, and setup-retry states continue to sleep on their existing event or timeout instead of polling continuously. Internal test coverage now executes these waits directly; response timing and user behavior are unchanged.
 - Enabling offline mode or restoring factory settings still cancels pending manual synchronization, diagnostics, and OTA requests before networking is stopped or configuration is reset. This maintenance does not change any user-visible result or confirmation flow.
-- **Battery icon:** shows the shared battery state on all seven work pages while refreshing only the visible page. During detected charging it blinks on whole-second boundaries. The hardware has no dedicated CHG/VBUS input, so plug/unplug detection based on ADC voltage trends can be delayed briefly.
+- **Battery icon:** shows the shared battery state on all eight work pages while refreshing only the visible page. During detected charging it blinks on whole-second boundaries. The hardware has no dedicated CHG/VBUS input, so plug/unplug detection based on ADC voltage trends can be delayed briefly.
 - Page rendering, charging animation, and low-power scheduling reuse one battery snapshot per UI loop, reducing idle overhead without changing sampling intervals, icons, or controls.
 - **Day-progress strip:** shared by all seven pages. Its 60 segments each represent about 24 minutes and refresh only on page entry or when crossing a new segment.
 - Every page uses the same internal drawing and boundary rules for this strip. A changed segment is written to the shared canvas buffer as one batch and only that segment is refreshed. Segment count, placement, refresh timing, and visible behavior remain unchanged.
@@ -865,7 +869,7 @@ Optimization-log formatting, section parsing, and release-archive conversion now
 
 The maintenance workflow now checks every date-based optimization log whenever it records an item and restores missing main-index links in reverse chronological order. This documentation-only safeguard does not change firmware, version numbers, UI, settings, networking, power behavior, or user controls.
 
-Each UI implementation now includes only the internal contracts it actually uses, reducing the chance that one shared maintenance change affects unrelated pages. This internal cleanup does not change any of the seven work pages, Settings, the status bar, refresh timing, networking behavior, stored configuration, or user controls.
+Each UI implementation now includes only the internal contracts it actually uses, reducing the chance that one shared maintenance change affects unrelated pages. This internal cleanup does not change any of the eight work pages, Settings, the status bar, refresh timing, networking behavior, stored configuration, or user controls.
 
 The shared work-page status bar and the Gallery, Sensor History, Calendar, and Weather Board pages now use explicit internal interfaces. This prevents unrelated dependencies from leaking into page maintenance without changing content, layout, icons, partial refresh behavior, sensor data, networking, or controls.
 
@@ -988,7 +992,7 @@ Page switching now automatically covers every registered work page and Settings 
 
 The four fixed text buffers used for Xiaozhi reply subtitles now reside in the device's existing PSRAM, leaving 768 bytes more internal memory available when voice, networking, and display work overlap. Subtitle content, reveal timing, line cropping, page output, and voice interaction are unchanged.
 
-The shared status-bar, battery-icon, and Weather Board forecast-card reference tables for all seven work pages now reside in the device's existing PSRAM. This preserves more internal memory when Wi-Fi, secure connections, display transfers, and audio overlap. Page content, layout, partial refreshes, status icons, battery display, and weather data are unchanged, and no setting change is required.
+The shared status-bar, battery-icon, and Weather Board forecast-card reference tables for all eight work pages now reside in the device's existing PSRAM. This preserves more internal memory when Wi-Fi, secure connections, display transfers, and audio overlap. Page content, layout, partial refreshes, status icons, battery display, and weather data are unchanged, and no setting change is required.
 
 Additional internal object-reference tables used by work pages, Settings auxiliary pages, the Temperature and Humidity Clock, and Temperature and Humidity History now also reside in the device's existing PSRAM. Page order, navigation, history charts, second-level clock updates, layouts, and controls are unchanged.
 

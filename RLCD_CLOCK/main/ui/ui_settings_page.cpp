@@ -270,6 +270,13 @@ void build_settings_page()
     if (auxiliary_page_root(AuxiliaryPage::kSettings)) {
         return;
     }
+    lv_mem_monitor_t memory;
+    lv_mem_monitor(&memory);
+    if (memory.free_biggest_size < 32 * 1024) {
+        ESP_LOGW(TAG, "settings creation deferred: LVGL free=%u largest=%u",
+                 (unsigned)memory.free_size, (unsigned)memory.free_biggest_size);
+        return;
+    }
     lv_obj_t *screen = create_page_root();
     if (!screen) {
         return;

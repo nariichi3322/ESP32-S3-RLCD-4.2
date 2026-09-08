@@ -326,6 +326,18 @@ static const char *solar_term(int year, int month, int day)
     return nullptr;
 }
 
+const char *calendar_lunar_day_text(const CalendarDayInfo &info)
+{
+    return info.lunar_day >= 1 && info.lunar_day <= 30
+               ? kLunarDayNames[info.lunar_day] : "--";
+}
+
+const char *calendar_lunar_month_text(const CalendarDayInfo &info)
+{
+    return info.lunar_month >= 1 && info.lunar_month <= 12
+               ? kLunarMonthNames[info.lunar_month] : "--";
+}
+
 bool calendar_day_info(const struct tm &local, CalendarDayInfo *info)
 {
     if (!info) {
