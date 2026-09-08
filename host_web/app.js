@@ -59,6 +59,7 @@ let selectedImagePreviewIndex = 0;
 let gifPreviewTimer;
 let gifPreviewFrames = [];
 let gifOriginalUrl;
+let gifPreviewRequest = 0;
 let gifFrameCacheFile;
 let gifFrameCacheFrames;
 let gifRealtimeTimer;
@@ -95,11 +96,26 @@ function resetAssetDeviceState(message = "未核对") {
   updateAssetWriteButtons();
 }
 
-function setGifOriginalPreview(file) {
+async function setGifOriginalPreview(file) {
+  const request = ++gifPreviewRequest;
+  const img = document.getElementById("gifOriginalPreview");
+  if (!(img instanceof HTMLImageElement)) throw new Error("GIF 预览图片元素不可用。");
+  const header = new Uint8Array(await file.slice(0, 6).arrayBuffer());
+  if (request !== gifPreviewRequest) return false;
+  const signature = String.fromCharCode(...header);
+  if (signature !== "GIF87a" && signature !== "GIF89a") {
+    img.removeAttribute("src");
+    if (gifOriginalUrl) URL.revokeObjectURL(gifOriginalUrl);
+    gifOriginalUrl = undefined;
+    throw new Error("文件内容不是有效的 GIF，请重新选择 GIF 动图。");
+  }
+  // 固定图片 MIME，文件字节不变，避免按上传文件声明的文档类型解释。
+  const imageBlob = file.slice(0, file.size, "image/gif");
+  const nextUrl = URL.createObjectURL(imageBlob);
+  img.src = nextUrl;
   if (gifOriginalUrl) URL.revokeObjectURL(gifOriginalUrl);
-  gifOriginalUrl = URL.createObjectURL(file);
-  const img = $("#gifOriginalPreview");
-  img.src = gifOriginalUrl;
+  gifOriginalUrl = nextUrl;
+  return true;
 }
 
 function nowText() {
@@ -727,7 +743,7 @@ async function convertGif({ realtime = false } = {}) {
     return;
   }
 
-  setGifOriginalPreview(file);
+  if (!await setGifOriginalPreview(file)) return;
   $("#assetResult").textContent = realtime ? "正在实时更新 GIF 预览..." : "正在解析并转换 GIF...";
   const frames = await getGifFrames(file);
   const source = $("#gifSourceCanvas");
@@ -775,7 +791,7 @@ async function previewSelectedGif() {
     $("#assetResult").textContent = "动图区域只支持 GIF 文件。";
     return;
   }
-  setGifOriginalPreview(file);
+  if (!await setGifOriginalPreview(file)) return;
   const frames = await getGifFrames(file);
   const source = $("#gifSourceCanvas");
   const preview = $("#gifPreviewCanvas");

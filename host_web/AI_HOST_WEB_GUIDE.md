@@ -103,6 +103,8 @@ Do not add local HTTP/HTTPS preview servers back into `host_web/` unless the use
 
 ## Known Constraints
 
+- GIF original previews validate GIF87a/GIF89a bytes before creating an image/gif Blob, require HTMLImageElement, preserve animation bytes, and reject stale header reads. Run node host_web/scripts/test_gif_preview.mjs for these boundaries. Pages mock fetch uses parsed HTTPS hostname/path checks and rejects unexpected requests. CodeQL alerts #9/#10 require a future authorized GitHub scan to confirm closure; do not dismiss them merely because local tests pass. Cache v49 contains this hardening; displayed and firmware versions remain unchanged for ordinary development.
+
 - GIF decoding first uses the local parser in `app.js`, including global/local palettes, transparency, interlaced frames, and GIF disposal modes. Keep this local path so conversion preview works on intranet Gitea/GitHub Pages without a runtime CDN dependency.
 - If local GIF decoding fails, the app tries the browser `ImageDecoder` API, then falls back to a single-frame image preview repeated across 60 frames.
 - GIF conversion must output exactly 60 frames. The local decoder samples those frames evenly across the full GIF playback timeline using frame delays, so long animations are represented from start to end instead of only taking the first 60 source frames.

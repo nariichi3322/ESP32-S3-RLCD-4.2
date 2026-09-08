@@ -73,7 +73,7 @@ static int readCfgFile(char *filepath)
         /* allocate memory to contain the reg and val:*/
         pCr2Buf = (dataArr *) malloc(len * sizeof(dataArr));
         if (pCr2Buf == NULL) {
-            printf("not enough memory to allocate %u bytes.. ", len * sizeof(dataArr));
+            printf("not enough memory to allocate %zu bytes.. ", len * sizeof(dataArr));
             return -1;
         }
 

@@ -11,7 +11,11 @@ const bytes = new Uint8Array([1, 2, 3, 4]);
 const digest = createHash('sha256').update(bytes).digest('hex');
 let badHash = false;
 globalThis.fetch = async (url) => {
-  if (url.includes('api.github.com')) {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) {
+    throw new Error('Unexpected mock request URL');
+  }
+  if (parsed.hostname === 'api.github.com' && parsed.pathname === '/repos/wickenzh/ESP32-S3-RLCD-4.2/releases') {
     const releases = Array.from({ length: 12 }, (_, i) => ({
       tag_name: `v1.0.${12 - i}`, draft: false, prerelease: i === 0,
       assets: ['', '_merged'].map(suffix => ({
@@ -22,9 +26,21 @@ globalThis.fetch = async (url) => {
     }));
     return Response.json(releases);
   }
-  return new Response(bytes);
+  if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/wickenzh/ESP32-S3-RLCD-4.2/releases/download/')) {
+    return new Response(bytes);
+  }
+  throw new Error('Unexpected mock request URL');
 };
 try {
+  for (const url of [
+    'https://api.github.com.example.invalid/releases',
+    'https://example.invalid/api.github.com',
+    'https://example.invalid/?host=api.github.com',
+    'http://api.github.com/repos/wickenzh/ESP32-S3-RLCD-4.2/releases',
+    'https://api.github.com@other.invalid/releases'
+  ]) {
+    await assert.rejects(fetch(url), /Unexpected mock request URL/);
+  }
   process.argv[2] = path.join(directory, 'site');
   await import('./build_pages_site.mjs?valid');
   const manifest = JSON.parse(await readFile(path.join(process.argv[2], 'firmware/releases.json')));
