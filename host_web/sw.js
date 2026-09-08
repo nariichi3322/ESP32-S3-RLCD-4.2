@@ -1,5 +1,5 @@
 const CACHE_PREFIX = `weather-clock-unified:${self.location.pathname}:`;
-const CACHE_NAME = `${CACHE_PREFIX}v45`;
+const CACHE_NAME = `${CACHE_PREFIX}v46`;
 const ASSETS = [
   "./",
   "./index.html",

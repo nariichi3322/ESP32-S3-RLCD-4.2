@@ -66,13 +66,13 @@ The browser app builds the header, entry table, payload, header CRC32, payload C
 
 Version v0.0.27 uses a default dark desktop theme. Validate at 1440x900 and 1024x768; mobile is not a supported acceptance target per the user's scope. Keep preview pixels unchanged: light canvas backgrounds represent device output, not missing dark styling. Keep hover geometry stable, visible keyboard focus, reduced-motion support, and table overflow inside its own wrapper. Business code in app.js is unchanged by this theme update. The isolated Service Worker cache suffix is v45; its prefix and cleanup ownership remain unchanged.
 
-The app has five tabs:
+The app has five tabs, ordered as 资源制作, 资源写入, 固件烧录, 串口日志, 设置 since web v0.0.28 (isolated cache v46):
 
 - `资源制作`: Primary tab and default view. Handles GIF and still-image conversion.
-- `设置`: Optional fallback config written into `custom_assets.bin` as WCA1 text entries. Weather city is used only when device NVS has no manual city. OTA manifest URL is a fallback after firmware built-in OTA sources. These settings do not write NVS.
 - `资源写入`: Selects a Web Serial device, reads the ESP-IDF partition table from `0x8000`, verifies `assets` as `data / subtype 0x40`, then writes generated `custom_assets.bin` to the actual `assets` address from the device partition table.
 - `固件烧录`: Auxiliary serial flashing. `merged` firmware is written only to `0x0`. OTA App firmware is written only to dynamically discovered `ota_0` / `ota_1` partitions after reading the device partition table. Never use a fixed App slot address.
 - `串口日志`: Auxiliary serial log and manual command console.
+- `设置`: Optional fallback config written into `custom_assets.bin` as WCA1 text entries. Weather city is used only when device NVS has no manual city. OTA manifest URL is a fallback after firmware built-in OTA sources. These settings do not write NVS.
 
 Do not reintroduce Wi-Fi provisioning, default AP/IP panels, device info sidebars, OTA manifest reading, or notes pages unless the user asks.
 
