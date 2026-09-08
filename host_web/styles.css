@@ -274,6 +274,23 @@ label span,
   overflow-wrap: anywhere;
 }
 
+.asset-ready-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid var(--ok);
+  border-radius: 8px;
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+
+.asset-ready-notice[hidden] { display: none; }
+.asset-ready-notice p { margin: 0; line-height: 1.5; overflow-wrap: anywhere; }
+.asset-ready-notice button { flex-shrink: 0; }
+
 .summary-actions {
   display: flex;
   align-items: center;

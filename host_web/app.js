@@ -868,6 +868,7 @@ function updateImageList(files) {
 
 function invalidateGeneratedAssets() {
   generatedAssetPackage = undefined;
+  $("#assetReadyNotice").hidden = true;
   $("#downloadAssetsBtn").disabled = true;
   $("#writeAssetsBtn").disabled = true;
   $("#assetWriteState").textContent = "等待资源包";
@@ -1046,6 +1047,7 @@ function collectCustomConfigEntries() {
 }
 
 function buildAssetPackage() {
+  $("#assetReadyNotice").hidden = true;
   let configEntries;
   try {
     configEntries = collectCustomConfigEntries();
@@ -1117,9 +1119,9 @@ function buildAssetPackage() {
   $("#downloadAssetsBtn").disabled = false;
   updateAssetWriteButtons();
   $("#assetResult").textContent = `资源包已生成：${entries.length} 个资源，${formatBytes(totalSize)}。已准备好进行资源写入；也可在此下载 BIN 留存。`;
-  activateTab("writer");
+  $("#assetReadyMessage").textContent = `资源包已生成（${entries.length} 项，${formatBytes(totalSize)}），尚未写入设备。可继续处理图片；全部准备好后，点击“前往资源写入”，核对设备后完成写入。`;
+  $("#assetReadyNotice").hidden = false;
   $("#assetWriteState").textContent = `资源包已就绪：${formatBytes(totalSize)}。下一步：① 选择并核对设备，再点击② 串口写入资源。`;
-  $("#selectAssetDeviceBtn").focus();
 }
 
 function downloadBlob(blob, filename) {
@@ -2068,6 +2070,11 @@ $("#clearImagesBtn").addEventListener("click", clearImageConversions);
 $("#customWeatherCity").addEventListener("input", invalidateGeneratedAssets);
 $("#customOtaServer").addEventListener("input", invalidateGeneratedAssets);
 $("#buildAssetsBtn").addEventListener("click", buildAssetPackage);
+$("#goToWriterBtn").addEventListener("click", () => {
+  if (!generatedAssetPackage) return;
+  activateTab("writer");
+  $("#selectAssetDeviceBtn").focus();
+});
 $("#downloadAssetsBtn").addEventListener("click", downloadAssets);
 $("#selectAssetDeviceBtn").addEventListener("click", inspectAssetDevice);
 $("#writeAssetsBtn").addEventListener("click", writeAssets);

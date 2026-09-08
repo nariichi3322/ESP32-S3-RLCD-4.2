@@ -66,7 +66,7 @@ The browser app builds the header, entry table, payload, header CRC32, payload C
 
 Web v0.0.29 / cache v47 removes the ESP Web Tools fallback entry, loader, bundled dependency and example manifest. Main esptool-js flashing remains. Number only primary steps: resource creation 1 select, 2 convert, 3 build (BIN download optional); resource writing 1 inspect device, 2 write; firmware 1 source/version, 2 inspect partitions, 3 download/verify or select custom file, 4 flash. Refresh and clearing are unnumbered alternatives, never required steps.
 
-Successful WCA1 generation activates the writer tab and focuses its inspect-device button with next-step status text. Validation failures stay on the creation tab. This navigation never requests a serial port or starts writing automatically; users can return to creation to download the BIN.
+Since web v0.0.30 / cache v48, successful WCA1 generation stays on the creation tab without moving focus. A green notice distinguishes generated from written and offers an explicit go-to-writer button. Only that button activates writer and focuses inspection. Invalidation hides the notice; never auto-navigate while creating resources or automatically connect/write a device.
 
 Version v0.0.27 uses a default dark desktop theme. Validate at 1440x900 and 1024x768; mobile is not a supported acceptance target per the user's scope. Keep preview pixels unchanged: light canvas backgrounds represent device output, not missing dark styling. Keep hover geometry stable, visible keyboard focus, reduced-motion support, and table overflow inside its own wrapper. Business code in app.js is unchanged by this theme update. The isolated Service Worker cache suffix is v45; its prefix and cleanup ownership remain unchanged.
 
