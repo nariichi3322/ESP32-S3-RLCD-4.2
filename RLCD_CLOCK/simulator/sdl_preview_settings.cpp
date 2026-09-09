@@ -1,5 +1,6 @@
 // 构建设置页网络、声音、显示、系统和页面排序 SDL 静态预览。
 #include "sdl_preview_settings.h"
+#include "ui_settings_visual_style.h"
 
 #include "sdl_preview_widgets.h"
 #include "ui_settings_layout.h"
@@ -17,18 +18,9 @@ bool settings_preview_mode_is(const char *mode, const char *expected)
     return mode && expected && strcmp(mode, expected) == 0;
 }
 
-void style_settings_item(lv_obj_t *label, bool selected)
+void style_settings_item(lv_obj_t *label, bool selected, bool primary=false)
 {
-    lv_obj_set_style_bg_color(label, selected ? lv_color_black() : lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_text_color(label, selected ? lv_color_white() : lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_border_color(label, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_border_width(label, 2, LV_PART_MAIN);
-    lv_obj_set_style_radius(label, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_left(label, 10, LV_PART_MAIN);
-    lv_obj_set_style_pad_right(label, 10, LV_PART_MAIN);
-    lv_obj_set_style_pad_top(label, 5, LV_PART_MAIN);
-    lv_obj_set_style_pad_bottom(label, 5, LV_PART_MAIN);
+    settings_visual_style(label, selected, primary);
 }
 
 lv_obj_t *make_settings_item(lv_obj_t *screen,
@@ -45,7 +37,8 @@ lv_obj_t *make_settings_item(lv_obj_t *screen,
     }
     lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    style_settings_item(label, selected);
+    style_settings_item(label, selected, x==settings_layout::kSettingsPrimaryX);
+    if(x==settings_layout::kSettingsPrimaryX) settings_attach_category_marker(label);
     return label;
 }
 
@@ -174,7 +167,7 @@ void build_settings_preview_page(const char *mode)
                                settings_layout::kSettingsSecondaryW,
                                settings_layout::kSettingsSecondaryH,
                                network_items[i],
-                               i == 3);
+                               i == 3 && !settings_preview_mode_is(mode,"settings"));
         }
         feedback_label = make_label(screen, 24, 246, 352, 20, "手动城市优先，BOOT 清除");
     } else if (primary == 1) {

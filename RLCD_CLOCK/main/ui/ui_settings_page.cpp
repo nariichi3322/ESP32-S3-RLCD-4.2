@@ -1,5 +1,6 @@
 // 构建并刷新设置页及其菜单交互。
 #include "ui_settings_page.h"
+#include "ui_settings_visual_style.h"
 
 #include "alarm_services.h"
 #include "app_constexpr.h"
@@ -231,23 +232,15 @@ lv_obj_t *build_settings_menu_label(lv_obj_t *screen,
     }
     lv_label_set_long_mode(label, LV_LABEL_LONG_CLIP);
     center_align_label(label);
+    if(column==kSettingsMenuPrimaryColumn) settings_attach_category_marker(label);
     return label;
 }
 
 }
 
-static void style_settings_item(lv_obj_t *label, bool selected)
+static void style_settings_item(lv_obj_t *label, bool selected, bool primary=false)
 {
-    lv_obj_set_style_bg_color(label, selected ? lv_color_black() : lv_color_white(), LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_text_color(label, selected ? lv_color_white() : lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_border_color(label, lv_color_black(), LV_PART_MAIN);
-    lv_obj_set_style_border_width(label, 2, LV_PART_MAIN);
-    lv_obj_set_style_radius(label, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_left(label, 10, LV_PART_MAIN);
-    lv_obj_set_style_pad_right(label, 10, LV_PART_MAIN);
-    lv_obj_set_style_pad_top(label, 5, LV_PART_MAIN);
-    lv_obj_set_style_pad_bottom(label, 5, LV_PART_MAIN);
+    settings_visual_style(label, selected, primary);
 }
 
 static void style_settings_switch_dot(lv_obj_t *dot, bool on, bool selected)
@@ -387,7 +380,7 @@ bool update_settings_primary_items(int primary, bool selection_changed)
         if (s_settings_labels[i]) {
             changed |= set_label_text_if_changed(s_settings_labels[i], kSettingsPrimaryItems[i]);
             if (selection_changed) {
-                style_settings_item(s_settings_labels[i], i == primary);
+                style_settings_item(s_settings_labels[i], i == primary, true);
             }
         }
     }

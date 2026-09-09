@@ -83,3 +83,7 @@ add_executable(aggregate_clock_view_test
     "../main/assets/qweather_icons_36.c")
 target_include_directories(aggregate_clock_view_test PRIVATE "../main/ui" "../main/assets")
 target_link_libraries(aggregate_clock_view_test PRIVATE lvgl)
+
+add_executable(settings_visual_style_test "../tests/settings_visual_style_host_test.cpp")
+target_include_directories(settings_visual_style_test PRIVATE "../main/ui")
+target_link_libraries(settings_visual_style_test PRIVATE lvgl)

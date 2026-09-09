@@ -8,7 +8,7 @@ Work in this branch is limited to `host_web/`.
 
 Read the repository-root AGENTS.md, TASK.md, HANDOFF.md and docs/DECISIONS.md before development. Ordinary changes follow the same rules as firmware: validate, commit and push Gitea only. Keep firmware versions unchanged for web-only work.
 
-With explicit one-time authorization, use the unified source publisher with GITHUB_CLOCK_SOURCE_ONLY=1. The only active public repository is `wickenzh/ESP32-S3-RLCD-4.2`, with firmware under `RLCD_CLOCK/` and this app under `host_web/`. Never push to the old `_Web` repository unless the user explicitly requests maintenance of that legacy site. Its existing history and Pages remain untouched.
+With explicit one-time authorization, use the unified source publisher with GITHUB_CLOCK_SOURCE_ONLY=1. The only active public repository is `wickenzh/ESP32-S3-RLCD-4.2`, with firmware under `RLCD_CLOCK/` and this app under `host_web/`. The old `_Web` repository retains its code and history, but its Pages site was removed and deployment workflow disabled at the user's request on 2026-09-09. Do not re-enable or publish the legacy site without explicit authorization.
 
 ## Product Focus
 
