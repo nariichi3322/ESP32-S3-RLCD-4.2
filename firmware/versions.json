@@ -1,6 +1,20 @@
 {
-  "latest": "v1.6.1",
+  "latest": "v1.6.2",
   "items": [
+    {
+      "version": "v1.6.2",
+      "notes": "v1.6.2：共 2 项更新。\n1. 优化设置页视觉层次：所有选项采用 1px 圆角框，分类选中使用框内短竖条标记，操作项继…\n2. 优化设置页分类选中反馈：选中文字轻微右移 2px，取消选中后恢复原位置，外框和菜单坐标…\n完整说明见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.2/weather_clock_v1.6.2.bin",
+        "sha256": "bff1d67dd0d3569a44f60099baf80d6481d5ab56936bb3ce19a4f6a9acce0082",
+        "size": 6286976
+      },
+      "merged": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.2/weather_clock_v1.6.2_merged.bin",
+        "sha256": "4cafa94836060bbf2589ab803933001bfac86fa1659d14a58bff8996bb107280",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.6.1",
       "notes": "v1.6.1：共 2 项更新。\n1. 优化聚合时钟信息区：天气标题改为反显、正文使用白底，日期采用细框，并以静态有方向点阵过…\n2. 优化图片时钟每日文字装饰线：根据文字实际宽度自适应显示两侧双线；原有数字、字号、位置和…\n完整说明见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.35/weather_clock_v1.5.35_merged.bin",
         "sha256": "0a9aafd67eed59cfb0e416322a3b5d8e7ae5bdb364313133543085dd9e6a143b",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.34",
-      "notes": "v1.5.34：共 11 项更新。\n1. 修复配网热点、Wi-Fi 初始化和联网结果切换在瞬时失败或并发操作后可能无法恢复、射频…\n2. 修复天气、每日文字、电池、设置反馈、关于本机和网络检测等跨任务快照在竞争或读取失败时可…\n3. 修复 RLCD/LVGL 初始化失败仍继续执行、异步颜色缓冲生命周期、像素查找表边界和…\n4. 修复闹钟延期保存与通知竞态、损坏记录清理失败，以及页面顺序持久化和农历、节气日期计算的…\n5. 修复电池 ADC 配置失败后的恢复、OTA 诊断快照未初始化、OTA 写入句柄收尾和小…\n其余 6 项见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.34/weather_clock_v1.5.34.bin",
-        "sha256": "b1ff52463e6892b67a21f52a6543b80612272e577491a24cb2ddc04d1285dcee",
-        "size": 6260560
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.34/weather_clock_v1.5.34_merged.bin",
-        "sha256": "281f556204ed8c977443d71199e4a89e0bc81e0b542dc5537db4d56a25266356",
         "size": 16509951
       }
     }

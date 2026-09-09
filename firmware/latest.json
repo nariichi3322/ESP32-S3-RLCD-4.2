@@ -1,7 +1,7 @@
 {
-  "version": "v1.6.1",
-  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.1/weather_clock_v1.6.1.bin",
-  "sha256": "8a8ac5d91fffa97a646943bab8c56f0f4fc3481a155a41a65db4620d480fe344",
-  "size": 6286736,
-  "notes": "v1.6.1：共 2 项更新。\n1. 优化聚合时钟信息区：天气标题改为反显、正文使用白底，日期采用细框，并以静态有方向点阵过…\n2. 优化图片时钟每日文字装饰线：根据文字实际宽度自适应显示两侧双线；原有数字、字号、位置和…\n完整说明见源码仓库同版本 Release。"
+  "version": "v1.6.2",
+  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.2/weather_clock_v1.6.2.bin",
+  "sha256": "bff1d67dd0d3569a44f60099baf80d6481d5ab56936bb3ce19a4f6a9acce0082",
+  "size": 6286976,
+  "notes": "v1.6.2：共 2 项更新。\n1. 优化设置页视觉层次：所有选项采用 1px 圆角框，分类选中使用框内短竖条标记，操作项继…\n2. 优化设置页分类选中反馈：选中文字轻微右移 2px，取消选中后恢复原位置，外框和菜单坐标…\n完整说明见源码仓库同版本 Release。"
 }
