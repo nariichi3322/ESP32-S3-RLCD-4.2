@@ -6,6 +6,8 @@
 
 ## 快速入口
 
+**界面主要基于 LVGL 开发。** 页面布局、文字、菜单和状态控件由 LVGL 管理；大号时钟、图片和曲线等通过 LVGL Canvas 与自定义绘制实现。底层 RLCD 驱动负责单色输出，并优先采用局部刷新，兼顾显示效果与低功耗。
+
 - [中文用户使用说明](docs/User_zh.md)
 - [English User Guide](docs/User.md)
 - [贡献指南 / Contributing Guide](CONTRIBUTING.md)
