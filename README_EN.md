@@ -6,6 +6,8 @@ This is a low-power weather clock firmware project built around the **ESP32-S3**
 
 ## Quick Links
 
+**LVGL is the project's primary UI framework.** It manages page layouts, text, menus, and status widgets, while large clock digits, images, and charts use LVGL Canvas and custom drawing. The RLCD driver handles monochrome output and prioritizes partial refreshes to balance readability and power consumption.
+
 - [Chinese User Guide](docs/User_zh.md)
 - [English User Guide](docs/User.md)
 - [Contributing Guide](CONTRIBUTING.md)
