@@ -93,6 +93,8 @@ Shows large time, date, battery, current weather, alerts, local temperature/humi
 
 ### 3.2 Picture Clock
 
+Time retains the original square dot-matrix digits. Double rules beside the daily saying adjust to its width and disappear for long or empty text. Image rotation and minute-level clock updates are unchanged.
+
 Shows a local image, large time, daily text, and local temperature/humidity summary.
 
 - Built-in images are selected by weekday and change once per day.
@@ -179,6 +181,8 @@ Provides local wake-word detection, voice conversations, on-screen transcripts, 
 - This page consumes substantially more power and warms the PCB, which may make the onboard temperature/humidity reading higher than the surrounding air.
 
 ### 3.8 Aggregate Clock
+
+Weather uses a reverse-video header and a white reading area. A thin border frames the date; static edge and footer dot patterns simulate gray without extra refresh timers.
 
 Combines second-level time, current weather and daily high/low, Gregorian day number, lunar month/day, and local temperature/humidity. It is appended to the default page order and supports toggling and reordering in Display settings.
 

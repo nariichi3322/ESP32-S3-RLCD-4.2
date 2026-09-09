@@ -63,6 +63,16 @@ constexpr int gallery_block_digit_x(int digit_index)
            digit_index * (kGalleryBlockDigitW + kGalleryBlockDigitGap);
 }
 
+constexpr int gallery_saying_rule_length(int width,int text_width) {
+    if(width<=0 || text_width<=0 || text_width>=width) return 0;
+    const int length=(width-text_width)/2-10;
+    return length>=4?length:0;
+}
+static_assert(gallery_saying_rule_length(364,176)==84,"short text keeps balanced rules");
+static_assert(gallery_saying_rule_length(364,340)==0,"long text hides decoration");
+static_assert(gallery_saying_rule_length(364,400)==0,"overflow must not draw rules");
+static_assert(gallery_saying_rule_length(364,0)==0,"empty text hides decoration");
+
 constexpr uint8_t gallery_changed_digit_mask(int previous, int current)
 {
     if (current < 0 ||

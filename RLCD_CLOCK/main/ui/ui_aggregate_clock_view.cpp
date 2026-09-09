@@ -42,21 +42,34 @@ void embolden(lv_obj_t *obj) {
         lv_draw_label(lv_event_get_draw_ctx(e),&style,&area,lv_label_get_text(label),nullptr);
     },LV_EVENT_DRAW_MAIN,nullptr);
 }
-void stipple(lv_obj_t *root,int x,int y,int w,int h,int stride) {
+enum class Fade { Right, Left, Down, Up };
+void stipple(lv_obj_t *root,int x,int y,int w,int h,Fade fade,bool white=false) {
     lv_obj_t *p=panel(root,x,y,w,h,false);
+    lv_obj_set_style_bg_opa(p,LV_OPA_TRANSP,0);
+    lv_obj_set_style_text_color(p,white?lv_color_white():lv_color_black(),0);
     lv_obj_add_event_cb(p,[](lv_event_t *e) {
         lv_obj_t *obj=lv_event_get_target(e);
         lv_draw_ctx_t *ctx=lv_event_get_draw_ctx(e);
         lv_area_t area; lv_obj_get_coords(obj,&area);
-        const int step=static_cast<int>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)));
+        const auto fade=static_cast<Fade>(reinterpret_cast<uintptr_t>(lv_event_get_user_data(e)));
+        // Ordered one-bit coverage fades spatially, never by alternating frames.
+        static constexpr uint8_t bayer[4][4]={{0,8,2,10},{12,4,14,6},{3,11,1,9},{15,7,13,5}};
         lv_draw_rect_dsc_t style; lv_draw_rect_dsc_init(&style);
-        style.bg_color=lv_color_black();
-        for(int y=area.y1+4;y<area.y2-2;y+=step)
-            for(int x=area.x1+4;x<area.x2-2;x+=step) {
+        style.bg_color=lv_obj_get_style_text_color(obj,0);
+        const int width=lv_area_get_width(&area),height=lv_area_get_height(&area);
+        const bool horizontal=fade==Fade::Right || fade==Fade::Left;
+        const int extent=horizontal?width:height;
+        const int max_coverage=style.bg_color.full==lv_color_white().full?8:3;
+        for(int y=area.y1;y<=area.y2;++y)
+            for(int x=area.x1;x<=area.x2;++x) {
+                int distance=horizontal?x-area.x1:y-area.y1;
+                if(fade==Fade::Left || fade==Fade::Up) distance=extent-1-distance;
+                const int coverage=extent>1?max_coverage*(extent-1-distance)/(extent-1):0;
+                if(bayer[(y-area.y1)%4][(x-area.x1)%4]>=coverage) continue;
                 lv_area_t dot={static_cast<lv_coord_t>(x),static_cast<lv_coord_t>(y),static_cast<lv_coord_t>(x),static_cast<lv_coord_t>(y)};
                 lv_draw_rect(ctx,&style,&dot);
             }
-    },LV_EVENT_DRAW_MAIN,reinterpret_cast<void *>(static_cast<uintptr_t>(stride)));
+    },LV_EVENT_DRAW_MAIN,reinterpret_cast<void *>(static_cast<uintptr_t>(fade)));
 }
 void sensor_icon(lv_obj_t *root,int x,int y,const uint8_t *bits) {
     lv_obj_t *p=panel(root,x,y,24,24,true);
@@ -111,15 +124,27 @@ void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t 
         lv_obj_t *dot=panel(root,x,y,6,6,false);
         lv_obj_set_style_radius(dot,LV_RADIUS_CIRCLE,0);
     }
-    stipple(root,18,174,222,120,6);
-    stipple(root,248,174,134,58,4);
+    // Static texture stays outside the changing glyphs and never needs a timer.
+    stipple(root,20,72,10,88,Fade::Right,true);
+    stipple(root,375,72,6,88,Fade::Left,true);
+    lv_obj_t *weather_panel=panel(root,18,174,222,120,false);
+    lv_obj_set_style_border_width(weather_panel,1,0);
+    lv_obj_set_style_border_color(weather_panel,lv_color_black(),0);
+    panel(root,18,174,222,28,true);
+    stipple(root,20,262,218,30,Fade::Up);
+    lv_obj_t *date_panel=panel(root,248,174,134,58,false);
+    lv_obj_set_style_border_width(date_panel,1,0);
+    lv_obj_set_style_border_color(date_panel,lv_color_black(),0);
+    stipple(root,252,176,126,8,Fade::Down);
+    panel(root,323,185,1,40,true);
     panel(root,248,238,134,56,true);
-    v.city=label(root,28,180,120,20,"等待数据");
-    label(root,160,181,72,18,"今日天气");
+    stipple(root,372,242,8,48,Fade::Left,true);
+    v.city=label(root,26,180,126,20,"等待数据",&zh_font_16,true);
+    label(root,160,180,72,20,"今日天气",&zh_font_16,true);
     v.icon=label(root,31,207,48,42,"",&qweather_icons_36);
     v.weather=label(root,28,250,88,20,"--");
     v.temperature=label(root,108,202,128,54,"-- C",&lv_font_montserrat_48);
-    v.range=label(root,28,269,207,17,"最高 -- C  最低 -- C",&zh_font_16);
+    v.range=label(root,26,274,208,17,"最高 -- C  最低 -- C",&zh_font_16);
     v.day=label(root,251,176,74,56,"--",&lv_font_montserrat_48);
     lv_obj_set_style_text_align(v.day,LV_TEXT_ALIGN_CENTER,0);
     v.month=label(root,325,178,54,26,"--月",&zh_flip_lunar_22);

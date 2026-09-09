@@ -4,6 +4,7 @@
 #include "clock_gallery_images.h"
 #include "sdl_preview_widgets.h"
 #include "ui_gallery_layout.h"
+#include "ui_gallery_decoration.h"
 
 #include <vector>
 
@@ -118,4 +119,5 @@ void build_gallery_preview_body(lv_obj_t *screen, const struct tm *local)
     lv_obj_set_style_text_font(saying, &zh_font_16, LV_PART_MAIN);
     lv_obj_set_style_text_align(saying, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_long_mode(saying, LV_LABEL_LONG_DOT);
+    gallery_attach_saying_rules(saying);
 }

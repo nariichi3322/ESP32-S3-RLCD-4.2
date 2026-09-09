@@ -14,6 +14,7 @@
 #include "ui_bitmap.h"
 #include "ui_canvas_primitives.h"
 #include "ui_gallery_layout.h"
+#include "ui_gallery_decoration.h"
 #include "ui_gallery_rotation_state.h"
 #include "ui_gallery_selection.h"
 #include "ui_fonts.h"
@@ -266,6 +267,7 @@ static void style_gallery_saying_label(lv_obj_t *label)
     lv_obj_set_style_text_font(label, &zh_font_16, LV_PART_MAIN);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
+    gallery_attach_saying_rules(label);
 }
 
 static void build_gallery_canvas(lv_obj_t *screen,
