@@ -71,6 +71,23 @@ let assetPartitions = [];
 let firmwareDevicePort;
 let firmwarePartitions = [];
 let firmwareAppTargets = [];
+let nextStepElement;
+let nextStepTimer;
+
+function clearNextStepHint() {
+  clearTimeout(nextStepTimer);
+  nextStepElement?.classList.remove("is-next-step");
+  nextStepElement = undefined;
+}
+
+function hintNextStep(selector) {
+  clearNextStepHint();
+  const element = $(selector);
+  if (!element || element.disabled || !element.getClientRects().length) return;
+  nextStepElement = element;
+  element.classList.add("is-next-step");
+  nextStepTimer = setTimeout(clearNextStepHint, 2400);
+}
 
 function hex(value, width = 0) {
   return `0x${Number(value).toString(16).toUpperCase().padStart(width, "0")}`;
@@ -777,6 +794,7 @@ async function convertGif({ realtime = false } = {}) {
   const density = Math.round(blackBits / (GIF_WIDTH * GIF_HEIGHT * GIF_FRAMES) * 100);
   const warning = blackBits === 0 ? "当前转换结果没有黑色像素，请尝试调高阈值或开启反色。" : "右侧预览正在循环播放转换后的效果。";
   $("#assetResult").textContent = `GIF 已转换：${GIF_WIDTH}×${GIF_HEIGHT}，按完整播放区间均匀抽取 ${GIF_FRAMES} 帧，整帧连续 bitstream，${formatBytes(payload.byteLength)}，黑色像素约 ${density}%。${warning}`;
+  if (!realtime) hintNextStep("#buildAssetsBtn");
 }
 
 async function previewSelectedGif() {
@@ -800,6 +818,7 @@ async function previewSelectedGif() {
   drawFittedImage(sourceCtx, frames[0], $("#gifFit").value, GIF_WIDTH, GIF_HEIGHT);
   previewCtx.clearRect(0, 0, GIF_WIDTH, GIF_HEIGHT);
   $("#assetResult").textContent = `已载入 GIF：${file.name}。点击“转换 GIF”查看 1-bit 动图预览。`;
+  hintNextStep("#previewGifBtn");
 }
 
 async function convertImages() {
@@ -831,6 +850,7 @@ async function convertImages() {
   await previewSelectedImages({ keepConverted: true });
   invalidateGeneratedAssets();
   $("#assetResult").textContent = `静图已转换：${convertedImages.length} 张，每张 ${IMAGE_WIDTH}×${IMAGE_HEIGHT}。预览显示第 ${selectedImagePreviewIndex + 1} 张。`;
+  hintNextStep("#buildAssetsBtn");
 }
 
 function getSelectedImageFiles() {
@@ -883,6 +903,7 @@ function updateImageList(files) {
 }
 
 function invalidateGeneratedAssets() {
+  clearNextStepHint();
   generatedAssetPackage = undefined;
   $("#assetReadyNotice").hidden = true;
   $("#downloadAssetsBtn").disabled = true;
@@ -978,6 +999,7 @@ async function previewSelectedImages({ keepConverted = false } = {}) {
   updateSummaryNoteForImages(files);
   if (!keepConverted) {
     $("#assetResult").textContent = "已载入静图，点击“转换静图”查看 1-bit 预览。";
+    hintNextStep("#previewImagesBtn");
   }
 }
 
@@ -1138,6 +1160,7 @@ function buildAssetPackage() {
   $("#assetReadyMessage").textContent = `资源包已生成（${entries.length} 项，${formatBytes(totalSize)}），尚未写入设备。可继续处理图片；全部准备好后，点击“前往资源写入”，核对设备后完成写入。`;
   $("#assetReadyNotice").hidden = false;
   $("#assetWriteState").textContent = `资源包已就绪：${formatBytes(totalSize)}。下一步：① 选择并核对设备，再点击② 串口写入资源。`;
+  hintNextStep("#goToWriterBtn");
 }
 
 function downloadBlob(blob, filename) {
@@ -1569,6 +1592,7 @@ async function inspectAssetDevice() {
         console.warn(error);
       }
     }
+    if (assetPartitionVerified) hintNextStep("#writeAssetsBtn");
   }
 }
 
@@ -1645,6 +1669,9 @@ async function inspectFirmwareDevice() {
       } catch (error) {
         console.warn(error);
       }
+    }
+    if (firmwareDevicePort && firmwarePartitions.length) {
+      hintNextStep($("#firmwareSource").value === "remote" ? "#downloadFirmwareBtn" : "#firmwareInput");
     }
   }
 }
@@ -1741,6 +1768,7 @@ async function downloadRemoteFirmware() {
     fileSize: data.byteLength
   });
   $("#flashResult").textContent = `${target.label} 固件已下载并通过 SHA-256 校验：${formatSha(actualSha)}。${isFirmwareTargetReady(target, data.byteLength) ? `现在可以串口烧录到 ${firmwareTargetOffsetText(target)}。` : "目标 App 分区尚未读取或文件超过分区大小，禁止烧录。"}`;
+  hintNextStep("#writeFirmwareBtn");
 }
 
 async function importEsptool() {
@@ -1965,6 +1993,7 @@ async function writeFirmware() {
 }
 
 function activateTab(tabId) {
+  clearNextStepHint();
   $$(".tab").forEach((tab) => tab.classList.toggle("is-active", tab.dataset.tab === tabId));
   $$(".tab-panel").forEach((panel) => panel.classList.toggle("is-active", panel.id === tabId));
 }
@@ -2004,6 +2033,9 @@ async function registerServiceWorker() {
 }
 
 bindTabs();
+document.addEventListener("click", clearNextStepHint, true);
+document.addEventListener("input", clearNextStepHint, true);
+document.addEventListener("change", clearNextStepHint, true);
 bindInstall();
 renderFirmwareTargets();
 setSerialSupport();
@@ -2090,6 +2122,7 @@ $("#goToWriterBtn").addEventListener("click", () => {
   if (!generatedAssetPackage) return;
   activateTab("writer");
   $("#selectAssetDeviceBtn").focus();
+  hintNextStep("#selectAssetDeviceBtn");
 });
 $("#downloadAssetsBtn").addEventListener("click", downloadAssets);
 $("#selectAssetDeviceBtn").addEventListener("click", inspectAssetDevice);
@@ -2118,10 +2151,12 @@ $("#firmwareSource").addEventListener("change", () => {
     $("#firmwareWriteState").textContent = "等待自定义固件文件";
     $("#flashResult").textContent = firmwareTargetHint();
   }
+  hintNextStep("#selectFirmwareDeviceBtn");
 });
 $("#firmwareTarget").addEventListener("change", refreshFirmwareTargetState);
 $("#remoteFirmwareSelect").addEventListener("change", () => {
   setRemoteFirmwareManifest(Number($("#remoteFirmwareSelect").value) || 0);
+  hintNextStep("#selectFirmwareDeviceBtn");
 });
 $("#refreshFirmwareBtn").addEventListener("click", () => {
   loadRemoteFirmwareManifest().catch((error) => {
@@ -2153,5 +2188,6 @@ $("#firmwareInput").addEventListener("change", () => {
   $("#flashResult").textContent = selectedFirmware
     ? `已选择自定义固件文件。${firmwareTargetHint(target)}${target.kind === "app" && !isFirmwareTargetReady(target, selectedFirmware.size) ? " 文件大小超过目标 App 分区或尚未读取分区表。" : ""}`
     : firmwareTargetHint(target);
+  if (file && isLocalFirmwareFileAllowed(file, target)) hintNextStep("#writeFirmwareBtn");
 });
 $("#writeFirmwareBtn").addEventListener("click", writeFirmware);

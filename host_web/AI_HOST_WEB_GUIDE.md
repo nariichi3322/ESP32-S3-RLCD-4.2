@@ -64,6 +64,8 @@ The browser app builds the header, entry table, payload, header CRC32, payload C
 
 ## Current UI
 
+Next-step guidance uses one transient target and one 2400ms timer. Only enabled, visible controls are hinted after successful operations. User click/input/change, tab changes and package invalidation clear the hint. CSS pulses an outline-like shadow three times; reduced-motion uses a static outline. No autonomous serial connection, write or tab navigation is allowed. Run scripts/test_next_step_hint.mjs for eligibility/replacement/expiry. Cache v50 includes this change; ordinary development keeps the displayed/firmware versions unchanged. The privacy notice covers local image/GIF/config processing, not offline availability of remote firmware downloads.
+
 Web v0.0.29 / cache v47 removes the ESP Web Tools fallback entry, loader, bundled dependency and example manifest. Main esptool-js flashing remains. Number only primary steps: resource creation 1 select, 2 convert, 3 build (BIN download optional); resource writing 1 inspect device, 2 write; firmware 1 source/version, 2 inspect partitions, 3 download/verify or select custom file, 4 flash. Refresh and clearing are unnumbered alternatives, never required steps.
 
 Since web v0.0.30 / cache v48, successful WCA1 generation stays on the creation tab without moving focus. A green notice distinguishes generated from written and offers an explicit go-to-writer button. Only that button activates writer and focuses inspection. Invalidation hides the notice; never auto-navigate while creating resources or automatically connect/write a device.

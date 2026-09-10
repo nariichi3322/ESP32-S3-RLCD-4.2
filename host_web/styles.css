@@ -65,7 +65,7 @@ textarea {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1.2fr) minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(240px, 1fr) minmax(0, 1.4fr) auto;
   align-items: center;
   gap: 16px;
   padding: 24px 0 16px;
@@ -119,12 +119,31 @@ h1 {
 }
 
 .top-meta {
-  justify-content: center;
+  display: grid;
+  justify-content: start;
+  justify-items: start;
+  gap: 4px;
   min-width: 0;
   color: var(--muted);
   font-size: 13px;
-  font-weight: 650;
-  line-height: 1.45;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+}
+
+.top-meta > span:first-child { white-space: nowrap; font-size: 12px; }
+
+.is-next-step:not(:disabled) {
+  animation: next-step-pulse 800ms ease-in-out 3;
+}
+
+@keyframes next-step-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 3px #87bfff; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .is-next-step:not(:disabled) { animation: none; outline: 2px solid #87bfff; outline-offset: 3px; }
 }
 
 .top-meta span:last-child {
