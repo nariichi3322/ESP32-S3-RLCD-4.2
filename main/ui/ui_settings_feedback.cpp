@@ -11,6 +11,7 @@
 #include "scoped_semaphore_lock.h"
 #include "ui_settings_activity_state.h"
 #include "ui_task_notify.h"
+#include "ui_i18n.h"
 #include "ui_text_format.h"
 
 #include <esp_attr.h>
@@ -27,9 +28,9 @@ uint32_t s_settings_sync_generation = 0;
 EXT_RAM_BSS_ATTR char s_settings_feedback_text[kSettingsFeedbackTextLen] = {};
 TickType_t s_settings_feedback_until_tick = 0;
 #define SETTINGS_MANUAL_SYNC_TIMEOUT_LOG_FORMAT "settings manual sync timeout: op=%d"
-constexpr const char *kSettingsNtpTimeoutFeedback = "时间同步超时";
-constexpr const char *kSettingsWeatherTimeoutFeedback = "天气同步超时";
-constexpr const char *kSettingsSayingTimeoutFeedback = "一言更新超时";
+constexpr UiTextId kSettingsNtpTimeoutFeedback = UiTextId::SettingsTimeSyncTimeout;
+constexpr UiTextId kSettingsWeatherTimeoutFeedback = UiTextId::SettingsWeatherSyncTimeout;
+constexpr UiTextId kSettingsSayingTimeoutFeedback = UiTextId::SettingsSayingUpdateTimeout;
 static_assert(sizeof(s_settings_feedback_text) == kSettingsFeedbackTextLen,
               "settings feedback storage must match the public text contract");
 static_assert(kSettingsSyncNone == 0, "settings sync state default must mean idle");
@@ -110,7 +111,7 @@ bool settings_feedback_state_init()
 void set_settings_feedback(const char *text, uint32_t duration_ms)
 {
     char next_feedback[kSettingsFeedbackTextLen] = {};
-    ui_text::copy(next_feedback, sizeof(next_feedback), text);
+    ui_text_format::copy(next_feedback, sizeof(next_feedback), text);
     TickType_t now = xTaskGetTickCount();
     TickType_t until_tick = now + pdMS_TO_TICKS(duration_ms);
     {
@@ -238,13 +239,13 @@ bool finish_settings_sync_if_timed_out(TickType_t now)
     ESP_LOGW(TAG, SETTINGS_MANUAL_SYNC_TIMEOUT_LOG_FORMAT, op);
     if (op == kSettingsSyncNtp) {
         cancel_timed_out_manual_sync(state,
-                                     kSettingsNtpTimeoutFeedback);
+                                     ui_text(kSettingsNtpTimeoutFeedback));
     } else if (op == kSettingsSyncWeather) {
         cancel_timed_out_manual_sync(state,
-                                     kSettingsWeatherTimeoutFeedback);
+                                     ui_text(kSettingsWeatherTimeoutFeedback));
     } else if (op == kSettingsSyncSaying) {
         cancel_timed_out_manual_sync(state,
-                                     kSettingsSayingTimeoutFeedback);
+                                     ui_text(kSettingsSayingTimeoutFeedback));
     } else {
         settings_sync_state_clear_if(op, state.generation);
     }

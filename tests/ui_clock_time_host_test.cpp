@@ -52,7 +52,7 @@ int main()
 
     char date[48] = {};
     format_clock_date_text(date, sizeof(date), noon, middle.weekday);
-    assert(strcmp(date, "2026/07/12 / 星期三") == 0);
+    assert(strcmp(date, "2026/07/12  星期三") == 0);
     char short_date[3] = {};
     format_clock_date_text(short_date, sizeof(short_date), noon, middle.weekday);
     assert(strcmp(short_date, "--") == 0);

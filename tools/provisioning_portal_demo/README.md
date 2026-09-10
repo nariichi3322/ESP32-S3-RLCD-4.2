@@ -28,7 +28,7 @@ scripts/preview_provisioning_portal.sh 8100
 
 ## 维护规则
 
-- 调整正式配网页的 CSS、基础脚本或表单结构时，修改 `RLCD_CLOCK/main/network/wifi_portal_ui_assets.h`。
+- 调整正式配网页的 CSS、基础脚本或表单结构时，修改 `main/network/wifi_portal_ui_assets.h`。
 - Demo 专属状态工具栏和模拟数据只修改本目录的 `server.py`。
 - 不在 Demo 中复制另一套正式 CSS 或设备业务校验逻辑。
 - 修改后运行 `scripts/tests/host/network/test_setup_portal_demo_host.sh`，并检查手机和桌面宽度截图。

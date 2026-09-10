@@ -19,6 +19,8 @@
 #include "ui_page_state.h"
 #include "ui_status_refresh_policy.h"
 #include "ui_text_format.h"
+#include "ui_i18n.h"
+#include "ui_language.h"
 #include "ui_widgets.h"
 
 #include <esp_attr.h>
@@ -72,19 +74,9 @@ EXT_RAM_BSS_ATTR WorkPageStatusState s_work_status_pages[kWorkPageCount] = {};
 int s_last_temp_trend_drawn = kTrendDrawCacheInvalid;
 int s_last_humi_trend_drawn = kTrendDrawCacheInvalid;
 lv_color_t *s_bluetooth_status_buffer = nullptr;
-static constexpr const char *kStatusDatePlaceholder = "----/--/-- / 星期-";
-static constexpr const char *kStatusSummaryPlaceholder = "--°C --%";
 static constexpr size_t kStatusSensorSummaryTextSize = 32;
-static constexpr const char *kStatusSensorSummaryFormat = "%.0f°C %.0f%%";
-static constexpr const char *kStatusSensorSummaryFallback = "--°C --%%";
 static constexpr size_t kClockSensorValueTextSize = 32;
-static constexpr const char *kClockSensorTempFormat = "%.1f°C";
-static constexpr const char *kClockSensorHumidityFormat = "%.1f%%";
-static constexpr const char *kClockSensorTempPlaceholder = "--.-°C";
-static constexpr const char *kClockSensorHumidityPlaceholder = "--.-%%";
-static constexpr const char *kStatusTimePlaceholder = "--:--";
 static constexpr size_t kStatusTimeTextSize = 8;
-static constexpr const char *kStatusTimeFormat = "%02d:%02d";
 #define WORK_STATUS_ICON_INVALID_ARG_LOG "status icon invalid arg"
 #define WORK_STATUS_ICON_INVALID_SIZE_FORMAT "status icon invalid size %dx%d row=%d"
 #define WORK_STATUS_ICON_CANVAS_CREATE_FAILED_LOG "status icon canvas create failed"
@@ -96,6 +88,11 @@ static_assert(kStatusDateX >= 0 && kStatusDateY >= 0 &&
                   kStatusDateX + kStatusDateW <= kDisplayWidth &&
                   kStatusDateY + kStatusDateH <= kDisplayHeight,
               "work status date label must fit display bounds");
+
+const char *status_date_placeholder()
+{
+    return ui_text(UiTextId::DatePlaceholder);
+}
 static_assert(kStatusSummaryX >= 0 && kStatusSummaryY >= 0 &&
                   kStatusSummaryX + kStatusSummaryW <= kDisplayWidth &&
                   kStatusSummaryY + kStatusSummaryH <= kDisplayHeight,
@@ -120,10 +117,8 @@ static_assert(kStatusTimeTextSize >= sizeof("00:00"),
               "work status time buffer must fit HH:MM text");
 static_assert(kClockSensorValueTextSize > 1,
               "clock sensor status text buffer must fit text and NUL");
-static_assert(cstr_length(kClockSensorTempPlaceholder) + 1 <= kClockSensorValueTextSize,
-              "clock sensor temperature placeholder must fit status text buffer");
-static_assert(cstr_length(kClockSensorHumidityPlaceholder) + 1 <= kClockSensorValueTextSize,
-              "clock sensor humidity placeholder must fit status text buffer");
+static_assert(kClockSensorValueTextSize > sizeof("--.-%%"),
+              "clock sensor placeholder must fit status text buffer");
 
 enum class StatusLabelKind {
     kDate,
@@ -224,19 +219,23 @@ bool format_clock_sensor_status_text(char *temp,
                                                temperature_trend,
                                                humidity_trend);
     if (sensor_ok) {
-        ui_text::format_or_fallback(temp,
+        ui_text_format::format_or_fallback(temp,
                                     temp_len,
-                                    kClockSensorTempPlaceholder,
-                                    kClockSensorTempFormat,
+                                    ui_text(UiTextId::StatusSensorTempPlaceholder),
+                                    ui_format(UiTextId::StatusSensorTempFormat),
                                     temperature);
-        ui_text::format_or_fallback(humi,
+        ui_text_format::format_or_fallback(humi,
                                     humi_len,
-                                    kClockSensorHumidityPlaceholder,
-                                    kClockSensorHumidityFormat,
+                                    ui_text(UiTextId::StatusSensorHumidityPlaceholder),
+                                    ui_format(UiTextId::StatusSensorHumidityFormat),
                                     humidity);
     } else {
-        ui_text::copy(temp, temp_len, kClockSensorTempPlaceholder);
-        ui_text::copy(humi, humi_len, kClockSensorHumidityPlaceholder);
+        ui_text_format::copy(temp,
+                             temp_len,
+                             ui_text(UiTextId::StatusSensorTempPlaceholder));
+        ui_text_format::copy(humi,
+                             humi_len,
+                             ui_text(UiTextId::StatusSensorHumidityPlaceholder));
     }
     return sensor_ok;
 }
@@ -306,8 +305,8 @@ void build_work_page_status_bar(lv_obj_t *screen,
                                     kStatusDateY,
                                     kStatusDateW,
                                     kStatusDateH,
-                                    kStatusDatePlaceholder,
-                                    &zh_font_16);
+                                    status_date_placeholder(),
+                                    ui_font(UiFontRole::Body16));
     if (labels.date) {
         lv_obj_set_style_text_align(labels.date, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     }
@@ -319,7 +318,7 @@ void build_work_page_status_bar(lv_obj_t *screen,
                                            kStatusSummaryY,
                                            kStatusSummaryW,
                                            kStatusSummaryH,
-                                           kStatusSummaryPlaceholder,
+                                            ui_text(UiTextId::StatusSensorSummaryPlaceholder),
                                            &lv_font_montserrat_16);
         if (labels.summary) {
             style_work_page_sensor_summary(labels.summary);
@@ -333,7 +332,7 @@ void build_work_page_status_bar(lv_obj_t *screen,
                                         kStatusTimeY,
                                         kStatusTimeW,
                                         kStatusTimeH,
-                                        kStatusTimePlaceholder,
+                                         ui_text(UiTextId::TimePlaceholder),
                                         &lv_font_montserrat_16);
         if (labels.time) {
             lv_obj_set_style_text_align(labels.time, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
@@ -404,10 +403,10 @@ bool update_work_page_status_time(int page, const struct tm &local)
         return false;
     }
     char text[kStatusTimeTextSize] = {};
-    ui_text::format_or_fallback(text,
+    ui_text_format::format_or_fallback(text,
                                 sizeof(text),
-                                kStatusTimePlaceholder,
-                                kStatusTimeFormat,
+                                        ui_text(UiTextId::TimePlaceholder),
+                                        ui_format(UiTextId::TimeFormat),
                                 local.tm_hour,
                                 local.tm_min);
     const bool changed = set_label_text_if_changed(label, text);
@@ -424,14 +423,16 @@ static bool update_work_page_sensor_summary(lv_obj_t *label)
     float temperature = 0.0f;
     float humidity = 0.0f;
     if (get_local_sensor_snapshot(&temperature, &humidity, nullptr, nullptr)) {
-        ui_text::format_or_fallback(text,
+        ui_text_format::format_or_fallback(text,
                                     sizeof(text),
-                                    kStatusSensorSummaryFallback,
-                                    kStatusSensorSummaryFormat,
+                                    ui_text(UiTextId::StatusSensorSummaryFallback),
+                                    ui_format(UiTextId::StatusSensorSummaryFormat),
                                     temperature,
                                     humidity);
     } else {
-        ui_text::copy(text, sizeof(text), kStatusSensorSummaryFallback);
+        ui_text_format::copy(text,
+                             sizeof(text),
+                             ui_text(UiTextId::StatusSensorSummaryFallback));
     }
     return set_label_text_if_changed(label, text);
 }

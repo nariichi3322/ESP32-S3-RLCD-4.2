@@ -4,6 +4,7 @@
 #include "app_constexpr.h"
 #include "app_text_format.h"
 #include "app_time_constants.h"
+#include "ui_i18n.h"
 #include "ui_language.h"
 
 #include <stdint.h>
@@ -47,19 +48,6 @@ constexpr bool lunar_year_table_contiguous()
     return true;
 }
 
-static const char *const kLunarDayNames[] = {
-    "",
-    "初一", "初二", "初三", "初四", "初五", "初六", "初七", "初八", "初九", "初十",
-    "十一", "十二", "十三", "十四", "十五", "十六", "十七", "十八", "十九", "二十",
-    "廿一", "廿二", "廿三", "廿四", "廿五", "廿六", "廿七", "廿八", "廿九", "三十",
-};
-
-static const char *const kLunarMonthNames[] = {
-    "",
-    "正月", "二月", "三月", "四月", "五月", "六月",
-    "七月", "八月", "九月", "十月", "冬月", "腊月",
-};
-
 static const char *const kSolarTermNames[] = {
     "小寒", "大寒", "立春", "雨水", "惊蛰", "春分",
     "清明", "谷雨", "立夏", "小满", "芒种", "夏至",
@@ -92,8 +80,108 @@ static constexpr int kLunarBaseMonth = 1;
 static constexpr int kLunarBaseDay = 22;
 static constexpr int kSolarTermsPerMonth = 2;
 static constexpr int kSolarTermsPerYear = kLastGregorianMonth * kSolarTermsPerMonth;
-static constexpr const char *kCalendarLunarPlaceholder = "--";
-static constexpr const char *kLunarMonthDisplayFormat = "%s%s";
+static constexpr UiTextId kLunarDayTextIds[] = {
+    UiTextId::Count,
+    UiTextId::CalendarLunarDay1,
+    UiTextId::CalendarLunarDay2,
+    UiTextId::CalendarLunarDay3,
+    UiTextId::CalendarLunarDay4,
+    UiTextId::CalendarLunarDay5,
+    UiTextId::CalendarLunarDay6,
+    UiTextId::CalendarLunarDay7,
+    UiTextId::CalendarLunarDay8,
+    UiTextId::CalendarLunarDay9,
+    UiTextId::CalendarLunarDay10,
+    UiTextId::CalendarLunarDay11,
+    UiTextId::CalendarLunarDay12,
+    UiTextId::CalendarLunarDay13,
+    UiTextId::CalendarLunarDay14,
+    UiTextId::CalendarLunarDay15,
+    UiTextId::CalendarLunarDay16,
+    UiTextId::CalendarLunarDay17,
+    UiTextId::CalendarLunarDay18,
+    UiTextId::CalendarLunarDay19,
+    UiTextId::CalendarLunarDay20,
+    UiTextId::CalendarLunarDay21,
+    UiTextId::CalendarLunarDay22,
+    UiTextId::CalendarLunarDay23,
+    UiTextId::CalendarLunarDay24,
+    UiTextId::CalendarLunarDay25,
+    UiTextId::CalendarLunarDay26,
+    UiTextId::CalendarLunarDay27,
+    UiTextId::CalendarLunarDay28,
+    UiTextId::CalendarLunarDay29,
+    UiTextId::CalendarLunarDay30,
+};
+
+static constexpr UiTextId kLunarMonthTextIds[] = {
+    UiTextId::Count,
+    UiTextId::CalendarLunarMonth1,
+    UiTextId::CalendarLunarMonth2,
+    UiTextId::CalendarLunarMonth3,
+    UiTextId::CalendarLunarMonth4,
+    UiTextId::CalendarLunarMonth5,
+    UiTextId::CalendarLunarMonth6,
+    UiTextId::CalendarLunarMonth7,
+    UiTextId::CalendarLunarMonth8,
+    UiTextId::CalendarLunarMonth9,
+    UiTextId::CalendarLunarMonth10,
+    UiTextId::CalendarLunarMonth11,
+    UiTextId::CalendarLunarMonth12,
+};
+
+static UiTextId calendar_text_id(const char *text)
+{
+    if (!text) return UiTextId::Count;
+    struct NameId { const char *traditional; const char *simplified; UiTextId id; };
+    static constexpr NameId kNames[] = {
+        {"元旦", "元旦", UiTextId::CalendarNewYear},
+        {"情人節", "情人节", UiTextId::CalendarValentinesDay},
+        {"婦女節", "妇女节", UiTextId::CalendarWomensDay},
+        {"勞動節", "劳动节", UiTextId::CalendarLabourDay},
+        {"兒童節", "儿童节", UiTextId::CalendarChildrensDay},
+        {"教師節", "教师节", UiTextId::CalendarTeachersDay},
+        {"國慶", "国庆", UiTextId::CalendarNationalDay},
+        {"聖誕", "圣诞", UiTextId::CalendarChristmas},
+        {"春節", "春节", UiTextId::CalendarSpringFestival},
+        {"元宵", "元宵", UiTextId::CalendarLanternFestival},
+        {"端午", "端午", UiTextId::CalendarDragonBoatFestival},
+        {"七夕", "七夕", UiTextId::CalendarQixiFestival},
+        {"中秋", "中秋", UiTextId::CalendarMidAutumnFestival},
+        {"重陽", "重阳", UiTextId::CalendarDoubleNinthFestival},
+        {"臘八", "腊八", UiTextId::CalendarLabaFestival},
+        {"小寒", "小寒", UiTextId::CalendarMinorCold},
+        {"大寒", "大寒", UiTextId::CalendarMajorCold},
+        {"立春", "立春", UiTextId::CalendarStartOfSpring},
+        {"雨水", "雨水", UiTextId::CalendarRainWater},
+        {"驚蟄", "惊蛰", UiTextId::CalendarAwakeningOfInsects},
+        {"春分", "春分", UiTextId::CalendarSpringEquinox},
+        {"清明", "清明", UiTextId::CalendarPureBrightness},
+        {"穀雨", "谷雨", UiTextId::CalendarGrainRain},
+        {"立夏", "立夏", UiTextId::CalendarStartOfSummer},
+        {"小滿", "小满", UiTextId::CalendarGrainFull},
+        {"芒種", "芒种", UiTextId::CalendarGrainInEar},
+        {"夏至", "夏至", UiTextId::CalendarSummerSolstice},
+        {"小暑", "小暑", UiTextId::CalendarMinorHeat},
+        {"大暑", "大暑", UiTextId::CalendarMajorHeat},
+        {"立秋", "立秋", UiTextId::CalendarStartOfAutumn},
+        {"處暑", "处暑", UiTextId::CalendarEndOfHeat},
+        {"白露", "白露", UiTextId::CalendarWhiteDew},
+        {"秋分", "秋分", UiTextId::CalendarAutumnEquinox},
+        {"寒露", "寒露", UiTextId::CalendarColdDew},
+        {"霜降", "霜降", UiTextId::CalendarFrostDescent},
+        {"立冬", "立冬", UiTextId::CalendarStartOfWinter},
+        {"小雪", "小雪", UiTextId::CalendarMinorSnow},
+        {"大雪", "大雪", UiTextId::CalendarMajorSnow},
+        {"冬至", "冬至", UiTextId::CalendarWinterSolstice},
+    };
+    for (const NameId &name : kNames) {
+        if (strcmp(text, name.traditional) == 0 || strcmp(text, name.simplified) == 0) {
+            return name.id;
+        }
+    }
+    return UiTextId::Count;
+}
 
 static_assert(kCalendarLunarSubtextSize >= sizeof("Dragon Boat Festival") &&
                   kCalendarLunarSubtextSize >= sizeof("Awakening of Insects") &&
@@ -145,9 +233,9 @@ static_assert(kLunarYears[0].year <= kMinValidYear &&
                   kLunarYears[array_count(kLunarYears) - 1].year >= kMaxValidYear,
               "lunar year table must cover the supported calendar range");
 static_assert(lunar_year_table_contiguous(), "lunar year table must stay contiguous");
-static_assert(array_count(kLunarDayNames) == static_cast<size_t>(kLunarLargeMonthDays + 1),
+static_assert(array_count(kLunarDayTextIds) == static_cast<size_t>(kLunarLargeMonthDays + 1),
               "lunar day names must cover day zero through day thirty");
-static_assert(array_count(kLunarMonthNames) == static_cast<size_t>(kLastLunarMonth + 1),
+static_assert(array_count(kLunarMonthTextIds) == static_cast<size_t>(kLastLunarMonth + 1),
               "lunar month names must cover month zero through month twelve");
 static_assert(array_count(kSolarTermNames) == kLastGregorianMonth * kSolarTermsPerMonth,
               "solar term names must cover two terms per month");
@@ -351,57 +439,49 @@ static const char *lunar_festival(int lunar_month, int lunar_day)
 
 static void set_calendar_subtext(CalendarDayInfo *info, const char *text)
 {
-    if (ui_language_is_english() && text) {
-        struct CalendarEnglishName { const char *source; const char *english; };
-        static constexpr CalendarEnglishName kNames[] = {
-            {"元旦", "New Year's Day"}, {"情人節", "Valentine's Day"},
-            {"情人节", "Valentine's Day"}, {"婦女節", "Women's Day"},
-            {"妇女节", "Women's Day"}, {"勞動節", "Labour Day"},
-            {"劳动节", "Labour Day"}, {"兒童節", "Children's Day"},
-            {"儿童节", "Children's Day"}, {"教師節", "Teachers' Day"},
-            {"教师节", "Teachers' Day"}, {"國慶", "National Day"},
-            {"国庆", "National Day"}, {"聖誕", "Christmas"}, {"圣诞", "Christmas"},
-            {"春節", "Spring Festival"}, {"春节", "Spring Festival"},
-            {"元宵", "Lantern Festival"}, {"端午", "Dragon Boat Festival"},
-            {"七夕", "Qixi Festival"}, {"中秋", "Mid-Autumn Festival"},
-            {"重陽", "Double Ninth Festival"}, {"重阳", "Double Ninth Festival"},
-            {"臘八", "Laba Festival"}, {"腊八", "Laba Festival"},
-            {"小寒", "Minor Cold"}, {"大寒", "Major Cold"}, {"立春", "Start of Spring"},
-            {"雨水", "Rain Water"}, {"驚蟄", "Awakening of Insects"}, {"惊蛰", "Awakening of Insects"},
-            {"春分", "Spring Equinox"}, {"清明", "Pure Brightness"}, {"穀雨", "Grain Rain"},
-            {"谷雨", "Grain Rain"}, {"立夏", "Start of Summer"}, {"小滿", "Grain Full"},
-            {"小满", "Grain Full"}, {"芒種", "Grain in Ear"}, {"芒种", "Grain in Ear"},
-            {"夏至", "Summer Solstice"}, {"小暑", "Minor Heat"}, {"大暑", "Major Heat"},
-            {"立秋", "Start of Autumn"}, {"處暑", "End of Heat"}, {"处暑", "End of Heat"},
-            {"白露", "White Dew"}, {"秋分", "Autumn Equinox"}, {"寒露", "Cold Dew"},
-            {"霜降", "Frost Descent"}, {"立冬", "Start of Winter"}, {"小雪", "Minor Snow"},
-            {"大雪", "Major Snow"}, {"冬至", "Winter Solstice"},
-        };
-        for (const auto &name : kNames) {
-            if (strcmp(text, name.source) == 0) {
-                utf8_safe_copy(info->subtext, sizeof(info->subtext), name.english);
-                return;
-            }
-        }
+    const UiTextId id = calendar_text_id(text);
+    if (id != UiTextId::Count) {
+        utf8_safe_copy(info->subtext, sizeof(info->subtext), ui_text(id));
+        return;
     }
     utf8_safe_copy(info->subtext,
                    sizeof(info->subtext),
-                   ui_language_localize(text ? text : kCalendarLunarPlaceholder));
+                   text ? ui_language_localize(text)
+                        : ui_text(UiTextId::UiPlaceholder));
 }
 
 static void set_calendar_lunar_month_subtext(CalendarDayInfo *info)
 {
+    if (ui_language_is_japanese()) {
+        char month_text[sizeof(info->subtext)];
+        const int month_written = snprintf(month_text,
+                                           sizeof(month_text),
+                                           ui_format(info->lunar_leap
+                                                         ? UiTextId::CalendarJapaneseLeapLunarMonthFormat
+                                                         : UiTextId::CalendarJapaneseLunarMonthFormat),
+                                           info->lunar_month);
+        const int written = app_text::format_failed(month_written, sizeof(month_text))
+                                 ? -1
+                                 : snprintf(info->subtext,
+                                             sizeof(info->subtext),
+                                             "%s",
+                                             month_text);
+        if (!app_text::format_failed(written, sizeof(info->subtext))) return;
+    }
     if (ui_language_is_english()) {
         const int written = snprintf(info->subtext, sizeof(info->subtext),
-                                     info->lunar_leap ? "Leap lunar month %d" : "Lunar month %d",
+                                     ui_format(info->lunar_leap
+                                                   ? UiTextId::CalendarEnglishLeapLunarMonthFormat
+                                                   : UiTextId::CalendarLunarMonth),
                                      info->lunar_month);
         if (!app_text::format_failed(written, sizeof(info->subtext))) return;
         set_calendar_subtext(info, nullptr);
         return;
     }
-    int written = snprintf(info->subtext, sizeof(info->subtext), kLunarMonthDisplayFormat,
-                           info->lunar_leap ? ui_language_text("閏", "闰", "Leap ") : "",
-                           ui_language_localize(kLunarMonthNames[info->lunar_month]));
+    int written = snprintf(info->subtext, sizeof(info->subtext),
+                           ui_format(UiTextId::CalendarLunarMonthJoinFormat),
+                           info->lunar_leap ? ui_text(UiTextId::CalendarLeap) : "",
+                           ui_text(kLunarMonthTextIds[info->lunar_month]));
     if (app_text::format_failed(written, sizeof(info->subtext))) {
         set_calendar_subtext(info, nullptr);
     }
@@ -454,12 +534,19 @@ bool calendar_day_info(const struct tm &local, CalendarDayInfo *info)
             return true;
         }
         if (info->lunar_day >= kFirstLunarDay && info->lunar_day <= kLunarLargeMonthDays) {
-            if (ui_language_is_english()) {
-                const int written = snprintf(info->subtext, sizeof(info->subtext),
-                                             "Lunar day %d", info->lunar_day);
+            if (ui_language_is_japanese()) {
+                const int written = snprintf(info->subtext,
+                                             sizeof(info->subtext),
+                                             ui_format(UiTextId::CalendarJapaneseLunarDayFormat),
+                                             info->lunar_day);
                 if (!app_text::format_failed(written, sizeof(info->subtext))) return lunar_ok;
             }
-            text = kLunarDayNames[info->lunar_day];
+            if (ui_language_is_english()) {
+                const int written = snprintf(info->subtext, sizeof(info->subtext),
+                                             ui_format(UiTextId::CalendarLunarDay), info->lunar_day);
+                if (!app_text::format_failed(written, sizeof(info->subtext))) return lunar_ok;
+            }
+            text = ui_text(kLunarDayTextIds[info->lunar_day]);
         }
     }
     set_calendar_subtext(info, text);

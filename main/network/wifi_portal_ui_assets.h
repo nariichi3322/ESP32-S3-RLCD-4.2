@@ -230,175 +230,63 @@ input:focus{border-color:var(--focus);box-shadow:0 0 0 3px rgba(0,113,227,.14);b
 }
 )PORTAL";
 
-inline constexpr char kCommonScriptSimplified[] = R"PORTAL(
-function pick(ssid){
-  var field=document.querySelector("[name=ssid]");
-  if(!field){return;}
-  field.value=ssid;
-  var password=document.querySelector("[name=pass]");
-  if(password){password.focus();}
-}
-function beginSave(form){
-  var button=form.querySelector(".submit");
-  var status=document.getElementById("save-status");
-  if(button){
-    button.disabled=true;
-    button.textContent="正在保存，请稍候…";
-  }
-  if(status){status.classList.add("show");}
-  setTimeout(function(){form.submit();},80);
-  return false;
-}
+inline constexpr char kCommonScript[] = R"PORTAL(
+ function pick(ssid){var field=document.querySelector("[name=ssid]");if(!field){return;}field.value=ssid;var password=document.querySelector("[name=pass]");if(password){password.focus();}}
+ function beginSave(form){var button=form.querySelector(".submit");var status=document.getElementById("save-status");if(button){button.disabled=true;button.textContent="%s";}if(status){status.classList.add("show");}setTimeout(function(){form.submit();},80);return false;}
 )PORTAL";
 
-inline constexpr char kCommonScriptTraditional[] = R"PORTAL(
-function pick(ssid){
-  var field=document.querySelector("[name=ssid]");
-  if(!field){return;}
-  field.value=ssid;
-  var password=document.querySelector("[name=pass]");
-  if(password){password.focus();}
-}
-function beginSave(form){
-  var button=form.querySelector(".submit");
-  var status=document.getElementById("save-status");
-  if(button){
-    button.disabled=true;
-    button.textContent="正在儲存，請稍候…";
-  }
-  if(status){status.classList.add("show");}
-  setTimeout(function(){form.submit();},80);
-  return false;
-}
-)PORTAL";
-
-inline constexpr char kFormHtmlTraditional[] = R"PORTAL(
+inline constexpr char kFormHtml[] = R"PORTAL(
 <form method='post' action='/save' accept-charset='UTF-8' onsubmit='return beginSave(this)'>
   <div class='form-section section-network'>
     <div class='section-heading'>
       <span class='section-index'>01</span>
-      <div><h2>Wi-Fi 設定</h2><p>僅在校時或設定期間啟用網路</p></div>
+      <div><h2>%s</h2><p>%s</p></div>
     </div>
     <div class='field'>
-      <label for='wifi-ssid'>主要 Wi-Fi 名稱（SSID）</label>
-      <input id='wifi-ssid' name='ssid' placeholder='請選擇或輸入 Wi-Fi 名稱' value='%s' autocomplete='off'>
+      <label for='wifi-ssid'>%s</label>
+      <input id='wifi-ssid' name='ssid' placeholder='%s' value='%s' autocomplete='off'>
     </div>
     <div class='field'>
-      <label for='wifi-pass'>主要 Wi-Fi 密碼</label>
-      <input id='wifi-pass' name='pass' placeholder='請輸入 Wi-Fi 密碼' type='password' autocomplete='current-password'>
-      <p class='hint'>SSID 未變更時，密碼留空可繼續使用原密碼。</p>
+      <label for='wifi-pass'>%s</label>
+      <input id='wifi-pass' name='pass' placeholder='%s' type='password' autocomplete='current-password'>
+      <p class='hint'>%s</p>
     </div>
     <div class='field'>
-      <label for='backup-wifi-ssid'>備用 Wi-Fi 名稱 <em>選填</em></label>
-      <input id='backup-wifi-ssid' name='backup_ssid' placeholder='主要 Wi-Fi 無法使用時自動嘗試' value='%s' autocomplete='off'>
+      <label for='backup-wifi-ssid'>%s <em>%s</em></label>
+      <input id='backup-wifi-ssid' name='backup_ssid' placeholder='%s' value='%s' autocomplete='off'>
     </div>
     <div class='field'>
-      <label for='backup-wifi-pass'>備用 Wi-Fi 密碼 <em>選填</em></label>
-      <input id='backup-wifi-pass' name='backup_pass' placeholder='請輸入備用 Wi-Fi 密碼' type='password' autocomplete='off'>
-      <p class='hint'>可不設定；備用連線成功後會自動成為首選 Wi-Fi。</p>
+      <label for='backup-wifi-pass'>%s <em>%s</em></label>
+      <input id='backup-wifi-pass' name='backup_pass' placeholder='%s' type='password' autocomplete='off'>
+      <p class='hint'>%s</p>
     </div>
   </div>
   <div class='form-section section-weather'>
     <div class='section-heading'>
       <span class='section-index'>02</span>
-      <div><h2>時間同步</h2><p>開機及每 24 小時自動校時</p></div>
+      <div><h2>%s</h2><p>%s</p></div>
     </div>
     <div class='field'>
-      <label for='ntp-server'>NTP 伺服器</label>
-      <input id='ntp-server' name='ntp_server' placeholder='pool.ntp.org' value='%s' autocomplete='off' aria-describedby='ntp-server-hint'>
-      <p id='ntp-server-hint' class='hint'>請填主機名稱，例如 pool.ntp.org；不要包含 http://、https:// 或路徑。</p>
+      <label for='ntp-server'>%s</label>
+      <input id='ntp-server' name='ntp_server' placeholder='%s' value='%s' autocomplete='off' aria-describedby='ntp-server-hint'>
+      <p id='ntp-server-hint' class='hint'>%s</p>
     </div>
     <div class='field'>
-      <label for='weather-city'>天氣城市 <em>選填</em></label>
-      <input id='weather-city' name='weather_city' placeholder='留空時依 IP 自動定位' value='%s' autocomplete='off'>
-      <p class='hint'>使用 Open-Meteo 全球城市搜尋，不需要 API Key。</p>
+      <label for='weather-city'>%s <em>%s</em></label>
+      <input id='weather-city' name='weather_city' placeholder='%s' value='%s' autocomplete='off'>
+      <p class='hint'>%s</p>
     </div>
   </div>
   <div class='actions'>
-    <button class='submit' type='submit'>儲存並連線</button>
+    <button class='submit' type='submit'>%s</button>
   </div>
-  <p id='save-status' class='save-status' role='status' aria-live='polite'><span class='activity-dot' aria-hidden='true'></span><span>正在儲存設定並連線，請稍候…</span></p>
+  <p id='save-status' class='save-status' role='status' aria-live='polite'><span class='activity-dot' aria-hidden='true'></span><span>%s</span></p>
 </form>
 <form method='post' action='/save' accept-charset='UTF-8'>
-  <div class='form-section section-offline'><div class='section-heading'><span class='section-index'>03</span><div><h2>離線模式</h2><p>不連接 Wi-Fi，使用手動時間與 RTC</p></div></div>
-  <div class='field'><label for='manual-time'>本機日期時間</label><input id='manual-time' name='manual_time' type='datetime-local' step='1' required></div></div>
-  <div class='actions'><button class='submit' type='submit'>以離線模式啟動</button></div>
+  <div class='form-section section-offline'><div class='section-heading'><span class='section-index'>03</span><div><h2>%s</h2><p>%s</p></div></div>
+  <div class='field'><label for='manual-time'>%s</label><input id='manual-time' name='manual_time' type='datetime-local' step='1' required></div></div>
+  <div class='actions'><button class='submit' type='submit'>%s</button></div>
 </form>
-)PORTAL";
-
-inline constexpr char kFormHtmlSimplified[] = R"PORTAL(
-<form method='post' action='/save' accept-charset='UTF-8' onsubmit='return beginSave(this)'>
-  <div class='form-section section-network'>
-    <div class='section-heading'>
-      <span class='section-index'>01</span>
-      <div><h2>Wi-Fi 设置</h2><p>仅在校时或设置期间启用网络</p></div>
-    </div>
-    <div class='field'>
-      <label for='wifi-ssid'>主 Wi-Fi 名称（SSID）</label>
-      <input id='wifi-ssid' name='ssid' placeholder='请选择或输入 Wi-Fi 名称' value='%s' autocomplete='off'>
-    </div>
-    <div class='field'>
-      <label for='wifi-pass'>主 Wi-Fi 密码</label>
-      <input id='wifi-pass' name='pass' placeholder='请输入 Wi-Fi 密码' type='password' autocomplete='current-password'>
-      <p class='hint'>SSID 未改变时，密码留空可继续使用原密码。</p>
-    </div>
-    <div class='field'>
-      <label for='backup-wifi-ssid'>备用 Wi-Fi 名称 <em>选填</em></label>
-      <input id='backup-wifi-ssid' name='backup_ssid' placeholder='主 Wi-Fi 不可用时自动尝试' value='%s' autocomplete='off'>
-    </div>
-    <div class='field'>
-      <label for='backup-wifi-pass'>备用 Wi-Fi 密码 <em>选填</em></label>
-      <input id='backup-wifi-pass' name='backup_pass' placeholder='请输入备用 Wi-Fi 密码' type='password' autocomplete='off'>
-      <p class='hint'>可不配置；备用连接成功后会自动成为首选 Wi-Fi。</p>
-    </div>
-  </div>
-  <div class='form-section section-weather'>
-    <div class='section-heading'>
-      <span class='section-index'>02</span>
-      <div><h2>时间同步</h2><p>开机及每 24 小时自动校时</p></div>
-    </div>
-    <div class='field'>
-      <label for='ntp-server'>NTP 服务器</label>
-      <input id='ntp-server' name='ntp_server' placeholder='pool.ntp.org' value='%s' autocomplete='off' aria-describedby='ntp-server-hint'>
-      <p id='ntp-server-hint' class='hint'>请填写主机名，例如 pool.ntp.org；不要包含 http://、https:// 或路径。</p>
-    </div>
-    <div class='field'>
-      <label for='weather-city'>天气城市 <em>选填</em></label>
-      <input id='weather-city' name='weather_city' placeholder='留空时依 IP 自动定位' value='%s' autocomplete='off'>
-      <p class='hint'>使用 Open-Meteo 全球城市搜索，不需要 API Key。</p>
-    </div>
-  </div>
-  <div class='actions'>
-    <button class='submit' type='submit'>保存并连接</button>
-  </div>
-  <p id='save-status' class='save-status' role='status' aria-live='polite'><span class='activity-dot' aria-hidden='true'></span><span>正在保存设置并连接，请稍候…</span></p>
-</form>
-<form method='post' action='/save' accept-charset='UTF-8'>
-  <div class='form-section section-offline'><div class='section-heading'><span class='section-index'>03</span><div><h2>离线模式</h2><p>不连接 Wi-Fi，使用手动时间与 RTC</p></div></div>
-  <div class='field'><label for='manual-time-zh'>本地日期时间</label><input id='manual-time-zh' name='manual_time' type='datetime-local' step='1' required></div></div>
-  <div class='actions'><button class='submit' type='submit'>以离线模式启动</button></div>
-</form>
-)PORTAL";
-
-inline constexpr char kCommonScriptEnglish[] = R"PORTAL(
-function pick(ssid){var field=document.querySelector("[name=ssid]");if(!field){return;}field.value=ssid;var password=document.querySelector("[name=pass]");if(password){password.focus();}}
-function beginSave(form){var button=form.querySelector(".submit");var status=document.getElementById("save-status");if(button){button.disabled=true;button.textContent="Saving, please wait…";}if(status){status.classList.add("show");}setTimeout(function(){form.submit();},80);return false;}
-)PORTAL";
-
-inline constexpr char kFormHtmlEnglish[] = R"PORTAL(
-<form method='post' action='/save' accept-charset='UTF-8' onsubmit='return beginSave(this)'>
-  <div class='form-section section-network'><div class='section-heading'><span class='section-index'>01</span><div><h2>Wi-Fi Settings</h2><p>Network is enabled for time sync and setup</p></div></div>
-  <div class='field'><label for='wifi-ssid'>Primary Wi-Fi (SSID)</label><input id='wifi-ssid' name='ssid' placeholder='Select or enter a Wi-Fi name' value='%s' autocomplete='off'></div>
-  <div class='field'><label for='wifi-pass'>Primary Wi-Fi password</label><input id='wifi-pass' name='pass' placeholder='Enter the Wi-Fi password' type='password' autocomplete='current-password'><p class='hint'>When the SSID is unchanged, leave the password blank to keep using the current password.</p></div>
-  <div class='field'><label for='backup-wifi-ssid'>Backup Wi-Fi <em>Optional</em></label><input id='backup-wifi-ssid' name='backup_ssid' placeholder='Try automatically if primary Wi-Fi is unavailable' value='%s' autocomplete='off'></div>
-  <div class='field'><label for='backup-wifi-pass'>Backup Wi-Fi password <em>Optional</em></label><input id='backup-wifi-pass' name='backup_pass' placeholder='Enter the backup Wi-Fi password' type='password' autocomplete='off'><p class='hint'>Optional; after a successful backup connection, it becomes the preferred Wi-Fi.</p></div></div>
-  <div class='form-section section-weather'><div class='section-heading'><span class='section-index'>02</span><div><h2>Time sync</h2><p>Automatic sync at boot and every 24 hours</p></div></div>
-  <div class='field'><label for='ntp-server'>NTP server</label><input id='ntp-server' name='ntp_server' placeholder='pool.ntp.org' value='%s' autocomplete='off' aria-describedby='ntp-server-hint'><p id='ntp-server-hint' class='hint'>Enter a host name such as pool.ntp.org; do not include http://, https://, or a path.</p></div>
-  <div class='field'><label for='weather-city'>Weather city <em>Optional</em></label><input id='weather-city' name='weather_city' placeholder='Leave blank to locate by IP' value='%s' autocomplete='off'><p class='hint'>Uses the global Open-Meteo city search; no API key is required.</p></div></div>
-  <div class='actions'><button class='submit' type='submit'>Save and connect</button></div>
-  <p id='save-status' class='save-status' role='status' aria-live='polite'><span class='activity-dot' aria-hidden='true'></span><span>Saving settings and connecting, please wait…</span></p>
-</form>
-<form method='post' action='/save' accept-charset='UTF-8'><div class='form-section section-offline'><div class='section-heading'><span class='section-index'>03</span><div><h2>Offline mode</h2><p>Use manual time and RTC without Wi-Fi</p></div></div><div class='field'><label for='manual-time-en'>Local date and time</label><input id='manual-time-en' name='manual_time' type='datetime-local' step='1' required></div></div><div class='actions'><button class='submit' type='submit'>Start offline mode</button></div></form>
 )PORTAL";
 
 } // namespace wifi_portal_ui

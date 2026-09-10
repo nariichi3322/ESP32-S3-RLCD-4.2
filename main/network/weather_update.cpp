@@ -8,6 +8,7 @@
 #include "network_credentials_state.h"
 #include "network_sync_runtime.h"
 #include "open_meteo_client.h"
+#include "ui_language.h"
 #include "weather_state_internal.h"
 
 #include <esp_attr.h>
@@ -38,6 +39,29 @@ bool resolve_city(const char *query, WeatherUpdateWorkspace *workspace)
                                   workspace->latitude, sizeof(workspace->latitude),
                                   workspace->longitude, sizeof(workspace->longitude)) ==
                OpenMeteoResult::kOk;
+}
+
+void localize_ip_city_for_english(WeatherUpdateWorkspace *workspace)
+{
+    if (!workspace || !ui_language_is_english() || workspace->ip_city[0] == '\0') {
+        return;
+    }
+
+    // The IP service may return a Chinese region name even for the English
+    // image. Resolve only the display name through Open-Meteo and keep the
+    // more accurate IP coordinates for the actual forecast request.
+    char localized_city[kCityNameSize] = {};
+    char localized_latitude[sizeof(WeatherData{}.lat)] = {};
+    char localized_longitude[sizeof(WeatherData{}.lon)] = {};
+    if (open_meteo_lookup_city(workspace->ip_city,
+                               localized_city,
+                               sizeof(localized_city),
+                               localized_latitude,
+                               sizeof(localized_latitude),
+                               localized_longitude,
+                               sizeof(localized_longitude)) == OpenMeteoResult::kOk) {
+        strlcpy(workspace->city, localized_city, sizeof(workspace->city));
+    }
 }
 
 WeatherUpdateResult fetch_and_commit(WeatherUpdateWorkspace *workspace)
@@ -88,5 +112,6 @@ WeatherUpdateResult perform_weather_update(WeatherUpdateScope scope)
     strlcpy(workspace.latitude, comma + 1, sizeof(workspace.latitude));
     strlcpy(workspace.city, workspace.ip_city[0] ? workspace.ip_city : workspace.location,
             sizeof(workspace.city));
+    localize_ip_city_for_english(&workspace);
     return fetch_and_commit(&workspace);
 }

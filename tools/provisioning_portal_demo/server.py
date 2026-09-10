@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import html
+import json
 import re
 import time
 from http import HTTPStatus
@@ -14,35 +15,35 @@ from urllib.parse import parse_qs, urlparse
 
 
 DEMO_DIR = Path(__file__).resolve().parent
-REPO_ROOT = DEMO_DIR.parents[2]
-ASSET_HEADER = REPO_ROOT / "RLCD_CLOCK/main/network/wifi_portal_ui_assets.h"
+REPO_ROOT = DEMO_DIR.parents[1]
+ASSET_HEADER = REPO_ROOT / "main/network/wifi_portal_ui_assets.h"
 
 SCENARIOS = {
     "form": ("", "", ""),
     "validating": (
         "pending",
-        "正在验证网络配置",
-        "设备正在连接 Wi-Fi，并验证 Open-Meteo 服务与天气城市，请稍候。",
+        "PortalSaveValidatingTitle",
+        "PortalSaveValidatingBody",
     ),
     "success": (
         "success",
-        "网络连接成功",
-        "天气时钟已连接到 Wi-Fi 网络。",
+        "PortalSaveConnectedTitle",
+        "PortalSaveConnectedBody",
     ),
     "wifi-failed": (
         "",
-        "Wi-Fi 连接失败",
-        "设备未能连接到该 Wi-Fi。请检查密码、信号和路由器状态后重新填写。",
+        "PortalSaveWifiFailedTitle",
+        "PortalSaveWifiFailedBody",
     ),
     "api-failed": (
         "",
-        "天气服务验证失败",
-        "Wi-Fi 已连接，但 Open-Meteo 服务暂时无法访问，请稍后重试。",
+        "PortalSaveWeatherApiFailedTitle",
+        "PortalSaveWeatherApiFailedBody",
     ),
     "city-failed": (
         "",
-        "天气城市无效",
-        "Open-Meteo 无法识别该城市。请修改城市，或留空使用自动定位。",
+        "PortalSaveWeatherCityInvalidTitle",
+        "PortalSaveWeatherCityInvalidBody",
     ),
 }
 
@@ -84,40 +85,59 @@ def extract_raw_literal(name: str) -> str:
 
 
 COMMON_CSS = extract_raw_literal("kCommonCss")
-COMMON_SCRIPT = extract_raw_literal("kCommonScriptTraditional")
-FORM_HTML = extract_raw_literal("kFormHtmlTraditional")
+COMMON_SCRIPT_FORMAT = extract_raw_literal("kCommonScript")
+FORM_HTML = extract_raw_literal("kFormHtml")
+
+CATALOG = {
+    entry["id"]: entry["zh-CN"]
+    for entry in json.loads(
+        (REPO_ROOT / "tools/ui_text_catalog.json").read_text(encoding="utf-8")
+    )["entries"]
+}
+
+
+def catalog_text(identifier: str) -> str:
+    return html.escape(CATALOG[identifier])
+
+
+COMMON_SCRIPT = COMMON_SCRIPT_FORMAT % catalog_text("PortalSaving")
 
 
 def toolbar(active: str) -> str:
     links = (
-        ("form", "表单"),
-        ("validating", "验证中"),
-        ("success", "成功"),
-        ("wifi-failed", "Wi-Fi 失败"),
-        ("api-failed", "API 失败"),
-        ("city-failed", "城市无效"),
-        ("offline", "离线结果"),
+        ("form", "PortalClockSetupMode"),
+        ("validating", "PortalValidating"),
+        ("success", "PortalConnected"),
+        ("wifi-failed", "PortalSaveWifiFailedTitle"),
+        ("api-failed", "PortalSaveWeatherApiFailedTitle"),
+        ("city-failed", "PortalSaveWeatherCityInvalidTitle"),
+        ("offline", "PortalOfflineModeTitle"),
     )
-    items = ["<nav class='demo-toolbar' aria-label='Demo 状态'><strong>预览状态</strong>"]
-    for state, label in links:
+    items = [
+        "<nav class='demo-toolbar' aria-label='{}'><strong>{}</strong>".format(
+            catalog_text("PortalClockSetupMode"),
+            catalog_text("PortalClockSetupMode"),
+        )
+    ]
+    for state, label_id in links:
         href = "/" if state == "form" else f"/?state={state}"
         active_class = " class='active'" if state == active else ""
         items.append(
-            f"<a{active_class} href='{href}'>{html.escape(label)}</a>"
+            f"<a{active_class} href='{href}'>{catalog_text(label_id)}</a>"
         )
     items.append("</nav>")
     return "".join(items)
 
 
 def feedback_html(state: str) -> str:
-    style, title, body = SCENARIOS.get(state, SCENARIOS["form"])
-    if not title:
+    style, title_id, body_id = SCENARIOS.get(state, SCENARIOS["form"])
+    if not title_id:
         return ""
     role = "status" if state in {"validating", "success"} else "alert"
     class_name = f"feedback {style}".strip()
     return (
         f"<div class='{class_name}' role='{role}'>"
-        f"<strong>{html.escape(title)}</strong>{html.escape(body)}</div>"
+        f"<strong>{catalog_text(title_id)}</strong>{catalog_text(body_id)}</div>"
     )
 
 
@@ -132,8 +152,8 @@ def wifi_list_html() -> str:
         )
     return (
         "<section class='wifi-section portal-panel'><div class='portal-panel-body'>"
-        "<div class='section-title'><span>附近的 Wi-Fi</span>"
-        "<a href='/'>重新扫描</a></div><div class='wifi-list'>"
+        f"<div class='section-title'><span>{catalog_text('PortalNearbyWifi')}</span>"
+        f"<a href='/'>{catalog_text('PortalScanAgain')}</a></div><div class='wifi-list'>"
         + "".join(buttons)
         + "</div></div></section>"
     )
@@ -144,18 +164,52 @@ def render_form(state: str = "form") -> str:
         return render_offline_result(True)
     if state not in SCENARIOS:
         state = "form"
-    form = FORM_HTML % ("Redmi_8FA2", "备用热点", "杭州")
+    form = FORM_HTML % (
+        catalog_text("PortalWifiSectionTitle"),
+        catalog_text("PortalWifiSectionDescription"),
+        catalog_text("PortalPrimaryWifiSsidLabel"),
+        catalog_text("PortalPrimaryWifiSsidPlaceholder"),
+        html.escape("Redmi_8FA2", quote=True),
+        catalog_text("PortalPrimaryWifiPasswordLabel"),
+        catalog_text("PortalPrimaryWifiPasswordPlaceholder"),
+        catalog_text("PortalPrimaryWifiPasswordHint"),
+        catalog_text("PortalBackupWifiSsidLabel"),
+        catalog_text("PortalOptional"),
+        catalog_text("PortalBackupWifiSsidPlaceholder"),
+        html.escape("备用热点", quote=True),
+        catalog_text("PortalBackupWifiPasswordLabel"),
+        catalog_text("PortalOptional"),
+        catalog_text("PortalBackupWifiPasswordPlaceholder"),
+        catalog_text("PortalBackupWifiPasswordHint"),
+        catalog_text("PortalTimeSyncTitle"),
+        catalog_text("PortalTimeSyncDescription"),
+        catalog_text("PortalNtpServer"),
+        catalog_text("PortalNtpServerPlaceholder"),
+        html.escape("pool.ntp.org", quote=True),
+        catalog_text("PortalNtpServerHint"),
+        catalog_text("PortalWeatherCityLabel"),
+        catalog_text("PortalOptional"),
+        catalog_text("PortalWeatherCityPlaceholder"),
+        html.escape("杭州", quote=True),
+        catalog_text("PortalWeatherCityHint"),
+        catalog_text("PortalSaveAndConnect"),
+        catalog_text("PortalSaveStatus"),
+        catalog_text("PortalOfflineModeTitle"),
+        catalog_text("PortalOfflineModeDescription"),
+        catalog_text("PortalLocalDateTime"),
+        catalog_text("PortalStartOfflineMode"),
+    )
     return (
         "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>天气时钟配网 Demo</title>"
+        f"<title>{catalog_text('PortalClockSetupMode')}</title>"
         f"<style>{COMMON_CSS}{DEMO_CSS}</style>"
         f"<script>{COMMON_SCRIPT}</script></head><body>"
         f"{toolbar(state)}"
         "<main class='portal-shell'><header class='portal-header'>"
         "<div class='brand-lockup'><div class='brand-mark'>42</div>"
-        "<div class='brand-copy'><h1>天气时钟</h1><p>网络、天气与离线时间设置</p></div></div>"
-        "<div class='ap-meta'><span>设备热点</span><strong>WeatherClock-Demo</strong></div>"
+        f"<div class='brand-copy'><h1>{catalog_text('PortalClockSetupMode')}</h1><p>{catalog_text('PortalWifiNtpSetup')}</p></div></div>"
+        f"<div class='ap-meta'><span>{catalog_text('PortalDeviceHotspot')}</span><strong>WeatherClock-Demo</strong></div>"
         "</header><section class='portal-form-shell'>"
         f"{feedback_html(state)}{form}</section>{wifi_list_html()}</main>"
         "</body></html>"
@@ -165,27 +219,27 @@ def render_form(state: str = "form") -> str:
 def render_result(state: str) -> str:
     states = {
         "validating": (
-            "验证中",
-            "正在验证网络配置",
-            "设备正在连接 Wi-Fi，并验证天气服务，请稍候。",
+            "PortalValidating",
+            "PortalSaveValidatingTitle",
+            "PortalSaveValidatingBody",
         ),
         "success": (
-            "已连接",
-            "网络连接成功",
-            "验证通过，设备即将进入工作状态。",
+            "PortalConnected",
+            "PortalSaveConnectedTitle",
+            "PortalSaveConnectedBody",
         ),
         "wifi-failed": (
-            "失败",
-            "Wi-Fi 连接失败",
-            "请检查密码、信号和路由器状态后重新填写。",
+            "PortalFailed",
+            "PortalSaveWifiFailedTitle",
+            "PortalSaveWifiFailedBody",
         ),
         "api-failed": (
-            "失败",
-            "天气服务验证失败",
-            "Open-Meteo 服务暂时无法访问，请稍后重试。",
+            "PortalFailed",
+            "PortalSaveWeatherApiFailedTitle",
+            "PortalSaveWeatherApiFailedBody",
         ),
     }
-    badge, title, body = states.get(state, states["validating"])
+    badge_id, title_id, body_id = states.get(state, states["validating"])
     poll_script = ""
     if state == "validating":
         poll_script = """
@@ -203,35 +257,33 @@ setTimeout(poll,600);
     return (
         "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>天气时钟配网结果 Demo</title>"
+        f"<title>{catalog_text('PortalClockSetupResult')}</title>"
         f"<style>{COMMON_CSS}{DEMO_CSS}</style>{poll_script}</head><body>"
         f"{toolbar(state)}"
         "<main class='result-shell'><section class='portal-panel result-panel'>"
-        f"<div class='result-state'>{html.escape(badge)}</div>"
-        f"<h1>{html.escape(title)}</h1><p>{html.escape(body)}</p>"
-        "<div class='meta'>主 Wi-Fi：Redmi_8FA2<br>备用 Wi-Fi：备用热点<br>"
-        "天气城市：杭州<br>最近一次 Wi-Fi 断开原因：0</div>"
-        "<a class='primary-link' href='/'>返回配网页</a>"
+        f"<div class='result-state'>{catalog_text(badge_id)}</div>"
+        f"<h1>{catalog_text(title_id)}</h1><p>{catalog_text(body_id)}</p>"
+        f"<div class='meta'>{catalog_text('PortalPrimaryWifi')}{catalog_text('PortalSeparator')}Redmi_8FA2<br>"
+        f"{catalog_text('PortalBackupWifi')}{catalog_text('PortalSeparator')}{html.escape('备用热点')}<br>"
+        f"{catalog_text('PortalWeatherCityLabel')}{catalog_text('PortalSeparator')}{html.escape('杭州')}<br>"
+        f"{catalog_text('PortalLastWifiDisconnect')}{catalog_text('PortalSeparator')}0</div>"
+        f"<a class='primary-link' href='/'>{catalog_text('PortalBackToSetup')}</a>"
         "</section></main></body></html>"
     )
 
 
 def render_offline_result(saved: bool) -> str:
-    badge = "已开启" if saved else "提示"
-    title = "离线模式已开启" if saved else "日期或时间无效"
-    body = (
-        "天气时钟将使用 RTC 时间，并停止所有网络更新。"
-        if saved
-        else "请输入有效日期和时间，或者填写联网配置。"
-    )
+    badge_id = "PortalOfflineModeEnabled" if saved else "PortalFailed"
+    title_id = "PortalOfflineModeTitle" if saved else "PortalInvalidDateTime"
+    body_id = "PortalOfflineModeDescription" if saved else "PortalInvalidDateTime"
     return (
         "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<title>天气时钟离线模式 Demo</title>"
+        f"<title>{catalog_text('PortalOfflineModeTitle')}</title>"
         f"<style>{COMMON_CSS}{DEMO_CSS}</style></head><body>{toolbar('offline')}"
         "<main class='result-shell'><section class='portal-panel result-panel'>"
-        f"<div class='result-state'>{badge}</div><h1>{title}</h1><p>{body}</p>"
-        "<a class='primary-link' href='/'>返回配网页</a>"
+        f"<div class='result-state'>{catalog_text(badge_id)}</div><h1>{catalog_text(title_id)}</h1><p>{catalog_text(body_id)}</p>"
+        f"<a class='primary-link' href='/'>{catalog_text('PortalBackToSetup')}</a>"
         "</section></main></body></html>"
     )
 

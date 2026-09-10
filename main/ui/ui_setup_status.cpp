@@ -7,6 +7,7 @@
 #include "network_credentials_state.h"
 #include "ui_language.h"
 #include "ui_page_state.h"
+#include "ui_i18n.h"
 #include "ui_text_format.h"
 #include "ui_widgets.h"
 #include "wifi_portal_state.h"
@@ -24,23 +25,24 @@ constexpr int kSetupStatusLabelHeight = 18;
 constexpr int kSetupStatusLabelY[] = {194, 212, 230, 248, 266, 284};
 EXT_RAM_BSS_ATTR lv_obj_t *s_setup_status_labels[array_count(kSetupStatusLabelY)];
 struct SetupStatusText {
-    const char *traditional;
-    const char *simplified;
-    const char *english;
+    UiTextId id;
 };
 
 const char *setup_status_text(const SetupStatusText &text)
 {
-    return ui_language_text(text.traditional, text.simplified, text.english);
+    return ui_text(text.id);
+}
+
+const char *setup_status_placeholder()
+{
+    return ui_text(UiTextId::UiPlaceholder);
 }
 
 template <size_t Count>
 constexpr bool setup_status_texts_nonempty(const SetupStatusText (&items)[Count])
 {
     for (const SetupStatusText &item : items) {
-        if (!item.traditional || item.traditional[0] == '\0' ||
-            !item.simplified || item.simplified[0] == '\0' ||
-            !item.english || item.english[0] == '\0') {
+        if (static_cast<unsigned>(item.id) >= static_cast<unsigned>(UiTextId::Count)) {
             return false;
         }
     }
@@ -48,30 +50,22 @@ constexpr bool setup_status_texts_nonempty(const SetupStatusText (&items)[Count]
 }
 
 constexpr SetupStatusText kSetupStatusInitialText[] = {
-    {"設定模式", "设置模式", "Setup Mode"},
-    {"AP SSID: --", "AP SSID: --", "AP SSID: --"},
-    {"AP 密碼: --", "AP 密码: --", "AP Password: --"},
-    {"入口 IP: --", "门户 IP: --", "Portal IP: --"},
-    {"STA SSID: --", "STA SSID: --", "STA SSID: --"},
-    {"STA IP: --", "STA IP: --", "STA IP: --"},
+    {UiTextId::SetupModeTitle},
+    {UiTextId::SetupApSsidPlaceholder},
+    {UiTextId::SetupApPasswordPlaceholder},
+    {UiTextId::SetupPortalIpPlaceholder},
+    {UiTextId::SetupStaSsidPlaceholder},
+    {UiTextId::SetupStaIpPlaceholder},
 };
 constexpr size_t kSetupStatusLineSize = 96;
-constexpr SetupStatusText kSetupStatusTitle = {"設定模式", "设置模式", "Setup Mode"};
-constexpr const char *kSetupStatusPlaceholder = "--";
-constexpr SetupStatusText kSetupApSsidFormat = {
-    "AP SSID: %s", "AP SSID: %s", "AP SSID: %s"};
-constexpr SetupStatusText kSetupApPasswordFormat = {
-    "AP 密碼: %s", "AP 密码: %s", "AP Password: %s"};
-constexpr SetupStatusText kSetupPortalIpFormat = {
-    "入口 IP: %s", "门户 IP: %s", "Portal IP: %s"};
-constexpr SetupStatusText kSetupStaSsidFormat = {
-    "STA SSID: %s", "STA SSID: %s", "STA SSID: %s"};
-constexpr SetupStatusText kSetupStaIpFormat = {
-    "STA IP: %s", "STA IP: %s", "STA IP: %s"};
-constexpr SetupStatusText kSetupStaIpReasonFormat = {
-    "STA IP: --  原因 %d", "STA IP: --  原因 %d", "STA IP: --  reason %d"};
-constexpr SetupStatusText kSetupStaIpPlaceholder = {
-    "STA IP: --", "STA IP: --", "STA IP: --"};
+constexpr SetupStatusText kSetupStatusTitle = {UiTextId::SetupModeTitle};
+constexpr SetupStatusText kSetupApSsidFormat = {UiTextId::SetupApSsidFormat};
+constexpr SetupStatusText kSetupApPasswordFormat = {UiTextId::SetupApPasswordFormat};
+constexpr SetupStatusText kSetupPortalIpFormat = {UiTextId::SetupPortalIpFormat};
+constexpr SetupStatusText kSetupStaSsidFormat = {UiTextId::SetupStaSsidFormat};
+constexpr SetupStatusText kSetupStaIpFormat = {UiTextId::SetupStaIpFormat};
+constexpr SetupStatusText kSetupStaIpReasonFormat = {UiTextId::SetupStaIpReasonFormat};
+constexpr SetupStatusText kSetupStaIpPlaceholder = {UiTextId::SetupStaIpPlaceholder};
 constexpr size_t kSetupStatusTitleIndex = 0;
 constexpr size_t kSetupStatusApSsidIndex = 1;
 constexpr size_t kSetupStatusApPasswordIndex = 2;
@@ -86,7 +80,7 @@ bool set_setup_status_line(size_t index, const char *fallback, const char *forma
         return false;
     }
     char line[kSetupStatusLineSize] = {};
-    ui_text::format_or_fallback(line, sizeof(line), fallback, format, args...);
+    ui_text_format::format_or_fallback(line, sizeof(line), fallback, format, args...);
     return set_label_text_if_changed(s_setup_status_labels[index], line);
 }
 
@@ -131,21 +125,21 @@ bool update_setup_status_panel()
     changed |= set_label_text_if_changed(s_setup_status_labels[kSetupStatusTitleIndex],
                                          setup_status_text(kSetupStatusTitle));
     changed |= set_setup_status_line(kSetupStatusApSsidIndex,
-                                     kSetupStatusPlaceholder,
+                                     setup_status_placeholder(),
                                      setup_status_text(kSetupApSsidFormat),
-                                     setup_ap_ssid[0] ? setup_ap_ssid : kSetupStatusPlaceholder);
+                                     setup_ap_ssid[0] ? setup_ap_ssid : setup_status_placeholder());
     changed |= set_setup_status_line(kSetupStatusApPasswordIndex,
-                                     kSetupStatusPlaceholder,
+                                     setup_status_placeholder(),
                                      setup_status_text(kSetupApPasswordFormat),
                                      kSetupApPassword);
     changed |= set_setup_status_line(kSetupStatusPortalIpIndex,
-                                     kSetupStatusPlaceholder,
+                                     setup_status_placeholder(),
                                      setup_status_text(kSetupPortalIpFormat),
                                      kSetupPortalIp);
     changed |= set_setup_status_line(kSetupStatusStaSsidIndex,
-                                     kSetupStatusPlaceholder,
+                                     setup_status_placeholder(),
                                      setup_status_text(kSetupStaSsidFormat),
-                                     wifi_ssid[0] ? wifi_ssid : kSetupStatusPlaceholder);
+                                     wifi_ssid[0] ? wifi_ssid : setup_status_placeholder());
     char station_ip[kWifiStationIpTextLen] = {};
     const bool have_station_ip = wifi_station_ip_snapshot(station_ip, sizeof(station_ip));
     const int disconnect_reason = wifi_last_disconnect_reason();
@@ -162,7 +156,7 @@ bool update_setup_status_panel()
                                          disconnect_reason);
     } else {
         char line[kSetupStatusLineSize] = {};
-        ui_text::copy(line, sizeof(line), setup_status_text(kSetupStaIpPlaceholder));
+        ui_text_format::copy(line, sizeof(line), setup_status_text(kSetupStaIpPlaceholder));
         changed |= set_label_text_if_changed(s_setup_status_labels[kSetupStatusStaIpIndex], line);
     }
     return changed;

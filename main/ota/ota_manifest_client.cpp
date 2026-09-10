@@ -38,6 +38,7 @@ constexpr const char *kManifestResponseAllocFailedLog = "OTA manifest response a
 #define MANIFEST_PARSE_FAILED_FORMAT "OTA manifest parse failed source=%s"
 #define MANIFEST_LOADED_FORMAT "OTA manifest loaded source=%s version=%s"
 #define BACKUP_MANIFEST_MISMATCH_FORMAT "OTA backup manifest mismatch current=%s backup=%s"
+#define MANIFEST_LOCALE_UNAVAILABLE_FORMAT "OTA manifest has no image for target locale=%s"
 constexpr bool manifest_source_name_fits(const char *text)
 {
     return cstr_nonempty(text) && cstr_length(text) < kOtaManifestSourceNameLen;
@@ -99,6 +100,12 @@ bool parse_manifest_with_log(const char *json, OtaManifest *manifest)
     case kOtaManifestParseInvalidSha256:
         ESP_LOGW(TAG, MANIFEST_SHA_INVALID_FORMAT, (unsigned)result.sha256_length);
         break;
+    case kOtaManifestParseInvalidLocale:
+        ESP_LOGW(TAG, "OTA manifest locale invalid");
+        break;
+    case kOtaManifestParseInvalidImage:
+        ESP_LOGW(TAG, "OTA manifest image entry invalid");
+        break;
     }
     return false;
 }
@@ -155,18 +162,12 @@ void ota_manifest_load_cached(OtaManifest *manifest)
     if (!manifest) {
         return;
     }
-    strlcpy(manifest->version, s_cached_manifest.version, sizeof(manifest->version));
-    strlcpy(manifest->url, s_cached_manifest.url, sizeof(manifest->url));
-    strlcpy(manifest->sha256, s_cached_manifest.sha256, sizeof(manifest->sha256));
-    manifest->size = s_cached_manifest.size;
+    *manifest = s_cached_manifest;
 }
 
 void ota_manifest_store_cached(const OtaManifest &manifest)
 {
-    strlcpy(s_cached_manifest.version, manifest.version, sizeof(s_cached_manifest.version));
-    strlcpy(s_cached_manifest.url, manifest.url, sizeof(s_cached_manifest.url));
-    strlcpy(s_cached_manifest.sha256, manifest.sha256, sizeof(s_cached_manifest.sha256));
-    s_cached_manifest.size = manifest.size;
+    s_cached_manifest = manifest;
 }
 
 bool ota_manifest_fetch(OtaManifest *manifest,
@@ -195,8 +196,15 @@ bool ota_manifest_fetch(OtaManifest *manifest,
                                        manifest,
                                        response,
                                        failure_callback)) {
-            store_manifest_source_name(source_name, source_name_len, custom_source.name);
-            return true;
+            if (ota_manifest_select_image(manifest, ui_language_target())) {
+                store_manifest_source_name(source_name, source_name_len, custom_source.name);
+                return true;
+            } else {
+                ESP_LOGW(TAG,
+                         MANIFEST_LOCALE_UNAVAILABLE_FORMAT,
+                         ui_language_locale_tag(ui_language_target()));
+                clear_manifest_output(manifest);
+            }
         }
     }
     for (const OtaManifestSource &source : kBuiltInManifestSources) {
@@ -204,8 +212,15 @@ bool ota_manifest_fetch(OtaManifest *manifest,
                                        manifest,
                                        response,
                                        failure_callback)) {
-            store_manifest_source_name(source_name, source_name_len, source.name);
-            return true;
+            if (ota_manifest_select_image(manifest, ui_language_target())) {
+                store_manifest_source_name(source_name, source_name_len, source.name);
+                return true;
+            } else {
+                ESP_LOGW(TAG,
+                         MANIFEST_LOCALE_UNAVAILABLE_FORMAT,
+                         ui_language_locale_tag(ui_language_target()));
+                clear_manifest_output(manifest);
+            }
         }
     }
     clear_manifest_output(manifest);
@@ -238,6 +253,10 @@ bool ota_manifest_fetch_backup_for_install(const OtaManifest &current,
                                         backup,
                                         response,
                                         failure_callback)) {
+            continue;
+        }
+        if (!ota_manifest_select_image(backup, ui_language_target())) {
+            clear_manifest_output(backup);
             continue;
         }
         if (strcmp(backup->url, current.url) == 0) {

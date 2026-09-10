@@ -4,6 +4,7 @@
 #include "network_http_client.h"
 #include "network_url.h"
 #include "scoped_heap_buffer.h"
+#include "ui_language.h"
 
 #include <cmath>
 #include <cstdio>
@@ -13,7 +14,7 @@ namespace {
 constexpr size_t kUrlSize = 512;
 constexpr size_t kResponseSize = 16384;
 constexpr char kGeocodingUrl[] =
-    "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=zh&format=json";
+    "https://geocoding-api.open-meteo.com/v1/search?name=%s&count=1&language=%s&format=json";
 constexpr char kForecastUrl[] =
     "https://api.open-meteo.com/v1/forecast?latitude=%s&longitude=%s&timezone=auto&forecast_days=6&forecast_hours=8&temperature_unit=celsius&wind_speed_unit=kmh&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,weather_code&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,wind_direction_10m_dominant,wind_speed_10m_max";
 constexpr char kAirUrl[] =
@@ -44,7 +45,11 @@ OpenMeteoResult open_meteo_lookup_city(const char *location,
     char url[kUrlSize] = {};
     if (!url_encode_component(location, encoded, sizeof(encoded)))
         return OpenMeteoResult::kInvalidArgument;
-    const int written = snprintf(url, sizeof(url), kGeocodingUrl, encoded);
+    const int written = snprintf(url,
+                                 sizeof(url),
+                                 kGeocodingUrl,
+                                 encoded,
+                                 ui_language_open_meteo_tag());
     if (written < 0 || static_cast<size_t>(written) >= sizeof(url))
         return OpenMeteoResult::kInvalidArgument;
     ScopedHeapBuffer<char> response(kResponseSize, HeapBufferInit::kZeroed,

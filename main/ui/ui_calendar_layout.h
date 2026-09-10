@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <time.h>
+#include "ui_i18n.h"
 
 inline constexpr int kCalendarWeekdayCount = 7;
 inline constexpr int kCalendarVisibleRowCount = 5;
@@ -36,14 +37,16 @@ inline constexpr int kSubTextY = 20;
 inline constexpr int kSubTextHeight = 17;
 inline constexpr int kDayTextSize = 4;
 struct CalendarWeekdayLabel {
-    const char *traditional;
-    const char *simplified;
-    const char *english;
+    UiTextId id;
 };
 inline constexpr CalendarWeekdayLabel kWeekdays[kCalendarWeekdayCount] = {
-    {"日", "日", "S"}, {"一", "一", "M"}, {"二", "二", "T"},
-    {"三", "三", "W"}, {"四", "四", "T"}, {"五", "五", "F"},
-    {"六", "六", "S"},
+    {UiTextId::CalendarWeekdaySundayShort},
+    {UiTextId::CalendarWeekdayMondayShort},
+    {UiTextId::CalendarWeekdayTuesdayShort},
+    {UiTextId::CalendarWeekdayWednesdayShort},
+    {UiTextId::CalendarWeekdayThursdayShort},
+    {UiTextId::CalendarWeekdayFridayShort},
+    {UiTextId::CalendarWeekdaySaturdayShort},
 };
 
 static_assert(kCanvasWidth > 0 && kCanvasHeight > 0,

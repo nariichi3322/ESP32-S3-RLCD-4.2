@@ -7,6 +7,7 @@
 #include "ui_settings_confirmation_state_internal.h"
 #include "ui_settings_feedback.h"
 #include "ui_settings_navigation_state_internal.h"
+#include "ui_i18n.h"
 #include "ui_task_notify.h"
 #include "ui_work_page_catalog.h"
 #include "work_page_ids.h"
@@ -21,7 +22,7 @@ std::atomic<TickType_t> s_settings_primary_exit_block_until{0};
 
 constexpr uint32_t kSettingsPrimaryExitBlockMs = 800;
 constexpr uint32_t kSettingsOrderExitFeedbackMs = 2500;
-constexpr const char *kSettingsOrderExitSavedFeedback = "页面顺序已保存";
+constexpr UiTextId kSettingsOrderExitSavedFeedback = UiTextId::SettingsOrderSaved;
 
 constexpr int clamp_selection_to_count(int selected, int count)
 {
@@ -30,7 +31,8 @@ constexpr int clamp_selection_to_count(int selected, int count)
 
 static_assert(kSettingsPrimaryExitBlockMs > 0, "settings primary exit block duration must be positive");
 static_assert(kSettingsOrderExitFeedbackMs > 0, "settings order exit feedback duration must be positive");
-static_assert(kSettingsOrderExitSavedFeedback[0] != '\0', "settings order saved feedback must not be empty");
+static_assert(kSettingsOrderExitSavedFeedback != UiTextId::Count,
+              "settings order saved feedback must have a catalog id");
 static_assert(clamp_selection_to_count(kWorkPageCalendar, kWorkPageCount) == kWorkPageCalendar &&
                    clamp_selection_to_count(kWorkPageHistory, kWorkPageCount) == kWorkPageHistory &&
                    clamp_selection_to_count(kWorkPageXiaozhiAI, kWorkPageCount) == kWorkPageXiaozhiAI &&
@@ -151,7 +153,8 @@ void handle_settings_key_long()
         navigation.selection = kDisplaySettingsOrderItem;
         settings_navigation_store(navigation);
         active_work_page_store(first_enabled_work_page());
-        set_settings_feedback(kSettingsOrderExitSavedFeedback, kSettingsOrderExitFeedbackMs);
+        set_settings_feedback(ui_text(kSettingsOrderExitSavedFeedback),
+                              kSettingsOrderExitFeedbackMs);
         reset_settings_confirmation();
         notify_ui_task();
         return;

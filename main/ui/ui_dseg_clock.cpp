@@ -4,6 +4,7 @@
 #include "dseg_digits.h"
 #include "ui_clock_surface_objects.h"
 #include "ui_dseg_render.h"
+#include "ui_i18n.h"
 #include "ui_text_format.h"
 
 #include <stdio.h>
@@ -12,7 +13,6 @@ namespace {
 constexpr int kDecimalBase = 10;
 constexpr size_t kHourMinuteTextSize = sizeof("00:00");
 constexpr size_t kSecondTextSize = sizeof("00");
-constexpr const char *kHourMinuteFormat = "%02d:%02d";
 
 void format_two_digit_second_text(char out[kSecondTextSize], int second)
 {
@@ -26,8 +26,12 @@ void format_hour_minute_text(char out[kHourMinuteTextSize], const struct tm &loc
     if (!out) {
         return;
     }
-    int written = snprintf(out, kHourMinuteTextSize, kHourMinuteFormat, local.tm_hour, local.tm_min);
-    if (ui_text::format_failed(written, kHourMinuteTextSize)) {
+    int written = snprintf(out,
+                           kHourMinuteTextSize,
+                           ui_format(UiTextId::DsegTimeFormat),
+                           local.tm_hour,
+                           local.tm_min);
+    if (ui_text_format::format_failed(written, kHourMinuteTextSize)) {
         out[0] = '\0';
     }
 }

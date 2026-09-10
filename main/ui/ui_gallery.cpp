@@ -270,7 +270,7 @@ static void style_gallery_saying_label(lv_obj_t *label)
     lv_obj_set_style_text_font(label,
                                ui_language_is_english()
                                    ? &lv_font_montserrat_14
-                                   : &zh_font_16,
+                                   : ui_font(UiFontRole::Body16),
                                LV_PART_MAIN);
     lv_obj_set_style_text_align(label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);

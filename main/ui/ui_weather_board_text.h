@@ -2,23 +2,18 @@
 #pragma once
 
 #include "weather_types.h"
+#include "ui_i18n.h"
 
 #include <stddef.h>
 
-inline constexpr const char *kWeatherBoardDash = "--";
-inline constexpr const char *kWeatherBoardShortDatePlaceholder = "--/--";
-inline constexpr const char *kWeatherBoardForecastRangePlaceholder = "--/--°C";
-inline constexpr const char *kWeatherBoardHourlyTimePlaceholder = "--:--";
-inline constexpr const char *kWeatherBoardHourlyTempPlaceholder = "--°C";
-inline constexpr const char *kWeatherBoardTodayRangePlaceholder = "今日 --/--°C";
-inline constexpr const char *kWeatherBoardAirPlaceholder = "AQI --";
-inline constexpr const char *kWeatherBoardHumidityPlaceholder = "湿度 --%";
-inline constexpr const char *kWeatherBoardWindPlaceholder = "-- --级";
-inline constexpr const char *kWeatherBoardSunrisePlaceholder = "日出 --:--";
-inline constexpr const char *kWeatherBoardSunsetPlaceholder = "日落 --:--";
-inline constexpr const char *kWeatherBoardAdvicePlaceholder = "等待更多天气数据";
+inline const char *weather_board_dash()
+{
+    return ui_text(UiTextId::UiPlaceholder);
+}
 
 const char *text_or_dash(const char *text);
+const char *weather_board_waiting_text();
+const char *weather_board_syncing_text();
 void format_today_range(const WeatherForecastDay &day, char *out, size_t out_len);
 void format_forecast_date_line(const WeatherForecastDay &day, char *out, size_t out_len);
 void format_forecast_temp_range(const WeatherForecastDay &day, char *out, size_t out_len);

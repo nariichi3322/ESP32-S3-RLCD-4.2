@@ -9,6 +9,7 @@
 
 # CMake and Ninja generated files (including host/simulator builds)
 **/build/
+**/build_*/
 **/cmake-build-*/
 **/CMakeFiles/
 **/CMakeCache.txt

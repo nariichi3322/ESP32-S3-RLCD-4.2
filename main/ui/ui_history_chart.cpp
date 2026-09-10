@@ -6,6 +6,7 @@
 #include "ui_history_format.h"
 #include "ui_history_layout.h"
 #include "ui_history_window.h"
+#include "ui_i18n.h"
 #include "ui_page_state.h"
 #include "ui_widgets.h"
 
@@ -49,7 +50,7 @@ void set_history_axis_placeholders(lv_obj_t **axis_labels)
         return;
     }
     for (int i = 0; i < kAxisValueCount; ++i) {
-        set_label_text_if_changed(axis_labels[i], kAxisPlaceholder);
+        set_label_text_if_changed(axis_labels[i], ui_text(UiTextId::HistoryAxisPlaceholder));
     }
 }
 } // namespace

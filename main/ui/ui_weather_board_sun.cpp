@@ -1,16 +1,13 @@
 // 实现天气看板日出、日落倒计时，不包含 LVGL 对象或页面布局。
 #include "ui_weather_board_sun.h"
 
-#include "ui_language.h"
+#include "ui_i18n.h"
 #include "ui_text_format.h"
 
 #include <string.h>
 
 namespace {
 constexpr const char *kWeatherBoardTimeParseFormat = "%d:%d";
-constexpr const char *kWeatherBoardSunCountdownFormat = "距%s %02d:%02d";
-constexpr const char *kWeatherBoardSunTargetSunrise = "日出";
-constexpr const char *kWeatherBoardSunTargetSunset = "日落";
 constexpr int kHoursPerDay = 24;
 constexpr int kMinutesPerHour = 60;
 constexpr int kSecondsPerMinute = 60;
@@ -56,9 +53,8 @@ time_t weather_board_time_on_day(const struct tm &local, const char *hhmm, int d
 
 void set_sun_countdown_placeholder(char *out, size_t out_len)
 {
-    ui_text::copy(out, out_len,
-                  ui_language_text("距日落 --:--", "距日落 --:--",
-                                   "Until sunset --:--"));
+    ui_text_format::copy(out, out_len,
+                  ui_text(UiTextId::WeatherUntilSunsetPlaceholder));
 }
 } // namespace
 
@@ -104,7 +100,7 @@ void format_weather_board_sun_countdown(const struct tm &local,
                                         char *out,
                                         size_t out_len)
 {
-    if (!ui_text::output_buffer_available(out, out_len)) {
+    if (!ui_text_format::output_buffer_available(out, out_len)) {
         return;
     }
     if (!schedule.ready ||
@@ -121,19 +117,13 @@ void format_weather_board_sun_countdown(const struct tm &local,
         set_sun_countdown_placeholder(out, out_len);
         return;
     }
-    const char *target_name = ui_language_text(kWeatherBoardSunTargetSunset,
-                                               kWeatherBoardSunTargetSunset,
-                                               "Sunset");
+    const char *target_name = ui_text(UiTextId::WeatherSunset);
     time_t target = sunset;
     if (now < sunrise) {
-        target_name = ui_language_text(kWeatherBoardSunTargetSunrise,
-                                       kWeatherBoardSunTargetSunrise,
-                                       "Sunrise");
+        target_name = ui_text(UiTextId::WeatherSunrise);
         target = sunrise;
     } else if (now >= sunset) {
-        target_name = ui_language_text(kWeatherBoardSunTargetSunrise,
-                                       kWeatherBoardSunTargetSunrise,
-                                       "Sunrise");
+        target_name = ui_text(UiTextId::WeatherSunrise);
         target = weather_board_time_on_day(local,
                                            schedule.tomorrow_sunrise[0]
                                                ? schedule.tomorrow_sunrise
@@ -147,13 +137,10 @@ void format_weather_board_sun_countdown(const struct tm &local,
     int total_minutes = (int)((target - now + (kSecondsPerMinute - 1)) / kSecondsPerMinute);
     int hours = total_minutes / kMinutesPerHour;
     int minutes = total_minutes % kMinutesPerHour;
-    ui_text::format_or_fallback(out,
+    ui_text_format::format_or_fallback(out,
                                 out_len,
-                                ui_language_text("距日落 --:--", "距日落 --:--",
-                                                 "Until sunset --:--"),
-                                ui_language_text(kWeatherBoardSunCountdownFormat,
-                                                 kWeatherBoardSunCountdownFormat,
-                                                 "Until %s %02d:%02d"),
+                                ui_text(UiTextId::WeatherUntilSunsetPlaceholder),
+                                ui_format(UiTextId::WeatherUntilSunFormat),
                                 target_name,
                                 hours,
                                 minutes);

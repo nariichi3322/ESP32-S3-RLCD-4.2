@@ -10,6 +10,7 @@
 #include "ui_clock_seconds_state.h"
 #include "ui_flip_sensor_mood.h"
 #include "ui_inverted_clock_card.h"
+#include "ui_i18n.h"
 #include "ui_icons.h"
 #include "ui_page_state.h"
 #include "ui_text_format.h"
@@ -28,13 +29,6 @@ constexpr int kSecondCardIndex = 2;
 constexpr int kTrendDrawCacheInvalid = 99;
 constexpr size_t kSensorTextSize = 16;
 constexpr size_t kDayTextSize = 8;
-constexpr const char *kTempPlaceholder = "--.-°C";
-constexpr const char *kHumiPlaceholder = "--%";
-constexpr const char *kDayPlaceholder = "--";
-constexpr const char *kTempFormat = "%.1f°C";
-constexpr const char *kHumiFormat = "%.0f%%";
-constexpr const char *kDayFormat = "%d";
-
 int s_last_hour = -1;
 int s_last_minute = -1;
 int s_last_second = -1;
@@ -151,19 +145,19 @@ bool update_sensor_text()
     char temp_text[kSensorTextSize] = {};
     char humi_text[kSensorTextSize] = {};
     if (sensor.available) {
-        ui_text::format_or_fallback(temp_text,
+        ui_text_format::format_or_fallback(temp_text,
                                     sizeof(temp_text),
-                                    kTempPlaceholder,
-                                    kTempFormat,
+                                    ui_text(UiTextId::FlipTemperaturePlaceholder),
+                                    ui_format(UiTextId::FlipTemperatureFormat),
                                     sensor.temperature);
-        ui_text::format_or_fallback(humi_text,
+        ui_text_format::format_or_fallback(humi_text,
                                     sizeof(humi_text),
-                                    kHumiPlaceholder,
-                                    kHumiFormat,
+                                    ui_text(UiTextId::FlipHumidityPlaceholder),
+                                    ui_format(UiTextId::FlipHumidityFormat),
                                     sensor.humidity);
     } else {
-        strlcpy(temp_text, kTempPlaceholder, sizeof(temp_text));
-        strlcpy(humi_text, kHumiPlaceholder, sizeof(humi_text));
+        strlcpy(temp_text, ui_text(UiTextId::FlipTemperaturePlaceholder), sizeof(temp_text));
+        strlcpy(humi_text, ui_text(UiTextId::FlipHumidityPlaceholder), sizeof(humi_text));
     }
     const int temp_mood = sensor.available
                               ? temperature_mood(sensor.temperature)
@@ -214,8 +208,14 @@ bool update_date_text(const struct tm &local)
     CalendarDayInfo info = {};
     const bool lunar_ok = calendar_day_info(local, &info);
     char day_text[kDayTextSize] = {};
-    ui_text::format_or_fallback(day_text, sizeof(day_text), kDayPlaceholder, kDayFormat, local.tm_mday);
-    const char *lunar_text = lunar_ok && info.subtext[0] ? info.subtext : kDayPlaceholder;
+    ui_text_format::format_or_fallback(day_text,
+                                       sizeof(day_text),
+                                       ui_text(UiTextId::FlipDayPlaceholder),
+                                       ui_format(UiTextId::FlipDayFormat),
+                                       local.tm_mday);
+    const char *lunar_text = lunar_ok && info.subtext[0]
+                                 ? info.subtext
+                                 : ui_text(UiTextId::FlipDayPlaceholder);
     bool changed = false;
     changed |= set_text_on_labels(day_text,
                                   objects.day_label,

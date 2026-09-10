@@ -32,6 +32,16 @@ std::string manifest_json(const std::string &version,
            "\",\"sha256\":\"" + sha256 + "\"}";
 }
 
+std::string image_json(const std::string &locale,
+                       const std::string &url,
+                       int size)
+{
+    return "{\"url\":\"" + url +
+           "\",\"sha256\":\"" + kValidSha +
+           "\",\"size\":" + std::to_string(size) +
+           ",\"locale\":\"" + locale + "\"}";
+}
+
 void expect_oversized_field_rejected(const std::string &version,
                                      const std::string &url,
                                      const std::string &sha256,
@@ -75,6 +85,9 @@ int main()
     assert(strcmp(manifest.url, "https://example.invalid/weather_clock.bin") == 0);
     assert(strcmp(manifest.sha256, kValidSha) == 0);
     assert(manifest.size == 123456);
+    assert(strcmp(manifest.locale, "zh-TW") == 0);
+    assert(ota_manifest_image_for_locale(manifest, UiLanguage::Traditional) != nullptr);
+    assert(ota_manifest_image_for_locale(manifest, UiLanguage::English) == nullptr);
 
     OtaManifest optional_fields;
     optional_fields.size = 321;
@@ -85,6 +98,46 @@ int main()
         &optional_fields);
     assert(result.status == kOtaManifestParseOk);
     assert(optional_fields.size == 0);
+
+    const std::string locale_manifest =
+        std::string("{\"version\":\"v1.5.8\",")
+        + "\"url\":\"https://example.invalid/weather_clock.bin\","
+        "\"sha256\":\"" + kValidSha +
+        "\",\"images\":{"
+        "\"zh-TW\":" + image_json("zh-TW", "https://example.invalid/tw.bin", 101) +
+        ",\"zh-CN\":" + image_json("zh-CN", "https://example.invalid/cn.bin", 102) +
+        ",\"en\":" + image_json("en", "https://example.invalid/en.bin", 103) +
+        ",\"ja\":" + image_json("ja", "https://example.invalid/ja.bin", 104) +
+        "}}";
+    OtaManifest locale_images;
+    result = ota_parse_manifest_json(locale_manifest.c_str(), &locale_images);
+    assert(result.status == kOtaManifestParseOk);
+    assert(locale_images.image_mask == 0x0f);
+    assert(ota_manifest_select_image(&locale_images, UiLanguage::Japanese));
+    assert(strcmp(locale_images.locale, "ja") == 0);
+    assert(strcmp(locale_images.url, "https://example.invalid/ja.bin") == 0);
+    assert(locale_images.size == 104);
+    assert(ota_manifest_select_image(&locale_images, UiLanguage::English));
+    assert(strcmp(locale_images.url, "https://example.invalid/en.bin") == 0);
+    assert(locale_images.size == 103);
+
+    result = ota_parse_manifest_json(
+        "{\"version\":\"v1.5.8\","
+        "\"url\":\"https://example.invalid/a.bin\","
+        "\"sha256\":\"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF\","
+        "\"locale\":\"ko\"}",
+        &manifest);
+    assert(result.status == kOtaManifestParseInvalidLocale);
+
+    result = ota_parse_manifest_json(
+        ("{\"version\":\"v1.5.8\","
+         "\"url\":\"https://example.invalid/a.bin\","
+         "\"sha256\":\"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF\","
+         "\"images\":{\"ja\":{\"url\":\"https://example.invalid/ja.bin\","
+         "\"sha256\":\"0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF\","
+         "\"locale\":\"en\"}}}"),
+        &manifest);
+    assert(result.status == kOtaManifestParseInvalidImage);
 
     OtaManifest invalid_json;
     strcpy(invalid_json.version, "stale-version");

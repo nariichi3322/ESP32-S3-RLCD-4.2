@@ -87,7 +87,7 @@ void Bar::build(lv_obj_t *screen,
                                                    15,
                                                    182,
                                                    26,
-                                                   "----/--/-- / 星期-");
+                                                   "----/--/--  星期-");
     lv_obj_set_style_text_align(date_label_, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     build_battery(screen);
     update_battery(battery_percent);

@@ -1,0 +1,2043 @@
+{
+  "catalog_version": 1,
+  "locales": [
+    "zh-TW",
+    "zh-CN",
+    "en",
+    "ja"
+  ],
+  "entries": [
+    {
+      "id": "LanguageTraditional",
+      "zh-TW": "繁體中文",
+      "zh-CN": "繁体中文",
+      "en": "Traditional Chinese",
+      "ja": "中国語"
+    },
+    {
+      "id": "LanguageSimplified",
+      "zh-TW": "簡體中文",
+      "zh-CN": "简体中文",
+      "en": "Simplified Chinese",
+      "ja": "簡体字中国語"
+    },
+    {
+      "id": "LanguageEnglish",
+      "zh-TW": "英文",
+      "zh-CN": "英文",
+      "en": "English",
+      "ja": "英語"
+    },
+    {
+      "id": "WeatherClear",
+      "zh-TW": "晴朗",
+      "zh-CN": "晴朗",
+      "en": "Clear",
+      "ja": "晴れ"
+    },
+    {
+      "id": "WeatherPartlyCloudy",
+      "zh-TW": "多雲",
+      "zh-CN": "多云",
+      "en": "P.cldy",
+      "ja": "曇り"
+    },
+    {
+      "id": "WeatherCloudy",
+      "zh-TW": "陰",
+      "zh-CN": "阴",
+      "en": "Cloudy",
+      "ja": "曇り"
+    },
+    {
+      "id": "WeatherFog",
+      "zh-TW": "霧",
+      "zh-CN": "雾",
+      "en": "Fog",
+      "ja": "もや"
+    },
+    {
+      "id": "WeatherDrizzle",
+      "zh-TW": "毛毛雨",
+      "zh-CN": "毛毛雨",
+      "en": "Drizzle",
+      "ja": "小雨"
+    },
+    {
+      "id": "WeatherRain",
+      "zh-TW": "下雨",
+      "zh-CN": "下雨",
+      "en": "Rain",
+      "ja": "雨"
+    },
+    {
+      "id": "WeatherSnow",
+      "zh-TW": "下雪",
+      "zh-CN": "下雪",
+      "en": "Snow",
+      "ja": "雪"
+    },
+    {
+      "id": "WeatherThunderstorm",
+      "zh-TW": "雷雨",
+      "zh-CN": "雷雨",
+      "en": "Storm",
+      "ja": "強い雨"
+    },
+    {
+      "id": "WeatherUnknown",
+      "zh-TW": "未知",
+      "zh-CN": "未知",
+      "en": "Unk.",
+      "ja": "不明"
+    },
+    {
+      "id": "WeatherAdviceRain",
+      "zh-TW": "有雨雪，出門記得帶傘。",
+      "zh-CN": "有雨雪，出门记得带伞。",
+      "en": "Rain/snow expected. Take an umbrella.",
+      "ja": "雨や雪の予報です。かさをお持ちください。"
+    },
+    {
+      "id": "WeatherAdviceSnow",
+      "zh-TW": "天氣寒冷，請注意保暖與路面結冰。",
+      "zh-CN": "天气寒冷，请注意保暖与路面结冰。",
+      "en": "Cold weather. Dress warmly; watch for ice.",
+      "ja": "寒い日です。暖かくして凍結に注意してください。"
+    },
+    {
+      "id": "WeatherAdviceClear",
+      "zh-TW": "天氣晴朗，戶外活動請注意防曬。",
+      "zh-CN": "天气晴朗，户外活动请注意防晒。",
+      "en": "Clear skies. Use sun protection.",
+      "ja": "晴れた日です。日光に注意してください。"
+    },
+    {
+      "id": "WeatherAdviceFog",
+      "zh-TW": "能見度較低，行車請減速並保持距離。",
+      "zh-CN": "能见度较低，行车请减速并保持距离。",
+      "en": "Low visibility. Drive carefully.",
+      "ja": "視界が悪いため運転に注意してください。"
+    },
+    {
+      "id": "WeatherAdviceUnknown",
+      "zh-TW": "天氣資料不足，請留意最新資訊。",
+      "zh-CN": "天气数据不足，请留意最新信息。",
+      "en": "Weather data incomplete. Check updates.",
+      "ja": "天気データが不足しています。最新情報を確認してください。"
+    },
+    {
+      "id": "WeekdaySunday",
+      "zh-TW": "星期日",
+      "zh-CN": "星期日",
+      "en": "Sunday",
+      "ja": "日曜日"
+    },
+    {
+      "id": "WeekdayMonday",
+      "zh-TW": "星期一",
+      "zh-CN": "星期一",
+      "en": "Monday",
+      "ja": "月曜日"
+    },
+    {
+      "id": "WeekdayTuesday",
+      "zh-TW": "星期二",
+      "zh-CN": "星期二",
+      "en": "Tuesday",
+      "ja": "火曜日"
+    },
+    {
+      "id": "WeekdayWednesday",
+      "zh-TW": "星期三",
+      "zh-CN": "星期三",
+      "en": "Wednesday",
+      "ja": "水曜日"
+    },
+    {
+      "id": "WeekdayThursday",
+      "zh-TW": "星期四",
+      "zh-CN": "星期四",
+      "en": "Thursday",
+      "ja": "木曜日"
+    },
+    {
+      "id": "WeekdayFriday",
+      "zh-TW": "星期五",
+      "zh-CN": "星期五",
+      "en": "Friday",
+      "ja": "金曜日"
+    },
+    {
+      "id": "WeekdaySaturday",
+      "zh-TW": "星期六",
+      "zh-CN": "星期六",
+      "en": "Saturday",
+      "ja": "土曜日"
+    },
+    {
+      "id": "AirExcellent",
+      "zh-TW": "優",
+      "zh-CN": "优",
+      "en": "Excellent",
+      "ja": "優"
+    },
+    {
+      "id": "AirGood",
+      "zh-TW": "良",
+      "zh-CN": "良",
+      "en": "Good",
+      "ja": "良"
+    },
+    {
+      "id": "AirSensitive",
+      "zh-TW": "敏感不健康",
+      "zh-CN": "敏感不健康",
+      "en": "Sens.",
+      "ja": "注意"
+    },
+    {
+      "id": "AirUnhealthy",
+      "zh-TW": "不健康",
+      "zh-CN": "不健康",
+      "en": "Unhealthy",
+      "ja": "不健康"
+    },
+    {
+      "id": "AirVeryUnhealthy",
+      "zh-TW": "非常不健康",
+      "zh-CN": "非常不健康",
+      "en": "Very bad",
+      "ja": "非常に不健康"
+    },
+    {
+      "id": "AirHazardous",
+      "zh-TW": "危害",
+      "zh-CN": "危害",
+      "en": "Hazardous",
+      "ja": "危ない"
+    },
+    {
+      "id": "WindNorth",
+      "zh-TW": "北",
+      "zh-CN": "北",
+      "en": "N",
+      "ja": "北"
+    },
+    {
+      "id": "WindNortheast",
+      "zh-TW": "東北",
+      "zh-CN": "东北",
+      "en": "NE",
+      "ja": "北東"
+    },
+    {
+      "id": "WindEast",
+      "zh-TW": "東",
+      "zh-CN": "东",
+      "en": "E",
+      "ja": "東"
+    },
+    {
+      "id": "WindSoutheast",
+      "zh-TW": "東南",
+      "zh-CN": "东南",
+      "en": "SE",
+      "ja": "南東"
+    },
+    {
+      "id": "WindSouth",
+      "zh-TW": "南",
+      "zh-CN": "南",
+      "en": "S",
+      "ja": "南"
+    },
+    {
+      "id": "WindSouthwest",
+      "zh-TW": "西南",
+      "zh-CN": "西南",
+      "en": "SW",
+      "ja": "南西"
+    },
+    {
+      "id": "WindWest",
+      "zh-TW": "西",
+      "zh-CN": "西",
+      "en": "W",
+      "ja": "西"
+    },
+    {
+      "id": "WindNorthwest",
+      "zh-TW": "西北",
+      "zh-CN": "西北",
+      "en": "NW",
+      "ja": "北西"
+    },
+    {
+      "id": "SettingsTime",
+      "zh-TW": "校時",
+      "zh-CN": "校时",
+      "en": "Time",
+      "ja": "時刻"
+    },
+    {
+      "id": "SettingsSound",
+      "zh-TW": "聲音",
+      "zh-CN": "声音",
+      "en": "Sound",
+      "ja": "サウンド"
+    },
+    {
+      "id": "SettingsDisplay",
+      "zh-TW": "顯示",
+      "zh-CN": "显示",
+      "en": "Display",
+      "ja": "表示"
+    },
+    {
+      "id": "SettingsSystem",
+      "zh-TW": "系統",
+      "zh-CN": "系统",
+      "en": "System",
+      "ja": "システム"
+    },
+    {
+      "id": "SettingsLanguage",
+      "zh-TW": "語言",
+      "zh-CN": "语言",
+      "en": "Language",
+      "ja": "言語"
+    },
+    {
+      "id": "SettingsCheckUpdates",
+      "zh-TW": "檢查更新",
+      "zh-CN": "检查更新",
+      "en": "Check for updates",
+      "ja": "更新を確認"
+    },
+    {
+      "id": "SettingsNetworkDiagnostics",
+      "zh-TW": "網路檢測",
+      "zh-CN": "网络检测",
+      "en": "Network diagnostics",
+      "ja": "ネットワーク確認"
+    },
+    {
+      "id": "SettingsSyncTime",
+      "zh-TW": "同步時間",
+      "zh-CN": "同步时间",
+      "en": "Sync time",
+      "ja": "時刻を同期"
+    },
+    {
+      "id": "SettingsSyncWeather",
+      "zh-TW": "同步天氣",
+      "zh-CN": "同步天气",
+      "en": "Sync weather",
+      "ja": "天気を同期"
+    },
+    {
+      "id": "SettingsUpdateSaying",
+      "zh-TW": "更新一言",
+      "zh-CN": "更新一言",
+      "en": "Update saying",
+      "ja": "一言を更新"
+    },
+    {
+      "id": "SettingsWeatherCity",
+      "zh-TW": "天氣城市",
+      "zh-CN": "天气城市",
+      "en": "Weather city",
+      "ja": "天気の都市"
+    },
+    {
+      "id": "SettingsVolume",
+      "zh-TW": "音量",
+      "zh-CN": "音量",
+      "en": "Volume",
+      "ja": "音量"
+    },
+    {
+      "id": "SettingsPageOrder",
+      "zh-TW": "頁面順序",
+      "zh-CN": "页面顺序",
+      "en": "Page order",
+      "ja": "ページ並び"
+    },
+    {
+      "id": "SettingsAlarm",
+      "zh-TW": "鬧鐘",
+      "zh-CN": "闹钟",
+      "en": "Alarm",
+      "ja": "アラーム"
+    },
+    {
+      "id": "SettingsAbout",
+      "zh-TW": "關於本機",
+      "zh-CN": "关于本机",
+      "en": "About",
+      "ja": "情報"
+    },
+    {
+      "id": "SettingsClearPairing",
+      "zh-TW": "清除配對",
+      "zh-CN": "清除配对",
+      "en": "Clear pairing",
+      "ja": "ペアリングを解除"
+    },
+    {
+      "id": "SettingsSetup",
+      "zh-TW": "設定模式",
+      "zh-CN": "设置模式",
+      "en": "Setup",
+      "ja": "設定モード"
+    },
+    {
+      "id": "SettingsOffline",
+      "zh-TW": "離線模式",
+      "zh-CN": "离线模式",
+      "en": "Offline",
+      "ja": "オフライン"
+    },
+    {
+      "id": "SettingsFactoryReset",
+      "zh-TW": "恢復原廠",
+      "zh-CN": "恢复出厂",
+      "en": "Factory reset",
+      "ja": "初期化"
+    },
+    {
+      "id": "SettingsLanguageChanged",
+        "zh-TW": "目標語言已儲存",
+        "zh-CN": "目标语言已保存",
+        "en": "Target language saved",
+        "ja": "対象言語を保存しました"
+    },
+    {
+      "id": "SettingsSaveFailed",
+      "zh-TW": "儲存失敗",
+      "zh-CN": "保存失败",
+      "en": "Save failed",
+      "ja": "保存失敗"
+    },
+    {
+      "id": "OtaChecking",
+      "zh-TW": "正在檢查更新",
+      "zh-CN": "正在检查更新",
+      "en": "Checking update",
+      "ja": "更新を確認中"
+    },
+    {
+      "id": "OtaLatest",
+      "zh-TW": "已是最新版本",
+      "zh-CN": "已是最新版本",
+      "en": "Already latest",
+      "ja": "最新です"
+    },
+    {
+      "id": "OtaDownloading",
+      "zh-TW": "下載中，請等待",
+      "zh-CN": "下载中，请等待",
+      "en": "Downloading, please wait",
+      "ja": "ダウンロード中、お待ちください"
+    },
+    {
+      "id": "OtaInstalling",
+      "zh-TW": "BOOT安裝更新",
+      "zh-CN": "BOOT安装更新",
+      "en": "Install update",
+      "ja": "更新をインストール"
+    },
+    {
+      "id": "OtaRestarting",
+      "zh-TW": "即將重新啟動",
+      "zh-CN": "即将重启",
+      "en": "Restarting soon",
+      "ja": "まもなく再起動"
+    },
+    {
+      "id": "OtaDownloadFailed",
+      "zh-TW": "下載失敗",
+      "zh-CN": "下载失败",
+      "en": "Download failed",
+      "ja": "ダウンロード失敗"
+    },
+    {
+      "id": "OtaVerifyFailed",
+      "zh-TW": "驗證失敗",
+      "zh-CN": "验证失败",
+      "en": "Verification failed",
+      "ja": "確認失敗"
+    },
+    {
+      "id": "OtaUpdateFailed",
+      "zh-TW": "更新失敗",
+      "zh-CN": "更新失败",
+      "en": "Update failed",
+      "ja": "更新失敗"
+    },
+    {
+      "id": "NetworkWaiting",
+      "zh-TW": "等待資料",
+      "zh-CN": "等待数据",
+      "en": "Waiting for data",
+      "ja": "データを待機中"
+    },
+    {
+      "id": "NetworkSyncing",
+      "zh-TW": "同步中",
+      "zh-CN": "同步中",
+      "en": "Syncing",
+      "ja": "同期中"
+    },
+    {
+      "id": "NetworkDiagnostics",
+      "zh-TW": "檢測中",
+      "zh-CN": "检测中",
+      "en": "Checking",
+      "ja": "確認中"
+    },
+    {
+      "id": "NetworkNoWifi",
+      "zh-TW": "沒有 Wi-Fi",
+      "zh-CN": "没有 Wi-Fi",
+      "en": "No Wi-Fi",
+      "ja": "Wi-Fiなし"
+    },
+    {
+      "id": "XiaozhiPreparing",
+      "zh-TW": "小智準備中",
+      "zh-CN": "小智准备中",
+      "en": "Xiaozhi preparing",
+      "ja": "Xiaozhi準備中"
+    },
+    {
+      "id": "XiaozhiBinding",
+      "zh-TW": "綁定 ID: ",
+      "zh-CN": "绑定 ID: ",
+      "en": "Binding ID: ",
+      "ja": "バインドID: "
+    },
+    {
+      "id": "XiaozhiWaitingWakeWord",
+      "zh-TW": "等待喚醒詞",
+      "zh-CN": "等待唤醒词",
+      "en": "Waiting for wake word",
+      "ja": "ウェイクワードを待機中"
+    },
+    {
+      "id": "XiaozhiListening",
+      "zh-TW": "正在聆聽",
+      "zh-CN": "正在聆听",
+      "en": "Listening",
+      "ja": "聞き取り中"
+    },
+    {
+      "id": "XiaozhiConversation",
+      "zh-TW": "正在對話",
+      "zh-CN": "正在对话",
+      "en": "In conversation",
+      "ja": "会話中"
+    },
+    {
+      "id": "XiaozhiUnavailable",
+      "zh-TW": "小智服務無法使用",
+      "zh-CN": "小智服务不可用",
+      "en": "Xiaozhi unavailable",
+      "ja": "Xiaozhiを利用できません"
+    },
+    {
+      "id": "CalendarLunarMonth",
+      "zh-TW": "農曆月份 %d",
+      "zh-CN": "农历月份 %d",
+      "en": "Lunar month %d",
+      "ja": "月%d"
+    },
+    {
+      "id": "CalendarLunarDay",
+      "zh-TW": "農曆第 %d 天",
+      "zh-CN": "农历第 %d 天",
+      "en": "Lunar day %d",
+      "ja": "日%d"
+    },
+    {
+      "id": "CalendarLeap",
+      "zh-TW": "閏",
+      "zh-CN": "闰",
+      "en": "Leap ",
+      "ja": "うるう"
+    },
+    {
+      "id": "CalendarNewYear",
+      "zh-TW": "元旦",
+      "zh-CN": "元旦",
+      "en": "New Year's Day",
+      "ja": "元日"
+    },
+    {
+      "id": "CalendarValentinesDay",
+      "zh-TW": "情人節",
+      "zh-CN": "情人节",
+      "en": "Valentine's Day",
+      "ja": "バレンタインデー"
+    },
+    {
+      "id": "CalendarWomensDay",
+      "zh-TW": "婦女節",
+      "zh-CN": "妇女节",
+      "en": "Women's Day",
+      "ja": "国際女性デー"
+    },
+    {
+      "id": "CalendarLabourDay",
+      "zh-TW": "勞動節",
+      "zh-CN": "劳动节",
+      "en": "Labour Day",
+      "ja": "労働節"
+    },
+    {
+      "id": "CalendarChildrensDay",
+      "zh-TW": "兒童節",
+      "zh-CN": "儿童节",
+      "en": "Children's Day",
+      "ja": "こどもの日"
+    },
+    {
+      "id": "CalendarTeachersDay",
+      "zh-TW": "教師節",
+      "zh-CN": "教师节",
+      "en": "Teachers' Day",
+      "ja": "教師の日"
+    },
+    {
+      "id": "CalendarNationalDay",
+      "zh-TW": "國慶",
+      "zh-CN": "国庆",
+      "en": "National Day",
+      "ja": "建国記念日"
+    },
+    {
+      "id": "CalendarChristmas",
+      "zh-TW": "聖誕",
+      "zh-CN": "圣诞",
+      "en": "Christmas",
+      "ja": "クリスマス"
+    },
+    {
+      "id": "CalendarSpringFestival",
+      "zh-TW": "春節",
+      "zh-CN": "春节",
+      "en": "Spring Festival",
+      "ja": "春祭り"
+    },
+    {
+      "id": "CalendarLanternFestival",
+      "zh-TW": "元宵",
+      "zh-CN": "元宵",
+      "en": "Lantern Festival",
+      "ja": "小正月"
+    },
+    {
+      "id": "CalendarDragonBoatFestival",
+      "zh-TW": "端午",
+      "zh-CN": "端午",
+      "en": "Dragon Boat Festival",
+      "ja": "端午節"
+    },
+    {
+      "id": "CalendarQixiFestival",
+      "zh-TW": "七夕",
+      "zh-CN": "七夕",
+      "en": "Qixi Festival",
+      "ja": "七夕"
+    },
+    {
+      "id": "CalendarMidAutumnFestival",
+      "zh-TW": "中秋",
+      "zh-CN": "中秋",
+      "en": "Mid-Autumn Festival",
+      "ja": "中秋節"
+    },
+    {
+      "id": "CalendarDoubleNinthFestival",
+      "zh-TW": "重陽",
+      "zh-CN": "重阳",
+      "en": "Double Ninth Festival",
+      "ja": "重陽の節句"
+    },
+    {
+      "id": "CalendarLabaFestival",
+      "zh-TW": "臘八",
+      "zh-CN": "腊八",
+      "en": "Laba Festival",
+      "ja": "臘八節"
+    },
+    {
+      "id": "CalendarMinorCold",
+      "zh-TW": "小寒",
+      "zh-CN": "小寒",
+      "en": "Minor Cold",
+      "ja": "小寒"
+    },
+    {
+      "id": "CalendarMajorCold",
+      "zh-TW": "大寒",
+      "zh-CN": "大寒",
+      "en": "Major Cold",
+      "ja": "大寒"
+    },
+    {
+      "id": "CalendarStartOfSpring",
+      "zh-TW": "立春",
+      "zh-CN": "立春",
+      "en": "Start of Spring",
+      "ja": "立春"
+    },
+    {
+      "id": "CalendarRainWater",
+      "zh-TW": "雨水",
+      "zh-CN": "雨水",
+      "en": "Rain Water",
+      "ja": "雨水"
+    },
+    {
+      "id": "CalendarAwakeningOfInsects",
+      "zh-TW": "驚蟄",
+      "zh-CN": "惊蛰",
+      "en": "Awakening of Insects",
+      "ja": "啓蟄"
+    },
+    {
+      "id": "CalendarSpringEquinox",
+      "zh-TW": "春分",
+      "zh-CN": "春分",
+      "en": "Spring Equinox",
+      "ja": "春分"
+    },
+    {
+      "id": "CalendarPureBrightness",
+      "zh-TW": "清明",
+      "zh-CN": "清明",
+      "en": "Pure Brightness",
+      "ja": "清明"
+    },
+    {
+      "id": "CalendarGrainRain",
+      "zh-TW": "穀雨",
+      "zh-CN": "谷雨",
+      "en": "Grain Rain",
+      "ja": "穀雨"
+    },
+    {
+      "id": "CalendarStartOfSummer",
+      "zh-TW": "立夏",
+      "zh-CN": "立夏",
+      "en": "Start of Summer",
+      "ja": "立夏"
+    },
+    {
+      "id": "CalendarGrainFull",
+      "zh-TW": "小滿",
+      "zh-CN": "小满",
+      "en": "Grain Full",
+      "ja": "小満"
+    },
+    {
+      "id": "CalendarGrainInEar",
+      "zh-TW": "芒種",
+      "zh-CN": "芒种",
+      "en": "Grain in Ear",
+      "ja": "芒種"
+    },
+    {
+      "id": "CalendarSummerSolstice",
+      "zh-TW": "夏至",
+      "zh-CN": "夏至",
+      "en": "Summer Solstice",
+      "ja": "夏至"
+    },
+    {
+      "id": "CalendarMinorHeat",
+      "zh-TW": "小暑",
+      "zh-CN": "小暑",
+      "en": "Minor Heat",
+      "ja": "小暑"
+    },
+    {
+      "id": "CalendarMajorHeat",
+      "zh-TW": "大暑",
+      "zh-CN": "大暑",
+      "en": "Major Heat",
+      "ja": "大暑"
+    },
+    {
+      "id": "CalendarStartOfAutumn",
+      "zh-TW": "立秋",
+      "zh-CN": "立秋",
+      "en": "Start of Autumn",
+      "ja": "立秋"
+    },
+    {
+      "id": "CalendarEndOfHeat",
+      "zh-TW": "處暑",
+      "zh-CN": "处暑",
+      "en": "End of Heat",
+      "ja": "処暑"
+    },
+    {
+      "id": "CalendarWhiteDew",
+      "zh-TW": "白露",
+      "zh-CN": "白露",
+      "en": "White Dew",
+      "ja": "白露"
+    },
+    {
+      "id": "CalendarAutumnEquinox",
+      "zh-TW": "秋分",
+      "zh-CN": "秋分",
+      "en": "Autumn Equinox",
+      "ja": "秋分"
+    },
+    {
+      "id": "CalendarColdDew",
+      "zh-TW": "寒露",
+      "zh-CN": "寒露",
+      "en": "Cold Dew",
+      "ja": "寒露"
+    },
+    {
+      "id": "CalendarFrostDescent",
+      "zh-TW": "霜降",
+      "zh-CN": "霜降",
+      "en": "Frost Descent",
+      "ja": "霜降"
+    },
+    {
+      "id": "CalendarStartOfWinter",
+      "zh-TW": "立冬",
+      "zh-CN": "立冬",
+      "en": "Start of Winter",
+      "ja": "立冬"
+    },
+    {
+      "id": "CalendarMinorSnow",
+      "zh-TW": "小雪",
+      "zh-CN": "小雪",
+      "en": "Minor Snow",
+      "ja": "小雪"
+    },
+    {
+      "id": "CalendarMajorSnow",
+      "zh-TW": "大雪",
+      "zh-CN": "大雪",
+      "en": "Major Snow",
+      "ja": "大雪"
+    },
+    {
+      "id": "CalendarWinterSolstice",
+      "zh-TW": "冬至",
+      "zh-CN": "冬至",
+      "en": "Winter Solstice",
+      "ja": "冬至"
+    },
+    {
+      "id": "WeatherSunrise",
+      "zh-TW": "日出",
+      "zh-CN": "日出",
+      "en": "Sunrise",
+      "ja": "日の出"
+    },
+    {
+      "id": "WeatherSunset",
+      "zh-TW": "日落",
+      "zh-CN": "日落",
+      "en": "Sunset",
+      "ja": "日没"
+    },
+    {
+      "id": "WeatherHumidity",
+      "zh-TW": "溼度",
+      "zh-CN": "湿度",
+      "en": "Humidity",
+      "ja": "水分"
+    },
+    {
+      "id": "WeatherWind",
+      "zh-TW": "風",
+      "zh-CN": "风",
+      "en": "Wind",
+      "ja": "風"
+    },
+    {
+      "id": "WeatherAqi",
+      "zh-TW": "空氣品質",
+      "zh-CN": "空气质量",
+      "en": "AQI",
+      "ja": "大気質"
+    },
+    {
+      "id": "WifiNearby",
+      "zh-TW": "附近的 Wi-Fi",
+      "zh-CN": "附近的 Wi-Fi",
+      "en": "Nearby Wi-Fi",
+      "ja": "近くのWi-Fi"
+    },
+    {
+      "id": "WifiRescan",
+      "zh-TW": "重新掃描",
+      "zh-CN": "重新扫描",
+      "en": "Scan again",
+      "ja": "再スキャン"
+    },
+    {
+      "id": "WifiConnected",
+      "zh-TW": "網路連線成功",
+      "zh-CN": "网络连接成功",
+      "en": "Wi-Fi connected",
+      "ja": "Wi-Fi接続完了"
+    },
+    {
+      "id": "WifiConnecting",
+      "zh-TW": "正在連線 Wi-Fi",
+      "zh-CN": "正在连接 Wi-Fi",
+      "en": "Connecting to Wi-Fi",
+      "ja": "Wi-Fi接続中"
+    },
+    {
+      "id": "WifiConnectionFailed",
+      "zh-TW": "Wi-Fi 連線失敗",
+      "zh-CN": "Wi-Fi 连接失败",
+      "en": "Wi-Fi connection failed",
+      "ja": "Wi-Fi接続失敗"
+    },
+    {
+      "id": "WifiSetupIncomplete",
+      "zh-TW": "設定資訊不完整",
+      "zh-CN": "配置信息不完整",
+      "en": "Setup information incomplete",
+      "ja": "設定情報が不足しています"
+    },
+    {
+      "id": "Codex",
+      "zh-TW": "Codex",
+      "zh-CN": "Codex",
+      "en": "Codex",
+      "ja": "Codex"
+    },
+    {
+      "id": "LanguageJapanese",
+      "zh-TW": "日文",
+      "zh-CN": "日语",
+      "en": "Japanese",
+      "ja": "日本語"
+    },
+    {
+      "id": "SettingsLanguageFormat",
+      "zh-TW": "語言 %s",
+      "zh-CN": "语言 %s",
+      "en": "Language %s",
+      "ja": "言語 %s"
+    },
+    {
+      "id": "SettingsWeatherCityFormat",
+      "zh-TW": "天氣城市 %s",
+      "zh-CN": "天气城市 %s",
+      "en": "Weather city %s",
+      "ja": "天気の都市 %s"
+    },
+    {
+      "id": "SettingsWeatherCityAuto",
+      "zh-TW": "天氣城市 自動",
+      "zh-CN": "天气城市 自动",
+      "en": "Weather city Auto",
+      "ja": "天気の都市 自動"
+    },
+    {
+      "id": "SettingsMuted",
+      "zh-TW": "音量 靜音",
+      "zh-CN": "音量 静音",
+      "en": "Muted",
+      "ja": "ミュート"
+    },
+    {
+      "id": "SettingsVolumeFormat",
+      "zh-TW": "音量 %d%%",
+      "zh-CN": "音量 %d%%",
+      "en": "Vol %d%%",
+      "ja": "音量 %d%%"
+    },
+    {
+      "id": "SettingsSoundFormat",
+      "zh-TW": "聲音選擇 %d",
+      "zh-CN": "声音选择 %d",
+      "en": "Sound %d",
+      "ja": "音声 %d"
+    },
+    {
+      "id": "SettingsSoundIndexFormat",
+      "zh-TW": "聲音 %d",
+      "zh-CN": "声音 %d",
+      "en": "Sound %d",
+      "ja": "音声 %d"
+    },
+    {
+      "id": "SettingsHourlyReminder",
+      "zh-TW": "整點提醒 7:00 - 22:00",
+      "zh-CN": "整点提醒 7:00 - 22:00",
+      "en": "Hourly 7-22",
+      "ja": "毎時 7:00 - 22:00"
+    },
+    {
+      "id": "SettingsAllDayReminder",
+      "zh-TW": "全天提醒 0:00 - 24:00",
+      "zh-CN": "全天提醒 0:00 - 24:00",
+      "en": "All-day 0-24",
+      "ja": "終日 0:00 - 24:00"
+    },
+    {
+      "id": "SettingsPageMode",
+      "zh-TW": "頁面開關",
+      "zh-CN": "页面开关",
+      "en": "Page mode",
+      "ja": "ページ切替"
+    },
+    {
+      "id": "SettingsAlarmFormat",
+      "zh-TW": "鬧鐘 %02d:%02d",
+      "zh-CN": "闹钟 %02d:%02d",
+      "en": "Alarm %02d:%02d",
+      "ja": "アラーム %02d:%02d"
+    },
+    {
+      "id": "SettingsAlarmPlaceholder",
+      "zh-TW": "鬧鐘 --:--",
+      "zh-CN": "闹钟 --:--",
+      "en": "Alarm --:--",
+      "ja": "アラーム --:--"
+    },
+    {
+      "id": "SettingsAutoReturn",
+      "zh-TW": "自動返回",
+      "zh-CN": "自动返回",
+      "en": "Auto return",
+      "ja": "自動戻り"
+    },
+    {
+      "id": "SettingsCustomImageFormat",
+      "zh-TW": "自訂圖 %s",
+      "zh-CN": "自定义图 %s",
+      "en": "Custom %s",
+      "ja": "カスタム %s"
+    },
+    {
+      "id": "SettingsOfflineFormat",
+      "zh-TW": "離線模式 %s",
+      "zh-CN": "离线模式 %s",
+      "en": "Offline %s",
+      "ja": "オフライン %s"
+    },
+    {
+      "id": "SettingsOn",
+      "zh-TW": "開",
+      "zh-CN": "开",
+      "en": "On",
+      "ja": "オン"
+    },
+    {
+      "id": "SettingsOff",
+      "zh-TW": "關",
+      "zh-CN": "关",
+      "en": "Off",
+      "ja": "オフ"
+    },
+    {
+      "id": "SettingsConfirmReset",
+      "zh-TW": "確認恢復",
+      "zh-CN": "确认恢复",
+      "en": "Confirm reset",
+      "ja": "初期化を確認"
+    },
+    {
+      "id": "SettingsWeatherCityInstruction",
+      "zh-TW": "請由設定網頁或小智修改",
+      "zh-CN": "请由设置网页或小智修改",
+      "en": "Change this from the setup page or Xiaozhi",
+      "ja": "設定ページまたはXiaozhiで変更"
+    },
+    {
+      "id": "SettingsOfflinePage",
+      "zh-TW": "目前處於離線模式",
+      "zh-CN": "目前处于离线模式",
+      "en": "Currently offline",
+      "ja": "現在オフライン"
+    },
+    {
+      "id": "SettingsCompleteOnline",
+      "zh-TW": "請先完成線上設定",
+      "zh-CN": "请先完成在线设置",
+      "en": "Complete online setup first",
+      "ja": "オンライン設定を先に完了"
+    },
+    {
+      "id": "SettingsPageToggleFormat",
+      "zh-TW": "%s%s",
+      "zh-CN": "%s%s",
+      "en": "%s: %s",
+      "ja": "%s: %s"
+    },
+    {
+      "id": "SettingsEnabled",
+      "zh-TW": "已開啟",
+      "zh-CN": "已开启",
+      "en": "Enabled",
+      "ja": "ON"
+    },
+    {
+      "id": "SettingsDisabled",
+      "zh-TW": "已關閉",
+      "zh-CN": "已关闭",
+      "en": "Disabled",
+      "ja": "OFF"
+    },
+    {
+      "id": "SettingsCodexPairingCleared",
+      "zh-TW": "Codex 配對已清除",
+      "zh-CN": "Codex 配对已清除",
+      "en": "Codex pairing cleared",
+      "ja": "Codexペアリング解除済み"
+    },
+    {
+      "id": "SettingsCodexPairingClearFailed",
+      "zh-TW": "清除 Codex 配對失敗",
+      "zh-CN": "清除 Codex 配对失败",
+      "en": "Failed to clear Codex pairing",
+      "ja": "Codexペアリング解除失敗"
+    },
+    {
+      "id": "CodexPairingTitle",
+      "zh-TW": "藍牙配對",
+      "zh-CN": "蓝牙配对",
+      "en": "BLUETOOTH PAIRING",
+      "ja": "Bluetoothペアリング"
+    },
+    {
+      "id": "CodexPairingInstruction",
+      "zh-TW": "請在 Windows 輸入此代碼",
+      "zh-CN": "请在 Windows 输入此代码",
+      "en": "Enter this code in Windows",
+      "ja": "Windowsにコードを入力"
+    },
+    {
+      "id": "CodexPairingSecurity",
+      "zh-TW": "需要安全連線",
+      "zh-CN": "需要安全连接",
+      "en": "Secure connection required",
+      "ja": "安全な接続が必要"
+    },
+    {
+      "id": "CodexDurationDaysHours",
+      "zh-TW": "%lu天 %lu小時",
+      "zh-CN": "%lu天 %lu小时",
+      "en": "%lud %luh",
+      "ja": "%lu日 %lu時間"
+    },
+    {
+      "id": "CodexDurationHoursMinutes",
+      "zh-TW": "%lu小時 %lu分",
+      "zh-CN": "%lu小时 %lu分",
+      "en": "%luh %lum",
+      "ja": "%lu時間 %lu分"
+    },
+    {
+      "id": "CodexDurationMinutes",
+      "zh-TW": "%lu分",
+      "zh-CN": "%lu分",
+      "en": "%lum",
+      "ja": "%lu分"
+    },
+    {
+      "id": "CodexQuotaTitle",
+      "zh-TW": "CODEX 剩餘 (%s)",
+      "zh-CN": "CODEX 剩余 (%s)",
+      "en": "CODEX LEFT (%s)",
+      "ja": "CODEX残り (%s)"
+    },
+    {
+      "id": "CodexResetFormat",
+      "zh-TW": "重設於 %s",
+      "zh-CN": "重置 %s",
+      "en": "RESET %s",
+      "ja": "%sにリセット"
+    },
+    {
+      "id": "CodexResetPlaceholder",
+      "zh-TW": "重設於 --",
+      "zh-CN": "重置 --",
+      "en": "RESET --",
+      "ja": "--にリセット"
+    },
+    {
+      "id": "CodexPrimaryTitlePlaceholder",
+      "zh-TW": "CODEX 剩餘 (--)",
+      "zh-CN": "CODEX 剩余 (--)",
+      "en": "CODEX LEFT (--)",
+      "ja": "CODEX残り (--)"
+    },
+    {
+      "id": "CodexPaidCredits",
+      "zh-TW": "付費額度",
+      "zh-CN": "付费额度",
+      "en": "PAID CREDITS",
+      "ja": "有料"
+    },
+    {
+      "id": "CodexToday",
+      "zh-TW": "今日",
+      "zh-CN": "今日",
+      "en": "TODAY",
+      "ja": "今日"
+    },
+    {
+      "id": "CodexSevenDays",
+      "zh-TW": "7 天",
+      "zh-CN": "7 天",
+      "en": "7 DAYS",
+      "ja": "7日"
+    },
+    {
+      "id": "CodexRunning",
+      "zh-TW": "正在執行",
+      "zh-CN": "线程",
+      "en": "RUN",
+      "ja": "実行"
+    },
+    {
+      "id": "CodexResetCredits",
+      "zh-TW": "重設額度",
+      "zh-CN": "重置额度",
+      "en": "RESET CR",
+      "ja": "CR 残り"
+    },
+    {
+      "id": "CodexResetExpiry",
+      "zh-TW": "額度到期",
+      "zh-CN": "额度到期",
+      "en": "CR EXP",
+      "ja": "CR 期限"
+    },
+    {
+      "id": "CodexBluetoothOff",
+      "zh-TW": "藍牙已關閉",
+      "zh-CN": "蓝牙关闭",
+      "en": "BLUETOOTH OFF",
+      "ja": "Bluetoothオフ"
+    },
+    {
+      "id": "CodexOffline",
+      "zh-TW": "(離線)",
+      "zh-CN": "(离线)",
+      "en": "(OFFLINE)",
+      "ja": "(オフライン)"
+    },
+    {
+      "id": "CodexUnlimited",
+      "zh-TW": "無限",
+      "zh-CN": "无限",
+      "en": "UNLIM",
+      "ja": "無制限"
+    },
+    {
+      "id": "PomodoroTitle",
+      "zh-TW": "番茄鐘",
+      "zh-CN": "番茄钟",
+      "en": "POMODORO",
+      "ja": "ポモドーロ"
+    },
+    {
+      "id": "PomodoroRunning",
+      "zh-TW": "專注中",
+      "zh-CN": "专注中",
+      "en": "FOCUS",
+      "ja": "集中中"
+    },
+    {
+      "id": "PomodoroCompleted",
+      "zh-TW": "已完成",
+      "zh-CN": "已完成",
+      "en": "DONE",
+      "ja": "完了"
+    },
+    {
+      "id": "PomodoroMinuteSecond",
+      "zh-TW": "分 / 秒",
+      "zh-CN": "分 / 秒",
+      "en": "MIN / SEC",
+      "ja": "分 / s"
+    },
+    {
+      "id": "SettingsOrderSaved",
+      "zh-TW": "頁面順序已儲存",
+      "zh-CN": "页面顺序已保存",
+      "en": "Page order saved",
+      "ja": "ページ並びを保存しました"
+    },
+    {
+      "id": "SettingsSyncBusy",
+      "zh-TW": "請等待同步完成",
+      "zh-CN": "请等待同步完成",
+      "en": "Please wait for sync to finish",
+      "ja": "同期完了を待ってください"
+    },
+    {
+      "id": "SettingsOfflineEnabled",
+      "zh-TW": "離線模式已開啟",
+      "zh-CN": "离线模式已开启",
+      "en": "Offline mode enabled",
+      "ja": "オフライン ON"
+    },
+    {
+      "id": "SettingsOfflineDisabled",
+      "zh-TW": "離線模式已關閉",
+      "zh-CN": "离线模式已关闭",
+      "en": "Offline mode disabled",
+      "ja": "オフライン OFF"
+    },
+    {
+      "id": "SettingsSyncTimeFeedback",
+      "zh-TW": "正在同步時間...",
+      "zh-CN": "正在同步时间...",
+      "en": "Syncing time...",
+      "ja": "時刻を同期中..."
+    },
+    {
+      "id": "SettingsSyncWeatherFeedback",
+      "zh-TW": "正在同步天氣...",
+      "zh-CN": "正在同步天气...",
+      "en": "Syncing weather...",
+      "ja": "天気を同期中..."
+    },
+    {
+      "id": "SettingsSyncSayingFeedback",
+      "zh-TW": "正在更新一言...",
+      "zh-CN": "正在更新一言...",
+      "en": "Updating saying...",
+      "ja": "一言を更新中..."
+    },
+    {
+      "id": "SettingsNetworkDiagnosticsFeedback",
+      "zh-TW": "正在網路檢測...",
+      "zh-CN": "正在网络检测...",
+      "en": "Running network diagnostics...",
+      "ja": "ネットワーク確認中..."
+    },
+    {
+      "id": "SettingsMutedFeedback",
+      "zh-TW": "已靜音",
+      "zh-CN": "已静音",
+      "en": "Muted",
+      "ja": "ミュート"
+    },
+    {
+      "id": "SettingsHourlyEnabled",
+      "zh-TW": "整點提醒已開啟",
+      "zh-CN": "整点提醒已开启",
+      "en": "Hourly reminder enabled",
+      "ja": "毎時通知 ON"
+    },
+    {
+      "id": "SettingsHourlyDisabled",
+      "zh-TW": "整點提醒已關閉",
+      "zh-CN": "整点提醒已关闭",
+      "en": "Hourly reminder disabled",
+      "ja": "毎時通知 OFF"
+    },
+    {
+      "id": "SettingsAllDayEnabled",
+      "zh-TW": "全天提醒已開啟",
+      "zh-CN": "全天提醒已开启",
+      "en": "All-day reminder enabled",
+      "ja": "終日通知 ON"
+    },
+    {
+      "id": "SettingsAllDayDisabled",
+      "zh-TW": "全天提醒已關閉",
+      "zh-CN": "全天提醒已关闭",
+      "en": "All-day reminder disabled",
+      "ja": "終日通知 OFF"
+    },
+    {
+      "id": "SettingsPageOrderInstruction",
+      "zh-TW": "BOOT交換並儲存",
+      "zh-CN": "BOOT交换并保存",
+      "en": "Swap with BOOT and save",
+      "ja": "BOOTで交換して保存"
+    },
+    {
+      "id": "SettingsPageSwitchInstruction",
+      "zh-TW": "頁面開關：BOOT切換",
+      "zh-CN": "页面开关：BOOT切换",
+      "en": "Page mode: switch with BOOT",
+      "ja": "ページ切替: BOOT"
+    },
+    {
+      "id": "SettingsKeepOnePage",
+      "zh-TW": "至少保留一個頁面",
+      "zh-CN": "至少保留一个页面",
+      "en": "Keep at least one page",
+      "ja": "1ページ以上必要"
+    },
+    {
+      "id": "SettingsKeepHomePage",
+      "zh-TW": "請至少保留一個非小智頁面",
+      "zh-CN": "请至少保留一个非小智页面",
+      "en": "Keep at least one non-Xiaozhi page",
+      "ja": "Xiaozhi以外のページが必要"
+    },
+    {
+      "id": "SettingsXiaozhiHomeBlocked",
+      "zh-TW": "小智 AI 不能設為主頁",
+      "zh-CN": "小智AI不能设为主页",
+      "en": "Xiaozhi cannot be the home page",
+      "ja": "Xiaozhiをホームにできません"
+    },
+    {
+      "id": "SettingsPomodoroRunning",
+      "zh-TW": "請先取消番茄鐘",
+      "zh-CN": "请先取消番茄钟",
+      "en": "Stop Pomodoro first",
+      "ja": "ポモドーロを先に解除"
+    },
+    {
+      "id": "SettingsAutoReturnEnabled",
+      "zh-TW": "小智自動返回已開啟",
+      "zh-CN": "小智自动返回已开启",
+      "en": "Xiaozhi auto return enabled",
+      "ja": "Xiaozhi自動戻り ON"
+    },
+    {
+      "id": "SettingsAutoReturnDisabled",
+      "zh-TW": "小智自動返回已關閉",
+      "zh-CN": "小智自动返回已关闭",
+      "en": "Xiaozhi auto return disabled",
+      "ja": "Xiaozhi自動戻り OFF"
+    },
+    {
+      "id": "SettingsGalleryBuiltin",
+      "zh-TW": "預設圖片固定 24h",
+      "zh-CN": "默认图片固定 24h",
+      "en": "Built-in image fixed for 24h",
+      "ja": "内蔵画像は24h"
+    },
+    {
+      "id": "SettingsAlarmDisabled",
+      "zh-TW": "鬧鐘已關閉",
+      "zh-CN": "闹钟已关闭",
+      "en": "Alarm disabled",
+      "ja": "アラーム OFF"
+    },
+    {
+      "id": "SettingsAlarmSetByXiaozhi",
+      "zh-TW": "請透過小智 AI 設定",
+      "zh-CN": "请通过小智AI设置",
+      "en": "Set this through Xiaozhi",
+      "ja": "Xiaozhiで設定"
+    },
+    {
+      "id": "SettingsSetupStartFailed",
+      "zh-TW": "配網啟動失敗",
+      "zh-CN": "配网启动失败",
+      "en": "Setup portal failed to start",
+      "ja": "ネット設定失敗"
+    },
+    {
+      "id": "SettingsFactoryResetConfirm",
+      "zh-TW": "再次按 BOOT 確認",
+      "zh-CN": "再次按 BOOT 确认",
+      "en": "Press BOOT again to confirm",
+      "ja": "BOOTを再度押して確認"
+    },
+    {
+      "id": "SettingsFactoryResetFailed",
+      "zh-TW": "恢復失敗",
+      "zh-CN": "恢复失败",
+      "en": "Factory reset failed",
+      "ja": "復元失敗"
+    },
+    {
+      "id": "OtaNewVersionPlaceholder",
+      "zh-TW": "新版本 --",
+      "zh-CN": "新版本 --",
+      "en": "New version --",
+      "ja": "Version --"
+    },
+    {
+      "id": "OtaNewVersionFormat",
+      "zh-TW": "新版本 %s",
+      "zh-CN": "新版本 %s",
+      "en": "New version %s",
+      "ja": "Version %s"
+    },
+    {
+      "id": "OtaProgressPlaceholder",
+      "zh-TW": "OTA --",
+      "zh-CN": "OTA --",
+      "en": "OTA --",
+      "ja": "OTA --"
+    },
+    {
+      "id": "OtaProgressSpeedFormat",
+      "zh-TW": "正在安裝 %d%%  %d KB/s",
+      "zh-CN": "正在安装 %d%%  %d KB/s",
+      "en": "OTA %d%%  %d KB/s",
+      "ja": "OTA %d%%  %d KB/s"
+    },
+    {
+      "id": "OtaProgressFormat",
+      "zh-TW": "正在安裝 %d%%",
+      "zh-CN": "正在安装 %d%%",
+      "en": "OTA %d%%",
+      "ja": "OTA %d%%"
+    },
+    {
+      "id": "OtaHintDownloading",
+      "zh-TW": "下載中，請等待",
+      "zh-CN": "下载中，请等待",
+      "en": "Downloading, please wait",
+      "ja": "ダウンロード中、お待ちください"
+    },
+    {
+      "id": "OtaHintInstall",
+      "zh-TW": "BOOT安裝更新",
+      "zh-CN": "BOOT安装更新",
+      "en": "Install update",
+      "ja": "更新をインストール"
+    },
+    {
+      "id": "OtaHintChecking",
+      "zh-TW": "正在檢查，請等待",
+      "zh-CN": "正在检查，请等待",
+      "en": "Checking, please wait",
+      "ja": "更新を確認中"
+    },
+    {
+      "id": "OtaHintRebooting",
+      "zh-TW": "即將重啟",
+      "zh-CN": "即将重启",
+      "en": "Restarting soon",
+      "ja": "まもなく再起動"
+    },
+    {
+      "id": "OtaHintRetry",
+      "zh-TW": "BOOT重新檢查",
+      "zh-CN": "BOOT重新检查",
+      "en": "Check again with BOOT",
+      "ja": "BOOT再確認"
+    },
+    {
+      "id": "OtaHintCheck",
+      "zh-TW": "BOOT開始檢查",
+      "zh-CN": "BOOT开始检查",
+      "en": "Start check with BOOT",
+      "ja": "BOOT確認"
+    },
+    {
+      "id": "WeatherWaitingData",
+      "zh-TW": "等待更多天氣資料",
+      "zh-CN": "等待更多天气数据",
+      "en": "Waiting for more weather data",
+      "ja": "天気データを待機中"
+    },
+    {
+      "id": "WeatherDayFormat",
+      "zh-TW": "%d日",
+      "zh-CN": "%d日",
+      "en": "%d",
+      "ja": "%d日"
+    },
+    {
+      "id": "WeatherTodayPlaceholder",
+      "zh-TW": "今日 --/--°C",
+      "zh-CN": "今日 --/--°C",
+      "en": "Today --/--°C",
+      "ja": "今日 --/--°C"
+    },
+    {
+      "id": "WeatherTodayRangeFormat",
+      "zh-TW": "今日 %s/%s°C",
+      "zh-CN": "今日 %s/%s°C",
+      "en": "Today %s/%s°C",
+      "ja": "今日 %s/%s°C"
+    },
+    {
+      "id": "WeatherAqiPlaceholder",
+      "zh-TW": "AQI --",
+      "zh-CN": "AQI --",
+      "en": "AQI --",
+      "ja": "AQI --"
+    },
+    {
+      "id": "WeatherAqiFormat",
+      "zh-TW": "AQI %s %s",
+      "zh-CN": "AQI %s %s",
+      "en": "AQI %s %s",
+      "ja": "AQI %s %s"
+    },
+    {
+      "id": "WeatherHumidityPlaceholder",
+      "zh-TW": "溼度 --%",
+      "zh-CN": "湿度 --%",
+      "en": "Hum --%",
+      "ja": "Humi --%"
+    },
+    {
+      "id": "WeatherHumidityFormat",
+      "zh-TW": "溼度 %s%%",
+      "zh-CN": "湿度 %s%%",
+      "en": "Hum %s%%",
+      "ja": "Humi %s%%"
+    },
+    {
+      "id": "WeatherWindPlaceholder",
+      "zh-TW": "-- --級",
+      "zh-CN": "-- --级",
+      "en": "-- level --",
+      "ja": "-- --"
+    },
+    {
+      "id": "WeatherWindFormat",
+      "zh-TW": "%s %s級",
+      "zh-CN": "%s %s级",
+      "en": "%s level %s",
+      "ja": "%s %s"
+    },
+    {
+      "id": "WeatherSunrisePlaceholder",
+      "zh-TW": "日出 --:--",
+      "zh-CN": "日出 --:--",
+      "en": "Sunrise --:--",
+      "ja": "出 --:--"
+    },
+    {
+      "id": "WeatherSunriseFormat",
+      "zh-TW": "日出 %s",
+      "zh-CN": "日出 %s",
+      "en": "Sunrise %s",
+      "ja": "出 %s"
+    },
+    {
+      "id": "WeatherSunsetPlaceholder",
+      "zh-TW": "日落 --:--",
+      "zh-CN": "日落 --:--",
+      "en": "Sunset --:--",
+      "ja": "入 --:--"
+    },
+    {
+      "id": "WeatherSunsetFormat",
+      "zh-TW": "日落 %s",
+      "zh-CN": "日落 %s",
+      "en": "Sunset %s",
+      "ja": "入 %s"
+    },
+    {
+      "id": "WeatherUntilSunsetPlaceholder",
+      "zh-TW": "距日落 --:--",
+      "zh-CN": "距日落 --:--",
+      "en": "Until sunset --:--",
+      "ja": "入まで --:--"
+    },
+    {
+      "id": "WeatherUntilSunFormat",
+      "zh-TW": "距%s %02d:%02d",
+      "zh-CN": "距%s %02d:%02d",
+      "en": "Until %s %02d:%02d",
+      "ja": "%sまで %02d:%02d"
+    },
+    { "id": "StartupReady", "zh-TW": "準備完成", "zh-CN": "准备完成", "en": "Ready", "ja": "準備完了" },
+    { "id": "StartupStartingClock", "zh-TW": "啟動時鐘", "zh-CN": "启动时钟", "en": "Starting clock", "ja": "時計を起動中" },
+    { "id": "BootScreenTitle", "zh-TW": "RLCD 天氣時鐘", "zh-CN": "RLCD 天气时钟", "en": "RLCD Weather Clock", "ja": "RLCD 天気時計" },
+    { "id": "BootScreenStarting", "zh-TW": "啟動中...", "zh-CN": "启动中...", "en": "Starting...", "ja": "起動中..." },
+    { "id": "BootScreenPreparing", "zh-TW": "準備系統", "zh-CN": "准备系统", "en": "Preparing system", "ja": "システムを準備中" },
+    { "id": "BootDetailStartingClock", "zh-TW": "啟動時鐘", "zh-CN": "启动时钟", "en": "Starting clock", "ja": "時計を起動中" },
+    { "id": "BootDetailPowerLockUnavailable", "zh-TW": "電源鎖定不可用", "zh-CN": "电源锁定不可用", "en": "Power lock unavailable", "ja": "電源ロックを利用できません" },
+    { "id": "BootDetailSynchronizingTime", "zh-TW": "同步時間中", "zh-CN": "同步时间中", "en": "Synchronizing time", "ja": "時刻を同期中" },
+    { "id": "BootDetailPageDataQueued", "zh-TW": "頁面資料已排程", "zh-CN": "页面数据已排程", "en": "Page data queued", "ja": "ページデータを予約済み" },
+    { "id": "BootDetailBackgroundRefresh", "zh-TW": "啟動後重新整理中", "zh-CN": "启动后刷新中", "en": "Refreshing after startup", "ja": "起動後に更新中" },
+    { "id": "BootSetupDetailFallback", "zh-TW": "設定 AP: --", "zh-CN": "设置 AP: --", "en": "Setup AP: --", "ja": "AP設定: --" },
+    { "id": "BootSetupDetailFormat", "zh-TW": "設定 AP: %s", "zh-CN": "设置 AP: %s", "en": "Setup AP: %s", "ja": "AP設定: %s" },
+    { "id": "BootStatusOfflineMode", "zh-TW": "離線模式", "zh-CN": "离线模式", "en": "Offline mode", "ja": "オフライン" },
+    { "id": "BootStatusSettingsMode", "zh-TW": "設定模式", "zh-CN": "设置模式", "en": "Settings mode", "ja": "設定モード" },
+    { "id": "BootStatusConnectingWifi", "zh-TW": "連線 Wi-Fi", "zh-CN": "连接 Wi-Fi", "en": "Connecting Wi-Fi", "ja": "Wi-Fi接続中" },
+    { "id": "BootStatusWifiStartFailed", "zh-TW": "Wi-Fi 啟動失敗", "zh-CN": "Wi-Fi 启动失败", "en": "Wi-Fi start failed", "ja": "Wi-Fi起動失敗" },
+    { "id": "BootStatusWifiTimeout", "zh-TW": "Wi-Fi 連線逾時", "zh-CN": "Wi-Fi 连接超时", "en": "Wi-Fi timeout", "ja": "Wi-Fi接続タイムアウト" },
+    { "id": "BootDetailCheckSsidOrPassword", "zh-TW": "請檢查 SSID 或密碼", "zh-CN": "请检查 SSID 或密码", "en": "Check SSID or password", "ja": "SSIDまたはパスワードを確認" },
+    { "id": "BootStatusWifiConnected", "zh-TW": "Wi-Fi 已連線", "zh-CN": "Wi-Fi 已连接", "en": "Wi-Fi connected", "ja": "Wi-Fi接続済み" },
+    { "id": "BootDetailCheckingTime", "zh-TW": "檢查時間", "zh-CN": "检查时间", "en": "Checking time", "ja": "時刻を確認中" },
+    { "id": "BootDetailRestoringRtcTime", "zh-TW": "還原遺失的 RTC 時間", "zh-CN": "恢复丢失的 RTC 时间", "en": "Restoring lost RTC time", "ja": "失われたRTC時刻を復元中" },
+    { "id": "BootStatusTimeSynchronized", "zh-TW": "時間已同步", "zh-CN": "时间已同步", "en": "Time synchronized", "ja": "時刻同期済み" },
+    { "id": "BootStatusNtpRetryLater", "zh-TW": "稍後重試 NTP", "zh-CN": "稍后重试 NTP", "en": "NTP retry later", "ja": "NTPは後で再試行" },
+    { "id": "BootDetailRetryInBackground", "zh-TW": "將在背景重試", "zh-CN": "将在后台重试", "en": "Will retry in background", "ja": "背景で再試行" },
+    { "id": "BootDetailShortNtpCheck", "zh-TW": "快速檢查 NTP", "zh-CN": "快速检查 NTP", "en": "Short NTP check", "ja": "短時間NTP確認" },
+    { "id": "NetworkDiagStatusWaiting", "zh-TW": "等待", "zh-CN": "等待", "en": "Waiting", "ja": "待機中" },
+    { "id": "NetworkDiagStatusTimeout", "zh-TW": "逾時/失敗", "zh-CN": "超时/失败", "en": "Timeout/failed", "ja": "タイムアウト/失敗" },
+    { "id": "NetworkDiagStatusSuccess", "zh-TW": "成功", "zh-CN": "成功", "en": "OK", "ja": "成功" },
+    { "id": "NetworkDiagStatusLowBatterySkipped", "zh-TW": "電量低，已略過", "zh-CN": "电量低，已跳过", "en": "Battery low", "ja": "低電力のためスキップ" },
+    { "id": "NetworkDiagLocalIpPlaceholder", "zh-TW": "本機IP: --", "zh-CN": "本地IP: --", "en": "Local IP: --", "ja": "ローカルIP: --" },
+    { "id": "NetworkDiagPublicIpPlaceholder", "zh-TW": "公網IP: --", "zh-CN": "公网IP: --", "en": "Public IP: --", "ja": "パブリックIP: --" },
+    { "id": "NetworkDiagIpLocationFallback", "zh-TW": "IP定位: 未檢測", "zh-CN": "IP定位: 未检测", "en": "IP loc: unchecked", "ja": "IP位置情報: 未確認" },
+    { "id": "NetworkDiagDnsUnchecked", "zh-TW": "DNS: 未檢測", "zh-CN": "DNS: 未检测", "en": "DNS: unchecked", "ja": "DNS: 未確認" },
+    { "id": "NetworkDiagWeatherUnchecked", "zh-TW": "天氣: 未檢測", "zh-CN": "天气: 未检测", "en": "Weather: n/a", "ja": "天気: 未確認" },
+    { "id": "NetworkDiagNtpUnchecked", "zh-TW": "NTP: 未檢測", "zh-CN": "NTP: 未检测", "en": "NTP: unchecked", "ja": "NTP: 未確認" },
+    { "id": "NetworkDiagSayingUnchecked", "zh-TW": "一言: 未檢測", "zh-CN": "一言: 未检测", "en": "Saying: n/a", "ja": "一言: 未確認" },
+    { "id": "NetworkDiagInternetUnchecked", "zh-TW": "公網: 未檢測", "zh-CN": "公网: 未检测", "en": "Net: n/a", "ja": "ネット: 未確認" },
+    { "id": "NetworkDiagOtaSourceUnchecked", "zh-TW": "OTA來源: 未檢測", "zh-CN": "OTA源: 未检测", "en": "OTA: n/a", "ja": "OTA: 未確認" },
+    { "id": "NetworkDiagLocalIpFormat", "zh-TW": "本機IP: %s", "zh-CN": "本地IP: %s", "en": "Local IP: %s", "ja": "ローカルIP: %s" },
+    { "id": "NetworkDiagPublicIpFormat", "zh-TW": "公網IP: %s", "zh-CN": "公网IP: %s", "en": "Public IP: %s", "ja": "パブリックIP: %s" },
+    { "id": "NetworkDiagIpLocationFormat", "zh-TW": "IP定位: %s", "zh-CN": "IP定位: %s", "en": "IP loc: %s", "ja": "IP位置情報: %s" },
+    { "id": "NetworkDiagIpLocationCityFormat", "zh-TW": "IP定位: %s %s", "zh-CN": "IP定位: %s %s", "en": "IP loc: %s %s", "ja": "IP位置情報: %s %s" },
+    { "id": "NetworkDiagDnsFormat", "zh-TW": "DNS: %s", "zh-CN": "DNS: %s", "en": "DNS: %s", "ja": "DNS: %s" },
+    { "id": "NetworkDiagWeatherFormat", "zh-TW": "天氣: %s", "zh-CN": "天气: %s", "en": "Weather: %s", "ja": "天気: %s" },
+    { "id": "NetworkDiagNtpFormat", "zh-TW": "NTP: %s", "zh-CN": "NTP: %s", "en": "NTP: %s", "ja": "NTP: %s" },
+    { "id": "NetworkDiagSayingFormat", "zh-TW": "一言: %s", "zh-CN": "一言: %s", "en": "Saying: %s", "ja": "一言: %s" },
+    { "id": "NetworkDiagInternetFormat", "zh-TW": "公網: %s", "zh-CN": "公网: %s", "en": "Net: %s", "ja": "ネット: %s" },
+    { "id": "NetworkDiagOtaFormat", "zh-TW": "OTA來源: %s", "zh-CN": "OTA源: %s", "en": "OTA: %s", "ja": "OTA: %s" },
+    { "id": "NetworkDiagOfflineModeEnabled", "zh-TW": "離線模式已開啟", "zh-CN": "离线模式已开启", "en": "Offline mode enabled", "ja": "オフラインモードを有効化" },
+    { "id": "NetworkDiagIpWifiNotConfigured", "zh-TW": "IP定位: WiFi未設定", "zh-CN": "IP定位: WiFi未配置", "en": "IP loc: Wi-Fi off", "ja": "IP位置情報: Wi-Fi未設定" },
+    { "id": "NetworkDiagIpWifiStartFailed", "zh-TW": "IP定位: WiFi啟動失敗", "zh-CN": "IP定位: WiFi启动失败", "en": "IP loc: Wi-Fi start fail", "ja": "IP位置情報: Wi-Fi起動失敗" },
+    { "id": "NetworkDiagIpPowerLockUnavailable", "zh-TW": "IP定位: 系統繁忙", "zh-CN": "IP定位: 系统繁忙", "en": "IP loc: System busy", "ja": "IP位置情報: システムビジー" },
+    { "id": "NetworkDiagIpWifiConnectTimeout", "zh-TW": "IP定位: WiFi連線逾時", "zh-CN": "IP定位: WiFi连接超时", "en": "IP loc: Wi-Fi timeout", "ja": "IP位置情報: Wi-Fi接続タイムアウト" },
+    { "id": "AuxNetworkDiagSummaryReady", "zh-TW": "準備檢測...", "zh-CN": "准备检测...", "en": "Ready to check...", "ja": "診断の準備中..." },
+    { "id": "AuxNetworkDiagSummaryRunning", "zh-TW": "檢測中...", "zh-CN": "检测中...", "en": "Checking...", "ja": "確認中..." },
+    { "id": "AuxNetworkDiagSummaryDone", "zh-TW": "檢測完成", "zh-CN": "检测完成", "en": "Check complete", "ja": "確認完了" },
+    { "id": "AuxNetworkDiagSummaryIdle", "zh-TW": "等待開始", "zh-CN": "等待开始", "en": "Waiting to start", "ja": "開始待ち" },
+    { "id": "AuxNetworkDiagHintIdle", "zh-TW": "長按 KEY 返回", "zh-CN": "长按 KEY 返回", "en": "Hold KEY to return", "ja": "KEY長押しで戻る" },
+    { "id": "AuxNetworkDiagHintRunning", "zh-TW": "檢測中... 長按 KEY 返回", "zh-CN": "检测中... 长按 KEY 返回", "en": "Checking... Hold KEY to return", "ja": "確認中... KEY長押しで戻る" },
+    { "id": "AuxInfoPageTitle", "zh-TW": "系統資訊", "zh-CN": "系统信息", "en": "SYSTEM INFO", "ja": "システム情報" },
+    { "id": "AuxInfoLastNtpFormat", "zh-TW": "上次 NTP: %s", "zh-CN": "上次 NTP: %s", "en": "Last NTP: %s", "ja": "前回のNTP: %s" },
+    { "id": "AuxInfoWifiFormat", "zh-TW": "Wi-Fi: %s", "zh-CN": "Wi-Fi: %s", "en": "Wi-Fi: %s", "ja": "Wi-Fi: %s" },
+    { "id": "AuxInfoLastWeatherFormat", "zh-TW": "上次天氣: %s", "zh-CN": "上次天气: %s", "en": "Last weather: %s", "ja": "前回の天気: %s" },
+    { "id": "AuxInfoBatteryFullFormat", "zh-TW": "電量: %d%%  %.2fV \\ %s", "zh-CN": "电量: %d%%  %.2fV \\ %s", "en": "Battery: %d%%  %.2fV \\ %s", "ja": "バッテリー: %d%%  %.2fV \\ %s" },
+    { "id": "AuxInfoBatteryPercentOnlyFormat", "zh-TW": "電量: %d%%  -- \\ %s", "zh-CN": "电量: %d%%  -- \\ %s", "en": "Battery: %d%%  -- \\ %s", "ja": "バッテリー: %d%%  -- \\ %s" },
+    { "id": "AuxInfoBatteryPlaceholder", "zh-TW": "電量: --  -- \\ --", "zh-CN": "电量: --  -- \\ --", "en": "Battery: --  -- \\ --", "ja": "バッテリー: --  -- \\ --" },
+    { "id": "AuxInfoVersionFormat", "zh-TW": "版本: %s / %s", "zh-CN": "版本: %s / %s", "en": "Version: %s / %s", "ja": "バージョン: %s / %s" },
+    { "id": "AuxInfoSourceFormat", "zh-TW": "來源: %s", "zh-CN": "来源: %s", "en": "Source: %s", "ja": "ソース: %s" },
+    { "id": "SetupModeTitle", "zh-TW": "設定模式", "zh-CN": "设置模式", "en": "Setup Mode", "ja": "設定モード" },
+    { "id": "SetupApSsidPlaceholder", "zh-TW": "AP SSID: --", "zh-CN": "AP SSID: --", "en": "AP SSID: --", "ja": "AP SSID: --" },
+    { "id": "SetupApPasswordPlaceholder", "zh-TW": "AP 密碼: --", "zh-CN": "AP 密码: --", "en": "AP Password: --", "ja": "APパスワード: --" },
+    { "id": "SetupPortalIpPlaceholder", "zh-TW": "入口 IP: --", "zh-CN": "门户 IP: --", "en": "Portal IP: --", "ja": "ポータルIP: --" },
+    { "id": "SetupStaSsidPlaceholder", "zh-TW": "STA SSID: --", "zh-CN": "STA SSID: --", "en": "STA SSID: --", "ja": "STA SSID: --" },
+    { "id": "SetupStaIpPlaceholder", "zh-TW": "STA IP: --", "zh-CN": "STA IP: --", "en": "STA IP: --", "ja": "STA IP: --" },
+    { "id": "SetupApSsidFormat", "zh-TW": "AP SSID: %s", "zh-CN": "AP SSID: %s", "en": "AP SSID: %s", "ja": "AP SSID: %s" },
+    { "id": "SetupApPasswordFormat", "zh-TW": "AP 密碼: %s", "zh-CN": "AP 密码: %s", "en": "AP Password: %s", "ja": "APパスワード: %s" },
+    { "id": "SetupPortalIpFormat", "zh-TW": "入口 IP: %s", "zh-CN": "门户 IP: %s", "en": "Portal IP: %s", "ja": "ポータルIP: %s" },
+    { "id": "SetupStaSsidFormat", "zh-TW": "STA SSID: %s", "zh-CN": "STA SSID: %s", "en": "STA SSID: %s", "ja": "STA SSID: %s" },
+    { "id": "SetupStaIpFormat", "zh-TW": "STA IP: %s", "zh-CN": "STA IP: %s", "en": "STA IP: %s", "ja": "STA IP: %s" },
+    { "id": "SetupStaIpReasonFormat", "zh-TW": "STA IP: --  原因 %d", "zh-CN": "STA IP: --  原因 %d", "en": "STA IP: --  reason %d", "ja": "STA IP: --  原因 %d" },
+    { "id": "CalendarWeekdaySundayShort", "zh-TW": "日", "zh-CN": "日", "en": "Sun", "ja": "日" },
+    { "id": "CalendarWeekdayMondayShort", "zh-TW": "一", "zh-CN": "一", "en": "Mon", "ja": "月" },
+    { "id": "CalendarWeekdayTuesdayShort", "zh-TW": "二", "zh-CN": "二", "en": "Tue", "ja": "火" },
+    { "id": "CalendarWeekdayWednesdayShort", "zh-TW": "三", "zh-CN": "三", "en": "Wed", "ja": "水" },
+    { "id": "CalendarWeekdayThursdayShort", "zh-TW": "四", "zh-CN": "四", "en": "Thu", "ja": "木" },
+    { "id": "CalendarWeekdayFridayShort", "zh-TW": "五", "zh-CN": "五", "en": "Fri", "ja": "金" },
+    { "id": "CalendarWeekdaySaturdayShort", "zh-TW": "六", "zh-CN": "六", "en": "Sat", "ja": "土" },
+    { "id": "SettingsCheckUpdatesCompact", "zh-TW": "檢查更新", "zh-CN": "检查更新", "en": "Check OTA", "ja": "更新" },
+    { "id": "SettingsNetworkDiagnosticsCompact", "zh-TW": "網路檢測", "zh-CN": "网络检测", "en": "Net test", "ja": "ネット確認" },
+    { "id": "SettingsSyncTimeCompact", "zh-TW": "同步時間", "zh-CN": "同步时间", "en": "Time sync", "ja": "時刻同期" },
+    { "id": "SettingsSyncWeatherCompact", "zh-TW": "同步天氣", "zh-CN": "同步天气", "en": "Weather", "ja": "天気同期" },
+    { "id": "SettingsUpdateSayingCompact", "zh-TW": "更新一言", "zh-CN": "更新一言", "en": "Saying", "ja": "一言更新" },
+    { "id": "SettingsWeatherCityCompact", "zh-TW": "天氣城市", "zh-CN": "天气城市", "en": "City", "ja": "天気都市" },
+    { "id": "SettingsPageOrderCompact", "zh-TW": "頁面順序", "zh-CN": "页面顺序", "en": "Order", "ja": "ページ並び" },
+    { "id": "SettingsClearPairingCompact", "zh-TW": "清除配對", "zh-CN": "清除配对", "en": "Clear pair", "ja": "ペア解除" },
+    { "id": "SettingsSetupCompact", "zh-TW": "設定模式", "zh-CN": "设置模式", "en": "Setup", "ja": "設定" },
+    { "id": "SettingsFactoryResetCompact", "zh-TW": "恢復原廠", "zh-CN": "恢复出厂", "en": "Reset", "ja": "初期化" },
+    { "id": "SettingsConfirmResetCompact", "zh-TW": "確認恢復", "zh-CN": "确认恢复", "en": "Confirm reset", "ja": "初期化?" },
+    { "id": "SettingsPageModeCompact", "zh-TW": "頁面開關", "zh-CN": "页面开关", "en": "Pages", "ja": "ページ" },
+    { "id": "SettingsAutoReturnCompact", "zh-TW": "自動返回", "zh-CN": "自动返回", "en": "Auto", "ja": "自動" },
+    { "id": "SettingsLanguageCompactFormat", "zh-TW": "語言 %s", "zh-CN": "语言 %s", "en": "%s", "ja": "言語 %s" },
+    { "id": "SettingsWeatherCityCompactFormat", "zh-TW": "天氣城市 %s", "zh-CN": "天气城市 %s", "en": "City %s", "ja": "天気 %s" },
+    { "id": "SettingsWeatherCityAutoCompact", "zh-TW": "天氣城市 自動", "zh-CN": "天气城市 自动", "en": "City Auto", "ja": "天気 自動" },
+    { "id": "SettingsHourlyReminderCompact", "zh-TW": "整點提醒 7:00 - 22:00", "zh-CN": "整点提醒 7:00 - 22:00", "en": "Hourly 7-22", "ja": "毎時 7-22" },
+    { "id": "SettingsAllDayReminderCompact", "zh-TW": "全天提醒 0:00 - 24:00", "zh-CN": "全天提醒 0:00 - 24:00", "en": "All-day 0-24", "ja": "終日 0-24" },
+    { "id": "SettingsAlarmCompactFormat", "zh-TW": "鬧鐘 %02d:%02d", "zh-CN": "闹钟 %02d:%02d", "en": "Alarm %02d:%02d", "ja": "時刻 %02d:%02d" },
+    { "id": "SettingsAlarmCompactPlaceholder", "zh-TW": "鬧鐘 --:--", "zh-CN": "闹钟 --:--", "en": "Alarm --:--", "ja": "時刻 --:--" },
+    { "id": "SettingsCustomImageCompactFormat", "zh-TW": "自訂圖 %s", "zh-CN": "自定义图 %s", "en": "Image %s", "ja": "画像 %s" },
+    { "id": "SettingsOfflineCompactFormat", "zh-TW": "離線模式 %s", "zh-CN": "离线模式 %s", "en": "Offline %s", "ja": "オフ %s" },
+    { "id": "SettingsPageTitle", "zh-TW": "設定", "zh-CN": "设置", "en": "Settings", "ja": "設定" },
+    { "id": "SettingsPageHint", "zh-TW": "KEY選擇  長按返回  BOOT確認", "zh-CN": "KEY选择  长按返回  BOOT确认", "en": "KEY Select  Hold Return  BOOT Confirm", "ja": "KEY選  長押し戻る  BOOT確認" },
+    { "id": "WorkPageWeatherClock", "zh-TW": "天氣時鐘", "zh-CN": "天气时钟", "en": "WX-Clock", "ja": "天気時計" },
+    { "id": "WorkPageGallery", "zh-TW": "圖片時鐘", "zh-CN": "图片时钟", "en": "Picture", "ja": "ピクチャー時計" },
+    { "id": "WorkPageWeatherBoard", "zh-TW": "天氣看板", "zh-CN": "天气看板", "en": "Weather", "ja": "天気ボード" },
+    { "id": "WorkPageFlipClock", "zh-TW": "溫溼時鐘", "zh-CN": "温湿时钟", "en": "T&H-Clock", "ja": "温湿度時計" },
+    { "id": "WorkPageCalendar", "zh-TW": "日曆", "zh-CN": "日历", "en": "Calendar", "ja": "カレンダー" },
+    { "id": "WorkPageHistory", "zh-TW": "溫溼歷史", "zh-CN": "温湿历史", "en": "T&H-His", "ja": "温湿度履歴" },
+    { "id": "WorkPageXiaozhi", "zh-TW": "小智AI", "zh-CN": "小智AI", "en": "Xiaozhi AI", "ja": "Xiaozhi AI" },
+    { "id": "WorkPageUnknown", "zh-TW": "未知頁面", "zh-CN": "未知页面", "en": "Unknown page", "ja": "未知のページ" },
+    { "id": "DatePlaceholder", "zh-TW": "----/--/--  星期-", "zh-CN": "----/--/--  星期-", "en": "----/--/--  ---", "ja": "----/--/--  ---" },
+    { "id": "HistoryTemperature", "zh-TW": "溫度", "zh-CN": "温度", "en": "Temp", "ja": "温度" },
+    { "id": "HistoryHumidity", "zh-TW": "溼度", "zh-CN": "湿度", "en": "Humi", "ja": "湿度" },
+    { "id": "WeatherPanelWaiting", "zh-TW": "等待資料", "zh-CN": "等待数据", "en": "Waiting", "ja": "待機中" },
+    { "id": "WeatherPanelSyncing", "zh-TW": "同步中", "zh-CN": "同步中", "en": "Syncing", "ja": "同期中" },
+    { "id": "WeatherPanelConfigureWifi", "zh-TW": "設定 Wi-Fi", "zh-CN": "设置 Wi-Fi", "en": "Set Wi-Fi", "ja": "Wi-Fi設定" },
+    { "id": "OtaStatusCheckFailed", "zh-TW": "檢查失敗", "zh-CN": "检查失败", "en": "Check failed", "ja": "確認失敗" },
+    { "id": "OtaStatusUpdateDoneRebooting", "zh-TW": "更新完成，正在重新啟動...", "zh-CN": "更新完成，正在重新启动...", "en": "Update complete, restarting...", "ja": "更新完了、再起動中..." },
+    { "id": "OtaStatusLowBattery", "zh-TW": "電量不足", "zh-CN": "电量不足", "en": "Battery too low", "ja": "バッテリー不足" },
+    { "id": "OtaStatusWifiFailed", "zh-TW": "Wi-Fi 失敗", "zh-CN": "Wi-Fi 失败", "en": "Wi-Fi failed", "ja": "Wi-Fi失敗" },
+    { "id": "OtaStatusNoOtaSlot", "zh-TW": "沒有 OTA 分區", "zh-CN": "没有 OTA 分区", "en": "No OTA partition", "ja": "OTAパーティションなし" },
+    { "id": "OtaStatusNoMemory", "zh-TW": "記憶體不足", "zh-CN": "内存不足", "en": "Out of memory", "ja": "メモリ不足" },
+    { "id": "OtaStatusUnavailable", "zh-TW": "更新不可用", "zh-CN": "更新不可用", "en": "Update unavailable", "ja": "更新を利用できません" },
+    { "id": "OtaStatusIdlePrompt", "zh-TW": "BOOT：檢查更新", "zh-CN": "BOOT：检查更新", "en": "BOOT: check for updates", "ja": "BOOT：更新を確認" },
+    { "id": "OtaStatusInstallingUpdate", "zh-TW": "正在安裝更新 0%", "zh-CN": "正在安装更新 0%", "en": "Installing update 0%", "ja": "更新をインストール中 0%" },
+    { "id": "OtaStatusInstallingBackup", "zh-TW": "正在安裝備份 0%", "zh-CN": "正在安装备份 0%", "en": "Installing backup 0%", "ja": "バックアップをインストール中 0%" },
+    { "id": "OtaStatusInstallingProgressFormat", "zh-TW": "正在安裝 %d%%  %dKB/s", "zh-CN": "正在安装 %d%%  %dKB/s", "en": "Installing %d%%  %dKB/s", "ja": "インストール中 %d%%  %dKB/s" },
+    { "id": "OtaStatusNewVersionFormat", "zh-TW": "新版本 %s", "zh-CN": "新版本 %s", "en": "New version %s", "ja": "新バージョン %s" },
+    { "id": "OtaStatusFallbackError", "zh-TW": "OTA 狀態錯誤", "zh-CN": "OTA 状态错误", "en": "OTA status error", "ja": "OTA状態エラー" },
+    { "id": "XiaozhiWeatherSyncing", "zh-TW": "天氣同步中", "zh-CN": "天气同步中", "en": "Sync weather", "ja": "天気を同期中" },
+    { "id": "XiaozhiConfigureWifi", "zh-TW": "請設定 Wi-Fi", "zh-CN": "请设置 Wi-Fi", "en": "Set Wi-Fi", "ja": "Wi-Fiを設定してください" },
+    { "id": "XiaozhiConnectingWifi", "zh-TW": "正在連接Wi-Fi", "zh-CN": "正在连接Wi-Fi", "en": "Connecting to Wi-Fi", "ja": "Wi-Fiに接続中" },
+    { "id": "XiaozhiConfigureWifiFirst", "zh-TW": "請先在系統設定中配置 Wi-Fi", "zh-CN": "请先在系统设置中配置 Wi-Fi", "en": "Configure Wi-Fi in system settings first", "ja": "システム設定で先にWi-Fiを設定してください" },
+    { "id": "XiaozhiOfflineUnavailable", "zh-TW": "離線模式下無法使用小智 AI", "zh-CN": "离线模式下无法使用小智 AI", "en": "Xiaozhi AI is unavailable offline", "ja": "オフラインモードではXiaozhi AIを利用できません" },
+    { "id": "XiaozhiWakeWordHint", "zh-TW": "說出喚醒詞即可開始對話", "zh-CN": "说出唤醒词即可开始对话", "en": "Say the wake word to start a conversation", "ja": "ウェイクワードを言うと会話を開始できます" },
+    { "id": "XiaozhiVoiceListenerFailed", "zh-TW": "語音監聽初始化失敗，請稍後重試", "zh-CN": "语音监听初始化失败，请稍后重试", "en": "Voice listener initialization failed. Try again later.", "ja": "音声リスナーの初期化に失敗しました。後でもう一度お試しください" },
+    { "id": "XiaozhiRequestBindingInfo", "zh-TW": "正在請求設備綁定資訊", "zh-CN": "正在请求设备绑定信息", "en": "Requesting device binding information", "ja": "デバイスのバインド情報を要求中" },
+    { "id": "XiaozhiOutOfMemory", "zh-TW": "小智記憶體不足，請稍後重試", "zh-CN": "小智内存不足，请稍后重试", "en": "Xiaozhi is out of memory. Try again later.", "ja": "Xiaozhiのメモリが不足しています。後でもう一度お試しください" },
+    { "id": "XiaozhiConnectingService", "zh-TW": "正在連接小智服務", "zh-CN": "正在连接小智服务", "en": "Connecting to Xiaozhi service", "ja": "Xiaozhiサービスに接続中" },
+    { "id": "XiaozhiBindDevice", "zh-TW": "請綁定設備", "zh-CN": "请绑定设备", "en": "Bind your device", "ja": "デバイスをバインドしてください" },
+    { "id": "XiaozhiRetryLater", "zh-TW": "稍後將自動重試", "zh-CN": "稍后将自动重试", "en": "Retrying later", "ja": "後で自動的に再試行します" },
+    { "id": "XiaozhiEnterBindingId", "zh-TW": "請在小智服務中輸入綁定 ID", "zh-CN": "请在小智服务中输入绑定 ID", "en": "Enter the binding ID in Xiaozhi", "ja": "XiaozhiサービスでバインドIDを入力してください" },
+    { "id": "XiaozhiInterrupted", "zh-TW": "已打斷", "zh-CN": "已打断", "en": "Interrupted", "ja": "中断しました" },
+    { "id": "XiaozhiStartSpeaking", "zh-TW": "請開始說話", "zh-CN": "请开始说话", "en": "Please start speaking", "ja": "話し始めてください" },
+    { "id": "XiaozhiContinueSpeaking", "zh-TW": "請繼續說話", "zh-CN": "请继续说话", "en": "Please continue speaking", "ja": "話し続けてください" },
+    { "id": "XiaozhiWeatherCitySet", "zh-TW": "天氣城市已設定", "zh-CN": "天气城市已设置", "en": "Weather city set", "ja": "天気都市を設定しました" },
+    { "id": "XiaozhiWeatherCitySaved", "zh-TW": "天氣城市已儲存", "zh-CN": "天气城市已保存", "en": "Weather city saved", "ja": "天気都市を保存しました" },
+    { "id": "XiaozhiWeatherUpdating", "zh-TW": "正在背景更新全部天氣", "zh-CN": "正在后台更新全部天气", "en": "Updating all weather in the background", "ja": "天気情報をバックグラウンドで更新中" },
+    { "id": "XiaozhiNotHeardCompletely", "zh-TW": "沒有聽完整", "zh-CN": "没有听完整", "en": "I did not hear that completely", "ja": "完全には聞き取れませんでした" },
+    { "id": "XiaozhiContinueOrRepeat", "zh-TW": "請繼續說，或重新說一遍", "zh-CN": "请继续说，或重新说一遍", "en": "Please continue or say it again", "ja": "続けて話すか、もう一度話してください" },
+    { "id": "XiaozhiConnectionRetrying", "zh-TW": "連線失敗，正在重試", "zh-CN": "连接失败，正在重试", "en": "Connection failed; retrying", "ja": "接続に失敗しました。再試行中" },
+    { "id": "XiaozhiSystemBusy", "zh-TW": "系統忙碌，稍後重試", "zh-CN": "系统繁忙，稍后重试", "en": "System busy; try again later", "ja": "システムが混雑しています。後でもう一度お試しください" },
+    { "id": "XiaozhiAudioStateRetrying", "zh-TW": "音訊狀態異常，正在重試", "zh-CN": "音频状态异常，正在重试", "en": "Audio state error; retrying", "ja": "オーディオ状態異常。再試行中" },
+    { "id": "XiaozhiAwake", "zh-TW": "已喚醒", "zh-CN": "已唤醒", "en": "Awake", "ja": "起動しました" },
+    { "id": "XiaozhiConnectingVoiceSession", "zh-TW": "正在連接語音會話", "zh-CN": "正在连接语音会话", "en": "Connecting to voice session", "ja": "音声セッションに接続中" },
+    { "id": "XiaozhiSpeaking", "zh-TW": "小智正在說話", "zh-CN": "小智正在说话", "en": "Xiaozhi is speaking", "ja": "Xiaozhiが話しています" },
+    { "id": "XiaozhiSpeakToInterrupt", "zh-TW": "直接說話即可打斷", "zh-CN": "直接说话即可打断", "en": "Speak directly to interrupt", "ja": "そのまま話して中断できます" },
+    { "id": "XiaozhiVoiceInterrupted", "zh-TW": "語音會話中斷，稍後重試", "zh-CN": "语音会话中断，稍后重试", "en": "Voice session interrupted; retrying later", "ja": "音声セッションが中断されました。後で再試行します" },
+    { "id": "XiaozhiTaskStartFailed", "zh-TW": "小智任務啟動失敗", "zh-CN": "小智任务启动失败", "en": "Failed to start Xiaozhi task", "ja": "Xiaozhiタスクの起動に失敗しました" }
+    ,{ "id": "PortalOfflineModeEnabled", "zh-TW": "已啟用離線模式", "zh-CN": "已启用离线模式", "en": "Offline mode enabled", "ja": "オフラインモードを有効にしました" }
+    ,{ "id": "PortalInvalidDateTime", "zh-TW": "日期時間格式無效", "zh-CN": "日期时间格式无效", "en": "Invalid date and time format", "ja": "日付と時刻の形式が無効です" }
+    ,{ "id": "PortalRequestTooLarge", "zh-TW": "提交內容過長，請縮短自訂欄位後重試。", "zh-CN": "提交内容过长，请缩短自定义字段后重试。", "en": "Request is too large. Shorten the custom fields and try again.", "ja": "送信内容が長すぎます。カスタム項目を短くして再試行してください。" }
+    ,{ "id": "PortalMissingQuery", "zh-TW": "缺少請求參數。", "zh-CN": "缺少请求参数。", "en": "Missing request parameter.", "ja": "リクエストパラメーターがありません。" }
+    ,{ "id": "PortalErrorNotEnoughMemory", "zh-TW": "裝置記憶體不足，請稍後重試。", "zh-CN": "设备内存不足，请稍后重试。", "en": "Device memory is low. Please try again later.", "ja": "デバイスのメモリ不足です。後でもう一度お試しください。" }
+    ,{ "id": "PortalSaveConnectedTitle", "zh-TW": "網路連線成功", "zh-CN": "网络连接成功", "en": "Wi-Fi connected", "ja": "ネットワーク接続成功" }
+    ,{ "id": "PortalSaveValidatingTitle", "zh-TW": "正在驗證網路設定", "zh-CN": "正在验证网络配置", "en": "Validating network settings", "ja": "ネットワーク設定を確認中" }
+    ,{ "id": "PortalSaveMissingTitle", "zh-TW": "設定資訊不完整", "zh-CN": "配置信息不完整", "en": "Incomplete setup information", "ja": "設定情報が不足しています" }
+    ,{ "id": "PortalSaveWifiFailedTitle", "zh-TW": "Wi-Fi 連線失敗", "zh-CN": "Wi-Fi 连接失败", "en": "Wi-Fi connection failed", "ja": "Wi-Fi接続失敗" }
+    ,{ "id": "PortalSaveWeatherApiFailedTitle", "zh-TW": "天氣服務驗證失敗", "zh-CN": "天气服务验证失败", "en": "Weather service validation failed", "ja": "天気サービスの確認失敗" }
+    ,{ "id": "PortalSaveWeatherCityInvalidTitle", "zh-TW": "天氣城市無效", "zh-CN": "天气城市无效", "en": "Invalid weather city", "ja": "天気の都市が無効です" }
+    ,{ "id": "PortalSaveConnectedBody", "zh-TW": "Wi-Fi 與 NTP 設定已儲存，裝置將返回本機時鐘介面。", "zh-CN": "Wi-Fi 与 NTP 设置已保存，设备将返回本地时钟界面。", "en": "Wi-Fi and NTP settings saved. Returning to the local clock.", "ja": "Wi-FiとNTPの設定を保存しました。ローカル時計画面に戻ります。" }
+    ,{ "id": "PortalSaveValidatingBody", "zh-TW": "裝置正在連接 Wi-Fi，請稍候。", "zh-CN": "设备正在连接 Wi-Fi，请稍候。", "en": "The device is connecting to Wi-Fi. Please wait.", "ja": "デバイスがWi-Fiに接続中です。しばらくお待ちください。" }
+    ,{ "id": "PortalSaveMissingBody", "zh-TW": "請填寫 Wi-Fi 名稱；NTP 伺服器可保留預設值 pool.ntp.org。", "zh-CN": "请填写 Wi-Fi 名称；NTP 服务器可保留默认值 pool.ntp.org。", "en": "Enter a Wi-Fi name; the NTP server can keep the default pool.ntp.org.", "ja": "Wi-Fi名を入力してください。NTPサーバーは既定値 pool.ntp.org のまま使用できます。" }
+    ,{ "id": "PortalSaveWifiFailedBody", "zh-TW": "裝置無法連線主要 Wi-Fi 或備用 Wi-Fi。請檢查密碼、訊號和路由器狀態後重新填寫。", "zh-CN": "设备未能连接主 Wi-Fi 或备用 Wi-Fi。请检查密码、信号和路由器状态后重新填写。", "en": "The device could not connect to primary or backup Wi-Fi. Check the password, signal, and router.", "ja": "デバイスが主Wi-Fiまたは予備Wi-Fiに接続できませんでした。パスワード、信号、ルーターの状態を確認して再入力してください。" }
+    ,{ "id": "PortalSaveWeatherApiFailedBody", "zh-TW": "Wi-Fi 已連線，但 Open-Meteo 服務暫時無法存取，請稍後重試。", "zh-CN": "Wi-Fi 已连接，但 Open-Meteo 服务暂时无法访问，请稍后重试。", "en": "Wi-Fi is connected, but the Open-Meteo service is temporarily unavailable. Try again later.", "ja": "Wi-Fiには接続しましたが、Open-Meteoサービスを一時的に利用できません。後でもう一度お試しください。" }
+    ,{ "id": "PortalSaveWeatherCityInvalidBody", "zh-TW": "Open-Meteo 無法辨識該城市。請修改城市，或留空使用自動定位。", "zh-CN": "Open-Meteo 无法识别该城市。请修改城市，或留空使用自动定位。", "en": "Open-Meteo could not identify the city. Edit the city or leave it blank for automatic location.", "ja": "Open-Meteoで都市を認識できませんでした。都市を修正するか、空欄にして自動位置情報を使用してください。" }
+    ,{ "id": "PortalWifiScanBusy", "zh-TW": "Wi-Fi 正在掃描，請稍後重新整理頁面。", "zh-CN": "Wi-Fi 正在扫描，请稍后刷新页面。", "en": "Wi-Fi is scanning. Refresh the page shortly.", "ja": "Wi-Fiをスキャン中です。しばらくしてページを更新してください。" }
+    ,{ "id": "PortalWifiScanFailed", "zh-TW": "Wi-Fi 掃描失敗，請重新整理頁面後重試。", "zh-CN": "Wi-Fi 扫描失败，请刷新页面重试。", "en": "Wi-Fi scan failed. Refresh the page and try again.", "ja": "Wi-Fiのスキャンに失敗しました。ページを更新して再試行してください。" }
+    ,{ "id": "PortalWifiScanEmpty", "zh-TW": "找不到可用的 Wi-Fi 網路。", "zh-CN": "没有发现可用的 Wi-Fi 网络。", "en": "No available Wi-Fi networks were found.", "ja": "利用可能なWi-Fiネットワークが見つかりません。" }
+    ,{ "id": "PortalWifiScanNoMemory", "zh-TW": "裝置記憶體不足，暫時無法顯示 Wi-Fi 清單。", "zh-CN": "设备内存不足，暂时无法显示 Wi-Fi 列表。", "en": "Device memory is low; the Wi-Fi list cannot be displayed.", "ja": "メモリ不足のためWi-Fi一覧を表示できません。" }
+    ,{ "id": "PortalNearbyWifi", "zh-TW": "附近的 Wi-Fi（點選填入主要 Wi-Fi）", "zh-CN": "附近的 Wi-Fi（点击填入主 Wi-Fi）", "en": "Nearby Wi-Fi (click to fill primary Wi-Fi)", "ja": "近くのWi-Fi（クリックして主Wi-Fiに入力）" }
+    ,{ "id": "PortalScanAgain", "zh-TW": "重新掃描", "zh-CN": "重新扫描", "en": "Scan again", "ja": "再スキャン" }
+    ,{ "id": "PortalClockSetupMode", "zh-TW": "時鐘設定模式", "zh-CN": "时钟设置模式", "en": "Clock setup mode", "ja": "時計設定モード" }
+    ,{ "id": "PortalWifiNtpSetup", "zh-TW": "Wi-Fi 與 NTP 校時設定", "zh-CN": "Wi-Fi 与 NTP 校时设置", "en": "Wi-Fi and NTP time synchronization", "ja": "Wi-FiとNTPの時刻同期設定" }
+    ,{ "id": "PortalDeviceHotspot", "zh-TW": "裝置熱點", "zh-CN": "设备热点", "en": "Device hotspot", "ja": "デバイスのアクセスポイント" }
+    ,{ "id": "PortalConnected", "zh-TW": "已連線", "zh-CN": "已连接", "en": "Connected", "ja": "接続済み" }
+    ,{ "id": "PortalValidating", "zh-TW": "驗證中", "zh-CN": "验证中", "en": "Validating", "ja": "確認中" }
+    ,{ "id": "PortalFailed", "zh-TW": "失敗", "zh-CN": "失败", "en": "Failed", "ja": "失敗" }
+    ,{ "id": "PortalSeparator", "zh-TW": "：", "zh-CN": "：", "en": ": ", "ja": "：" }
+    ,{ "id": "PortalClockSetupResult", "zh-TW": "時鐘設定結果", "zh-CN": "时钟设置结果", "en": "Clock setup result", "ja": "時計設定結果" }
+    ,{ "id": "PortalPrimaryWifi", "zh-TW": "主要 Wi-Fi", "zh-CN": "主 Wi-Fi", "en": "Primary Wi-Fi", "ja": "主 Wi-Fi" }
+    ,{ "id": "PortalBackupWifi", "zh-TW": "備用 Wi-Fi", "zh-CN": "备用 Wi-Fi", "en": "Backup Wi-Fi", "ja": "予備 Wi-Fi" }
+    ,{ "id": "PortalNotConfigured", "zh-TW": "未設定", "zh-CN": "未配置", "en": "Not configured", "ja": "未設定" }
+    ,{ "id": "PortalNtpServer", "zh-TW": "NTP 伺服器", "zh-CN": "NTP 服务器", "en": "NTP server", "ja": "NTPサーバー" }
+    ,{ "id": "PortalLastWifiDisconnect", "zh-TW": "最近一次 Wi-Fi 斷線原因", "zh-CN": "最近一次 Wi-Fi 断线原因", "en": "Last Wi-Fi disconnect reason", "ja": "直近のWi-Fi切断理由" }
+    ,{ "id": "PortalBackToSetup", "zh-TW": "返回設定頁", "zh-CN": "返回设置页", "en": "Back to setup", "ja": "設定に戻る" }
+    ,{ "id": "PortalSetupCompleteTitle", "zh-TW": "設定成功", "zh-CN": "设置成功", "en": "Setup complete", "ja": "設定成功" }
+    ,{ "id": "PortalReturningToClock", "zh-TW": "裝置即將返回本機時鐘介面。", "zh-CN": "设备即将返回本地时钟界面。", "en": "The device will return to the local clock interface.", "ja": "デバイスはローカル時計画面に戻ります。" }
+    ,{ "id": "PortalSaving", "zh-TW": "正在儲存，請稍候…", "zh-CN": "正在保存，请稍候…", "en": "Saving, please wait…", "ja": "保存中です。お待ちください…" }
+    ,{ "id": "PortalWifiSectionTitle", "zh-TW": "Wi-Fi 設定", "zh-CN": "Wi-Fi 设置", "en": "Wi-Fi Settings", "ja": "Wi-Fi設定" }
+    ,{ "id": "PortalWifiSectionDescription", "zh-TW": "僅在校時或設定期間啟用網路", "zh-CN": "仅在校时或设置期间启用网络", "en": "Network is enabled for time sync and setup", "ja": "時刻同期または設定中のみネットワークを使用します" }
+    ,{ "id": "PortalPrimaryWifiSsidLabel", "zh-TW": "主要 Wi-Fi 名稱（SSID）", "zh-CN": "主 Wi-Fi 名称（SSID）", "en": "Primary Wi-Fi (SSID)", "ja": "主 Wi-Fi 名（SSID）" }
+    ,{ "id": "PortalPrimaryWifiSsidPlaceholder", "zh-TW": "請選擇或輸入 Wi-Fi 名稱", "zh-CN": "请选择或输入 Wi-Fi 名称", "en": "Select or enter a Wi-Fi name", "ja": "Wi-Fi名を選択または入力" }
+    ,{ "id": "PortalPrimaryWifiPasswordLabel", "zh-TW": "主要 Wi-Fi 密碼", "zh-CN": "主 Wi-Fi 密码", "en": "Primary Wi-Fi password", "ja": "主 Wi-Fi パスワード" }
+    ,{ "id": "PortalPrimaryWifiPasswordPlaceholder", "zh-TW": "請輸入 Wi-Fi 密碼", "zh-CN": "请输入 Wi-Fi 密码", "en": "Enter the Wi-Fi password", "ja": "Wi-Fiパスワードを入力" }
+    ,{ "id": "PortalPrimaryWifiPasswordHint", "zh-TW": "SSID 未變更時，密碼留空可繼續使用原密碼。", "zh-CN": "SSID 未改变时，密码留空可继续使用原密码。", "en": "When the SSID is unchanged, leave the password blank to keep using the current password.", "ja": "SSIDを変更しない場合は、パスワードを空欄にすると現在のパスワードを使用します。" }
+    ,{ "id": "PortalBackupWifiSsidLabel", "zh-TW": "備用 Wi-Fi 名稱", "zh-CN": "备用 Wi-Fi 名称", "en": "Backup Wi-Fi", "ja": "予備 Wi-Fi 名" }
+    ,{ "id": "PortalOptional", "zh-TW": "選填", "zh-CN": "选填", "en": "Optional", "ja": "任意" }
+    ,{ "id": "PortalBackupWifiSsidPlaceholder", "zh-TW": "主要 Wi-Fi 無法使用時自動嘗試", "zh-CN": "主 Wi-Fi 不可用时自动尝试", "en": "Try automatically if primary Wi-Fi is unavailable", "ja": "主 Wi-Fi が使えない場合に自動で試行" }
+    ,{ "id": "PortalBackupWifiPasswordLabel", "zh-TW": "備用 Wi-Fi 密碼", "zh-CN": "备用 Wi-Fi 密码", "en": "Backup Wi-Fi password", "ja": "予備 Wi-Fi パスワード" }
+    ,{ "id": "PortalBackupWifiPasswordPlaceholder", "zh-TW": "請輸入備用 Wi-Fi 密碼", "zh-CN": "请输入备用 Wi-Fi 密码", "en": "Enter the backup Wi-Fi password", "ja": "予備 Wi-Fi のパスワードを入力" }
+    ,{ "id": "PortalBackupWifiPasswordHint", "zh-TW": "可不設定；備用連線成功後會自動成為首選 Wi-Fi。", "zh-CN": "可不配置；备用连接成功后会自动成为首选 Wi-Fi。", "en": "Optional; after a successful backup connection, it becomes the preferred Wi-Fi.", "ja": "設定しなくても構いません。予備接続に成功すると優先 Wi-Fi になります。" }
+    ,{ "id": "PortalTimeSyncTitle", "zh-TW": "時間同步", "zh-CN": "时间同步", "en": "Time sync", "ja": "時刻同期" }
+    ,{ "id": "PortalTimeSyncDescription", "zh-TW": "開機及每 24 小時自動校時", "zh-CN": "开机及每 24 小时自动校时", "en": "Automatic sync at boot and every 24 hours", "ja": "起動時と24時間ごとに自動で時刻を合わせます" }
+    ,{ "id": "PortalNtpServerPlaceholder", "zh-TW": "pool.ntp.org", "zh-CN": "pool.ntp.org", "en": "pool.ntp.org", "ja": "pool.ntp.org" }
+    ,{ "id": "PortalNtpServerHint", "zh-TW": "請填主機名稱，例如 pool.ntp.org；不要包含 http://、https:// 或路徑。", "zh-CN": "请填写主机名，例如 pool.ntp.org；不要包含 http://、https:// 或路径。", "en": "Enter a host name such as pool.ntp.org; do not include http://, https://, or a path.", "ja": "pool.ntp.org のようなホスト名を入力してください。http://、https://、パスは含めないでください。" }
+    ,{ "id": "PortalWeatherCityLabel", "zh-TW": "天氣城市", "zh-CN": "天气城市", "en": "Weather city", "ja": "天気の都市" }
+    ,{ "id": "PortalWeatherCityPlaceholder", "zh-TW": "留空時依 IP 自動定位", "zh-CN": "留空时依 IP 自动定位", "en": "Leave blank to locate by IP", "ja": "空欄の場合はIPで自動検出" }
+    ,{ "id": "PortalWeatherCityHint", "zh-TW": "使用 Open-Meteo 全球城市搜尋，不需要 API Key。", "zh-CN": "使用 Open-Meteo 全球城市搜索，不需要 API Key。", "en": "Uses the global Open-Meteo city search; no API key is required.", "ja": "APIキー不要のOpen-Meteo全球都市検索を使用します。" }
+    ,{ "id": "PortalSaveAndConnect", "zh-TW": "儲存並連線", "zh-CN": "保存并连接", "en": "Save and connect", "ja": "保存して接続" }
+    ,{ "id": "PortalSaveStatus", "zh-TW": "正在儲存設定並連線，請稍候…", "zh-CN": "正在保存设置并连接，请稍候…", "en": "Saving settings and connecting, please wait…", "ja": "設定を保存して接続中です。お待ちください…" }
+    ,{ "id": "PortalOfflineModeTitle", "zh-TW": "離線模式", "zh-CN": "离线模式", "en": "Offline mode", "ja": "オフラインモード" }
+    ,{ "id": "PortalOfflineModeDescription", "zh-TW": "不連接 Wi-Fi，使用手動時間與 RTC", "zh-CN": "不连接 Wi-Fi，使用手动时间与 RTC", "en": "Use manual time and RTC without Wi-Fi", "ja": "Wi-Fiに接続せず手動時刻とRTCを使用します" }
+    ,{ "id": "PortalLocalDateTime", "zh-TW": "本機日期時間", "zh-CN": "本地日期时间", "en": "Local date and time", "ja": "ローカル日時" }
+    ,{ "id": "PortalStartOfflineMode", "zh-TW": "以離線模式啟動", "zh-CN": "以离线模式启动", "en": "Start offline mode", "ja": "オフラインモードで起動" }
+    ,{ "id": "SettingsTimeSyncTimeout", "zh-TW": "時間同步逾時", "zh-CN": "时间同步超时", "en": "Time sync timed out", "ja": "時刻同期がタイムアウトしました" }
+    ,{ "id": "SettingsWeatherSyncTimeout", "zh-TW": "天氣同步逾時", "zh-CN": "天气同步超时", "en": "Weather sync timed out", "ja": "天気同期がタイムアウトしました" }
+    ,{ "id": "SettingsSayingUpdateTimeout", "zh-TW": "一言更新逾時", "zh-CN": "一言更新超时", "en": "Saying update timed out", "ja": "一言の更新がタイムアウトしました" }
+    ,{ "id": "TimePlaceholder", "zh-TW": "--:--", "zh-CN": "--:--", "en": "--:--", "ja": "--:--" }
+    ,{ "id": "TimeFormat", "zh-TW": "%02d:%02d", "zh-CN": "%02d:%02d", "en": "%02d:%02d", "ja": "%02d:%02d" }
+    ,{ "id": "WeatherBoardShortDatePlaceholder", "zh-TW": "--/--", "zh-CN": "--/--", "en": "--/--", "ja": "--/--" }
+    ,{ "id": "WeatherBoardForecastRangePlaceholder", "zh-TW": "--/--°C", "zh-CN": "--/--°C", "en": "--/--°C", "ja": "--/--°C" }
+    ,{ "id": "WeatherBoardHourlyTimePlaceholder", "zh-TW": "--:--", "zh-CN": "--:--", "en": "--:--", "ja": "--:--" }
+    ,{ "id": "WeatherBoardHourlyTempPlaceholder", "zh-TW": "--°C", "zh-CN": "--°C", "en": "--°C", "ja": "--°C" }
+    ,{ "id": "StatusSensorSummaryPlaceholder", "zh-TW": "--°C --%", "zh-CN": "--°C --%", "en": "--°C --%", "ja": "--°C --%" }
+    ,{ "id": "StatusSensorSummaryFormat", "zh-TW": "%.0f°C %.0f%%", "zh-CN": "%.0f°C %.0f%%", "en": "%.0f°C %.0f%%", "ja": "%.0f°C %.0f%%" }
+    ,{ "id": "StatusSensorSummaryFallback", "zh-TW": "--°C --%%", "zh-CN": "--°C --%%", "en": "--°C --%%", "ja": "--°C --%%" }
+    ,{ "id": "StatusSensorTempPlaceholder", "zh-TW": "--.-°C", "zh-CN": "--.-°C", "en": "--.-°C", "ja": "--.-°C" }
+    ,{ "id": "StatusSensorHumidityPlaceholder", "zh-TW": "--.-%%", "zh-CN": "--.-%%", "en": "--.-%%", "ja": "--.-%%" }
+    ,{ "id": "StatusSensorTempFormat", "zh-TW": "%.1f°C", "zh-CN": "%.1f°C", "en": "%.1f°C", "ja": "%.1f°C" }
+    ,{ "id": "StatusSensorHumidityFormat", "zh-TW": "%.1f%%", "zh-CN": "%.1f%%", "en": "%.1f%%", "ja": "%.1f%%" }
+    ,{ "id": "WeatherBoardWeekdaySundayShort", "zh-TW": "星期日", "zh-CN": "星期日", "en": "Sun", "ja": "日曜" }
+    ,{ "id": "WeatherBoardWeekdayMondayShort", "zh-TW": "星期一", "zh-CN": "星期一", "en": "Mon", "ja": "月曜" }
+    ,{ "id": "WeatherBoardWeekdayTuesdayShort", "zh-TW": "星期二", "zh-CN": "星期二", "en": "Tue", "ja": "火曜" }
+    ,{ "id": "WeatherBoardWeekdayWednesdayShort", "zh-TW": "星期三", "zh-CN": "星期三", "en": "Wed", "ja": "水曜" }
+    ,{ "id": "WeatherBoardWeekdayThursdayShort", "zh-TW": "星期四", "zh-CN": "星期四", "en": "Thu", "ja": "木曜" }
+    ,{ "id": "WeatherBoardWeekdayFridayShort", "zh-TW": "星期五", "zh-CN": "星期五", "en": "Fri", "ja": "金曜" }
+    ,{ "id": "WeatherBoardWeekdaySaturdayShort", "zh-TW": "星期六", "zh-CN": "星期六", "en": "Sat", "ja": "土曜" }
+    ,{ "id": "OtaStatusNewVersionPrefix", "zh-TW": "新版本 ", "zh-CN": "新版本 ", "en": "New version ", "ja": "新バージョン " }
+    ,{ "id": "OtaBootChecking", "zh-TW": "BOOT：檢查更新", "zh-CN": "BOOT：检查更新", "en": "BOOT: Checking for updates", "ja": "BOOT：更新を確認中" }
+    ,{ "id": "NetworkWifiNotConfigured", "zh-TW": "未設定 Wi-Fi", "zh-CN": "未配置 Wi-Fi", "en": "Wi-Fi not configured", "ja": "Wi-Fi未設定" }
+    ,{ "id": "NetworkSyncTimeComplete", "zh-TW": "時間同步完成", "zh-CN": "时间同步完成", "en": "Time sync complete", "ja": "時刻同期完了" }
+    ,{ "id": "NetworkSyncWeatherComplete", "zh-TW": "天氣同步完成", "zh-CN": "天气同步完成", "en": "Weather sync complete", "ja": "天気同期完了" }
+    ,{ "id": "NetworkSyncSayingComplete", "zh-TW": "一言更新完成", "zh-CN": "一言更新完成", "en": "Saying update complete", "ja": "一言更新完了" }
+    ,{ "id": "NetworkSyncDiagnosticsComplete", "zh-TW": "網路檢測完成", "zh-CN": "网络检测完成", "en": "Network check complete", "ja": "ネットワーク診断完了" }
+    ,{ "id": "NetworkSyncTimeFailed", "zh-TW": "時間同步失敗", "zh-CN": "时间同步失败", "en": "Time sync failed", "ja": "時刻同期失敗" }
+    ,{ "id": "NetworkSyncWeatherFailed", "zh-TW": "天氣同步失敗", "zh-CN": "天气同步失败", "en": "Weather sync failed", "ja": "天気同期失敗" }
+    ,{ "id": "NetworkSyncSayingFailed", "zh-TW": "一言更新失敗", "zh-CN": "一言更新失败", "en": "Saying update failed", "ja": "一言更新失敗" }
+    ,{ "id": "NetworkSyncDiagnosticsCanceled", "zh-TW": "網路檢測已取消", "zh-CN": "网络检测已取消", "en": "Network check canceled", "ja": "ネットワーク診断をキャンセルしました" }
+    ,{ "id": "NetworkWeatherConfigUnavailable", "zh-TW": "天氣同步不可用", "zh-CN": "天气同步不可用", "en": "Weather sync unavailable", "ja": "天気同期を利用できません" }
+    ,{ "id": "CalendarNewYearShort", "zh-TW": "元旦", "zh-CN": "元旦", "en": "New Yr", "ja": "元旦" }
+    ,{ "id": "CalendarValentinesDayShort", "zh-TW": "情人節", "zh-CN": "情人节", "en": "V-Day", "ja": "Vデー" }
+    ,{ "id": "CalendarWomensDayShort", "zh-TW": "婦女", "zh-CN": "妇女", "en": "W-Day", "ja": "女性" }
+    ,{ "id": "CalendarLabourDayShort", "zh-TW": "勞動", "zh-CN": "劳动", "en": "Labour", "ja": "労働" }
+    ,{ "id": "CalendarChildrensDayShort", "zh-TW": "兒童", "zh-CN": "儿童", "en": "Kids", "ja": "こども" }
+    ,{ "id": "CalendarTeachersDayShort", "zh-TW": "教師", "zh-CN": "教师", "en": "Teach.", "ja": "教師" }
+    ,{ "id": "CalendarNationalDayShort", "zh-TW": "國慶", "zh-CN": "国庆", "en": "Nation", "ja": "建国" }
+    ,{ "id": "CalendarChristmasShort", "zh-TW": "聖誕", "zh-CN": "圣诞", "en": "Xmas", "ja": "Xmas" }
+    ,{ "id": "CalendarSpringFestivalShort", "zh-TW": "春節", "zh-CN": "春节", "en": "Spring", "ja": "春節" }
+    ,{ "id": "CalendarLanternFestivalShort", "zh-TW": "元宵", "zh-CN": "元宵", "en": "Lantern", "ja": "元宵" }
+    ,{ "id": "CalendarDragonBoatFestivalShort", "zh-TW": "端午", "zh-CN": "端午", "en": "Dragon", "ja": "端午" }
+    ,{ "id": "CalendarQixiFestivalShort", "zh-TW": "七夕", "zh-CN": "七夕", "en": "Qixi", "ja": "七夕" }
+    ,{ "id": "CalendarMidAutumnFestivalShort", "zh-TW": "中秋", "zh-CN": "中秋", "en": "M-Aut.", "ja": "中秋" }
+    ,{ "id": "CalendarDoubleNinthFestivalShort", "zh-TW": "重陽", "zh-CN": "重阳", "en": "Ninth", "ja": "重陽" }
+    ,{ "id": "CalendarLabaFestivalShort", "zh-TW": "臘八", "zh-CN": "腊八", "en": "Laba", "ja": "臘八" }
+    ,{ "id": "CalendarMinorColdShort", "zh-TW": "小寒", "zh-CN": "小寒", "en": "Minor", "ja": "小寒" }
+    ,{ "id": "CalendarMajorColdShort", "zh-TW": "大寒", "zh-CN": "大寒", "en": "Major", "ja": "大寒" }
+    ,{ "id": "CalendarStartOfSpringShort", "zh-TW": "立春", "zh-CN": "立春", "en": "Spring", "ja": "立春" }
+    ,{ "id": "CalendarRainWaterShort", "zh-TW": "雨水", "zh-CN": "雨水", "en": "Rain", "ja": "雨水" }
+    ,{ "id": "CalendarAwakeningOfInsectsShort", "zh-TW": "驚蟄", "zh-CN": "惊蛰", "en": "Insects", "ja": "啓蟄" }
+    ,{ "id": "CalendarSpringEquinoxShort", "zh-TW": "春分", "zh-CN": "春分", "en": "Eqx.", "ja": "春分" }
+    ,{ "id": "CalendarPureBrightnessShort", "zh-TW": "清明", "zh-CN": "清明", "en": "Bright", "ja": "清明" }
+    ,{ "id": "CalendarGrainRainShort", "zh-TW": "穀雨", "zh-CN": "谷雨", "en": "Rain", "ja": "穀雨" }
+    ,{ "id": "CalendarStartOfSummerShort", "zh-TW": "立夏", "zh-CN": "立夏", "en": "Sum.", "ja": "立夏" }
+    ,{ "id": "CalendarGrainFullShort", "zh-TW": "小滿", "zh-CN": "小满", "en": "Grain", "ja": "小満" }
+    ,{ "id": "CalendarGrainInEarShort", "zh-TW": "芒種", "zh-CN": "芒种", "en": "Grain", "ja": "芒種" }
+    ,{ "id": "CalendarSummerSolsticeShort", "zh-TW": "夏至", "zh-CN": "夏至", "en": "Sum.", "ja": "夏至" }
+    ,{ "id": "CalendarMinorHeatShort", "zh-TW": "小暑", "zh-CN": "小暑", "en": "Minor", "ja": "小暑" }
+    ,{ "id": "CalendarMajorHeatShort", "zh-TW": "大暑", "zh-CN": "大暑", "en": "Major", "ja": "大暑" }
+    ,{ "id": "CalendarStartOfAutumnShort", "zh-TW": "立秋", "zh-CN": "立秋", "en": "Fall", "ja": "立秋" }
+    ,{ "id": "CalendarEndOfHeatShort", "zh-TW": "處暑", "zh-CN": "处暑", "en": "Heat", "ja": "処暑" }
+    ,{ "id": "CalendarWhiteDewShort", "zh-TW": "白露", "zh-CN": "白露", "en": "Dew", "ja": "白露" }
+    ,{ "id": "CalendarAutumnEquinoxShort", "zh-TW": "秋分", "zh-CN": "秋分", "en": "Eqx.", "ja": "秋分" }
+    ,{ "id": "CalendarColdDewShort", "zh-TW": "寒露", "zh-CN": "寒露", "en": "Dew", "ja": "寒露" }
+    ,{ "id": "CalendarFrostDescentShort", "zh-TW": "霜降", "zh-CN": "霜降", "en": "Frost", "ja": "霜降" }
+    ,{ "id": "CalendarStartOfWinterShort", "zh-TW": "立冬", "zh-CN": "立冬", "en": "Winter", "ja": "立冬" }
+    ,{ "id": "CalendarMinorSnowShort", "zh-TW": "小雪", "zh-CN": "小雪", "en": "Snow", "ja": "小雪" }
+    ,{ "id": "CalendarMajorSnowShort", "zh-TW": "大雪", "zh-CN": "大雪", "en": "Snow", "ja": "大雪" }
+    ,{ "id": "CalendarWinterSolsticeShort", "zh-TW": "冬至", "zh-CN": "冬至", "en": "Winter", "ja": "冬至" }
+    ,{ "id": "HistoryAxisHourFormat", "zh-TW": "%02d:00", "zh-CN": "%02d:00", "en": "%02d:00", "ja": "%02d:00" }
+    ,{ "id": "HistoryAxisPlaceholder", "zh-TW": "--", "zh-CN": "--", "en": "--", "ja": "--" }
+    ,{ "id": "HistoryTemperatureAxisFormat", "zh-TW": "%.0f°C", "zh-CN": "%.0f°C", "en": "%.0f°C", "ja": "%.0f°C" }
+    ,{ "id": "HistoryHumidityAxisFormat", "zh-TW": "%.0f%%", "zh-CN": "%.0f%%", "en": "%.0f%%", "ja": "%.0f%%" }
+    ,{ "id": "HistoryTemperatureBadgeFormat", "zh-TW": "%.1f", "zh-CN": "%.1f", "en": "%.1f", "ja": "%.1f" }
+    ,{ "id": "HistoryHumidityBadgeFormat", "zh-TW": "%.0f", "zh-CN": "%.0f", "en": "%.0f", "ja": "%.0f" }
+    ,{ "id": "WeatherBoardDateLineFormat", "zh-TW": "%s\n%s", "zh-CN": "%s\n%s", "en": "%s\n%s", "ja": "%s\n%s" }
+    ,{ "id": "WeatherBoardForecastTempRangeFormat", "zh-TW": "%s/%s°C", "zh-CN": "%s/%s°C", "en": "%s/%s°C", "ja": "%s/%s°C" }
+    ,{ "id": "WeatherBoardHourlyTempFormat", "zh-TW": "%s°C", "zh-CN": "%s°C", "en": "%s°C", "ja": "%s°C" }
+    ,{ "id": "CalendarLunarMonthJoinFormat", "zh-TW": "%s%s", "zh-CN": "%s%s", "en": "%s%s", "ja": "%s%s" }
+    ,{ "id": "CalendarJapaneseLunarMonthFormat", "zh-TW": "%d月", "zh-CN": "%d月", "en": "Lunar month %d", "ja": "%d月" }
+    ,{ "id": "CalendarJapaneseLeapLunarMonthFormat", "zh-TW": "閏%d月", "zh-CN": "闰%d月", "en": "Leap lunar month %d", "ja": "う%d月" }
+    ,{ "id": "CalendarJapaneseLunarDayFormat", "zh-TW": "%d日", "zh-CN": "%d日", "en": "Lunar day %d", "ja": "%d日" }
+    ,{ "id": "CalendarEnglishLeapLunarMonthFormat", "zh-TW": "閏農曆月份 %d", "zh-CN": "闰农历月份 %d", "en": "Leap lunar month %d", "ja": "うるう月%d" }
+    ,{ "id": "CalendarLunarDay1", "zh-TW": "初一", "zh-CN": "初一", "en": "Day 1", "ja": "1日" }
+    ,{ "id": "CalendarLunarDay2", "zh-TW": "初二", "zh-CN": "初二", "en": "Day 2", "ja": "2日" }
+    ,{ "id": "CalendarLunarDay3", "zh-TW": "初三", "zh-CN": "初三", "en": "Day 3", "ja": "3日" }
+    ,{ "id": "CalendarLunarDay4", "zh-TW": "初四", "zh-CN": "初四", "en": "Day 4", "ja": "4日" }
+    ,{ "id": "CalendarLunarDay5", "zh-TW": "初五", "zh-CN": "初五", "en": "Day 5", "ja": "5日" }
+    ,{ "id": "CalendarLunarDay6", "zh-TW": "初六", "zh-CN": "初六", "en": "Day 6", "ja": "6日" }
+    ,{ "id": "CalendarLunarDay7", "zh-TW": "初七", "zh-CN": "初七", "en": "Day 7", "ja": "7日" }
+    ,{ "id": "CalendarLunarDay8", "zh-TW": "初八", "zh-CN": "初八", "en": "Day 8", "ja": "8日" }
+    ,{ "id": "CalendarLunarDay9", "zh-TW": "初九", "zh-CN": "初九", "en": "Day 9", "ja": "9日" }
+    ,{ "id": "CalendarLunarDay10", "zh-TW": "初十", "zh-CN": "初十", "en": "Day 10", "ja": "10日" }
+    ,{ "id": "CalendarLunarDay11", "zh-TW": "十一", "zh-CN": "十一", "en": "Day 11", "ja": "11日" }
+    ,{ "id": "CalendarLunarDay12", "zh-TW": "十二", "zh-CN": "十二", "en": "Day 12", "ja": "12日" }
+    ,{ "id": "CalendarLunarDay13", "zh-TW": "十三", "zh-CN": "十三", "en": "Day 13", "ja": "13日" }
+    ,{ "id": "CalendarLunarDay14", "zh-TW": "十四", "zh-CN": "十四", "en": "Day 14", "ja": "14日" }
+    ,{ "id": "CalendarLunarDay15", "zh-TW": "十五", "zh-CN": "十五", "en": "Day 15", "ja": "15日" }
+    ,{ "id": "CalendarLunarDay16", "zh-TW": "十六", "zh-CN": "十六", "en": "Day 16", "ja": "16日" }
+    ,{ "id": "CalendarLunarDay17", "zh-TW": "十七", "zh-CN": "十七", "en": "Day 17", "ja": "17日" }
+    ,{ "id": "CalendarLunarDay18", "zh-TW": "十八", "zh-CN": "十八", "en": "Day 18", "ja": "18日" }
+    ,{ "id": "CalendarLunarDay19", "zh-TW": "十九", "zh-CN": "十九", "en": "Day 19", "ja": "19日" }
+    ,{ "id": "CalendarLunarDay20", "zh-TW": "二十", "zh-CN": "二十", "en": "Day 20", "ja": "20日" }
+    ,{ "id": "CalendarLunarDay21", "zh-TW": "廿一", "zh-CN": "廿一", "en": "Day 21", "ja": "21日" }
+    ,{ "id": "CalendarLunarDay22", "zh-TW": "廿二", "zh-CN": "廿二", "en": "Day 22", "ja": "22日" }
+    ,{ "id": "CalendarLunarDay23", "zh-TW": "廿三", "zh-CN": "廿三", "en": "Day 23", "ja": "23日" }
+    ,{ "id": "CalendarLunarDay24", "zh-TW": "廿四", "zh-CN": "廿四", "en": "Day 24", "ja": "24日" }
+    ,{ "id": "CalendarLunarDay25", "zh-TW": "廿五", "zh-CN": "廿五", "en": "Day 25", "ja": "25日" }
+    ,{ "id": "CalendarLunarDay26", "zh-TW": "廿六", "zh-CN": "廿六", "en": "Day 26", "ja": "26日" }
+    ,{ "id": "CalendarLunarDay27", "zh-TW": "廿七", "zh-CN": "廿七", "en": "Day 27", "ja": "27日" }
+    ,{ "id": "CalendarLunarDay28", "zh-TW": "廿八", "zh-CN": "廿八", "en": "Day 28", "ja": "28日" }
+    ,{ "id": "CalendarLunarDay29", "zh-TW": "廿九", "zh-CN": "廿九", "en": "Day 29", "ja": "29日" }
+    ,{ "id": "CalendarLunarDay30", "zh-TW": "三十", "zh-CN": "三十", "en": "Day 30", "ja": "30日" }
+    ,{ "id": "CalendarLunarMonth1", "zh-TW": "正月", "zh-CN": "正月", "en": "Month 1", "ja": "1月" }
+    ,{ "id": "CalendarLunarMonth2", "zh-TW": "二月", "zh-CN": "二月", "en": "Month 2", "ja": "2月" }
+    ,{ "id": "CalendarLunarMonth3", "zh-TW": "三月", "zh-CN": "三月", "en": "Month 3", "ja": "3月" }
+    ,{ "id": "CalendarLunarMonth4", "zh-TW": "四月", "zh-CN": "四月", "en": "Month 4", "ja": "4月" }
+    ,{ "id": "CalendarLunarMonth5", "zh-TW": "五月", "zh-CN": "五月", "en": "Month 5", "ja": "5月" }
+    ,{ "id": "CalendarLunarMonth6", "zh-TW": "六月", "zh-CN": "六月", "en": "Month 6", "ja": "6月" }
+    ,{ "id": "CalendarLunarMonth7", "zh-TW": "七月", "zh-CN": "七月", "en": "Month 7", "ja": "7月" }
+    ,{ "id": "CalendarLunarMonth8", "zh-TW": "八月", "zh-CN": "八月", "en": "Month 8", "ja": "8月" }
+    ,{ "id": "CalendarLunarMonth9", "zh-TW": "九月", "zh-CN": "九月", "en": "Month 9", "ja": "9月" }
+    ,{ "id": "CalendarLunarMonth10", "zh-TW": "十月", "zh-CN": "十月", "en": "Month 10", "ja": "10月" }
+    ,{ "id": "CalendarLunarMonth11", "zh-TW": "冬月", "zh-CN": "冬月", "en": "Month 11", "ja": "11月" }
+    ,{ "id": "CalendarLunarMonth12", "zh-TW": "臘月", "zh-CN": "腊月", "en": "Month 12", "ja": "12月" }
+    ,{ "id": "SettingsPageOrderEntryFormat", "zh-TW": "%d %s", "zh-CN": "%d %s", "en": "%d %s", "ja": "%d %s" }
+    ,{ "id": "ClockDateFormat", "zh-TW": "%04d/%02d/%02d   %s", "zh-CN": "%04d/%02d/%02d   %s", "en": "%04d/%02d/%02d   %s", "ja": "%04d/%02d/%02d   %s" }
+    ,{ "id": "ClockDatePlaceholder", "zh-TW": "--", "zh-CN": "--", "en": "--", "ja": "--" }
+    ,{ "id": "ClockWeatherCityPlaceholder", "zh-TW": "--", "zh-CN": "--", "en": "--", "ja": "--" }
+    ,{ "id": "ClockWeatherTemperaturePlaceholder", "zh-TW": "--°C", "zh-CN": "--°C", "en": "--°C", "ja": "--°C" }
+    ,{ "id": "ClockWeatherHumidityPlaceholder", "zh-TW": "--%", "zh-CN": "--%", "en": "--%", "ja": "--%" }
+    ,{ "id": "WeatherStatusTemperatureFormat", "zh-TW": "%s°C", "zh-CN": "%s°C", "en": "%s°C", "ja": "%s°C" }
+    ,{ "id": "WeatherStatusHumidityFormat", "zh-TW": "%s%%", "zh-CN": "%s%%", "en": "%s%%", "ja": "%s%%" }
+    ,{ "id": "FlipTemperaturePlaceholder", "zh-TW": "--.-°C", "zh-CN": "--.-°C", "en": "--.-°C", "ja": "--.-°C" }
+    ,{ "id": "FlipHumidityPlaceholder", "zh-TW": "--%", "zh-CN": "--%", "en": "--%", "ja": "--%" }
+    ,{ "id": "FlipDayPlaceholder", "zh-TW": "--", "zh-CN": "--", "en": "--", "ja": "--" }
+    ,{ "id": "FlipTemperatureFormat", "zh-TW": "%.1f°C", "zh-CN": "%.1f°C", "en": "%.1f°C", "ja": "%.1f°C" }
+    ,{ "id": "FlipHumidityFormat", "zh-TW": "%.0f%%", "zh-CN": "%.0f%%", "en": "%.0f%%", "ja": "%.0f%%" }
+    ,{ "id": "FlipDayFormat", "zh-TW": "%d", "zh-CN": "%d", "en": "%d", "ja": "%d" }
+    ,{ "id": "UiPlaceholder", "zh-TW": "--", "zh-CN": "--", "en": "--", "ja": "--" }
+    ,{ "id": "ClockLocalTemperaturePlaceholder", "zh-TW": "--.-°C", "zh-CN": "--.-°C", "en": "--.-°C", "ja": "--.-°C" }
+    ,{ "id": "ClockLocalHumidityPlaceholder", "zh-TW": "--.-%", "zh-CN": "--.-%", "en": "--.-%", "ja": "--.-%" }
+    ,{ "id": "FullDateTimeFormat", "zh-TW": "%04d-%02d-%02d %02d:%02d:%02d", "zh-CN": "%04d-%02d-%02d %02d:%02d:%02d", "en": "%04d-%02d-%02d %02d:%02d:%02d", "ja": "%04d-%02d-%02d %02d:%02d:%02d" }
+    ,{ "id": "DsegTimeFormat", "zh-TW": "%02d:%02d", "zh-CN": "%02d:%02d", "en": "%02d:%02d", "ja": "%02d:%02d" },
+    { "id": "LanguageTraditionalCompact", "zh-TW": "繁體", "zh-CN": "繁体", "en": "T-Chinese", "ja": "中国語" },
+    { "id": "LanguageSimplifiedCompact", "zh-TW": "簡體", "zh-CN": "简体", "en": "S-Chinese", "ja": "簡体" },
+    { "id": "LanguageEnglishCompact", "zh-TW": "英文", "zh-CN": "英文", "en": "English", "ja": "英語" },
+    { "id": "LanguageJapaneseCompact", "zh-TW": "日文", "zh-CN": "日语", "en": "Japanese", "ja": "日本語" }
+  ]
+}

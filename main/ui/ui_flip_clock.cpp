@@ -12,6 +12,7 @@
 #include "ui_draw_cache.h"
 #include "ui_fonts.h"
 #include "ui_inverted_clock_card.h"
+#include "ui_i18n.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
 #include "ui_widgets.h"
@@ -73,9 +74,6 @@ static constexpr int kFlipLunarTextY = 249;
 static constexpr int kFlipLunarTextH = 42;
 static constexpr int kFlipDateBoldOffset = 1;
 static constexpr int kFlipDateBoldYOffset = 1;
-static constexpr const char *kFlipTempPlaceholder = "--.-°C";
-static constexpr const char *kFlipHumiPlaceholder = "--%";
-static constexpr const char *kFlipDayPlaceholder = "--";
 EXT_RAM_BSS_ATTR lv_color_t *s_flip_clock_card_canvas_buffer[kCardCount];
 lv_color_t *s_flip_clock_temp_mood_canvas_buffer;
 lv_color_t *s_flip_clock_humi_mood_canvas_buffer;
@@ -289,14 +287,14 @@ void build_flip_sensor_panel(lv_obj_t *screen, FlipClockObjectRefs &objects)
                                    &objects.sensor_bold_label,
                                    &objects.sensor_bold_y_label,
                                    kFlipSensorTempTextY,
-                                   kFlipTempPlaceholder,
+                                   ui_text(UiTextId::FlipTemperaturePlaceholder),
                                    FLIP_CLOCK_TEMP_LABEL_CREATE_FAILED_LOG);
     build_flip_sensor_value_labels(screen,
                                    &objects.humidity_label,
                                    &objects.humidity_bold_label,
                                    &objects.humidity_bold_y_label,
                                    kFlipSensorHumiTextY,
-                                   kFlipHumiPlaceholder,
+                                   ui_text(UiTextId::FlipHumidityPlaceholder),
                                    FLIP_CLOCK_HUMIDITY_LABEL_CREATE_FAILED_LOG);
     build_flip_mood_canvas(screen,
                            &objects.temp_mood_canvas,
@@ -339,7 +337,7 @@ void build_flip_date_panel(lv_obj_t *screen, FlipClockObjectRefs &objects)
                                 nullptr,
                                 kFlipDayTextY,
                                 kFlipDayTextH,
-                                kFlipDayPlaceholder,
+                                 ui_text(UiTextId::FlipDayPlaceholder),
                                 &lv_font_montserrat_48);
     build_flip_date_label_group(screen,
                                 &objects.lunar_label,
@@ -348,8 +346,8 @@ void build_flip_date_panel(lv_obj_t *screen, FlipClockObjectRefs &objects)
                                 &objects.lunar_bold_xy_label,
                                 kFlipLunarTextY,
                                 kFlipLunarTextH,
-                                kFlipDayPlaceholder,
-                                &zh_flip_lunar_22);
+                                 ui_text(UiTextId::FlipDayPlaceholder),
+                                ui_font(UiFontRole::Calendar22));
 }
 
 } // namespace

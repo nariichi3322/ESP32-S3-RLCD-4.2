@@ -7,7 +7,7 @@
 #include <stdio.h>
 #include <string.h>
 
-namespace ui_text {
+namespace ui_text_format {
 
 inline bool output_buffer_available(char *out, size_t out_len)
 {
@@ -42,4 +42,4 @@ void format_or_fallback(char *out, size_t out_len, const char *fallback, const c
     }
 }
 
-} // namespace ui_text
+} // namespace ui_text_format

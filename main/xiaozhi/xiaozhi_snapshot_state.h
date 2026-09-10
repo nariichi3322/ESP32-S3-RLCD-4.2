@@ -2,8 +2,12 @@
 #pragma once
 
 #include "xiaozhi_ai.h"
+#include "ui_i18n.h"
 
-inline constexpr const char *kXiaozhiDefaultStatus = "小智准备中";
+inline const char *xiaozhi_default_status()
+{
+    return ui_text(UiTextId::XiaozhiPreparing);
+}
 
 bool xiaozhi_snapshot_state_init();
 void xiaozhi_snapshot_state_deinit();

@@ -14,11 +14,10 @@
 #include "ui_work_pages.h"
 #include "ui_work_status.h"
 #include "ui_xiaozhi.h"
+#include "ui_i18n.h"
 #include "work_page_ids.h"
 
 namespace {
-constexpr const char *kUiDatePlaceholder = "----/--/-- / 星期-";
-constexpr const char *kUiTimePlaceholder = "--:--";
 bool update_visible_work_page_body(const struct tm &local,
                                    const ClockUiTimeSnapshot &time_snapshot,
                                    const ActiveWorkPageState &state,
@@ -64,8 +63,10 @@ bool update_active_work_page_invalid_time_labels(int active_work_page,
                           : active_work_page;
     WorkPageStatusLabels labels = get_work_page_status_labels(status_page);
     invalidate_work_page_status_time_cache(status_page);
-    bool changed = set_label_text_if_changed(labels.date, kUiDatePlaceholder);
-    changed |= set_label_text_if_changed(labels.time, kUiTimePlaceholder);
+    bool changed = set_label_text_if_changed(labels.date,
+                                             ui_text(UiTextId::DatePlaceholder));
+    changed |= set_label_text_if_changed(labels.time,
+                                         ui_text(UiTextId::TimePlaceholder));
     return changed;
 }
 

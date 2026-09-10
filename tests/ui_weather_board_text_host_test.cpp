@@ -1,6 +1,7 @@
 // 验证天气看板日期、温度范围、空气品质与日照格式规则。
 #include "ui_weather_board_text.h"
 #include "ui_language_internal.h"
+#include "ui_i18n.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -12,8 +13,8 @@ int main()
     setenv("TZ", "Asia/Shanghai", 1);
     tzset();
 
-    assert(strcmp(text_or_dash(nullptr), kWeatherBoardDash) == 0);
-    assert(strcmp(text_or_dash(""), kWeatherBoardDash) == 0);
+    assert(strcmp(text_or_dash(nullptr), weather_board_dash()) == 0);
+    assert(strcmp(text_or_dash(""), weather_board_dash()) == 0);
     assert(strcmp(text_or_dash("晴"), "晴") == 0);
 
     WeatherForecastDay day = {};
@@ -44,11 +45,11 @@ int main()
     format_forecast_temp_range(day, out, sizeof(out));
     assert(strcmp(out, "--/--°C") == 0);
     format_today_range(day, out, sizeof(out));
-    assert(strcmp(out, kWeatherBoardTodayRangePlaceholder) == 0);
+    assert(strcmp(out, ui_text(UiTextId::WeatherTodayPlaceholder)) == 0);
 
     WeatherAirData air = {};
     format_weather_board_air_line(air, out, sizeof(out));
-    assert(strcmp(out, kWeatherBoardAirPlaceholder) == 0);
+    assert(strcmp(out, ui_text(UiTextId::WeatherAqiPlaceholder)) == 0);
     air.ready = true;
     strcpy(air.aqi, "42");
     strcpy(air.category, "优");
@@ -71,9 +72,9 @@ int main()
     assert(strcmp(out, "东北风 3級") == 0);
 
     format_weather_board_sunrise_line(nullptr, out, sizeof(out));
-    assert(strcmp(out, kWeatherBoardSunrisePlaceholder) == 0);
+    assert(strcmp(out, ui_text(UiTextId::WeatherSunrisePlaceholder)) == 0);
     format_weather_board_sunset_line(nullptr, out, sizeof(out));
-    assert(strcmp(out, kWeatherBoardSunsetPlaceholder) == 0);
+    assert(strcmp(out, ui_text(UiTextId::WeatherSunsetPlaceholder)) == 0);
     strcpy(day.sunrise, "05:12");
     strcpy(day.sunset, "18:47");
     format_weather_board_sunrise_line(&day, out, sizeof(out));

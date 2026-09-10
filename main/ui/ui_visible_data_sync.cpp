@@ -25,9 +25,6 @@
 namespace {
 constexpr size_t kWeatherCityTextSize = 48;
 constexpr size_t kWeatherValueTextSize = 24;
-constexpr const char *kWeatherTempFormat = "%s°C";
-constexpr const char *kWeatherHumidityFormat = "%s%%";
-
 #define UI_WEATHER_VISIBLE_SYNC_REQUEST_FORMAT "weather clock visible with %s weather, requesting sync"
 #define UI_GALLERY_SAYING_SYNC_REQUEST_LOG "gallery visible with missing/stale daily saying, requesting sync"
 
@@ -44,16 +41,16 @@ void format_weather_status_text(const WeatherData &weather,
                                 char *humi,
                                 size_t humi_len)
 {
-    ui_text::copy(city, city_len, weather.city);
-    ui_text::format_or_fallback(temp,
+    ui_text_format::copy(city, city_len, weather.city);
+    ui_text_format::format_or_fallback(temp,
                                 temp_len,
-                                kClockWeatherTempPlaceholder,
-                                kWeatherTempFormat,
+                                clock_weather_temperature_placeholder(),
+                                ui_format(UiTextId::WeatherStatusTemperatureFormat),
                                 weather.temp);
-    ui_text::format_or_fallback(humi,
+    ui_text_format::format_or_fallback(humi,
                                 humi_len,
-                                kClockWeatherHumidityPlaceholder,
-                                kWeatherHumidityFormat,
+                                clock_weather_humidity_placeholder(),
+                                ui_format(UiTextId::WeatherStatusHumidityFormat),
                                 weather.humidity);
 }
 
@@ -312,22 +309,22 @@ bool update_weather_clock_network_status(EventBits_t bits)
     const bool offline_mode = offline_mode_enabled_load();
     if (network_weather_configuration_configured() && !offline_mode) {
         const char *weather_info_text =
-            (bits & kWifiConnectedBit) ? kClockWeatherInfoSyncingText
-                                       : kClockWeatherInfoWaitingText;
-        return update_clock_weather_panel_text(kClockWeatherCityPlaceholder,
+            (bits & kWifiConnectedBit) ? clock_weather_info_syncing_text()
+                                       : clock_weather_info_waiting_text();
+        return update_clock_weather_panel_text(clock_weather_city_placeholder(),
                                                weather_info_text,
-                                                kClockWeatherTempPlaceholder,
-                                                kClockWeatherHumidityPlaceholder,
+                                                clock_weather_temperature_placeholder(),
+                                                clock_weather_humidity_placeholder(),
                                                 WeatherIconKind::kUnknown,
                                                 false);
     }
 
     return update_clock_weather_panel_text(
-        kClockWeatherCityPlaceholder,
-        offline_mode ? kClockWeatherInfoWaitingText
-                     : kClockWeatherInfoConfigurationRequiredText,
-        kClockWeatherTempPlaceholder,
-        kClockWeatherHumidityPlaceholder,
+        clock_weather_city_placeholder(),
+        offline_mode ? clock_weather_info_waiting_text()
+                     : clock_weather_info_configuration_required_text(),
+        clock_weather_temperature_placeholder(),
+        clock_weather_humidity_placeholder(),
         WeatherIconKind::kUnknown,
         false);
 }

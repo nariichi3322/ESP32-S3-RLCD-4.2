@@ -2,16 +2,14 @@
 #include "ui_time_format.h"
 
 #include "app_time_constants.h"
+#include "ui_i18n.h"
 #include "ui_text_format.h"
 
 namespace {
 constexpr size_t kDateTimeTextSize = 32;
-constexpr const char *kFullDateTimeFormat = "%04d-%02d-%02d %02d:%02d:%02d";
-constexpr const char *kInvalidTimeText = "--";
-
 void copy_invalid_time_text(char *out, size_t out_len)
 {
-    ui_text::copy(out, out_len, kInvalidTimeText);
+    ui_text_format::copy(out, out_len, ui_text(UiTextId::UiPlaceholder));
 }
 
 bool time_year_valid(int year)
@@ -22,24 +20,24 @@ bool time_year_valid(int year)
 void format_full_datetime_text(char *out, size_t out_len, const struct tm &local, int year)
 {
     char formatted[kDateTimeTextSize] = {};
-    int written = snprintf(formatted, sizeof(formatted), kFullDateTimeFormat,
+    int written = snprintf(formatted, sizeof(formatted), ui_format(UiTextId::FullDateTimeFormat),
                            year,
                            local.tm_mon + kTmMonthOffset,
                            local.tm_mday,
                            local.tm_hour,
                            local.tm_min,
                            local.tm_sec);
-    if (ui_text::format_failed(written, sizeof(formatted))) {
+    if (ui_text_format::format_failed(written, sizeof(formatted))) {
         copy_invalid_time_text(out, out_len);
         return;
     }
-    ui_text::copy(out, out_len, formatted);
+    ui_text_format::copy(out, out_len, formatted);
 }
 }
 
 void format_time_or_dash(time_t value, char *out, size_t out_len)
 {
-    if (!ui_text::output_buffer_available(out, out_len)) {
+    if (!ui_text_format::output_buffer_available(out, out_len)) {
         return;
     }
     if (value <= 0) {

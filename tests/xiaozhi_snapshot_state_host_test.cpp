@@ -77,7 +77,7 @@ int main()
     XiaozhiAiSnapshot unavailable = {};
     xiaozhi_snapshot_get(&unavailable);
     assert(unavailable.state == kXiaozhiAiInactive);
-    assert(strcmp(unavailable.status, kXiaozhiDefaultStatus) == 0);
+    assert(strcmp(unavailable.status, ui_text(UiTextId::XiaozhiPreparing)) == 0);
     uint32_t snapshot_version = 0;
     XiaozhiAiSnapshot cached_snapshot = {};
     assert(!xiaozhi_snapshot_get_if_changed(&snapshot_version,
@@ -157,7 +157,7 @@ int main()
     s_fail_mutex_take = false;
     assert(s_notify_count == notify_before_take_failure);
     assert(failed_read.state == kXiaozhiAiInactive);
-    assert(strcmp(failed_read.status, kXiaozhiDefaultStatus) == 0);
+    assert(strcmp(failed_read.status, ui_text(UiTextId::XiaozhiPreparing)) == 0);
     assert(stale_snapshot_version == 0);
     assert(xiaozhi_snapshot_get_if_changed(&stale_snapshot_version,
                                             &cached_snapshot));

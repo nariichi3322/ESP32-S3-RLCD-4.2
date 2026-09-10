@@ -11,6 +11,7 @@
 #include "network_task_guards.h"
 #include "sensor_time.h"
 #include "ui_boot_screen.h"
+#include "ui_i18n.h"
 #include "ui_language.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_services_internal.h"
@@ -32,56 +33,54 @@ constexpr int kBootScreenCompletePercent = 100;
 constexpr int kBootNtpMinRemainingMs = 600;
 constexpr size_t kBootSetupDetailTextSize = 64;
 struct BootSyncText {
-    const char *traditional;
-    const char *simplified;
-    const char *english;
+    UiTextId id;
 };
 
 const char *boot_sync_text(const BootSyncText &text)
 {
-    return ui_language_text(text.traditional, text.simplified, text.english);
+    return ui_text(text.id);
 }
 
 constexpr BootSyncText kBootDetailStartingClock = {
-    "啟動時鐘", "启动时钟", "Starting clock"};
+    UiTextId::BootDetailStartingClock};
 constexpr BootSyncText kBootDetailPowerLockUnavailable = {
-    "電源鎖定不可用", "电源锁定不可用", "Power lock unavailable"};
+    UiTextId::BootDetailPowerLockUnavailable};
 constexpr BootSyncText kBootDetailSynchronizingTime = {
-    "同步時間中", "同步时间中", "Synchronizing time"};
+    UiTextId::BootDetailSynchronizingTime};
 constexpr BootSyncText kBootDetailPageDataQueued = {
-    "頁面資料已排程", "页面数据已排程", "Page data queued"};
+    UiTextId::BootDetailPageDataQueued};
 constexpr BootSyncText kBootDetailBackgroundRefresh = {
-    "啟動後重新整理中", "启动后刷新中", "Refreshing after startup"};
+    UiTextId::BootDetailBackgroundRefresh};
 constexpr BootSyncText kBootSetupDetailFallback = {
-    "設定 AP: --", "设置 AP: --", "Setup AP: --"};
+    UiTextId::BootSetupDetailFallback};
 constexpr BootSyncText kBootSetupDetailFormat = {
-    "設定 AP: %s", "设置 AP: %s", "Setup AP: %s"};
+    UiTextId::BootSetupDetailFormat};
 constexpr BootSyncText kBootStatusOfflineMode = {
-    "離線模式", "离线模式", "Offline mode"};
+    UiTextId::BootStatusOfflineMode};
 constexpr BootSyncText kBootStatusSettingsMode = {
-    "設定模式", "设置模式", "Settings mode"};
+    UiTextId::BootStatusSettingsMode};
 constexpr BootSyncText kBootStatusConnectingWifi = {
-    "連線 Wi-Fi", "连接 Wi-Fi", "Connecting Wi-Fi"};
+    UiTextId::BootStatusConnectingWifi};
 constexpr BootSyncText kBootStatusWifiStartFailed = {
-    "Wi-Fi 啟動失敗", "Wi-Fi 启动失败", "Wi-Fi start failed"};
+    UiTextId::BootStatusWifiStartFailed};
 constexpr BootSyncText kBootStatusWifiTimeout = {
-    "Wi-Fi 連線逾時", "Wi-Fi 连接超时", "Wi-Fi timeout"};
+    UiTextId::BootStatusWifiTimeout};
 constexpr BootSyncText kBootDetailCheckSsidOrPassword = {
-    "請檢查 SSID 或密碼", "请检查 SSID 或密码", "Check SSID or password"};
+    UiTextId::BootDetailCheckSsidOrPassword};
 constexpr BootSyncText kBootStatusWifiConnected = {
-    "Wi-Fi 已連線", "Wi-Fi 已连接", "Wi-Fi connected"};
+    UiTextId::BootStatusWifiConnected};
 constexpr BootSyncText kBootDetailCheckingTime = {
-    "檢查時間", "检查时间", "Checking time"};
+    UiTextId::BootDetailCheckingTime};
 constexpr BootSyncText kBootDetailRestoringRtcTime = {
-    "還原遺失的 RTC 時間", "恢复丢失的 RTC 时间", "Restoring lost RTC time"};
+    UiTextId::BootDetailRestoringRtcTime};
 constexpr BootSyncText kBootStatusTimeSynchronized = {
-    "時間已同步", "时间已同步", "Time synchronized"};
+    UiTextId::BootStatusTimeSynchronized};
 constexpr BootSyncText kBootStatusNtpRetryLater = {
-    "稍後重試 NTP", "稍后重试 NTP", "NTP retry later"};
+    UiTextId::BootStatusNtpRetryLater};
 constexpr BootSyncText kBootDetailRetryInBackground = {
-    "將在背景重試", "将在后台重试", "Will retry in background"};
+    UiTextId::BootDetailRetryInBackground};
 constexpr BootSyncText kBootDetailShortNtpCheck = {
-    "快速檢查 NTP", "快速检查 NTP", "Short NTP check"};
+    UiTextId::BootDetailShortNtpCheck};
 constexpr const char *kBootRtcInvalidNtpPriorityLog =
     "system time invalid after Wi-Fi connect, prioritizing boot NTP";
 constexpr const char *kBootPageDataDeferredLog =

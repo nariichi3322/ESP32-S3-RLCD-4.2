@@ -16,6 +16,8 @@
 #include "ui_clock_layout.h"
 #include "ui_fonts.h"
 #include "ui_icons.h"
+#include "ui_i18n.h"
+#include "ui_language.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
 #include "ui_setup_status.h"
@@ -53,6 +55,12 @@ constexpr const char *kClockComponentTime = "time";
 constexpr const char *kClockComponentSecond = "second";
 constexpr const char *kClockComponentStatusGif = "status_gif";
 constexpr const char *kClockComponentLowBatteryIcon = "low_battery_icon";
+
+const char *clock_date_placeholder()
+{
+    return ui_text(UiTextId::DatePlaceholder);
+}
+
 lv_color_t *s_temp_icon_canvas_buffer;
 lv_color_t *s_humi_icon_canvas_buffer;
 lv_color_t *s_temp_trend_canvas_buffer;
@@ -130,9 +138,16 @@ lv_obj_t *make_clock_lower_center_label(lv_obj_t *screen,
                                         int width,
                                         int height,
                                         const char *text,
-                                        const char *name)
+                                        const char *name,
+                                        const lv_font_t *font = nullptr)
 {
-    lv_obj_t *label = make_label(screen, x, y, width, height, text);
+    lv_obj_t *label = make_label_with_font(screen,
+                                           x,
+                                           y,
+                                           width,
+                                           height,
+                                           text,
+                                           font ? font : ui_font(UiFontRole::Body16));
     remember_lower_panel_object(label);
     center_clock_label_if_created(label, name);
     return label;
@@ -224,7 +239,7 @@ void build_clock_header(lv_obj_t *screen)
                                     kClockDateLabelY,
                                     kClockDateLabelWidth,
                                     kClockDateLabelHeight,
-                                    "----/--/-- / 星期-");
+                                    clock_date_placeholder());
     if (objects.date_label) {
         lv_obj_set_style_text_align(objects.date_label, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     } else {
@@ -264,9 +279,9 @@ void build_clock_header(lv_obj_t *screen)
                                                    kClockAlertLabelWidth,
                                                    kClockAlertLabelHeight,
                                                    "",
-                                                   &zh_font_16);
+                                                   ui_font(UiFontRole::Body16));
         if (objects.alert_label) {
-            lv_obj_set_style_text_color(objects.alert_label, lv_color_white(), LV_PART_MAIN);
+            style_label_for_dark_background(objects.alert_label);
             lv_obj_set_style_text_align(objects.alert_label,
                                         LV_TEXT_ALIGN_CENTER,
                                         LV_PART_MAIN);
@@ -326,7 +341,7 @@ void build_clock_weather_panel(lv_obj_t *screen)
                                       kClockWeatherCityLabelY,
                                       kClockWeatherCityLabelWidth,
                                       kClockWeatherCityLabelHeight,
-                                      kClockWeatherCityPlaceholder,
+                                      clock_weather_city_placeholder(),
                                       kClockComponentWeatherCity);
     objects.icon_label = make_label(screen,
                                     kClockWeatherIconLabelX,
@@ -352,7 +367,7 @@ void build_clock_weather_panel(lv_obj_t *screen)
                                     kClockWeatherInfoLabelY,
                                     kClockWeatherInfoLabelWidth,
                                     kClockWeatherInfoLabelHeight,
-                                    kClockWeatherInfoWaitingText);
+                                    clock_weather_info_waiting_text());
     remember_lower_panel_object(objects.info_label);
     if (objects.info_label) {
         lv_label_set_long_mode(objects.info_label, LV_LABEL_LONG_CLIP);
@@ -368,16 +383,18 @@ void build_clock_weather_panel(lv_obj_t *screen)
                                       kClockWeatherTempLabelY,
                                       kClockWeatherMetricLabelWidth,
                                       kClockWeatherMetricLabelHeight,
-                                      kClockWeatherTempPlaceholder,
-                                      kClockComponentWeatherTemp);
+                                      clock_weather_temperature_placeholder(),
+                                      kClockComponentWeatherTemp,
+                                      ui_font(UiFontRole::Metric16));
     objects.humidity_label =
         make_clock_lower_center_label(screen,
                                       kClockWeatherMetricLabelX,
                                       kClockWeatherHumiLabelY,
                                       kClockWeatherMetricLabelWidth,
                                       kClockWeatherMetricLabelHeight,
-                                      kClockWeatherHumidityPlaceholder,
-                                      kClockComponentWeatherHumidity);
+                                      clock_weather_humidity_placeholder(),
+                                      kClockComponentWeatherHumidity,
+                                      ui_font(UiFontRole::Metric16));
 }
 
 void build_clock_local_sensor_panel(lv_obj_t *screen)
@@ -408,15 +425,17 @@ void build_clock_local_sensor_panel(lv_obj_t *screen)
                                                               kClockLocalTempLabelY,
                                                               kClockLocalMetricLabelWidth,
                                                               kClockLocalMetricLabelHeight,
-                                                              "--.-°C",
-                                                              kClockComponentTempValue);
+                                                              ui_text(UiTextId::ClockLocalTemperaturePlaceholder),
+                                                              kClockComponentTempValue,
+                                                              ui_font(UiFontRole::Metric16));
     objects.humidity_label = make_clock_lower_center_label(screen,
                                                            kClockLocalMetricLabelX,
                                                            kClockLocalHumiLabelY,
                                                            kClockLocalMetricLabelWidth,
                                                            kClockLocalMetricLabelHeight,
-                                                           "--.-%",
-                                                           kClockComponentHumidityValue);
+                                                            ui_text(UiTextId::ClockLocalHumidityPlaceholder),
+                                                           kClockComponentHumidityValue,
+                                                           ui_font(UiFontRole::Metric16));
     remember_lower_panel_object(objects.temperature_icon_canvas);
     remember_lower_panel_object(objects.humidity_icon_canvas);
 
