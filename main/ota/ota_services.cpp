@@ -23,6 +23,8 @@
 #include "network_task_guards.h"
 #include "scoped_heap_buffer.h"
 #include "ui_info_page_state_internal.h"
+#include "ui_i18n.h"
+#include "ui_language.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_navigation.h"
 #include "ui_task_notify.h"
@@ -32,6 +34,7 @@
 #include <esp_heap_caps.h>
 #include <esp_log.h>
 #include <esp_ota_ops.h>
+#include <esp_partition.h>
 #include <esp_system.h>
 #include <esp_timer.h>
 #include <esp_wifi.h>
@@ -72,27 +75,27 @@ static_assert(kOtaDownloadStatusTextLen <= kOtaStatusLen,
               "OTA download status scratch text must fit global OTA status storage");
 static_assert(kOtaRebootNoticeDelayMs >= kOtaPreRestartDisplayQuietMs,
               "OTA reboot notice must outlast pre-restart display quiet window");
-static constexpr const char *kOtaStatusCheckFailed = "检查失败";
-static constexpr const char *kOtaStatusCheckingUpdate = "正在检查更新";
-static constexpr const char *kOtaStatusAlreadyLatest = "已是最新版本";
-static constexpr const char *kOtaStatusDownloadFailed = "下载失败";
-static constexpr const char *kOtaStatusVerifyFailed = "验证失败";
-static constexpr const char *kOtaStatusUpdateFailed = "更新失败";
-static constexpr const char *kOtaStatusUpdateDoneRebooting = "更新完成，正在重新启动...";
-static constexpr const char *kOtaStatusNoWifi = "没有 Wi-Fi";
-static constexpr const char *kOtaStatusLowBattery = "电量不足";
-static constexpr const char *kOtaStatusWifiFailed = "Wi-Fi 失败";
-static constexpr const char *kOtaStatusNoOtaSlot = "没有 OTA 分区";
-static constexpr const char *kOtaStatusNoMemory = "内存不足";
-static constexpr const char *kOtaStatusOfflineMode = "离线模式";
-static constexpr const char *kOtaStatusSetupMode = "设置模式";
-static constexpr const char *kOtaStatusUnavailable = "更新不可用";
-static constexpr const char *kOtaStatusIdlePrompt = "BOOT：检查更新";
-static constexpr const char *kOtaStatusInstallingUpdate = "正在安装更新 0%";
-static constexpr const char *kOtaStatusInstallingBackup = "正在安装备份 0%";
-static constexpr const char *kOtaStatusInstallingProgressFormat = "正在安装 %d%%  %dKB/s";
-static constexpr const char *kOtaStatusNewVersionFormat = "新版本 %s";
-static constexpr const char *kOtaStatusFallbackError = "OTA 状态错误";
+#define kOtaStatusCheckFailed ui_text(UiTextId::OtaStatusCheckFailed)
+#define kOtaStatusCheckingUpdate ui_text(UiTextId::OtaChecking)
+#define kOtaStatusAlreadyLatest ui_text(UiTextId::OtaLatest)
+#define kOtaStatusDownloadFailed ui_text(UiTextId::OtaDownloadFailed)
+#define kOtaStatusVerifyFailed ui_text(UiTextId::OtaVerifyFailed)
+#define kOtaStatusUpdateFailed ui_text(UiTextId::OtaUpdateFailed)
+#define kOtaStatusUpdateDoneRebooting ui_text(UiTextId::OtaStatusUpdateDoneRebooting)
+#define kOtaStatusNoWifi ui_text(UiTextId::NetworkNoWifi)
+#define kOtaStatusLowBattery ui_text(UiTextId::OtaStatusLowBattery)
+#define kOtaStatusWifiFailed ui_text(UiTextId::OtaStatusWifiFailed)
+#define kOtaStatusNoOtaSlot ui_text(UiTextId::OtaStatusNoOtaSlot)
+#define kOtaStatusNoMemory ui_text(UiTextId::OtaStatusNoMemory)
+#define kOtaStatusOfflineMode ui_text(UiTextId::SettingsOffline)
+#define kOtaStatusSetupMode ui_text(UiTextId::SettingsSetup)
+#define kOtaStatusUnavailable ui_text(UiTextId::OtaStatusUnavailable)
+#define kOtaStatusIdlePrompt ui_text(UiTextId::OtaStatusIdlePrompt)
+#define kOtaStatusInstallingUpdate ui_text(UiTextId::OtaStatusInstallingUpdate)
+#define kOtaStatusInstallingBackup ui_text(UiTextId::OtaStatusInstallingBackup)
+#define kOtaStatusInstallingProgressFormat ui_format(UiTextId::OtaStatusInstallingProgressFormat)
+#define kOtaStatusNewVersionFormat ui_format(UiTextId::OtaStatusNewVersionFormat)
+#define kOtaStatusFallbackError ui_text(UiTextId::OtaStatusFallbackError)
 static constexpr const char *kOtaRequestFallbackName = "request";
 #define OTA_REQUEST_EVENT_GROUP_UNAVAILABLE_FORMAT "OTA %s skipped: event group unavailable"
 #define OTA_HEAP_DIAGNOSTIC_FORMAT "OTA heap %s: total=%d progress=%d dma_free=%u dma_largest=%u internal_free=%u internal_largest=%u psram_free=%u psram_largest=%u"
@@ -115,10 +118,12 @@ static constexpr const char *kOtaHttpTransactionLockTimeoutLog =
 #define OTA_APP_DESCRIPTION_FAILED_FORMAT "OTA app description failed: %s"
 #define OTA_IMAGE_METADATA_MISMATCH_FORMAT \
     "OTA image metadata mismatch: expected_version=%s actual_version=%.*s expected_project=%s actual_project=%.*s"
+#define OTA_IMAGE_LOCALE_MISMATCH_FORMAT \
+    "OTA image locale mismatch: expected=%s"
 #define OTA_IMAGE_READY_FORMAT "OTA image ready: version=%s project=%s"
 #define OTA_BOOT_PARTITION_FAILED_FORMAT "OTA boot partition failed: %s"
 static constexpr const char *kOtaTaskEventGroupUnavailableLog = "OTA task stopped: event group unavailable";
-#define OTA_UPDATE_CHECK_FORMAT "OTA update check source=%s remote=%s current=%s"
+#define OTA_UPDATE_CHECK_FORMAT "OTA update check source=%s remote=%s current=%s target=%s image=%s"
 static constexpr const char *kOtaPrimaryDownloadRetryBackupLog =
     "OTA primary download failed, retrying GitHub backup";
 
@@ -389,6 +394,47 @@ static bool verify_downloaded_ota_sha(const uint8_t *hash,
     return false;
 }
 
+static bool validate_downloaded_ota_locale(const esp_partition_t *partition,
+                                           const OtaManifest &manifest)
+{
+    UiLanguage expected = UiLanguage::Traditional;
+    if (!ui_language_from_locale_tag(manifest.locale, &expected) || !partition) {
+        return false;
+    }
+
+    // The metadata record is small and fixed, but its link address is not a
+    // public ESP-IDF ABI. Search the downloaded app partition in bounded
+    // PSRAM chunks instead of assuming a linker-specific offset.
+    constexpr size_t kChunkSize = 4096;
+    ScopedHeapBuffer<uint8_t> chunk(kChunkSize + sizeof(WeatherClockAppMetadata));
+    if (!chunk) return false;
+    constexpr size_t kOverlap = sizeof(WeatherClockAppMetadata) - 1;
+    for (size_t offset = 0; offset < partition->size; offset += kChunkSize) {
+        const size_t read_limit = kChunkSize + kOverlap;
+        const size_t read_size = (partition->size - offset > read_limit)
+                                     ? read_limit
+                                     : partition->size - offset;
+        if (esp_partition_read(partition, offset, chunk.data(), read_size) != ESP_OK) {
+            return false;
+        }
+        for (size_t i = 0; i + sizeof(WeatherClockAppMetadata) <= read_size; ++i) {
+            WeatherClockAppMetadata candidate = {};
+            memcpy(&candidate, chunk.data() + i, sizeof(candidate));
+            if (candidate.magic != 0x57434C31U || candidate.format_version != 1) continue;
+            if (candidate.locale_id == static_cast<uint8_t>(expected) &&
+                strncmp(candidate.locale, manifest.locale, sizeof(candidate.locale)) == 0) {
+                return true;
+            }
+        }
+    }
+
+    // A pre-locale weather_clock image has no record. Preserve the documented
+    // legacy update path; every non-Traditional image must identify itself.
+    if (expected == UiLanguage::Traditional) return true;
+    ESP_LOGW(TAG, OTA_IMAGE_LOCALE_MISMATCH_FORMAT, manifest.locale);
+    return false;
+}
+
 static bool validate_downloaded_ota_description(
     const esp_partition_t *update_partition,
     const OtaManifest &manifest)
@@ -416,6 +462,10 @@ static bool validate_downloaded_ota_description(
                  kOtaExpectedProjectName,
                  static_cast<int>(sizeof(app_desc.project_name)),
                  app_desc.project_name);
+        ota_set_failed_status(kOtaStatusVerifyFailed);
+        return false;
+    }
+    if (!validate_downloaded_ota_locale(update_partition, manifest)) {
         ota_set_failed_status(kOtaStatusVerifyFailed);
         return false;
     }
@@ -650,8 +700,12 @@ static void handle_ota_check_request()
              OTA_UPDATE_CHECK_FORMAT,
              ota_manifest_source_name_or_unknown(manifest_source),
              manifest.version,
-             APP_VERSION);
-    if (ota_compare_versions(manifest.version, APP_VERSION) <= 0) {
+             APP_VERSION,
+             ui_language_locale_tag(ui_language_target()),
+             manifest.locale);
+    const bool newer_version = ota_compare_versions(manifest.version, APP_VERSION) > 0;
+    const bool locale_change = strcmp(manifest.locale, APP_LOCALE) != 0;
+    if (!newer_version && !locale_change) {
         ota_set_status(kOtaNoUpdate, kOtaStatusAlreadyLatest, -1, kOtaFailureHoldMs);
         ota_network_session_finish(OtaWifiFinishPolicy::kReleaseAwakeLock);
         hold_ota_info_page();

@@ -84,8 +84,6 @@ struct ForecastCardUi {
 };
 
 EXT_RAM_BSS_ATTR ForecastCardUi s_cards[kWeatherBoardForecastCardCount];
-constexpr const char *kWeatherBoardWaitingData = "等待数据";
-constexpr const char *kWeatherBoardSyncing = "同步中";
 constexpr const char *kWeatherBoardCurrentUnitText = "°C";
 constexpr size_t kForecastDateLineSize = 24;
 constexpr size_t kForecastTempRangeSize = 20;
@@ -222,12 +220,13 @@ bool update_forecast_card(ForecastCardUi &card,
     const bool hourly = mode == WeatherBoardForecastMode::kHourly;
     const bool valid = hourly ? hour && hour->valid : day && day->valid;
     if (!valid) {
-        changed |= set_label_text_if_changed(card.date, kWeatherBoardDash);
+        changed |= set_label_text_if_changed(card.date, weather_board_dash());
         changed |= set_label_text_if_changed(card.icon, "");
-        changed |= set_label_text_if_changed(card.text, kWeatherBoardDash);
+        changed |= set_label_text_if_changed(card.text, weather_board_dash());
         changed |= set_label_text_if_changed(card.range,
-                                             hourly ? kWeatherBoardHourlyTempPlaceholder
-                                                    : kWeatherBoardForecastRangePlaceholder);
+                                             hourly
+                                                 ? ui_text(UiTextId::WeatherBoardHourlyTempPlaceholder)
+                                                 : ui_text(UiTextId::WeatherBoardForecastRangePlaceholder));
         return changed;
     }
     auto &date_line = s_weather_board_text_workspace.forecast_date_line;
@@ -276,7 +275,7 @@ void build_forecast_card(lv_obj_t *screen,
                            y,
                            kForecastCardW,
                            kForecastCardDateH,
-                           kWeatherBoardDash);
+                           weather_board_dash());
     set_weather_label_long_mode(card.date, LV_LABEL_LONG_WRAP);
     set_weather_label_align(card.date, LV_TEXT_ALIGN_CENTER);
     card.icon = make_label(screen,
@@ -292,15 +291,22 @@ void build_forecast_card(lv_obj_t *screen,
                            y + kForecastCardTextY,
                            kForecastCardW,
                            kForecastCardTextH,
-                           kWeatherBoardDash);
-    set_weather_label_long_mode(card.text, LV_LABEL_LONG_WRAP);
+                           weather_board_dash());
+    // Forecast columns are only 46 px wide. A wrapped weather word creates a
+    // visibly broken card (for example, the final "y" in "Cloudy" lands on a
+    // second line). The English catalog already uses compact weather names, so
+    // keep this field to one line and use the 12 px Latin face.
+    set_weather_label_long_mode(card.text, LV_LABEL_LONG_CLIP);
+    if (ui_language_is_english()) {
+        set_weather_label_font(card.text, &lv_font_montserrat_12);
+    }
     set_weather_label_align(card.text, LV_TEXT_ALIGN_CENTER);
     card.range = make_label(screen,
                             x,
                             y + kForecastCardRangeY,
                             kForecastCardW,
                             kForecastCardRangeH,
-                            kWeatherBoardForecastRangePlaceholder);
+                            ui_text(UiTextId::WeatherBoardForecastRangePlaceholder));
     set_weather_label_align(card.range, LV_TEXT_ALIGN_CENTER);
     set_weather_label_font(card.range, &lv_font_montserrat_12);
 }
@@ -322,7 +328,7 @@ void build_current_weather_panel(lv_obj_t *screen)
                                     kWeatherBoardCurrentCityY,
                                     kWeatherBoardCurrentCityW,
                                     kWeatherBoardCurrentCityH,
-                                    kWeatherBoardWaitingData);
+                                    weather_board_waiting_text());
     set_weather_label_align(objects.city_label, LV_TEXT_ALIGN_LEFT);
 
     objects.current_temp_label = make_label_with_font(screen,
@@ -330,7 +336,7 @@ void build_current_weather_panel(lv_obj_t *screen)
                                                       kWeatherBoardCurrentTempY,
                                                       kWeatherBoardCurrentTempW,
                                                       kWeatherBoardCurrentTempH,
-                                                      kWeatherBoardDash,
+                                                      weather_board_dash(),
                                                       &lv_font_montserrat_48);
     set_weather_label_align(objects.current_temp_label, LV_TEXT_ALIGN_LEFT);
     objects.current_unit_label = make_label_with_font(screen,
@@ -355,13 +361,13 @@ void build_current_weather_panel(lv_obj_t *screen)
                                             kWeatherBoardCurrentTextY,
                                             kWeatherBoardCurrentTextW,
                                             kWeatherBoardCurrentTextH,
-                                            kWeatherBoardDash);
+                                            weather_board_dash());
     objects.today_range_label = make_label(screen,
                                            kWeatherBoardTodayRangeX,
                                            kWeatherBoardTodayRangeY,
                                            kWeatherBoardTodayRangeW,
                                            kWeatherBoardTodayRangeH,
-                                           kWeatherBoardTodayRangePlaceholder);
+                                           ui_text(UiTextId::WeatherTodayPlaceholder));
 }
 
 void build_weather_detail_panel(lv_obj_t *screen)
@@ -380,43 +386,43 @@ void build_weather_detail_panel(lv_obj_t *screen)
                                    kWeatherBoardDetailTopY,
                                    kWeatherBoardAirLabelW,
                                    kWeatherBoardDetailLabelH,
-                                   kWeatherBoardAirPlaceholder);
+                                   ui_text(UiTextId::WeatherAqiPlaceholder));
     objects.humidity_label = make_label(screen,
                                         kWeatherBoardMiddleColumnX,
                                         kWeatherBoardDetailTopY,
                                         kWeatherBoardHumidityLabelW,
                                         kWeatherBoardDetailLabelH,
-                                        kWeatherBoardHumidityPlaceholder);
+                                        ui_text(UiTextId::WeatherHumidityPlaceholder));
     objects.wind_label = make_label(screen,
                                     kWeatherBoardRightColumnX,
                                     kWeatherBoardDetailTopY,
                                     kWeatherBoardWindLabelW,
                                     kWeatherBoardDetailLabelH,
-                                    kWeatherBoardWindPlaceholder);
+                                     ui_text(UiTextId::WeatherWindPlaceholder));
     objects.sunrise_label = make_label(screen,
                                        kWeatherBoardLeftColumnX,
                                        kWeatherBoardDetailBottomY,
                                        kWeatherBoardSunriseLabelW,
                                        kWeatherBoardSunLabelH,
-                                       kWeatherBoardSunrisePlaceholder);
+                                       ui_text(UiTextId::WeatherSunrisePlaceholder));
     objects.sunset_label = make_label(screen,
                                       kWeatherBoardMiddleColumnX,
                                       kWeatherBoardDetailBottomY,
                                       kWeatherBoardSunsetLabelW,
                                       kWeatherBoardSunLabelH,
-                                      kWeatherBoardSunsetPlaceholder);
+                                      ui_text(UiTextId::WeatherSunsetPlaceholder));
     objects.sun_countdown_label = make_label(screen,
                                              kWeatherBoardRightColumnX,
                                              kWeatherBoardDetailBottomY,
                                              kWeatherBoardSunCountdownLabelW,
                                              kWeatherBoardSunLabelH,
-                                             kWeatherBoardSunCountdownPlaceholder);
+                                             ui_text(UiTextId::WeatherUntilSunsetPlaceholder));
     objects.advice_label = make_label(screen,
                                       kWeatherBoardAdviceX,
                                       kWeatherBoardAdviceY,
                                       kWeatherBoardAdviceW,
                                       kWeatherBoardAdviceH,
-                                      kWeatherBoardAdvicePlaceholder);
+                                      ui_text(UiTextId::WeatherWaitingData));
     set_weather_label_long_mode(objects.advice_label, LV_LABEL_LONG_WRAP);
     set_weather_label_align(objects.advice_label, LV_TEXT_ALIGN_LEFT);
 }
@@ -441,20 +447,24 @@ bool update_current_weather_panel(const WeatherData &weather,
         if (forecast.ready && forecast.count > 0 && forecast.days[0].valid) {
             format_today_range(forecast.days[0], today_range, sizeof(today_range));
         } else {
-            strlcpy(today_range, kWeatherBoardTodayRangePlaceholder, sizeof(today_range));
+            strlcpy(today_range,
+                    ui_text(UiTextId::WeatherTodayPlaceholder),
+                    sizeof(today_range));
         }
         changed |= set_label_text_if_changed(objects.today_range_label, today_range);
         return changed;
     }
 
-    changed |= set_label_text_if_changed(objects.city_label, kWeatherBoardDash);
+    changed |= set_label_text_if_changed(objects.city_label, weather_board_dash());
     changed |= set_label_text_if_changed(objects.current_temp_label,
-                                         kWeatherBoardDash);
+                                         weather_board_dash());
     changed |= set_label_text_if_changed(objects.current_icon_label, "");
     changed |= set_label_text_if_changed(objects.current_text_label,
-                                         (bits & kWifiConnectedBit) ? kWeatherBoardSyncing : kWeatherBoardWaitingData);
+                                          (bits & kWifiConnectedBit)
+                                              ? weather_board_syncing_text()
+                                              : weather_board_waiting_text());
     changed |= set_label_text_if_changed(objects.today_range_label,
-                                         kWeatherBoardTodayRangePlaceholder);
+                                         ui_text(UiTextId::WeatherTodayPlaceholder));
     return changed;
 }
 

@@ -16,6 +16,7 @@
 #include "wifi_portal_state_internal.h"
 
 #include "ui_info_page_state.h"
+#include "ui_i18n.h"
 #include "ui_language.h"
 #include "ui_settings_activity_state.h"
 #include "ui_task_notify.h"
@@ -44,15 +45,6 @@ constexpr const char *kPortalHttpStatusPayloadTooLarge = "413 Payload Too Large"
 constexpr const char *kPortalHttpStatusOk = "200 OK";
 constexpr const char *kPortalHttpStatusConflict = "409 Conflict";
 constexpr const char *kPortalHttpStatusNoContent = "204 No Content";
-constexpr const char *kPortalErrorMissingQueryTraditional = "缺少請求參數。";
-constexpr const char *kPortalErrorMissingQuerySimplified = "缺少请求参数。";
-constexpr const char *kPortalErrorMissingQueryEnglish = "Missing request parameter.";
-constexpr const char *kPortalErrorRequestTooLargeTraditional =
-    "提交內容過長，請縮短自訂欄位後重試。";
-constexpr const char *kPortalErrorRequestTooLargeSimplified =
-    "提交内容过长，请缩短自定义字段后重试。";
-constexpr const char *kPortalErrorRequestTooLargeEnglish =
-    "Request is too large. Shorten the custom fields and try again.";
 constexpr const char *kPortalRootUri = "/";
 constexpr const char *kPortalSaveUri = "/save";
 constexpr const char *kPortalStatusUri = "/status";
@@ -174,8 +166,8 @@ esp_err_t handle_setup_save(httpd_req_t *req, const char *body)
         const esp_err_t response = send_save_result_page(
             req, saved ? WifiPortalSaveResult::kSuccess
                        : WifiPortalSaveResult::kInvalidInput,
-            saved ? ui_language_text("已啟用離線模式", "已启用离线模式", "Offline mode enabled")
-                  : ui_language_text("日期時間格式無效", "日期时间格式无效", "Invalid date and time format"));
+            saved ? ui_text(UiTextId::PortalOfflineModeEnabled)
+                  : ui_text(UiTextId::PortalInvalidDateTime));
         if (saved) (void)request_setup_portal_stop();
         return response;
     }
@@ -278,10 +270,7 @@ esp_err_t save_post_handler(httpd_req_t *req)
     if (err == ESP_ERR_INVALID_SIZE) {
         return send_portal_text_status(req,
                                        kPortalHttpStatusPayloadTooLarge,
-                                       ui_language_text(
-                                           kPortalErrorRequestTooLargeTraditional,
-                                            kPortalErrorRequestTooLargeSimplified,
-                                            kPortalErrorRequestTooLargeEnglish));
+                                       ui_text(UiTextId::PortalRequestTooLarge));
     }
     if (err != ESP_OK) {
         return err;
@@ -301,9 +290,7 @@ esp_err_t save_get_handler(httpd_req_t *req)
         return send_portal_text_status(
             req,
             kPortalHttpStatusBadRequest,
-            ui_language_text(kPortalErrorMissingQueryTraditional,
-                             kPortalErrorMissingQuerySimplified,
-                             kPortalErrorMissingQueryEnglish));
+            ui_text(UiTextId::PortalMissingQuery));
     }
     return handle_setup_save(req, s_portal_request_buffer);
 }

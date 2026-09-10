@@ -10,6 +10,7 @@
 #include "ntp_services.h"
 #include "ota_services.h"
 #include "ui_fonts.h"
+#include "ui_i18n.h"
 #include "ui_language.h"
 #include "ui_page_state.h"
 #include "ui_text_format.h"
@@ -66,55 +67,39 @@ lv_obj_t *s_network_diag_summary_label;
 lv_obj_t *s_network_diag_hint_label;
 EXT_RAM_BSS_ATTR NetworkDiagnosticsSnapshot s_network_diag_render_snapshot;
 struct AuxPageText {
-    const char *traditional;
-    const char *simplified;
-    const char *english;
+    UiTextId id;
 };
 
 const char *aux_page_text(const AuxPageText &text)
 {
-    return ui_language_text(text.traditional, text.simplified, text.english);
+    return ui_text(text.id);
 }
 
-constexpr AuxPageText kNetworkDiagTitle = {
-    "網路檢測", "网络检测", "Network diagnostics"};
-constexpr AuxPageText kNetworkDiagSummaryReady = {
-    "準備檢測...", "准备检测...", "Ready to check..."};
-constexpr AuxPageText kNetworkDiagSummaryRunning = {
-    "檢測中...", "检测中...", "Checking..."};
-constexpr AuxPageText kNetworkDiagSummaryDone = {
-    "檢測完成", "检测完成", "Check complete"};
-constexpr AuxPageText kNetworkDiagSummaryIdle = {
-    "等待開始", "等待开始", "Waiting to start"};
-constexpr const char *kNetworkDiagLinePlaceholder = "--";
-constexpr AuxPageText kNetworkDiagHintIdle = {
-    "長按 KEY 返回", "长按 KEY 返回", "Hold KEY to return"};
-constexpr AuxPageText kNetworkDiagHintRunning = {
-    "檢測中... 長按 KEY 返回", "检测中... 长按 KEY 返回", "Checking... Hold KEY to return"};
-constexpr AuxPageText kInfoPageTitleText = {
-    "系統資訊", "系统信息", "SYSTEM INFO"};
+const char *aux_page_placeholder()
+{
+    return ui_text(UiTextId::UiPlaceholder);
+}
+
+constexpr AuxPageText kNetworkDiagTitle = {UiTextId::NetworkDiagnostics};
+constexpr AuxPageText kNetworkDiagSummaryReady = {UiTextId::AuxNetworkDiagSummaryReady};
+constexpr AuxPageText kNetworkDiagSummaryRunning = {UiTextId::AuxNetworkDiagSummaryRunning};
+constexpr AuxPageText kNetworkDiagSummaryDone = {UiTextId::AuxNetworkDiagSummaryDone};
+constexpr AuxPageText kNetworkDiagSummaryIdle = {UiTextId::AuxNetworkDiagSummaryIdle};
+constexpr AuxPageText kNetworkDiagHintIdle = {UiTextId::AuxNetworkDiagHintIdle};
+constexpr AuxPageText kNetworkDiagHintRunning = {UiTextId::AuxNetworkDiagHintRunning};
+constexpr AuxPageText kInfoPageTitleText = {UiTextId::AuxInfoPageTitle};
 constexpr size_t kInfoTimeTextSize = 32;
 constexpr size_t kInfoLineTextSize = 96;
-constexpr AuxPageText kInfoLastNtpFormat = {
-    "上次 NTP: %s", "上次 NTP: %s", "Last NTP: %s"};
-constexpr AuxPageText kInfoWifiFormat = {
-    "Wi-Fi: %s", "Wi-Fi: %s", "Wi-Fi: %s"};
-constexpr AuxPageText kInfoLastWeatherFormat = {
-    "上次天氣: %s", "上次天气: %s", "Last weather: %s"};
-constexpr AuxPageText kInfoBatteryFullFormat = {
-    "電量: %d%%  %.2fV \\ %s", "电量: %d%%  %.2fV \\ %s", "Battery: %d%%  %.2fV \\ %s"};
-constexpr AuxPageText kInfoBatteryPercentOnlyFormat = {
-    "電量: %d%%  -- \\ %s", "电量: %d%%  -- \\ %s", "Battery: %d%%  -- \\ %s"};
-constexpr AuxPageText kInfoBatteryPlaceholder = {
-    "電量: --  -- \\ --", "电量: --  -- \\ --", "Battery: --  -- \\ --"};
-constexpr AuxPageText kInfoVersionFormat = {
-    "版本: %s / %s", "版本: %s / %s", "Version: %s / %s"};
-constexpr AuxPageText kInfoSourceFormat = {
-    "來源: %s", "来源: %s", "Source: %s"};
+constexpr AuxPageText kInfoLastNtpFormat = {UiTextId::AuxInfoLastNtpFormat};
+constexpr AuxPageText kInfoWifiFormat = {UiTextId::AuxInfoWifiFormat};
+constexpr AuxPageText kInfoLastWeatherFormat = {UiTextId::AuxInfoLastWeatherFormat};
+constexpr AuxPageText kInfoBatteryFullFormat = {UiTextId::AuxInfoBatteryFullFormat};
+constexpr AuxPageText kInfoBatteryPercentOnlyFormat = {UiTextId::AuxInfoBatteryPercentOnlyFormat};
+constexpr AuxPageText kInfoBatteryPlaceholder = {UiTextId::AuxInfoBatteryPlaceholder};
+constexpr AuxPageText kInfoVersionFormat = {UiTextId::AuxInfoVersionFormat};
+constexpr AuxPageText kInfoSourceFormat = {UiTextId::AuxInfoSourceFormat};
 constexpr const char *kProjectSourceUrl = "github.com/wickenzh/ESP32-S3-RLCD-4.2";
-constexpr const char *kInfoLinePlaceholder = "--";
-constexpr AuxPageText kInfoReturnHintText = {
-    "長按 KEY 返回", "长按 KEY 返回", "Hold KEY to return"};
+constexpr AuxPageText kInfoReturnHintText = {UiTextId::AuxNetworkDiagHintIdle};
 constexpr int kInfoTextX = 30;
 constexpr int kInfoTextW = 340;
 constexpr int kInfoSourceTextX = 0;
@@ -200,7 +185,7 @@ bool set_info_time_label(size_t index, const char *format, time_t value)
     char time_text[kInfoTimeTextSize] = {};
     char line[kInfoLineTextSize] = {};
     format_time_or_dash(value, time_text, sizeof(time_text));
-    ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder,
+    ui_text_format::format_or_fallback(line, sizeof(line), aux_page_placeholder(),
                                 format, time_text);
     return set_label_text_if_changed(s_info_labels[index], line);
 }
@@ -208,7 +193,7 @@ bool set_info_time_label(size_t index, const char *format, time_t value)
 bool set_info_string_label(size_t index, const char *format, const char *value)
 {
     char line[kInfoLineTextSize] = {};
-    ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder,
+    ui_text_format::format_or_fallback(line, sizeof(line), aux_page_placeholder(),
                                 format, value ? value : "");
     return set_label_text_if_changed(s_info_labels[index], line);
 }
@@ -223,17 +208,17 @@ bool set_info_battery_label()
     char charge_time[kInfoTimeTextSize] = {};
     format_time_or_dash(battery.last_full_charge_time, charge_time, sizeof(charge_time));
     if (battery.percent >= 0 && battery.voltage >= 0.0f) {
-        ui_text::format_or_fallback(line, sizeof(line),
+        ui_text_format::format_or_fallback(line, sizeof(line),
                                     aux_page_text(kInfoBatteryPlaceholder),
                                     aux_page_text(kInfoBatteryFullFormat),
                                     battery.percent, battery.voltage, charge_time);
     } else if (battery.percent >= 0) {
-        ui_text::format_or_fallback(line, sizeof(line),
+        ui_text_format::format_or_fallback(line, sizeof(line),
                                     aux_page_text(kInfoBatteryPlaceholder),
                                     aux_page_text(kInfoBatteryPercentOnlyFormat),
                                     battery.percent, charge_time);
     } else {
-        ui_text::copy(line, sizeof(line), aux_page_text(kInfoBatteryPlaceholder));
+        ui_text_format::copy(line, sizeof(line), aux_page_text(kInfoBatteryPlaceholder));
     }
     return set_label_text_if_changed(s_info_labels[kInfoBatteryLabelIndex], line);
 }
@@ -241,7 +226,7 @@ bool set_info_battery_label()
 bool set_info_version_label()
 {
     char line[kInfoLineTextSize] = {};
-    ui_text::format_or_fallback(line, sizeof(line), kInfoLinePlaceholder,
+    ui_text_format::format_or_fallback(line, sizeof(line), aux_page_placeholder(),
                                 aux_page_text(kInfoVersionFormat),
                                 APP_VERSION, APP_BUILD_DATE);
     return set_label_text_if_changed(s_info_labels[kInfoVersionLabelIndex], line);
@@ -271,7 +256,7 @@ void build_boot_info_page()
                                                 kInfoLabelY[i],
                                                 source_line ? kInfoSourceTextW : kInfoTextW,
                                                 source_line ? 18 : 24,
-                                                kInfoLinePlaceholder,
+                                                aux_page_placeholder(),
                                                 source_line ? &lv_font_montserrat_12 : &lv_font_montserrat_14);
         if (source_line) {
             (void)center_align_label(s_info_labels[i]);
@@ -297,7 +282,7 @@ bool update_boot_info_page()
                                    get_last_ntp_sync_time());
     changed |= set_info_string_label(kInfoWifiLabelIndex,
                                       aux_page_text(kInfoWifiFormat),
-                                      wifi_ssid[0] ? wifi_ssid : "--");
+                                      wifi_ssid[0] ? wifi_ssid : aux_page_placeholder());
     if (weather_cache_loaded) {
         changed |= set_info_time_label(kInfoWeatherLabelIndex,
                                        aux_page_text(kInfoLastWeatherFormat),
@@ -333,7 +318,7 @@ void build_network_diag_page()
     for (int i = 0; i < kNetworkDiagLineCount; ++i) {
         NetworkDiagLineLayout layout = network_diag_line_layout(i);
         s_network_diag_labels[i] = make_label(screen, layout.x, layout.y, layout.w, kNetworkDiagLineH,
-                                              kNetworkDiagLinePlaceholder);
+                                              aux_page_placeholder());
         if (s_network_diag_labels[i]) {
             lv_label_set_long_mode(s_network_diag_labels[i], LV_LABEL_LONG_CLIP);
             lv_obj_set_style_text_align(s_network_diag_labels[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
@@ -357,17 +342,17 @@ bool update_network_diag_page()
     }
     char summary[kNetworkDiagSummaryTextSize] = {};
     if (snapshot.state == kNetworkDiagRunning) {
-        ui_text::copy(summary, sizeof(summary), aux_page_text(kNetworkDiagSummaryRunning));
+        ui_text_format::copy(summary, sizeof(summary), aux_page_text(kNetworkDiagSummaryRunning));
     } else if (snapshot.state == kNetworkDiagDone) {
-        ui_text::copy(summary, sizeof(summary), aux_page_text(kNetworkDiagSummaryDone));
+        ui_text_format::copy(summary, sizeof(summary), aux_page_text(kNetworkDiagSummaryDone));
     } else {
-        ui_text::copy(summary, sizeof(summary), aux_page_text(kNetworkDiagSummaryIdle));
+        ui_text_format::copy(summary, sizeof(summary), aux_page_text(kNetworkDiagSummaryIdle));
     }
     changed |= set_label_text_if_changed(s_network_diag_summary_label, summary);
     for (int i = 0; i < kNetworkDiagLineCount; ++i) {
         changed |= set_label_text_if_changed(s_network_diag_labels[i],
                                              snapshot.lines[i][0] ? snapshot.lines[i] :
-                                                                    kNetworkDiagLinePlaceholder);
+                                                                    aux_page_placeholder());
     }
     changed |= set_label_text_if_changed(s_network_diag_hint_label,
                                          snapshot.state == kNetworkDiagRunning

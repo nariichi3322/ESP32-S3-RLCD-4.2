@@ -4,3 +4,4 @@
 inline constexpr int kOtaVersionLen = 24;
 inline constexpr int kOtaUrlLen = 256;
 inline constexpr int kOtaSha256Len = 65;
+inline constexpr int kOtaLocaleLen = 8;

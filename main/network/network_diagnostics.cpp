@@ -19,6 +19,7 @@
 #include "network_sync_runtime.h"
 #include "ntp_services.h"
 #include "ui_settings_activity_state.h"
+#include "ui_i18n.h"
 #include "ui_task_notify.h"
 #include "ui_language.h"
 #include "weather_update.h"
@@ -44,71 +45,43 @@ constexpr const char *kNetworkDiagForecastDnsHost = "api.open-meteo.com";
 constexpr const char *kNetworkDiagGeocodingDnsHost = "geocoding-api.open-meteo.com";
 constexpr const char *kNetworkDiagAirDnsHost = "air-quality-api.open-meteo.com";
 struct NetworkDiagText {
-    const char *traditional;
-    const char *simplified;
-    const char *english;
+    UiTextId id;
 };
 
 const char *network_diag_text(const NetworkDiagText &text)
 {
-    return ui_language_text(text.traditional, text.simplified, text.english);
+    return ui_text(text.id);
 }
 
-constexpr NetworkDiagText kNetworkDiagStatusWaiting = {"等待", "等待", "Waiting"};
-constexpr NetworkDiagText kNetworkDiagStatusChecking = {"檢測中", "检测中", "Checking"};
-constexpr NetworkDiagText kNetworkDiagStatusFailed = {"逾時/失敗", "超时/失败", "Timeout/failed"};
-constexpr NetworkDiagText kNetworkDiagStatusOk = {"成功", "成功", "OK"};
-constexpr NetworkDiagText kNetworkDiagStatusLowBatterySkipped = {
-    "電量低，已略過", "电量低，已跳过", "Battery low"};
-constexpr const char *kNetworkDiagPlaceholder = "--";
-constexpr NetworkDiagText kNetworkDiagLocalIpPlaceholder = {
-    "本機IP: --", "本地IP: --", "Local IP: --"};
-constexpr NetworkDiagText kNetworkDiagPublicIpPlaceholder = {
-    "公網IP: --", "公网IP: --", "Public IP: --"};
-constexpr NetworkDiagText kNetworkDiagIpLocationFallback = {
-    "IP定位: 未檢測", "IP定位: 未检测", "IP loc: unchecked"};
-constexpr NetworkDiagText kNetworkDiagDnsUnchecked = {
-    "DNS: 未檢測", "DNS: 未检测", "DNS: unchecked"};
-constexpr NetworkDiagText kNetworkDiagWeatherUnchecked = {
-    "天氣: 未檢測", "天气: 未检测", "Weather: n/a"};
-constexpr NetworkDiagText kNetworkDiagNtpUnchecked = {
-    "NTP: 未檢測", "NTP: 未检测", "NTP: unchecked"};
-constexpr NetworkDiagText kNetworkDiagSayingUnchecked = {
-    "一言: 未檢測", "一言: 未检测", "Saying: n/a"};
-constexpr NetworkDiagText kNetworkDiagInternetUnchecked = {
-    "公網: 未檢測", "公网: 未检测", "Net: n/a"};
-constexpr NetworkDiagText kNetworkDiagOtaSourceUnchecked = {
-    "OTA來源: 未檢測", "OTA源: 未检测", "OTA: n/a"};
-constexpr NetworkDiagText kNetworkDiagLocalIpFormat = {
-    "本機IP: %s", "本地IP: %s", "Local IP: %s"};
-constexpr NetworkDiagText kNetworkDiagPublicIpFormat = {
-    "公網IP: %s", "公网IP: %s", "Public IP: %s"};
-constexpr NetworkDiagText kNetworkDiagIpLocationFormat = {
-    "IP定位: %s", "IP定位: %s", "IP loc: %s"};
-constexpr NetworkDiagText kNetworkDiagIpLocationCityFormat = {
-    "IP定位: %s %s", "IP定位: %s %s", "IP loc: %s %s"};
-constexpr NetworkDiagText kNetworkDiagDnsFormat = {
-    "DNS: %s", "DNS: %s", "DNS: %s"};
-constexpr NetworkDiagText kNetworkDiagWeatherFormat = {
-    "天氣: %s", "天气: %s", "Weather: %s"};
-constexpr NetworkDiagText kNetworkDiagNtpFormat = {
-    "NTP: %s", "NTP: %s", "NTP: %s"};
-constexpr NetworkDiagText kNetworkDiagSayingFormat = {
-    "一言: %s", "一言: %s", "Saying: %s"};
-constexpr NetworkDiagText kNetworkDiagInternetFormat = {
-    "公網: %s", "公网: %s", "Net: %s"};
-constexpr NetworkDiagText kNetworkDiagOtaFormat = {
-    "OTA來源: %s", "OTA源: %s", "OTA: %s"};
-constexpr NetworkDiagText kNetworkDiagOfflineModeEnabled = {
-    "離線模式已開啟", "离线模式已开启", "Offline mode enabled"};
-constexpr NetworkDiagText kNetworkDiagIpLocationWifiNotConfigured = {
-    "IP定位: WiFi未設定", "IP定位: WiFi未配置", "IP loc: Wi-Fi off"};
-constexpr NetworkDiagText kNetworkDiagIpLocationWifiStartFailed = {
-    "IP定位: WiFi啟動失敗", "IP定位: WiFi启动失败", "IP loc: Wi-Fi start fail"};
-constexpr NetworkDiagText kNetworkDiagIpLocationPowerLockUnavailable = {
-    "IP定位: 系統繁忙", "IP定位: 系统繁忙", "IP loc: System busy"};
-constexpr NetworkDiagText kNetworkDiagIpLocationWifiConnectTimeout = {
-    "IP定位: WiFi連線逾時", "IP定位: WiFi连接超时", "IP loc: Wi-Fi timeout"};
+constexpr NetworkDiagText kNetworkDiagStatusWaiting = {UiTextId::NetworkDiagStatusWaiting};
+constexpr NetworkDiagText kNetworkDiagStatusChecking = {UiTextId::NetworkDiagnostics};
+constexpr NetworkDiagText kNetworkDiagStatusFailed = {UiTextId::NetworkDiagStatusTimeout};
+constexpr NetworkDiagText kNetworkDiagStatusOk = {UiTextId::NetworkDiagStatusSuccess};
+constexpr NetworkDiagText kNetworkDiagStatusLowBatterySkipped = {UiTextId::NetworkDiagStatusLowBatterySkipped};
+constexpr NetworkDiagText kNetworkDiagLocalIpPlaceholder = {UiTextId::NetworkDiagLocalIpPlaceholder};
+constexpr NetworkDiagText kNetworkDiagPublicIpPlaceholder = {UiTextId::NetworkDiagPublicIpPlaceholder};
+constexpr NetworkDiagText kNetworkDiagIpLocationFallback = {UiTextId::NetworkDiagIpLocationFallback};
+constexpr NetworkDiagText kNetworkDiagDnsUnchecked = {UiTextId::NetworkDiagDnsUnchecked};
+constexpr NetworkDiagText kNetworkDiagWeatherUnchecked = {UiTextId::NetworkDiagWeatherUnchecked};
+constexpr NetworkDiagText kNetworkDiagNtpUnchecked = {UiTextId::NetworkDiagNtpUnchecked};
+constexpr NetworkDiagText kNetworkDiagSayingUnchecked = {UiTextId::NetworkDiagSayingUnchecked};
+constexpr NetworkDiagText kNetworkDiagInternetUnchecked = {UiTextId::NetworkDiagInternetUnchecked};
+constexpr NetworkDiagText kNetworkDiagOtaSourceUnchecked = {UiTextId::NetworkDiagOtaSourceUnchecked};
+constexpr NetworkDiagText kNetworkDiagLocalIpFormat = {UiTextId::NetworkDiagLocalIpFormat};
+constexpr NetworkDiagText kNetworkDiagPublicIpFormat = {UiTextId::NetworkDiagPublicIpFormat};
+constexpr NetworkDiagText kNetworkDiagIpLocationFormat = {UiTextId::NetworkDiagIpLocationFormat};
+constexpr NetworkDiagText kNetworkDiagIpLocationCityFormat = {UiTextId::NetworkDiagIpLocationCityFormat};
+constexpr NetworkDiagText kNetworkDiagDnsFormat = {UiTextId::NetworkDiagDnsFormat};
+constexpr NetworkDiagText kNetworkDiagWeatherFormat = {UiTextId::NetworkDiagWeatherFormat};
+constexpr NetworkDiagText kNetworkDiagNtpFormat = {UiTextId::NetworkDiagNtpFormat};
+constexpr NetworkDiagText kNetworkDiagSayingFormat = {UiTextId::NetworkDiagSayingFormat};
+constexpr NetworkDiagText kNetworkDiagInternetFormat = {UiTextId::NetworkDiagInternetFormat};
+constexpr NetworkDiagText kNetworkDiagOtaFormat = {UiTextId::NetworkDiagOtaFormat};
+constexpr NetworkDiagText kNetworkDiagOfflineModeEnabled = {UiTextId::NetworkDiagOfflineModeEnabled};
+constexpr NetworkDiagText kNetworkDiagIpLocationWifiNotConfigured = {UiTextId::NetworkDiagIpWifiNotConfigured};
+constexpr NetworkDiagText kNetworkDiagIpLocationWifiStartFailed = {UiTextId::NetworkDiagIpWifiStartFailed};
+constexpr NetworkDiagText kNetworkDiagIpLocationPowerLockUnavailable = {UiTextId::NetworkDiagIpPowerLockUnavailable};
+constexpr NetworkDiagText kNetworkDiagIpLocationWifiConnectTimeout = {UiTextId::NetworkDiagIpWifiConnectTimeout};
 constexpr size_t kNetworkDiagIpv4TextMinSize = sizeof("255.255.255.255");
 #define NETWORK_DIAG_LINE_INDEX_INVALID_FORMAT "network diag line index invalid: %d"
 #define NETWORK_DIAG_LINE_FORMAT_FAILED_FORMAT "network diag line format failed index=%d"
@@ -253,9 +226,8 @@ const char *diag_result_text(bool ok)
 
 bool network_diag_text_matches(const char *text, const NetworkDiagText &localized)
 {
-    return text && (strcmp(text, localized.traditional) == 0 ||
-                    strcmp(text, localized.simplified) == 0 ||
-                    strcmp(text, localized.english) == 0);
+    return text && strcmp(ui_language_localize(text),
+                          network_diag_text(localized)) == 0;
 }
 
 const char *network_diag_external_text(const char *text)
@@ -408,7 +380,7 @@ bool run_network_diagnostic_checks(uint32_t request_generation)
                                   network_diag_text(kNetworkDiagLocalIpFormat),
                                   local_ip_ok,
                                   local_ip,
-                                  kNetworkDiagPlaceholder);
+                                  ui_text(UiTextId::UiPlaceholder));
     if (!network_diagnostics_should_continue(kNetworkDiagPublicIpLine,
                                              completed,
                                              request_generation)) {
@@ -451,7 +423,7 @@ bool run_network_diagnostic_checks(uint32_t request_generation)
     network_diag_set_line(kNetworkDiagIpLocationLine,
                           network_diag_text(kNetworkDiagIpLocationCityFormat),
                           diag_result_text(ip_ok),
-                          city[0] ? city : kNetworkDiagPlaceholder);
+                          city[0] ? city : ui_text(UiTextId::UiPlaceholder));
     if (!network_diagnostics_should_continue(kNetworkDiagDnsLine,
                                              completed,
                                              request_generation)) {

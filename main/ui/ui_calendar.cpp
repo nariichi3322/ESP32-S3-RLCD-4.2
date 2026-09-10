@@ -11,6 +11,7 @@
 #include "ui_calendar_layout.h"
 #include "ui_canvas_primitives.h"
 #include "ui_fonts.h"
+#include "ui_i18n.h"
 #include "ui_language.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
@@ -32,6 +33,7 @@ static lv_obj_t *s_calendar_canvas;
 static lv_color_t *s_calendar_canvas_buffer;
 static int s_last_calendar_drawn_month = -1;
 static int s_last_calendar_drawn_day = -1;
+static constexpr int kDarkCanvasOverdrawPasses = 5;
 
 static void canvas_fill_rect_safe(lv_img_dsc_t *image,
                                   int w,
@@ -124,60 +126,91 @@ static void draw_calendar_text(lv_obj_t *canvas,
     // provide a one-line string because its canvas area has no row limit.
     (void)h;
     lv_canvas_draw_text(canvas, x, y, w, &dsc, text);
+    if ((ui_language_is_japanese() || ui_language_is_english()) &&
+        color.full == lv_color_white().full) {
+        // Weekend and today's cells use white text on black. Accumulate the
+        // same pixels so anti-aliased coverage survives the RLCD threshold.
+        for (int pass = 0; pass < kDarkCanvasOverdrawPasses; ++pass) {
+            lv_canvas_draw_text(canvas, x, y, w, &dsc, text);
+        }
+    }
 }
 
-struct CalendarEnglishCompactLabel {
-    const char *full;
-    const char *compact;
+struct CalendarCompactLabel {
+    UiTextId full_id;
+    UiTextId compact_id;
 };
 
-static constexpr CalendarEnglishCompactLabel kCalendarEnglishCompactLabels[] = {
-    {"New Year's Day", "New Yr"},
-    {"Valentine's Day", "V-Day"},
-    {"Women's Day", "W-Day"},
-    {"Labour Day", "Labour"},
-    {"Children's Day", "Kids"},
-    {"Teachers' Day", "Teach."},
-    {"National Day", "Nation"},
-    {"Christmas", "Xmas"},
-    {"Spring Festival", "Spring"},
-    {"Lantern Festival", "Lantern"},
-    {"Dragon Boat Festival", "Dragon"},
-    {"Qixi Festival", "Qixi"},
-    {"Mid-Autumn Festival", "M-Aut."},
-    {"Double Ninth Festival", "Ninth"},
-    {"Laba Festival", "Laba"},
-    {"Minor Cold", "Minor"},
-    {"Major Cold", "Major"},
-    {"Start of Spring", "Spring"},
-    {"Rain Water", "Rain"},
-    {"Awakening of Insects", "Insects"},
-    {"Spring Equinox", "Eqx."},
-    {"Pure Brightness", "Bright"},
-    {"Grain Rain", "Rain"},
-    {"Start of Summer", "Sum."},
-    {"Grain Full", "Grain"},
-    {"Grain in Ear", "Grain"},
-    {"Summer Solstice", "Sum."},
-    {"Minor Heat", "Minor"},
-    {"Major Heat", "Major"},
-    {"Start of Autumn", "Fall"},
-    {"End of Heat", "Heat"},
-    {"White Dew", "Dew"},
-    {"Autumn Equinox", "Eqx."},
-    {"Cold Dew", "Dew"},
-    {"Frost Descent", "Frost"},
-    {"Start of Winter", "Winter"},
-    {"Minor Snow", "Snow"},
-    {"Major Snow", "Snow"},
-    {"Winter Solstice", "Winter"},
+static constexpr CalendarCompactLabel kCalendarEnglishCompactLabels[] = {
+    {UiTextId::CalendarNewYear, UiTextId::CalendarNewYearShort},
+    {UiTextId::CalendarValentinesDay, UiTextId::CalendarValentinesDayShort},
+    {UiTextId::CalendarWomensDay, UiTextId::CalendarWomensDayShort},
+    {UiTextId::CalendarLabourDay, UiTextId::CalendarLabourDayShort},
+    {UiTextId::CalendarChildrensDay, UiTextId::CalendarChildrensDayShort},
+    {UiTextId::CalendarTeachersDay, UiTextId::CalendarTeachersDayShort},
+    {UiTextId::CalendarNationalDay, UiTextId::CalendarNationalDayShort},
+    {UiTextId::CalendarChristmas, UiTextId::CalendarChristmasShort},
+    {UiTextId::CalendarSpringFestival, UiTextId::CalendarSpringFestivalShort},
+    {UiTextId::CalendarLanternFestival, UiTextId::CalendarLanternFestivalShort},
+    {UiTextId::CalendarDragonBoatFestival, UiTextId::CalendarDragonBoatFestivalShort},
+    {UiTextId::CalendarQixiFestival, UiTextId::CalendarQixiFestivalShort},
+    {UiTextId::CalendarMidAutumnFestival, UiTextId::CalendarMidAutumnFestivalShort},
+    {UiTextId::CalendarDoubleNinthFestival, UiTextId::CalendarDoubleNinthFestivalShort},
+    {UiTextId::CalendarLabaFestival, UiTextId::CalendarLabaFestivalShort},
+    {UiTextId::CalendarMinorCold, UiTextId::CalendarMinorColdShort},
+    {UiTextId::CalendarMajorCold, UiTextId::CalendarMajorColdShort},
+    {UiTextId::CalendarStartOfSpring, UiTextId::CalendarStartOfSpringShort},
+    {UiTextId::CalendarRainWater, UiTextId::CalendarRainWaterShort},
+    {UiTextId::CalendarAwakeningOfInsects, UiTextId::CalendarAwakeningOfInsectsShort},
+    {UiTextId::CalendarSpringEquinox, UiTextId::CalendarSpringEquinoxShort},
+    {UiTextId::CalendarPureBrightness, UiTextId::CalendarPureBrightnessShort},
+    {UiTextId::CalendarGrainRain, UiTextId::CalendarGrainRainShort},
+    {UiTextId::CalendarStartOfSummer, UiTextId::CalendarStartOfSummerShort},
+    {UiTextId::CalendarGrainFull, UiTextId::CalendarGrainFullShort},
+    {UiTextId::CalendarGrainInEar, UiTextId::CalendarGrainInEarShort},
+    {UiTextId::CalendarSummerSolstice, UiTextId::CalendarSummerSolsticeShort},
+    {UiTextId::CalendarMinorHeat, UiTextId::CalendarMinorHeatShort},
+    {UiTextId::CalendarMajorHeat, UiTextId::CalendarMajorHeatShort},
+    {UiTextId::CalendarStartOfAutumn, UiTextId::CalendarStartOfAutumnShort},
+    {UiTextId::CalendarEndOfHeat, UiTextId::CalendarEndOfHeatShort},
+    {UiTextId::CalendarWhiteDew, UiTextId::CalendarWhiteDewShort},
+    {UiTextId::CalendarAutumnEquinox, UiTextId::CalendarAutumnEquinoxShort},
+    {UiTextId::CalendarColdDew, UiTextId::CalendarColdDewShort},
+    {UiTextId::CalendarFrostDescent, UiTextId::CalendarFrostDescentShort},
+    {UiTextId::CalendarStartOfWinter, UiTextId::CalendarStartOfWinterShort},
+    {UiTextId::CalendarMinorSnow, UiTextId::CalendarMinorSnowShort},
+    {UiTextId::CalendarMajorSnow, UiTextId::CalendarMajorSnowShort},
+    {UiTextId::CalendarWinterSolstice, UiTextId::CalendarWinterSolsticeShort},
 };
 
 static const char *calendar_english_compact_subtext(const char *text)
 {
     if (!text) return nullptr;
     for (const auto &label : kCalendarEnglishCompactLabels) {
-        if (strcmp(text, label.full) == 0) return label.compact;
+        if (strcmp(text, ui_text(label.full_id)) == 0) {
+            return ui_text(label.compact_id);
+        }
+    }
+    return nullptr;
+}
+
+static constexpr CalendarCompactLabel kCalendarJapaneseCompactLabels[] = {
+    {UiTextId::CalendarValentinesDay, UiTextId::CalendarValentinesDayShort},
+    {UiTextId::CalendarWomensDay, UiTextId::CalendarWomensDayShort},
+    {UiTextId::CalendarChildrensDay, UiTextId::CalendarChildrensDayShort},
+    {UiTextId::CalendarTeachersDay, UiTextId::CalendarTeachersDayShort},
+    {UiTextId::CalendarNationalDay, UiTextId::CalendarNationalDayShort},
+    {UiTextId::CalendarChristmas, UiTextId::CalendarChristmasShort},
+    {UiTextId::CalendarDoubleNinthFestival, UiTextId::CalendarDoubleNinthFestivalShort},
+};
+
+static const char *calendar_japanese_compact_subtext(const char *text)
+{
+    if (!text) return nullptr;
+    for (const auto &label : kCalendarJapaneseCompactLabels) {
+        if (strcmp(text, ui_text(label.full_id)) == 0) {
+            return ui_text(label.compact_id);
+        }
     }
     return nullptr;
 }
@@ -191,6 +224,10 @@ static const char *calendar_subtext_for_canvas(const CalendarDayInfo &info,
                                                char *buffer,
                                                size_t buffer_size)
 {
+    if (ui_language_is_japanese()) {
+        const char *compact = calendar_japanese_compact_subtext(info.subtext);
+        return compact ? compact : info.subtext;
+    }
     if (!ui_language_is_english()) return info.subtext;
 
     const char *format = nullptr;
@@ -238,14 +275,16 @@ static void draw_calendar_weekday_header(lv_img_dsc_t *image)
                     kCellWidth * (kCalendarWeekdayCount - 2),
                     kHeaderHeight);
 
-    const bool english = ui_language_is_english();
-    const lv_font_t *header_font = english ? &lv_font_montserrat_16 : &zh_font_16;
+    // The English header has only one character per cell, but Montserrat 16's
+    // line height is larger than the 18 px header area and gets clipped on the
+    // RLCD. Keep the CJK header at its normal size and use the smaller Latin
+    // face for the English layout.
+    const lv_font_t *header_font = ui_language_is_english()
+                                       ? &lv_font_montserrat_14
+                                       : ui_font(UiFontRole::Body16);
     for (int col = 0; col < kCalendarWeekdayCount; ++col) {
         int x = kGridX + col * kCellWidth;
-        const CalendarWeekdayLabel &weekday = kWeekdays[col];
-        const char *weekday_text = ui_language_text(weekday.traditional,
-                                                    weekday.simplified,
-                                                    weekday.english);
+        const char *weekday_text = ui_text(kWeekdays[col].id);
         if (col == kSundayColumn || col == kSaturdayColumn) {
             draw_calendar_text(s_calendar_canvas,
                                weekday_text,
@@ -322,7 +361,7 @@ static void draw_calendar_day_cell(const struct tm &local,
                                                       sizeof(canvas_subtext));
     const lv_font_t *subtext_font = ui_language_is_english()
                                         ? &lv_font_montserrat_12
-                                        : &zh_font_16;
+                                        : ui_font(UiFontRole::Body16);
     draw_calendar_text(s_calendar_canvas,
                        subtext,
                        x + kDayTextXInset,

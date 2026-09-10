@@ -1,6 +1,7 @@
 // 实现温湿历史页不依赖 LVGL 的数值范围、坐标映射和文本格式化。
 #include "ui_history_format.h"
 
+#include "ui_i18n.h"
 #include "ui_text_format.h"
 
 namespace {
@@ -14,14 +15,6 @@ constexpr float kHumidityFlatRangeThreshold = 5.0f;
 constexpr float kTemperatureFlatRangeExtraPad = 0.5f;
 constexpr float kHumidityFlatRangeExtraPad = 2.0f;
 constexpr float kAxisMidpointRatio = 0.5f;
-constexpr const char *kAxisHourFormat = "%02d:00";
-constexpr const char *kTimePlaceholder = "--:--";
-constexpr const char *kAxisPlaceholder = "--";
-constexpr const char *kTemperatureAxisFormat = "%.0f°C";
-constexpr const char *kHumidityAxisFormat = "%.0f%%";
-constexpr const char *kTemperatureBadgeFormat = "%.1f";
-constexpr const char *kHumidityBadgeFormat = "%.0f";
-
 static_assert(kMinimumPlotRange > 0.0f, "history minimum plot range must be positive");
 static_assert(kFallbackPlotRange >= kMinimumPlotRange,
               "history fallback range must cover the minimum range");
@@ -63,32 +56,34 @@ int history_value_to_plot_y(float value, float minimum, float maximum, int y, in
 
 void format_history_axis_hour(time_t value, char *out, size_t out_len)
 {
-    if (!ui_text::output_buffer_available(out, out_len)) {
+    if (!ui_text_format::output_buffer_available(out, out_len)) {
         return;
     }
     struct tm local = {};
     localtime_r(&value, &local);
-    ui_text::format_or_fallback(out,
+    ui_text_format::format_or_fallback(out,
                                 out_len,
-                                kTimePlaceholder,
-                                kAxisHourFormat,
+                                ui_text(UiTextId::TimePlaceholder),
+                                ui_format(UiTextId::HistoryAxisHourFormat),
                                 local.tm_hour);
 }
 
 void format_history_axis_value(bool temperature, float value, char *out, size_t out_len)
 {
-    ui_text::format_or_fallback(out,
+    ui_text_format::format_or_fallback(out,
                                 out_len,
-                                kAxisPlaceholder,
-                                temperature ? kTemperatureAxisFormat : kHumidityAxisFormat,
+                                ui_text(UiTextId::HistoryAxisPlaceholder),
+                                temperature ? ui_format(UiTextId::HistoryTemperatureAxisFormat)
+                                            : ui_format(UiTextId::HistoryHumidityAxisFormat),
                                 value);
 }
 
 void format_history_badge_value(bool temperature, float value, char *out, size_t out_len)
 {
-    ui_text::format_or_fallback(out,
+    ui_text_format::format_or_fallback(out,
                                 out_len,
-                                kAxisPlaceholder,
-                                temperature ? kTemperatureBadgeFormat : kHumidityBadgeFormat,
+                                ui_text(UiTextId::HistoryAxisPlaceholder),
+                                temperature ? ui_format(UiTextId::HistoryTemperatureBadgeFormat)
+                                            : ui_format(UiTextId::HistoryHumidityBadgeFormat),
                                 value);
 }

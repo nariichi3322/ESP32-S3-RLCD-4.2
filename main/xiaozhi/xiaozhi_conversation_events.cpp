@@ -7,6 +7,7 @@
 #include "xiaozhi_snapshot_state.h"
 #include "xiaozhi_tts_playback.h"
 #include "xiaozhi_voice.h"
+#include "ui_i18n.h"
 
 #include <esp_log.h>
 #include <freertos/task.h>
@@ -18,7 +19,7 @@ namespace {
 constexpr uint32_t kExitReplyTimeoutMs = 15000;
 constexpr uint32_t kUserSubtitleMinVisibleMs = 2200;
 constexpr const char *kTag = "WeatherClock";
-constexpr const char *kSpeakingStatus = "小智正在说话";
+#define kSpeakingStatus ui_text(UiTextId::XiaozhiSpeaking)
 
 void handle_incoming_tts_start(xiaozhi_websocket::WebsocketSession &session)
 {
@@ -42,7 +43,7 @@ void handle_incoming_tts_start(xiaozhi_websocket::WebsocketSession &session)
     } else {
         xiaozhi_snapshot_set(kXiaozhiAiSpeaking,
                              kSpeakingStatus,
-                             "直接说话即可打断");
+                             ui_text(UiTextId::XiaozhiSpeakToInterrupt));
     }
 }
 
@@ -119,7 +120,9 @@ void handle_incoming_stt(xiaozhi_websocket::WebsocketSession &session,
     session.turn_assistant_text_received = false;
     session.turn_assistant_audio_received = false;
     session.empty_reply_continuation_pending = false;
-    xiaozhi_snapshot_set(kXiaozhiAiListening, "正在对话", text);
+    xiaozhi_snapshot_set(kXiaozhiAiListening,
+                         ui_text(UiTextId::XiaozhiConversation),
+                         text);
     if (xiaozhi_user_requested_exit(text)) {
         session.exit_after_reply_requested = true;
         session.exit_reply_started = false;

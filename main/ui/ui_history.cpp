@@ -15,6 +15,7 @@
 #include "ui_history_format.h"
 #include "ui_history_layout.h"
 #include "ui_history_window.h"
+#include "ui_i18n.h"
 #include "ui_language.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
@@ -111,7 +112,7 @@ static void build_history_value_badges(lv_obj_t *screen)
                                       0,
                                       kBadgeWidth,
                                       kBadgeHeight,
-                                      kAxisPlaceholder,
+                                      ui_text(UiTextId::HistoryAxisPlaceholder),
                                       &lv_font_montserrat_12);
     }
     for (lv_obj_t **badge : badges) {
@@ -265,11 +266,11 @@ static void build_history_chart_area(lv_obj_t *screen)
                    ui_work_page_layout::kTopSeparatorHeight);
     lv_obj_t *temp_title = make_history_title(screen,
                                               kTempTitleY,
-                                              ui_language_text("溫度", "温度", "Temp"),
+                                              ui_text(UiTextId::HistoryTemperature),
                                               HISTORY_TEMP_TITLE_CREATE_FAILED_LOG);
     lv_obj_t *humi_title = make_history_title(screen,
                                               kHumiTitleY,
-                                              ui_language_text("溼度", "湿度", "Humi"),
+                                              ui_text(UiTextId::HistoryHumidity),
                                               HISTORY_HUMI_TITLE_CREATE_FAILED_LOG);
 
     ensure_history_chart_canvas(screen);
@@ -292,7 +293,7 @@ static void build_history_axis_labels(lv_obj_t *screen)
                                                         kTimeLabelY,
                                                         kTimeLabelWidth,
                                                         kTimeLabelHeight,
-                                                        kTimePlaceholder,
+                                                        ui_text(UiTextId::TimePlaceholder),
                                                         &lv_font_montserrat_14);
         align_history_label_or_log(s_history_time_labels[i],
                                    LV_TEXT_ALIGN_CENTER,
@@ -305,13 +306,13 @@ static void build_history_axis_labels(lv_obj_t *screen)
                                                    kTempAxisLabelY + i * kAxisLabelRowGap,
                                                    kAxisLabelWidth,
                                                    kAxisLabelHeight,
-                                                   kAxisPlaceholder);
+                                                   ui_text(UiTextId::HistoryAxisPlaceholder));
         s_history_humi_axis_labels[i] = make_label(screen,
                                                    kAxisLabelX,
                                                    kHumiAxisLabelY + i * kAxisLabelRowGap,
                                                    kAxisLabelWidth,
                                                    kAxisLabelHeight,
-                                                   kAxisPlaceholder);
+                                                   ui_text(UiTextId::HistoryAxisPlaceholder));
         align_history_label_or_log(s_history_temp_axis_labels[i],
                                    LV_TEXT_ALIGN_LEFT,
                                    HistoryLabelLogKind::kTempAxis,

@@ -21,7 +21,7 @@ StaticSemaphore_t s_snapshot_mutex_storage = {};
 SemaphoreHandle_t s_snapshot_mutex = nullptr;
 // 固定 char 数组的静态聚合初始化需要字符串字面量。
 XiaozhiAiSnapshot s_snapshot = {
-    kXiaozhiAiInactive, "小智准备中", "", "", "neutral", 0, 0};
+    kXiaozhiAiInactive, "", "", "", "neutral", 0, 0};
 std::atomic<uint32_t> s_activity_snapshot{
     static_cast<uint32_t>(kXiaozhiAiInactive)};
 std::atomic<uint32_t> s_snapshot_version{1};
@@ -73,6 +73,11 @@ bool xiaozhi_snapshot_state_init()
         return true;
     }
     s_snapshot_mutex = xSemaphoreCreateMutexStatic(&s_snapshot_mutex_storage);
+    if (s_snapshot_mutex) {
+        strlcpy(s_snapshot.status,
+                xiaozhi_default_status(),
+                sizeof(s_snapshot.status));
+    }
     return s_snapshot_mutex != nullptr;
 }
 
@@ -185,7 +190,7 @@ void xiaozhi_snapshot_get(XiaozhiAiSnapshot *out)
     ScopedSemaphoreLock state_lock(s_snapshot_mutex, pdMS_TO_TICKS(50));
     if (!state_lock) {
         out->state = kXiaozhiAiInactive;
-        strlcpy(out->status, kXiaozhiDefaultStatus, sizeof(out->status));
+        strlcpy(out->status, xiaozhi_default_status(), sizeof(out->status));
         return;
     }
     *out = s_snapshot;

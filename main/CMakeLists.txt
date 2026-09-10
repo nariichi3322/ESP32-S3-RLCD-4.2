@@ -1,4 +1,44 @@
 # 固件主组件的源码清单和构建依赖配置。
+# ESP-IDF's component-requirements pass evaluates this file in a separate
+# CMake context. Keep the default here as well as in the project root so that
+# the requirements pass does not mistake an omitted custom cache variable for
+# an invalid locale.
+if(NOT DEFINED APP_UI_LOCALE OR "${APP_UI_LOCALE}" STREQUAL "")
+    set(APP_UI_LOCALE "zh-TW")
+endif()
+
+if("${APP_UI_LOCALE}" STREQUAL "zh-TW")
+    set(WEATHER_CLOCK_APP_UI_LOCALE_ID 0)
+    set(WEATHER_CLOCK_APP_UI_LOCALE_TAG "zh-TW")
+    set(WEATHER_CLOCK_LOCALE_ASSETS
+        "assets/zh_font_16.c"
+        "assets/zh_flip_lunar_22.c"
+        "assets/zh_pomodoro_title_24.c")
+elseif("${APP_UI_LOCALE}" STREQUAL "zh-CN")
+    set(WEATHER_CLOCK_APP_UI_LOCALE_ID 1)
+    set(WEATHER_CLOCK_APP_UI_LOCALE_TAG "zh-CN")
+    set(WEATHER_CLOCK_LOCALE_ASSETS
+        "assets/zh_font_16.c"
+        "assets/zh_flip_lunar_22.c"
+        "assets/zh_pomodoro_title_24.c")
+elseif("${APP_UI_LOCALE}" STREQUAL "en")
+    set(WEATHER_CLOCK_APP_UI_LOCALE_ID 2)
+    set(WEATHER_CLOCK_APP_UI_LOCALE_TAG "en")
+    # Weather geocoding can temporarily return a CJK region name when the
+    # English lookup is unavailable. Keep the compact Chinese font as a
+    # fallback so that external location text never becomes tofu boxes.
+    set(WEATHER_CLOCK_LOCALE_ASSETS
+        "assets/zh_font_16.c")
+elseif("${APP_UI_LOCALE}" STREQUAL "ja")
+    set(WEATHER_CLOCK_APP_UI_LOCALE_ID 3)
+    set(WEATHER_CLOCK_APP_UI_LOCALE_TAG "ja")
+    set(WEATHER_CLOCK_LOCALE_ASSETS
+        "assets/ja_font_16.c"
+        "assets/ja_font_extra.c")
+else()
+    message(FATAL_ERROR "APP_UI_LOCALE must be zh-TW, zh-CN, en, or ja")
+endif()
+
 idf_component_register(
     SRCS
         "core/main.cpp"
@@ -71,6 +111,7 @@ idf_component_register(
         "ui/ui_visible_data_sync.cpp"
         "ui/ui_loop_schedule.cpp"
         "ui/ui_language.cpp"
+        "ui/ui_font_provider.cpp"
         "ui/ui_i18n.cpp"
         "ui/ui_codex_usage.cpp"
         "ui/ui_codex_pairing.cpp"
@@ -200,10 +241,8 @@ idf_component_register(
         "xiaozhi/xiaozhi_websocket_session.cpp"
         "input/input_tasks.cpp"
         "assets/boot_anim.c"
-        "assets/zh_font_16.c"
+        ${WEATHER_CLOCK_LOCALE_ASSETS}
         "assets/weather_icons_36.c"
-        "assets/zh_flip_lunar_22.c"
-        "assets/zh_pomodoro_title_24.c"
     INCLUDE_DIRS
         "."
         "core"
@@ -246,4 +285,6 @@ string(TIMESTAMP WEATHER_CLOCK_BUILD_DATE "%Y-%m-%d")
 idf_build_get_property(WEATHER_CLOCK_PROJECT_VER PROJECT_VER)
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     WEATHER_CLOCK_BUILD_DATE="${WEATHER_CLOCK_BUILD_DATE}"
-    PROJECT_VER="${WEATHER_CLOCK_PROJECT_VER}")
+    PROJECT_VER="${WEATHER_CLOCK_PROJECT_VER}"
+    APP_UI_LOCALE=${WEATHER_CLOCK_APP_UI_LOCALE_ID}
+    APP_UI_LOCALE_TAG="${WEATHER_CLOCK_APP_UI_LOCALE_TAG}")

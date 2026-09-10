@@ -9,6 +9,7 @@
 #include "network_runtime_events.h"
 #include "network_sync_request_generation.h"
 #include "ui_settings_feedback.h"
+#include "ui_i18n.h"
 #include "ui_task_notify.h"
 #include "wifi_portal_state.h"
 #include "wifi_radio_services.h"
@@ -37,18 +38,18 @@ static_assert((kNetworkRequestClearBits & kOtaCheckBit) != 0 &&
               "network request clear bits must include OTA request bits");
 static_assert((kNetworkRequestClearBits & kNetworkStateChangedBit) == 0,
               "network runtime state notification is not a sync request");
-constexpr const char *kNetworkStatusOfflineModeEnabled = "离线模式已开启";
-constexpr const char *kNetworkStatusWifiNotConfigured = "未配置 WiFi";
-constexpr const char *kNetworkDiagIpLocationWifiNotConfigured = "IP定位: WiFi未配置";
-constexpr const char *kNetworkSyncTimeComplete = "时间同步完成";
-constexpr const char *kNetworkSyncWeatherComplete = "天气同步完成";
-constexpr const char *kNetworkSyncSayingComplete = "一言更新完成";
-constexpr const char *kNetworkSyncNetworkDiagComplete = "网络检测完成";
-constexpr const char *kNetworkSyncTimeFailed = "时间同步失败";
-constexpr const char *kNetworkSyncWeatherFailed = "天气同步失败";
-constexpr const char *kNetworkSyncSayingFailed = "一言更新失败";
-constexpr const char *kNetworkSyncLowBatterySkipped = "电量低，已跳过";
-constexpr const char *kNetworkSyncNetworkDiagCanceled = "网络检测已取消";
+constexpr UiTextId kNetworkStatusOfflineModeEnabled = UiTextId::NetworkDiagOfflineModeEnabled;
+constexpr UiTextId kNetworkStatusWifiNotConfigured = UiTextId::NetworkWifiNotConfigured;
+constexpr UiTextId kNetworkDiagIpLocationWifiNotConfigured = UiTextId::NetworkDiagIpWifiNotConfigured;
+constexpr UiTextId kNetworkSyncTimeComplete = UiTextId::NetworkSyncTimeComplete;
+constexpr UiTextId kNetworkSyncWeatherComplete = UiTextId::NetworkSyncWeatherComplete;
+constexpr UiTextId kNetworkSyncSayingComplete = UiTextId::NetworkSyncSayingComplete;
+constexpr UiTextId kNetworkSyncNetworkDiagComplete = UiTextId::NetworkSyncDiagnosticsComplete;
+constexpr UiTextId kNetworkSyncTimeFailed = UiTextId::NetworkSyncTimeFailed;
+constexpr UiTextId kNetworkSyncWeatherFailed = UiTextId::NetworkSyncWeatherFailed;
+constexpr UiTextId kNetworkSyncSayingFailed = UiTextId::NetworkSyncSayingFailed;
+constexpr UiTextId kNetworkSyncLowBatterySkipped = UiTextId::NetworkDiagStatusLowBatterySkipped;
+constexpr UiTextId kNetworkSyncNetworkDiagCanceled = UiTextId::NetworkSyncDiagnosticsCanceled;
 constexpr uint8_t kNetworkSnapshotYieldAttempts = 8;
 static_assert(kNetworkSnapshotYieldAttempts > 1,
               "network snapshot contention must yield before sleeping");
@@ -315,25 +316,30 @@ void finish_offline_network_requests(const NetworkSyncRequestSnapshot &requests)
         complete_provisioning_sync_request(
             requests.provisioning_generation);
     }
-    finish_requested_manual_syncs(requests, kNetworkStatusOfflineModeEnabled, false);
+    finish_requested_manual_syncs(requests,
+                                  ui_text(kNetworkStatusOfflineModeEnabled),
+                                  false);
     if (requests.diagnostics) {
-        network_diag_finish_with_status(kNetworkStatusOfflineModeEnabled);
+        network_diag_finish_with_status(ui_text(kNetworkStatusOfflineModeEnabled));
         finish_settings_sync(kSettingsSyncNetworkDiag,
                              requests.diagnostics_settings_generation,
-                             kNetworkStatusOfflineModeEnabled);
+                             ui_text(kNetworkStatusOfflineModeEnabled));
     }
 }
 
 void finish_unconfigured_network_requests(const NetworkSyncRequestSnapshot &requests)
 {
-    finish_requested_manual_syncs(requests, kNetworkStatusWifiNotConfigured, true);
+    finish_requested_manual_syncs(requests,
+                                  ui_text(kNetworkStatusWifiNotConfigured),
+                                  true);
     clear_requested_visible_syncs(requests);
     if (requests.provisioning) {
         complete_provisioning_sync_request(
             requests.provisioning_generation);
     }
     if (requests.diagnostics) {
-        network_diag_finish_unavailable(kNetworkDiagIpLocationWifiNotConfigured);
+        network_diag_finish_unavailable(
+            ui_text(kNetworkDiagIpLocationWifiNotConfigured));
         finish_network_diagnostics_sync(requests);
     }
 }
@@ -346,23 +352,23 @@ void finish_low_battery_network_requests(const NetworkSyncRequestSnapshot &reque
     }
     finish_requested_settings_sync(requests.manual_weather,
                                    kSettingsSyncWeather,
-                                   kNetworkSyncLowBatterySkipped,
+                                   ui_text(kNetworkSyncLowBatterySkipped),
                                    kManualWeatherSyncBit,
                                    requests.manual_weather_generation,
                                    requests.manual_weather_settings_generation,
                                    true);
     finish_requested_settings_sync(requests.manual_saying,
                                    kSettingsSyncSaying,
-                                   kNetworkSyncLowBatterySkipped,
+                                   ui_text(kNetworkSyncLowBatterySkipped),
                                    kManualSayingSyncBit,
                                    requests.manual_saying_generation,
                                    requests.manual_saying_settings_generation,
                                    true);
     clear_requested_visible_syncs(requests);
     if (requests.diagnostics) {
-        network_diag_finish_with_status(kNetworkSyncLowBatterySkipped);
+        network_diag_finish_with_status(ui_text(kNetworkSyncLowBatterySkipped));
         finish_settings_sync_and_clear_bit(kSettingsSyncNetworkDiag,
-                                           kNetworkSyncLowBatterySkipped,
+                                           ui_text(kNetworkSyncLowBatterySkipped),
                                            kNetworkDiagBit,
                                            requests.diagnostics_generation,
                                            requests.diagnostics_settings_generation);
@@ -377,21 +383,21 @@ void finish_failed_sync_requests(const NetworkSyncRequestSnapshot &requests)
     }
     if (requests.manual_ntp) {
         finish_settings_sync_and_clear_bit(kSettingsSyncNtp,
-                                           kNetworkSyncTimeFailed,
+                                           ui_text(kNetworkSyncTimeFailed),
                                            kManualNtpSyncBit,
                                            requests.manual_ntp_generation,
                                            requests.manual_ntp_settings_generation);
     }
     if (requests.manual_weather) {
         finish_settings_sync_and_clear_bit(kSettingsSyncWeather,
-                                           kNetworkSyncWeatherFailed,
+                                           ui_text(kNetworkSyncWeatherFailed),
                                            kManualWeatherSyncBit,
                                            requests.manual_weather_generation,
                                            requests.manual_weather_settings_generation);
     }
     if (requests.manual_saying) {
         finish_settings_sync_and_clear_bit(kSettingsSyncSaying,
-                                           kNetworkSyncSayingFailed,
+                                           ui_text(kNetworkSyncSayingFailed),
                                            kManualSayingSyncBit,
                                            requests.manual_saying_generation,
                                            requests.manual_saying_settings_generation);
@@ -410,14 +416,16 @@ void finish_successful_sync_requests(const NetworkSyncRequestSnapshot &requests,
     }
     if (requests.manual_ntp) {
         finish_settings_sync_and_clear_bit(kSettingsSyncNtp,
-                                           ntp_ok ? kNetworkSyncTimeComplete : kNetworkSyncTimeFailed,
+                                           ntp_ok ? ui_text(kNetworkSyncTimeComplete)
+                                                  : ui_text(kNetworkSyncTimeFailed),
                                            kManualNtpSyncBit,
                                            requests.manual_ntp_generation,
                                            requests.manual_ntp_settings_generation);
     }
     if (requests.manual_weather) {
         finish_settings_sync_and_clear_bit(kSettingsSyncWeather,
-                                           weather_ok ? kNetworkSyncWeatherComplete : kNetworkSyncWeatherFailed,
+                                           weather_ok ? ui_text(kNetworkSyncWeatherComplete)
+                                                      : ui_text(kNetworkSyncWeatherFailed),
                                            kManualWeatherSyncBit,
                                            requests.manual_weather_generation,
                                            requests.manual_weather_settings_generation);
@@ -432,7 +440,8 @@ void finish_successful_sync_requests(const NetworkSyncRequestSnapshot &requests,
     }
     if (requests.manual_saying) {
         finish_settings_sync_and_clear_bit(kSettingsSyncSaying,
-                                           saying_ok ? kNetworkSyncSayingComplete : kNetworkSyncSayingFailed,
+                                           saying_ok ? ui_text(kNetworkSyncSayingComplete)
+                                                      : ui_text(kNetworkSyncSayingFailed),
                                            kManualSayingSyncBit,
                                            requests.manual_saying_generation,
                                            requests.manual_saying_settings_generation);
@@ -461,7 +470,7 @@ void cancel_network_diagnostics_sync()
     network_diag_reset();
     finish_settings_sync(kSettingsSyncNetworkDiag,
                          settings.generation,
-                         kNetworkSyncNetworkDiagCanceled);
+                         ui_text(kNetworkSyncNetworkDiagCanceled));
     notify_network_sync_runtime_state_changed();
 }
 
@@ -469,7 +478,7 @@ void finish_network_diagnostics_sync(
     const NetworkSyncRequestSnapshot &requests)
 {
     finish_settings_sync_and_clear_bit(kSettingsSyncNetworkDiag,
-                                       kNetworkSyncNetworkDiagComplete,
+                                       ui_text(kNetworkSyncNetworkDiagComplete),
                                        kNetworkDiagBit,
                                        requests.diagnostics_generation,
                                        requests.diagnostics_settings_generation);

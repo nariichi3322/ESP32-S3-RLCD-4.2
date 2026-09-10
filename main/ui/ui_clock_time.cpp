@@ -4,6 +4,7 @@
 #include "app_time_constants.h"
 #include "ui_text_format.h"
 #include "ui_i18n.h"
+#include "ui_language.h"
 
 namespace {
 constexpr int kSecondsPerMinute = 60;
@@ -15,18 +16,20 @@ constexpr int kSecondsPerDay = kHoursPerDay * kSecondsPerHour;
 constexpr int kHourlyChimeMinute = 0;
 constexpr int kHourlyChimeLastAcceptedSecond = 2;
 constexpr int kWeekdayCount = 7;
-constexpr const char *kClockDateFormat = "%04d/%02d/%02d / %s";
-constexpr const char *kClockDatePlaceholder = "--";
-
 static_assert(kProgressSegmentCount > 0, "clock day progress segment count must be positive");
 static_assert(kSecondsPerDay > 0, "clock seconds per day must be positive");
 static_assert(kHourlyChimeLastAcceptedSecond < kSecondsPerMinute,
               "hourly chime window must fit the first minute");
 const char *weekday_name_or_placeholder(int weekday)
 {
+    if (ui_language_is_english()) {
+        return weekday >= 0 && weekday < kWeekdayCount
+                   ? ui_text(static_cast<UiTextId>(static_cast<unsigned>(UiTextId::WeatherBoardWeekdaySundayShort) + weekday))
+                   : ui_text(UiTextId::ClockDatePlaceholder);
+    }
     return weekday >= 0 && weekday < kWeekdayCount
                ? ui_weekday_text(weekday)
-               : kClockDatePlaceholder;
+               : ui_text(UiTextId::ClockDatePlaceholder);
 }
 } // namespace
 
@@ -66,12 +69,12 @@ void format_clock_date_text(char *out,
                             const struct tm &local,
                             const char *weekday)
 {
-    ui_text::format_or_fallback(out,
+    ui_text_format::format_or_fallback(out,
                                 out_len,
-                                kClockDatePlaceholder,
-                                kClockDateFormat,
+                                ui_text(UiTextId::ClockDatePlaceholder),
+                                ui_format(UiTextId::ClockDateFormat),
                                 local.tm_year + kTmYearOffset,
                                 local.tm_mon + kTmMonthOffset,
                                 local.tm_mday,
-                                weekday ? weekday : kClockDatePlaceholder);
+                                weekday ? weekday : ui_text(UiTextId::ClockDatePlaceholder));
 }

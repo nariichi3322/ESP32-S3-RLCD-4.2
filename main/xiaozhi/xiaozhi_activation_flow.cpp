@@ -6,6 +6,7 @@
 #include "xiaozhi_activation_storage.h"
 #include "xiaozhi_binding_voice.h"
 #include "xiaozhi_snapshot_state.h"
+#include "ui_i18n.h"
 
 #include <esp_heap_caps.h>
 #include <esp_log.h>
@@ -16,13 +17,13 @@
 namespace {
 
 constexpr const char *kTag = "WeatherClock";
-constexpr const char *kActivatingStatus = "正在连接小智服务";
-constexpr const char *kBindingStatus = "请绑定设备";
-constexpr const char *kReadyStatus = "等待唤醒词";
-constexpr const char *kErrorStatus = "小智服务不可用";
-constexpr const char *kBoundDetail = "说出唤醒词即可开始对话";
-constexpr const char *kActivationFailureDetail = "稍后将自动重试";
-constexpr const char *kBindingFallbackDetail = "请在小智服务中输入绑定 ID";
+#define kActivatingStatus ui_text(UiTextId::XiaozhiConnectingService)
+#define kBindingStatus ui_text(UiTextId::XiaozhiBindDevice)
+#define kReadyStatus ui_text(UiTextId::XiaozhiWaitingWakeWord)
+#define kErrorStatus ui_text(UiTextId::XiaozhiUnavailable)
+#define kBoundDetail ui_text(UiTextId::XiaozhiWakeWordHint)
+#define kActivationFailureDetail ui_text(UiTextId::XiaozhiRetryLater)
+#define kBindingFallbackDetail ui_text(UiTextId::XiaozhiEnterBindingId)
 
 std::atomic<bool> s_activation_scratch_in_use{false};
 XiaozhiActivationScratch *s_activation_scratch = nullptr;
@@ -131,12 +132,12 @@ void xiaozhi_activate_or_restore_session()
     }
     xiaozhi_snapshot_set(kXiaozhiAiActivating,
                          kActivatingStatus,
-                         "正在请求设备绑定信息");
+                         ui_text(UiTextId::XiaozhiRequestBindingInfo));
     ActivationScratchLease scratch_lease;
     if (!scratch_lease) {
         xiaozhi_snapshot_set(kXiaozhiAiError,
                              kErrorStatus,
-                             "小智内存不足，请稍后重试");
+                             ui_text(UiTextId::XiaozhiOutOfMemory));
         return;
     }
     XiaozhiActivationScratch *scratch = scratch_lease.get();

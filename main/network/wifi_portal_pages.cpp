@@ -12,6 +12,7 @@
 #include "wifi_portal_html_text.h"
 #include "wifi_portal_ui_assets.h"
 #include "wifi_portal_state_internal.h"
+#include "ui_i18n.h"
 #include "ui_language.h"
 
 #include "esp_attr.h"
@@ -37,6 +38,8 @@ constexpr size_t kPortalRootHtmlSize = 24576;
 constexpr size_t kPortalSaveResultHtmlSize = 12288;
 constexpr const char *kPortalSectionCloseHtml = "</div></div></section>";
 constexpr const char *kPortalHtmlContentType = "text/html; charset=utf-8";
+constexpr const char *kPortalPollScriptFormat =
+    "<script>function poll(){fetch('/status',{cache:'no-store'}).then(function(r){if(r.status===200){document.getElementById('save-state').textContent='%s';document.getElementById('save-title').textContent='%s';document.getElementById('save-body').textContent='%s';return;}if(r.status===409){location.replace('/');return;}setTimeout(poll,1000);}).catch(function(){setTimeout(poll,1200);});}setTimeout(poll,800);</script>";
 constexpr const char *kPortalHttpStatusInternalError = "500 Internal Server Error";
 constexpr const char *kPortalHttpStatusFound = "302 Found";
 constexpr const char *kPortalHeaderLocation = "Location";
@@ -44,47 +47,14 @@ constexpr const char *kPortalHeaderCacheControl = "Cache-Control";
 constexpr const char *kPortalHeaderConnection = "Connection";
 constexpr const char *kPortalCacheNoStore = "no-store";
 constexpr const char *kPortalConnectionClose = "close";
-constexpr const char *kPortalErrorNotEnoughMemory = "设备内存不足，请稍后重试。";
-constexpr const char *kPortalErrorNotEnoughMemoryTraditional = "裝置記憶體不足，請稍後重試。";
-constexpr const char *kPortalErrorNotEnoughMemoryEnglish = "Device memory is low. Please try again later.";
-constexpr const char *kPortalSaveConnectedTitle = "网络连接成功";
-constexpr const char *kPortalSaveValidatingTitle = "正在验证网络配置";
-constexpr const char *kPortalSaveMissingTitle = "配置信息不完整";
-constexpr const char *kPortalSaveWifiFailedTitle = "Wi-Fi 连接失败";
-constexpr const char *kPortalSaveWeatherApiFailedTitle = "天气服务验证失败";
-constexpr const char *kPortalSaveWeatherCityInvalidTitle = "天气城市无效";
-constexpr const char *kPortalSaveConnectedBody =
-    "Wi-Fi 與 NTP 設定已儲存，裝置將返回本機時鐘介面。";
-constexpr const char *kPortalSaveValidatingBody =
-    "裝置正在連接 Wi-Fi，請稍候。";
-constexpr const char *kPortalSaveMissingBody =
-    "請填寫 Wi-Fi 名稱；NTP 伺服器可保留預設值 pool.ntp.org。";
-constexpr const char *kPortalSaveMissingBodyEnglish =
-    "Enter a Wi-Fi name; the NTP server can keep the default pool.ntp.org.";
-constexpr const char *kPortalSaveWifiFailedBody =
-    "设备未能连接主 Wi-Fi 或备用 Wi-Fi。请检查密码、信号和路由器状态后重新填写。";
-constexpr const char *kPortalSaveWeatherApiFailedBody =
-    "Wi-Fi 已连接，但 Open-Meteo 服务暂时无法访问，请稍后重试。";
-constexpr const char *kPortalSaveWeatherCityInvalidBody =
-    "Open-Meteo 无法识别该城市。请修改城市，或留空使用自动定位。";
-constexpr const char *kPortalWifiScanBusyMessage = "Wi-Fi 正在扫描，请稍后刷新页面。";
-constexpr const char *kPortalWifiScanFailedMessage = "Wi-Fi 扫描失败，请刷新页面重试。";
-constexpr const char *kPortalWifiScanEmptyMessage = "没有发现可用的 Wi-Fi 网络。";
-constexpr const char *kPortalWifiScanNoMemoryMessage = "设备内存不足，暂时无法显示 Wi-Fi 列表。";
-constexpr const char *kPortalWifiScanBusyMessageTraditional = "Wi-Fi 正在掃描，請稍後重新整理頁面。";
-constexpr const char *kPortalWifiScanFailedMessageTraditional = "Wi-Fi 掃描失敗，請重新整理頁面後重試。";
-constexpr const char *kPortalWifiScanEmptyMessageTraditional = "找不到可用的 Wi-Fi 網路。";
-constexpr const char *kPortalWifiScanNoMemoryMessageTraditional = "裝置記憶體不足，暫時無法顯示 Wi-Fi 清單。";
-constexpr const char *kPortalWifiScanBusyMessageEnglish = "Wi-Fi is scanning. Refresh the page shortly.";
-constexpr const char *kPortalWifiScanFailedMessageEnglish = "Wi-Fi scan failed. Refresh the page and try again.";
-constexpr const char *kPortalWifiScanEmptyMessageEnglish = "No available Wi-Fi networks were found.";
-constexpr const char *kPortalWifiScanNoMemoryMessageEnglish = "Device memory is low; the Wi-Fi list cannot be displayed.";
 constexpr const char *kPortalHtmlHeadPrefixSimplified =
     "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
 constexpr const char *kPortalHtmlHeadPrefixTraditional =
     "<!doctype html><html lang='zh-TW'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
 constexpr const char *kPortalHtmlHeadPrefixEnglish =
     "<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
+constexpr const char *kPortalHtmlHeadPrefixJapanese =
+    "<!doctype html><html lang='ja'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
 #define PORTAL_HTML_APPEND_FAILED_LOG "setup html append failed"
 #define PORTAL_HTML_TRUNCATED_FORMAT "setup html truncated buffer=%u"
 
@@ -151,19 +121,19 @@ const char *portal_save_result_title(WifiPortalSaveResult result)
 {
     switch (result) {
     case WifiPortalSaveResult::kSuccess:
-        return ui_language_text("網路連線成功", kPortalSaveConnectedTitle, "Wi-Fi connected");
+        return ui_text(UiTextId::PortalSaveConnectedTitle);
     case WifiPortalSaveResult::kValidating:
-        return ui_language_text("正在驗證網路設定", kPortalSaveValidatingTitle, "Validating network settings");
+        return ui_text(UiTextId::PortalSaveValidatingTitle);
     case WifiPortalSaveResult::kWifiConnectionFailed:
-        return ui_language_text("Wi-Fi 連線失敗", kPortalSaveWifiFailedTitle, "Wi-Fi connection failed");
+        return ui_text(UiTextId::PortalSaveWifiFailedTitle);
     case WifiPortalSaveResult::kWeatherApiFailed:
-        return ui_language_text("天氣服務驗證失敗", kPortalSaveWeatherApiFailedTitle, "Weather service validation failed");
+        return ui_text(UiTextId::PortalSaveWeatherApiFailedTitle);
     case WifiPortalSaveResult::kWeatherCityInvalid:
-        return ui_language_text("天氣城市無效", kPortalSaveWeatherCityInvalidTitle, "Invalid weather city");
+        return ui_text(UiTextId::PortalSaveWeatherCityInvalidTitle);
     case WifiPortalSaveResult::kNone:
     case WifiPortalSaveResult::kInvalidInput:
     default:
-        return ui_language_text("設定資訊不完整", kPortalSaveMissingTitle, "Incomplete setup information");
+        return ui_text(UiTextId::PortalSaveMissingTitle);
     }
 }
 
@@ -171,34 +141,19 @@ const char *portal_save_result_body(WifiPortalSaveResult result)
 {
     switch (result) {
     case WifiPortalSaveResult::kSuccess:
-        return ui_language_text(kPortalSaveConnectedBody,
-                                 "Wi-Fi 与 NTP 设置已保存，设备将返回本地时钟界面。",
-                                 "Wi-Fi and NTP settings saved. Returning to the local clock.");
+        return ui_text(UiTextId::PortalSaveConnectedBody);
     case WifiPortalSaveResult::kValidating:
-        return ui_language_text(kPortalSaveValidatingBody,
-                                 "设备正在连接 Wi-Fi，请稍候。",
-                                 "The device is connecting to Wi-Fi. Please wait.");
+        return ui_text(UiTextId::PortalSaveValidatingBody);
     case WifiPortalSaveResult::kWifiConnectionFailed:
-        return ui_language_text(
-            "裝置無法連線主要 Wi-Fi 或備用 Wi-Fi。請檢查密碼、訊號和路由器狀態後重新填寫。",
-            kPortalSaveWifiFailedBody,
-            "The device could not connect to primary or backup Wi-Fi. Check the password, signal, and router.");
+        return ui_text(UiTextId::PortalSaveWifiFailedBody);
     case WifiPortalSaveResult::kWeatherApiFailed:
-        return ui_language_text(
-            "Wi-Fi 已連線，但 Open-Meteo 服務暫時無法存取，請稍後重試。",
-            kPortalSaveWeatherApiFailedBody,
-            "Wi-Fi is connected, but the Open-Meteo service is temporarily unavailable. Try again later.");
+        return ui_text(UiTextId::PortalSaveWeatherApiFailedBody);
     case WifiPortalSaveResult::kWeatherCityInvalid:
-        return ui_language_text(
-            "Open-Meteo 無法辨識該城市。請修改城市，或留空使用自動定位。",
-            kPortalSaveWeatherCityInvalidBody,
-            "Open-Meteo could not identify the city. Edit the city or leave it blank for automatic location.");
+        return ui_text(UiTextId::PortalSaveWeatherCityInvalidBody);
     case WifiPortalSaveResult::kNone:
     case WifiPortalSaveResult::kInvalidInput:
     default:
-        return ui_language_text(kPortalSaveMissingBody,
-                                "请填写 Wi-Fi 名称；NTP 服务器可保留默认值 pool.ntp.org。",
-                                kPortalSaveMissingBodyEnglish);
+        return ui_text(UiTextId::PortalSaveMissingBody);
     }
 }
 
@@ -281,32 +236,24 @@ void append_wifi_scan_list(char *html, size_t html_len)
     html_append(html,
                 html_len,
                 "<section class='wifi-section portal-panel'><div class='portal-panel-body'><div class='section-title'><span>%s</span><a href='/'>%s</a></div><div class='wifi-list'>",
-                ui_language_text("附近的 Wi-Fi（點選填入主要 Wi-Fi）",
-                                 "附近的 Wi-Fi（点击填入主 Wi-Fi）",
-                                 "Nearby Wi-Fi (click to fill primary Wi-Fi)"),
-                ui_language_text("重新掃描", "重新扫描", "Scan again"));
+                ui_text(UiTextId::PortalNearbyWifi),
+                ui_text(UiTextId::PortalScanAgain));
     wifi_scan_config_t scan_config = {};
     esp_err_t err = esp_wifi_scan_start(&scan_config, true);
     if (err != ESP_OK) {
         append_wifi_scan_message(html, html_len,
-                                 ui_language_text(kPortalWifiScanBusyMessageTraditional,
-                                                  kPortalWifiScanBusyMessage,
-                                                  kPortalWifiScanBusyMessageEnglish));
+                                 ui_text(UiTextId::PortalWifiScanBusy));
     } else {
         uint16_t ap_count = 0;
         err = esp_wifi_scan_get_ap_num(&ap_count);
         if (err != ESP_OK) {
             append_wifi_scan_message_and_close(html, html_len,
-                ui_language_text(kPortalWifiScanFailedMessageTraditional,
-                                 kPortalWifiScanFailedMessage,
-                                 kPortalWifiScanFailedMessageEnglish));
+                ui_text(UiTextId::PortalWifiScanFailed));
             return;
         }
         if (ap_count == 0) {
             append_wifi_scan_message_and_close(html, html_len,
-                ui_language_text(kPortalWifiScanEmptyMessageTraditional,
-                                 kPortalWifiScanEmptyMessage,
-                                 kPortalWifiScanEmptyMessageEnglish));
+                ui_text(UiTextId::PortalWifiScanEmpty));
             return;
         }
         uint16_t max_records = ap_count;
@@ -318,9 +265,7 @@ void append_wifi_scan_list(char *html, size_t html_len)
                                                sizeof(wifi_ap_record_t),
                                                &records_bytes)) {
             append_wifi_scan_message_and_close(html, html_len,
-                ui_language_text(kPortalWifiScanNoMemoryMessageTraditional,
-                                 kPortalWifiScanNoMemoryMessage,
-                                 kPortalWifiScanNoMemoryMessageEnglish));
+                ui_text(UiTextId::PortalWifiScanNoMemory));
             return;
         }
         ScopedHeapBuffer<uint8_t> records_storage(records_bytes,
@@ -328,9 +273,7 @@ void append_wifi_scan_list(char *html, size_t html_len)
                                                   HeapBufferStorage::kPsramPreferred);
         if (!records_storage) {
             append_wifi_scan_message_and_close(html, html_len,
-                ui_language_text(kPortalWifiScanNoMemoryMessageTraditional,
-                                 kPortalWifiScanNoMemoryMessage,
-                                 kPortalWifiScanNoMemoryMessageEnglish));
+                ui_text(UiTextId::PortalWifiScanNoMemory));
             return;
         }
         wifi_ap_record_t *records =
@@ -339,9 +282,7 @@ void append_wifi_scan_list(char *html, size_t html_len)
         err = esp_wifi_scan_get_ap_records(&record_count, records);
         if (err != ESP_OK) {
             append_wifi_scan_message_and_close(html, html_len,
-                ui_language_text(kPortalWifiScanFailedMessageTraditional,
-                                 kPortalWifiScanFailedMessage,
-                                 kPortalWifiScanFailedMessageEnglish));
+                ui_text(UiTextId::PortalWifiScanFailed));
             return;
         }
         if (record_count > max_records) {
@@ -349,9 +290,7 @@ void append_wifi_scan_list(char *html, size_t html_len)
         }
         if (record_count == 0) {
             append_wifi_scan_message(html, html_len,
-                ui_language_text(kPortalWifiScanEmptyMessageTraditional,
-                                 kPortalWifiScanEmptyMessage,
-                                 kPortalWifiScanEmptyMessageEnglish));
+                ui_text(UiTextId::PortalWifiScanEmpty));
         }
         for (uint16_t i = 0; i < record_count; ++i) {
             if (records[i].ssid[0] == '\0') {
@@ -408,10 +347,13 @@ esp_err_t root_get_handler(httpd_req_t *req)
     if (!html) {
         return send_portal_text_status(
             req, kPortalHttpStatusInternalError,
-            ui_language_text(kPortalErrorNotEnoughMemoryTraditional,
-                             kPortalErrorNotEnoughMemory,
-                             kPortalErrorNotEnoughMemoryEnglish));
+            ui_text(UiTextId::PortalErrorNotEnoughMemory));
     }
+    char common_script_buffer[1024] = {};
+    snprintf(common_script_buffer,
+             sizeof(common_script_buffer),
+             wifi_portal_ui::kCommonScript,
+             ui_text(UiTextId::PortalSaving));
     html_append(html.data(), html.size(),
                 "%s"
                 "<title>%s</title><style>%s</style><script>%s</script></head>"
@@ -422,17 +364,15 @@ esp_err_t root_get_handler(httpd_req_t *req)
                     ? kPortalHtmlHeadPrefixTraditional
                     : ui_language_is_simplified()
                           ? kPortalHtmlHeadPrefixSimplified
-                          : kPortalHtmlHeadPrefixEnglish,
-        ui_language_text("時鐘設定模式", "时钟设置模式", "Clock setup mode"),
+                          : ui_language_is_japanese()
+                                ? kPortalHtmlHeadPrefixJapanese
+                                : kPortalHtmlHeadPrefixEnglish,
+                ui_text(UiTextId::PortalClockSetupMode),
                 wifi_portal_ui::kCommonCss,
-                ui_language_is_traditional()
-                    ? wifi_portal_ui::kCommonScriptTraditional
-                    : ui_language_is_simplified()
-                          ? wifi_portal_ui::kCommonScriptSimplified
-                          : wifi_portal_ui::kCommonScriptEnglish,
-                ui_language_text("時鐘設定模式", "时钟设置模式", "Clock setup mode"),
-                ui_language_text("Wi-Fi 與 NTP 校時設定", "Wi-Fi 与 NTP 校时设置", "Wi-Fi and NTP time synchronization"),
-                ui_language_text("裝置熱點", "设备热点", "Device hotspot"),
+                common_script_buffer,
+                ui_text(UiTextId::PortalClockSetupMode),
+                ui_text(UiTextId::PortalWifiNtpSetup),
+                ui_text(UiTextId::PortalDeviceHotspot),
                 text.setup_ap_ssid,
                 show_feedback ? feedback_open : "",
                 show_feedback ? portal_save_result_title(save_result) : "",
@@ -441,15 +381,41 @@ esp_err_t root_get_handler(httpd_req_t *req)
         html_append(html.data(), html.size(), "%s</div>", portal_save_result_body(save_result));
     }
     html_append(html.data(), html.size(),
-                ui_language_is_traditional()
-                    ? wifi_portal_ui::kFormHtmlTraditional
-                    : ui_language_is_simplified()
-                          ? wifi_portal_ui::kFormHtmlSimplified
-                          : wifi_portal_ui::kFormHtmlEnglish,
+                wifi_portal_ui::kFormHtml,
+                ui_text(UiTextId::PortalWifiSectionTitle),
+                ui_text(UiTextId::PortalWifiSectionDescription),
+                ui_text(UiTextId::PortalPrimaryWifiSsidLabel),
+                ui_text(UiTextId::PortalPrimaryWifiSsidPlaceholder),
                 text.safe_ssid,
+                ui_text(UiTextId::PortalPrimaryWifiPasswordLabel),
+                ui_text(UiTextId::PortalPrimaryWifiPasswordPlaceholder),
+                ui_text(UiTextId::PortalPrimaryWifiPasswordHint),
+                ui_text(UiTextId::PortalBackupWifiSsidLabel),
+                ui_text(UiTextId::PortalOptional),
+                ui_text(UiTextId::PortalBackupWifiSsidPlaceholder),
                 text.safe_backup_ssid,
+                ui_text(UiTextId::PortalBackupWifiPasswordLabel),
+                ui_text(UiTextId::PortalOptional),
+                ui_text(UiTextId::PortalBackupWifiPasswordPlaceholder),
+                ui_text(UiTextId::PortalBackupWifiPasswordHint),
+                ui_text(UiTextId::PortalTimeSyncTitle),
+                ui_text(UiTextId::PortalTimeSyncDescription),
+                ui_text(UiTextId::PortalNtpServer),
+                ui_text(UiTextId::PortalNtpServerPlaceholder),
                 text.safe_ntp_server,
-                text.safe_weather_city);
+                ui_text(UiTextId::PortalNtpServerHint),
+                ui_text(UiTextId::PortalWeatherCityLabel),
+                ui_text(UiTextId::PortalOptional),
+                ui_text(UiTextId::PortalWeatherCityPlaceholder),
+                text.safe_weather_city,
+                ui_text(UiTextId::PortalWeatherCityHint),
+                ui_text(UiTextId::PortalSaveAndConnect),
+                ui_text(UiTextId::PortalSaveStatus),
+                ui_text(UiTextId::PortalOfflineModeTitle),
+                ui_text(UiTextId::PortalOfflineModeDescription),
+                ui_text(UiTextId::PortalLocalDateTime),
+                ui_text(UiTextId::PortalStartOfflineMode));
+
     html_append(html.data(), html.size(), "</section>");
     append_wifi_scan_list(html.data(), html.size());
     html_append(html.data(), html.size(), "</main></body></html>");
@@ -488,24 +454,26 @@ esp_err_t send_save_result_page(httpd_req_t *req,
     if (!html) {
         return send_portal_text_status(
             req, kPortalHttpStatusInternalError,
-            ui_language_text(kPortalErrorNotEnoughMemoryTraditional,
-                             kPortalErrorNotEnoughMemory,
-                             kPortalErrorNotEnoughMemoryEnglish));
+            ui_text(UiTextId::PortalErrorNotEnoughMemory));
     }
     const char *title = portal_save_result_title(result);
     const char *body = portal_save_result_body(result);
-    const char *poll_script = result == WifiPortalSaveResult::kValidating
-                                  ? ui_language_text(
-                                        "<script>function poll(){fetch('/status',{cache:'no-store'}).then(function(r){if(r.status===200){document.getElementById('save-state').textContent='已連線';document.getElementById('save-title').textContent='設定成功';document.getElementById('save-body').textContent='裝置即將返回本機時鐘介面。';return;}if(r.status===409){location.replace('/');return;}setTimeout(poll,1000);}).catch(function(){setTimeout(poll,1200);});}setTimeout(poll,800);</script>",
-                                        "<script>function poll(){fetch('/status',{cache:'no-store'}).then(function(r){if(r.status===200){document.getElementById('save-state').textContent='已连接';document.getElementById('save-title').textContent='设置成功';document.getElementById('save-body').textContent='设备即将返回本地时钟界面。';return;}if(r.status===409){location.replace('/');return;}setTimeout(poll,1000);}).catch(function(){setTimeout(poll,1200);});}setTimeout(poll,800);</script>",
-                                        "<script>function poll(){fetch('/status',{cache:'no-store'}).then(function(r){if(r.status===200){document.getElementById('save-state').textContent='Connected';document.getElementById('save-title').textContent='Setup complete';document.getElementById('save-body').textContent='The device will return to the local clock interface.';return;}if(r.status===409){location.replace('/');return;}setTimeout(poll,1000);}).catch(function(){setTimeout(poll,1200);});}setTimeout(poll,800);</script>")
-                                  : "";
+    char poll_script_buffer[1536] = {};
+    if (result == WifiPortalSaveResult::kValidating) {
+        snprintf(poll_script_buffer,
+                 sizeof(poll_script_buffer),
+                 kPortalPollScriptFormat,
+                 ui_text(UiTextId::PortalConnected),
+                 ui_text(UiTextId::PortalSetupCompleteTitle),
+                 ui_text(UiTextId::PortalReturningToClock));
+    }
+    const char *poll_script = poll_script_buffer;
     const char *state_text = result == WifiPortalSaveResult::kSuccess
-                                   ? ui_language_text("已連線", "已连接", "Connected")
+                                   ? ui_text(UiTextId::PortalConnected)
                                   : (result == WifiPortalSaveResult::kValidating
-                                         ? ui_language_text("驗證中", "验证中", "Validating")
-                                         : ui_language_text("失敗", "失败", "Failed"));
-    const char *meta_separator = ui_language_text("：", "：", ": ");
+                                         ? ui_text(UiTextId::PortalValidating)
+                                         : ui_text(UiTextId::PortalFailed));
+    const char *meta_separator = ui_text(UiTextId::PortalSeparator);
     const int disconnect_reason = wifi_last_disconnect_reason();
     html_append(html.data(), html.size(),
                 "%s"
@@ -515,8 +483,10 @@ esp_err_t send_save_result_page(httpd_req_t *req,
                     ? kPortalHtmlHeadPrefixTraditional
                     : ui_language_is_simplified()
                           ? kPortalHtmlHeadPrefixSimplified
-                          : kPortalHtmlHeadPrefixEnglish,
-                ui_language_text("時鐘設定結果", "时钟设置结果", "Clock setup result"),
+                          : ui_language_is_japanese()
+                                ? kPortalHtmlHeadPrefixJapanese
+                                : kPortalHtmlHeadPrefixEnglish,
+                ui_text(UiTextId::PortalClockSetupResult),
                 wifi_portal_ui::kCommonCss,
                 poll_script,
                 state_text,
@@ -525,21 +495,21 @@ esp_err_t send_save_result_page(httpd_req_t *req,
                 text.safe_extra[0] ? "<div class='note'>" : "",
                 text.safe_extra,
                 text.safe_extra[0] ? "</div>" : "",
-                ui_language_text("主要 Wi-Fi", "主 Wi-Fi", "Primary Wi-Fi"),
+                ui_text(UiTextId::PortalPrimaryWifi),
                 meta_separator,
                 text.safe_ssid,
-                ui_language_text("備用 Wi-Fi", "备用 Wi-Fi", "Backup Wi-Fi"),
+                ui_text(UiTextId::PortalBackupWifi),
                 meta_separator,
                 text.safe_backup_ssid[0]
                     ? text.safe_backup_ssid
-                    : ui_language_text("未設定", "未配置", "Not configured"),
-                ui_language_text("NTP 伺服器", "NTP 服务器", "NTP server"),
+                    : ui_text(UiTextId::PortalNotConfigured),
+                ui_text(UiTextId::PortalNtpServer),
                 meta_separator,
                 text.safe_ntp_server,
-                ui_language_text("最近一次 Wi-Fi 斷線原因", "最近一次 Wi-Fi 断线原因", "Last Wi-Fi disconnect reason"),
+                ui_text(UiTextId::PortalLastWifiDisconnect),
                 meta_separator,
                 disconnect_reason,
-                ui_language_text("返回設定頁", "返回设置页", "Back to setup"));
+                ui_text(UiTextId::PortalBackToSetup));
     return send_portal_html(req, html.data());
 }
 

@@ -7,6 +7,7 @@ void set_obj_box(lv_obj_t *obj, int x, int y, int w, int h);
 void set_obj_black(lv_obj_t *obj, bool active);
 lv_obj_t *make_bar(lv_obj_t *parent, int x, int y, int w, int h);
 lv_obj_t *make_black_bar(lv_obj_t *parent, int x, int y, int w, int h);
+void style_label_for_dark_background(lv_obj_t *label);
 lv_obj_t *make_label_with_font(lv_obj_t *parent,
                                int x,
                                int y,

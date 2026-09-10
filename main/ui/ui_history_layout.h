@@ -15,8 +15,6 @@ inline constexpr int kTempTitleY = 67;
 inline constexpr int kHumiTitleY = 172;
 inline constexpr int kTitleWidth = 80;
 inline constexpr int kTitleHeight = 24;
-inline constexpr char kTempTitle[] = "温度";
-inline constexpr char kHumiTitle[] = "湿度";
 
 inline constexpr int kPlotX = 34;
 inline constexpr int kTempPlotY = 10;
@@ -33,7 +31,6 @@ inline constexpr int kTimeLabelHeight = 18;
 inline constexpr int kTimeLabelY = 274;
 inline constexpr int kTimeLabelCenterX[kAxisTickCount] = {42, 110, 178, 246, 314};
 inline constexpr int kAxisTickHours[kAxisTickCount] = {0, 6, 12, 18, 24};
-inline constexpr char kTimePlaceholder[] = "--:--";
 
 inline constexpr int kAxisValueCount = 3;
 inline constexpr int kAxisLabelX = 332;
@@ -42,8 +39,6 @@ inline constexpr int kAxisLabelHeight = 18;
 inline constexpr int kTempAxisLabelY = 84;
 inline constexpr int kHumiAxisLabelY = 186;
 inline constexpr int kAxisLabelRowGap = 30;
-inline constexpr char kAxisPlaceholder[] = "--";
-
 inline constexpr int kBadgeWidth = 40;
 inline constexpr int kBadgeHeight = 16;
 inline constexpr int kBadgeRadius = 6;

@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   build-and-upload:
-    name: ESP32-S3 固件
+    name: ESP32-S3 四語言固件
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -63,18 +63,31 @@ jobs:
             exit 1
           fi
 
-      - name: 编译并生成双固件
+      - name: 校验四語言文字目錄
+        shell: bash
+        run: python3 tools/generate_ui_text_catalog.py
+
+      - name: 静态检查 UI 文字集中化
+        shell: bash
+        run: python3 tools/check_ui_text_catalog.py
+
+      - name: 编译四种语言并生成完整刷写固件
         uses: espressif/esp-idf-ci-action@v1
         with:
-          esp_idf_version: v5.5.3
+          esp_idf_version: v5.5.5
           target: esp32s3
           path: .
           command: >-
             set -euo pipefail;
-            idf.py build;
-            cp build/weather_clock.bin "weather_clock_${{ steps.version.outputs.version }}.bin";
-            cd build;
-            esptool.py --chip esp32s3 merge_bin -o "../weather_clock_${{ steps.version.outputs.version }}_merged.bin" @flash_args
+            for locale in zh-TW zh-CN en ja; do
+              build_dir="build_${locale}";
+              rm -rf "$build_dir";
+              idf.py -B "$build_dir" -DAPP_UI_LOCALE="$locale" build;
+              suffix="";
+              if [[ "$locale" != "zh-TW" ]]; then suffix="_${locale}"; fi;
+              cp "$build_dir/weather_clock.bin" "weather_clock_${{ steps.version.outputs.version }}${suffix}.bin";
+              (cd "$build_dir" && esptool.py --chip esp32s3 merge_bin -o "../weather_clock_${{ steps.version.outputs.version }}${suffix}_merged.bin" @flash_args);
+            done
 
       - name: 校验构建产物
         env:
@@ -82,9 +95,22 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -s "weather_clock_${VERSION}.bin"
-          test -s "weather_clock_${VERSION}_merged.bin"
-          sha256sum "weather_clock_${VERSION}.bin" "weather_clock_${VERSION}_merged.bin"
+          python3 .github/scripts/validate_locale_artifacts.py \
+            --version "${VERSION}" \
+            --image "zh-TW=weather_clock_${VERSION}.bin" \
+            --image "zh-CN=weather_clock_${VERSION}_zh-CN.bin" \
+            --image "en=weather_clock_${VERSION}_en.bin" \
+            --image "ja=weather_clock_${VERSION}_ja.bin"
+          for locale in zh-TW zh-CN en ja; do
+            suffix="";
+            if [[ "$locale" != "zh-TW" ]]; then suffix="_${locale}"; fi;
+            image="weather_clock_${VERSION}${suffix}.bin";
+            merged="weather_clock_${VERSION}${suffix}_merged.bin";
+            test -s "$image";
+            test -s "$merged";
+            test "$(stat -c %s "$image")" -lt $((0x6C0000));
+            sha256sum "$image" "$merged";
+          done
 
       - name: 等待同版本 Release
         env:
@@ -113,9 +139,12 @@ jobs:
         run: |
           set -euo pipefail
           artifact_base="https://github.com/$GITHUB_REPOSITORY/releases/download/$VERSION"
-          python3 .github/scripts/update_manifests.py \
+          python3 .github/scripts/update_locale_manifests.py \
             --version "$VERSION" \
-            --app "weather_clock_${VERSION}.bin" \
+            --image "zh-TW=weather_clock_${VERSION}.bin" \
+            --image "zh-CN=weather_clock_${VERSION}_zh-CN.bin" \
+            --image "en=weather_clock_${VERSION}_en.bin" \
+            --image "ja=weather_clock_${VERSION}_ja.bin" \
             --merged "weather_clock_${VERSION}_merged.bin" \
             --artifact-base "$artifact_base" \
             --notes-file firmware/OTA_RELEASE_NOTES.md \
@@ -127,8 +156,7 @@ jobs:
         with:
           name: weather-clock-${{ steps.version.outputs.version }}
           path: |
-            weather_clock_${{ steps.version.outputs.version }}.bin
-            weather_clock_${{ steps.version.outputs.version }}_merged.bin
+            weather_clock_${{ steps.version.outputs.version }}*.bin
             firmware/latest.json
             firmware/versions.json
           if-no-files-found: error
@@ -143,8 +171,7 @@ jobs:
           set -euo pipefail
           body_before="$(gh release view "$VERSION" --json body --jq .body)"
           gh release upload "$VERSION" \
-            "weather_clock_${VERSION}.bin" \
-            "weather_clock_${VERSION}_merged.bin" \
+            weather_clock_${VERSION}*.bin \
             --clobber
           body_after="$(gh release view "$VERSION" --json body --jq .body)"
           if [[ "$body_before" != "$body_after" ]]; then

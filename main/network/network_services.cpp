@@ -27,6 +27,7 @@
 #include "setup_portal_control.h"
 #include "startup_state.h"
 #include "ui_work_page_catalog.h"
+#include "ui_i18n.h"
 #include "weather_state.h"
 #include "weather_update.h"
 #include "wifi_idle_stop_policy.h"
@@ -50,10 +51,10 @@ static_assert(kBootHttpsInterRequestGapSec > 0,
               "boot HTTPS inter-request gap must be positive");
 static_assert(kNetworkDiagOtaLine == kNetworkDiagLineCount - 1,
               "network service diagnostics line mapping must match diagnostics line count");
-static constexpr const char *kNetworkDiagIpLocationWifiStartFailed = "IP定位: WiFi启动失败";
-static constexpr const char *kNetworkDiagIpLocationPowerLockUnavailable = "IP定位: 系统繁忙";
-static constexpr const char *kNetworkDiagIpLocationWifiConnectTimeout = "IP定位: WiFi连接超时";
-static constexpr const char *kNetworkSyncWeatherConfigMissing = "天氣同步不可用";
+static constexpr UiTextId kNetworkDiagIpLocationWifiStartFailed = UiTextId::NetworkDiagIpWifiStartFailed;
+static constexpr UiTextId kNetworkDiagIpLocationPowerLockUnavailable = UiTextId::NetworkDiagIpPowerLockUnavailable;
+static constexpr UiTextId kNetworkDiagIpLocationWifiConnectTimeout = UiTextId::NetworkDiagIpWifiConnectTimeout;
+static constexpr UiTextId kNetworkSyncWeatherConfigMissing = UiTextId::NetworkWeatherConfigUnavailable;
 #define NETWORK_BOOT_REFRESH_SCHEDULED_FORMAT "boot network refresh scheduled: weather=%d saying=%d"
 #define NETWORK_BOOT_HTTPS_MEMORY_DEFERRED_FORMAT \
     "background boot HTTPS deferred: delay=%llds deferrals=%u internal_free=%u internal_largest=%u dma_largest=%u"
@@ -468,9 +469,9 @@ static bool execute_network_diagnostics_window(
     }
     NetworkAwakeLockGuard awake_lock;
     if (!awake_lock.locked()) {
-        unavailable_reason = kNetworkDiagIpLocationPowerLockUnavailable;
+        unavailable_reason = ui_text(kNetworkDiagIpLocationPowerLockUnavailable);
     } else if (!start_wifi_radio(false)) {
-        unavailable_reason = kNetworkDiagIpLocationWifiStartFailed;
+        unavailable_reason = ui_text(kNetworkDiagIpLocationWifiStartFailed);
     } else {
         const NetworkSyncConnectionWaitResult connection_wait =
             wait_for_valid_network_sync_connection(scheduled_runtime,
@@ -494,7 +495,7 @@ static bool execute_network_diagnostics_window(
                 return false;
             }
         } else {
-            unavailable_reason = kNetworkDiagIpLocationWifiConnectTimeout;
+            unavailable_reason = ui_text(kNetworkDiagIpLocationWifiConnectTimeout);
         }
     }
     finish_network_radio_session(awake_lock);
@@ -624,7 +625,7 @@ void network_sync_task(void *)
         if (requests.weather_due() && !runtime.have_weather_config) {
             if (requests.manual_weather) {
                 finish_settings_sync_and_clear_bit(kSettingsSyncWeather,
-                                                   kNetworkSyncWeatherConfigMissing,
+                                                   ui_text(kNetworkSyncWeatherConfigMissing),
                                                    kManualWeatherSyncBit,
                                                    requests.manual_weather_generation,
                                                    requests.manual_weather_settings_generation);

@@ -5,6 +5,7 @@
 #include "network_runtime_events.h"
 #include "ota_flow_policy.h"
 #include "scoped_semaphore_lock.h"
+#include "ui_i18n.h"
 
 #include <esp_attr.h>
 
@@ -15,7 +16,7 @@
 namespace {
 constexpr uint32_t kOtaRuntimeStateMask = 0xffu;
 constexpr uint32_t kOtaRuntimeRebootPendingBit = 1u << 8;
-constexpr const char *kOtaInitialStatus = "BOOT：检查更新";
+constexpr UiTextId kOtaInitialStatus = UiTextId::OtaBootChecking;
 
 struct OtaRuntimeControlState {
     int state = kOtaIdle;
@@ -80,7 +81,7 @@ bool ota_runtime_state_init()
         return false;
     }
     if (!s_ota_runtime_control.initialized) {
-        copy_status(s_ota_status_text, kOtaInitialStatus);
+        copy_status(s_ota_status_text, ui_text(kOtaInitialStatus));
         s_ota_runtime_control.initialized = true;
     }
     return true;

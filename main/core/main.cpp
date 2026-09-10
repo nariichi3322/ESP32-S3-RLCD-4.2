@@ -35,6 +35,7 @@
 #include "ui_boot_screen.h"
 #include "ui_display_flush.h"
 #include "ui_info_page_state_internal.h"
+#include "ui_i18n.h"
 #include "ui_language.h"
 #include "ui_settings_feedback_internal.h"
 #include "ui_settings_activity_state_internal.h"
@@ -392,8 +393,8 @@ extern "C" void app_main(void)
         pdMS_TO_TICKS(kBootStartupBudgetMs + kBootSyncWaitMarginMs),
         kBootSyncTaskName);
     update_boot_screen(100,
-                       ui_language_text("準備完成", "准备完成", "Ready"),
-                       ui_language_text("啟動時鐘", "启动时钟", "Starting clock"));
+                       ui_text(UiTextId::StartupReady),
+                       ui_text(UiTextId::StartupStartingClock));
     request_boot_animation_stop();
     wait_for_boot_task_completion(kBootAnimDoneBit,
                                   pdMS_TO_TICKS(kBootAnimStopWaitMs),

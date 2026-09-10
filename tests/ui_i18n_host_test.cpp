@@ -26,5 +26,10 @@ int main()
     assert(strcmp(ui_wind_direction(45), "NE") == 0);
     assert(strcmp(ui_wind_direction(360), "N") == 0);
     assert(strcmp(ui_wind_direction(-1), "--") == 0);
+    ui_language_store(UiLanguage::Japanese);
+    assert(strcmp(ui_text(UiTextId::WeatherClear), "晴れ") == 0);
+    assert(strcmp(ui_weekday_text(1), "月曜日") == 0);
+    assert(strcmp(ui_text(UiTextId::CalendarChristmas), "クリスマス") == 0);
+    ui_language_store(UiLanguage::Traditional);
     return 0;
 }

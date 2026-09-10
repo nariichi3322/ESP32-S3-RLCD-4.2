@@ -13,7 +13,9 @@
 #include "ui_settings_content.h"
 #include "ui_settings_feedback.h"
 #include "ui_settings_layout.h"
+#include "ui_fonts.h"
 #include "ui_language.h"
+#include "ui_i18n.h"
 #include "ui_settings_navigation.h"
 #include "ui_settings_ota_panel.h"
 #include "ui_settings_pagination.h"
@@ -138,19 +140,16 @@ int collect_visible_work_page_order(int *indices,
 
 const char *settings_primary_item(int index)
 {
-    static constexpr const char *traditional[kSettingsPrimaryCount] =
-        {"校時", "聲音", "顯示", "系統"};
-    static constexpr const char *simplified[kSettingsPrimaryCount] =
-        {"校时", "声音", "显示", "系统"};
-    static constexpr const char *english[kSettingsPrimaryCount] =
-        {"Time", "Sound", "Display", "System"};
+    static constexpr UiTextId kItems[kSettingsPrimaryCount] = {
+        UiTextId::SettingsTime,
+        UiTextId::SettingsSound,
+        UiTextId::SettingsDisplay,
+        UiTextId::SettingsSystem,
+    };
     if (index < 0 || index >= kSettingsPrimaryCount) return "";
-    return ui_language_text(traditional[index], simplified[index], english[index]);
+    return ui_text(kItems[index]);
 }
-constexpr const char *kSettingsPageOrderEntryFormat = "%d %s";
 #define SETTINGS_SWITCH_SLOT_INDEX_OUT_OF_RANGE_FORMAT "settings switch slot index out of range: %d"
-constexpr const char *kSettingsLabelPlaceholder = "--";
-
 enum SettingsMenuColumn {
     kSettingsMenuPrimaryColumn,
     kSettingsMenuSecondaryColumn,
@@ -230,7 +229,7 @@ lv_obj_t *build_settings_menu_label(lv_obj_t *screen,
                                  y,
                                  width,
                                  settings_layout::kSettingsSecondaryH,
-                                 kSettingsLabelPlaceholder);
+                                 ui_text(UiTextId::UiPlaceholder));
     if (!label) {
         if (column == kSettingsMenuPrimaryColumn) {
             ESP_LOGW(TAG, SETTINGS_PRIMARY_LABEL_CREATE_FAILED_FORMAT, index);
@@ -248,9 +247,24 @@ lv_obj_t *build_settings_menu_label(lv_obj_t *screen,
 
 static void style_settings_item(lv_obj_t *label, bool selected)
 {
+    if (ui_language_is_english()) {
+        // Selected labels are rendered white on black. Montserrat 14 has very
+        // thin anti-aliased stems on the RLCD, so the dot/stem of characters
+        // such as "i" can disappear after the monochrome conversion. Give
+        // the focused item the 16 px face and restore 14 px when it loses
+        // focus; the latter still preserves the narrow secondary columns.
+        lv_obj_set_style_text_font(label,
+                                   selected ? &lv_font_montserrat_16
+                                            : &lv_font_montserrat_14,
+                                   LV_PART_MAIN);
+    }
     lv_obj_set_style_bg_color(label, selected ? lv_color_black() : lv_color_white(), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(label, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_text_color(label, selected ? lv_color_white() : lv_color_black(), LV_PART_MAIN);
+    if (selected) {
+        style_label_for_dark_background(label);
+    } else {
+        lv_obj_set_style_text_color(label, lv_color_black(), LV_PART_MAIN);
+    }
     lv_obj_set_style_border_color(label, lv_color_black(), LV_PART_MAIN);
     lv_obj_set_style_border_width(label, 2, LV_PART_MAIN);
     lv_obj_set_style_radius(label, 0, LV_PART_MAIN);
@@ -292,7 +306,7 @@ void build_settings_page()
                         18,
                         352,
                         28,
-                        "设置",
+                        ui_text(UiTextId::SettingsPageTitle),
                         "settings title create failed");
     make_black_bar(screen, 24, 52, 352, 3);
 
@@ -355,7 +369,7 @@ void build_settings_page()
                         270,
                         352,
                         22,
-                        "KEY选择  长按返回  BOOT确认",
+                        ui_text(UiTextId::SettingsPageHint),
                         "settings hint label create failed");
 }
 
@@ -430,7 +444,7 @@ bool layout_settings_secondary_slot(
         if (navigation.page_order_mode) {
             format_secondary_text(secondary_items,
                                   index,
-                                  kSettingsPageOrderEntryFormat,
+                                  ui_format(UiTextId::SettingsPageOrderEntryFormat),
                                   index + 1,
                                   work_page_name(visible_order_pages[index]));
             hide_settings_switch_slot(index);

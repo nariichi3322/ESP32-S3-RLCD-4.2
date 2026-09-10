@@ -7,6 +7,7 @@
 #include "offline_mode_state.h"
 #include "ui_settings_confirmation_state.h"
 #include "ui_gallery_rotation_state.h"
+#include "ui_i18n.h"
 #include "ui_language.h"
 #include "ui_text_format.h"
 #include "weather_city_contract.h"
@@ -21,6 +22,69 @@ namespace {
 
 static_assert(kSettingsSecondaryTextSize > 1,
               "settings secondary text buffer must fit text and NUL");
+
+const char *settings_display_text(UiTextId id)
+{
+    // These entries are shown in the 111 px settings grid. Keep the catalog's
+    // full translations for general messages, and use compact labels only at
+    // this narrow menu surface.
+    switch (id) {
+    case UiTextId::SettingsCheckUpdates:
+        return ui_text(UiTextId::SettingsCheckUpdatesCompact);
+    case UiTextId::SettingsNetworkDiagnostics:
+        return ui_text(UiTextId::SettingsNetworkDiagnosticsCompact);
+    case UiTextId::SettingsSyncTime:
+        return ui_text(UiTextId::SettingsSyncTimeCompact);
+    case UiTextId::SettingsSyncWeather:
+        return ui_text(UiTextId::SettingsSyncWeatherCompact);
+    case UiTextId::SettingsUpdateSaying:
+        return ui_text(UiTextId::SettingsUpdateSayingCompact);
+    case UiTextId::SettingsWeatherCity:
+        return ui_text(UiTextId::SettingsWeatherCityCompact);
+    case UiTextId::SettingsPageOrder:
+        return ui_text(UiTextId::SettingsPageOrderCompact);
+    case UiTextId::SettingsClearPairing:
+        return ui_text(UiTextId::SettingsClearPairingCompact);
+    case UiTextId::SettingsSetup:
+        return ui_text(UiTextId::SettingsSetupCompact);
+    case UiTextId::SettingsFactoryReset:
+        return ui_text(UiTextId::SettingsFactoryResetCompact);
+    case UiTextId::SettingsConfirmReset:
+        return ui_text(UiTextId::SettingsConfirmResetCompact);
+    case UiTextId::SettingsPageMode:
+        return ui_text(UiTextId::SettingsPageModeCompact);
+    case UiTextId::SettingsAutoReturn:
+        return ui_text(UiTextId::SettingsAutoReturnCompact);
+    default:
+        return ui_text(id);
+    }
+}
+
+const char *settings_display_format(UiTextId id)
+{
+    switch (id) {
+    case UiTextId::SettingsLanguageFormat:
+        return ui_format(UiTextId::SettingsLanguageCompactFormat);
+    case UiTextId::SettingsWeatherCityFormat:
+        return ui_format(UiTextId::SettingsWeatherCityCompactFormat);
+    case UiTextId::SettingsWeatherCityAuto:
+        return ui_text(UiTextId::SettingsWeatherCityAutoCompact);
+    case UiTextId::SettingsHourlyReminder:
+        return ui_text(UiTextId::SettingsHourlyReminderCompact);
+    case UiTextId::SettingsAllDayReminder:
+        return ui_text(UiTextId::SettingsAllDayReminderCompact);
+    case UiTextId::SettingsAlarmFormat:
+        return ui_format(UiTextId::SettingsAlarmCompactFormat);
+    case UiTextId::SettingsAlarmPlaceholder:
+        return ui_text(UiTextId::SettingsAlarmCompactPlaceholder);
+    case UiTextId::SettingsCustomImageFormat:
+        return ui_format(UiTextId::SettingsCustomImageCompactFormat);
+    case UiTextId::SettingsOfflineFormat:
+        return ui_format(UiTextId::SettingsOfflineCompactFormat);
+    default:
+        return ui_format(id);
+    }
+}
 } // namespace
 
 void set_secondary_text(char items[][kSettingsSecondaryTextSize],
@@ -31,7 +95,7 @@ void set_secondary_text(char items[][kSettingsSecondaryTextSize],
         ESP_LOGW(TAG, SETTINGS_SECONDARY_INDEX_OUT_OF_RANGE_FORMAT, index);
         return;
     }
-    ui_text::copy(items[index], kSettingsSecondaryTextSize, text);
+    ui_text_format::copy(items[index], kSettingsSecondaryTextSize, text);
 }
 
 void format_secondary_text(char items[][kSettingsSecondaryTextSize],
@@ -51,7 +115,7 @@ void format_secondary_text(char items[][kSettingsSecondaryTextSize],
                             format ? format : "",
                             args);
     va_end(args);
-    if (ui_text::format_failed(written, kSettingsSecondaryTextSize)) {
+    if (ui_text_format::format_failed(written, kSettingsSecondaryTextSize)) {
         items[index][0] = '\0';
         ESP_LOGW(TAG, SETTINGS_SECONDARY_FORMAT_FAILED_FORMAT, index);
     }
@@ -69,100 +133,105 @@ void populate_settings_secondary_items(
 {
     if (primary == kSettingsPrimaryNetwork) {
         set_secondary_text(secondary_items, kNetworkSettingsNtpItem,
-                           ui_language_text("同步時間", "同步时间", "Sync time"));
+                           settings_display_text(UiTextId::SettingsSyncTime));
         set_secondary_text(secondary_items, kNetworkSettingsWeatherItem,
-                           ui_language_text("同步天氣", "同步天气", "Sync weather"));
+                           settings_display_text(UiTextId::SettingsSyncWeather));
         set_secondary_text(secondary_items, kNetworkSettingsSayingItem,
-                           ui_language_text("更新一言", "更新一言", "Update saying"));
+                           settings_display_text(UiTextId::SettingsUpdateSaying));
         char city[kManualWeatherCityLen] = {};
         if (manual_weather_city_snapshot(city, sizeof(city))) {
             format_secondary_text(secondary_items,
                                   kNetworkSettingsWeatherCityItem,
-                                  ui_language_text("天氣城市 %s", "天气城市 %s", "Weather city %s"),
+                                  settings_display_format(UiTextId::SettingsWeatherCityFormat),
                                   city);
         } else {
             set_secondary_text(secondary_items,
                                kNetworkSettingsWeatherCityItem,
-                               ui_language_text("天氣城市 自動", "天气城市 自动", "Weather city Auto"));
+                                 settings_display_format(UiTextId::SettingsWeatherCityAuto));
         }
     } else if (primary == kSettingsPrimarySound) {
         if (state.volume_percent == 0) {
             set_secondary_text(secondary_items,
                                kSoundSettingsVolumeItem,
-                               ui_language_text("音量 靜音", "音量 静音", "Muted"));
+                                settings_display_text(UiTextId::SettingsMuted));
         } else {
             format_secondary_text(secondary_items,
                                   kSoundSettingsVolumeItem,
-                                  ui_language_text("音量 %d%%", "音量 %d%%", "Vol %d%%"),
+                                  settings_display_format(UiTextId::SettingsVolumeFormat),
                                   static_cast<int>(state.volume_percent));
         }
         format_secondary_text(secondary_items,
                               kSoundSettingsSoundItem,
-                              ui_language_text("聲音選擇 %d", "声音选择 %d", "Sound %d"),
+                              settings_display_format(UiTextId::SettingsSoundFormat),
                               static_cast<int>(state.sound_index) + 1);
         set_secondary_text(secondary_items, kSoundSettingsHourlyItem,
-                           ui_language_text("整點提醒 7:00 - 22:00", "整点提醒 7:00 - 22:00", "Hourly 7-22"));
+                           settings_display_format(UiTextId::SettingsHourlyReminder));
         set_secondary_text(secondary_items, kSoundSettingsAllDayItem,
-                           ui_language_text("全天提醒 0:00 - 24:00", "全天提醒 0:00 - 24:00", "All-day 0-24"));
+                           settings_display_format(UiTextId::SettingsAllDayReminder));
     } else if (primary == kSettingsPrimaryDisplay) {
         set_secondary_text(secondary_items,
                            kDisplaySettingsPageSwitchItem,
-                           ui_language_text("頁面開關", "页面开关", "Page mode"));
+                            settings_display_text(UiTextId::SettingsPageMode));
         set_secondary_text(secondary_items,
                            kDisplaySettingsOrderItem,
-                           ui_language_text("頁面順序", "页面顺序", "Page order"));
+                           settings_display_text(UiTextId::SettingsPageOrder));
         if (state.alarm_enabled) {
             format_secondary_text(secondary_items,
                                   kDisplaySettingsAlarmItem,
-                                  ui_language_text("鬧鐘 %02d:%02d", "闹钟 %02d:%02d",
-                                                   "Alarm %02d:%02d"),
+                                   settings_display_format(UiTextId::SettingsAlarmFormat),
                                   state.alarm_hour,
                                   state.alarm_minute);
         } else {
             set_secondary_text(secondary_items,
                                kDisplaySettingsAlarmItem,
-                               ui_language_text("鬧鐘 --:--", "闹钟 --:--",
-                                                "Alarm --:--"));
+                                settings_display_format(UiTextId::SettingsAlarmPlaceholder));
         }
         set_secondary_text(secondary_items,
                            kDisplaySettingsXiaozhiAutoReturnItem,
-                           ui_language_text("自動返回", "自动返回", "Auto return"));
+                            settings_display_text(UiTextId::SettingsAutoReturn));
         format_secondary_text(
             secondary_items,
             kDisplaySettingsGalleryRotationItem,
-            ui_language_text("自訂圖 %s", "自定义图 %s", "Custom %s"),
+             settings_display_format(UiTextId::SettingsCustomImageFormat),
             effective_gallery_rotation_label(gallery_rotation_period_load(),
                                              custom_assets_gallery_count()));
     } else {
         format_secondary_text(secondary_items,
                               kSystemSettingsOfflineItem,
-                              ui_language_text("離線模式 %s", "离线模式 %s",
-                                                "Offline %s"),
-                              offline_mode_enabled_load()
-                                  ? ui_language_text("開", "开", "On")
-                                  : ui_language_text("關", "关", "Off"));
+                               settings_display_format(UiTextId::SettingsOfflineFormat),
+                               offline_mode_enabled_load()
+                                   ? settings_display_text(UiTextId::SettingsOn)
+                                   : settings_display_text(UiTextId::SettingsOff));
         set_secondary_text(secondary_items,
                            kSystemSettingsFactoryResetItem,
                            settings_confirmation_pending(SettingsConfirmation::kFactoryReset)
-                               ? ui_language_text("確認恢復", "确认恢复", "Confirm reset")
-                               : ui_language_text("恢復原廠", "恢复出厂", "Reset"));
+                                 ? settings_display_text(UiTextId::SettingsConfirmReset)
+                                 : settings_display_text(UiTextId::SettingsFactoryReset));
         set_secondary_text(secondary_items,
                            kSystemSettingsInfoItem,
-                           ui_language_text("關於本機", "关于本机", "About"));
+                             settings_display_text(UiTextId::SettingsAbout));
         set_secondary_text(secondary_items,
                            kSystemSettingsClearCodexBondsItem,
-                           ui_language_text("清除配對", "清除配对", "Clear pair"));
-        set_secondary_text(secondary_items,
-                           kSystemSettingsLanguageItem,
-                           ui_language_text("語言 繁體", "语言 简体", "Lang English"));
+                             settings_display_text(UiTextId::SettingsClearPairing));
+        UiTextId language_name = UiTextId::LanguageTraditionalCompact;
+        switch (ui_language_target()) {
+        case UiLanguage::Simplified: language_name = UiTextId::LanguageSimplifiedCompact; break;
+        case UiLanguage::English: language_name = UiTextId::LanguageEnglishCompact; break;
+        case UiLanguage::Japanese: language_name = UiTextId::LanguageJapaneseCompact; break;
+        default: break;
+        }
+        format_secondary_text(secondary_items,
+                              kSystemSettingsLanguageItem,
+                              settings_display_format(UiTextId::SettingsLanguageFormat),
+                              ui_text(language_name));
         set_secondary_text(secondary_items,
                            kSystemSettingsSetupItem,
-                           ui_language_text("設定模式", "设置模式", "Setup"));
+                           settings_display_text(UiTextId::SettingsSetup));
         set_secondary_text(secondary_items,
                            kSystemSettingsOtaItem,
-                           ui_language_text("檢查更新", "检查更新", "Check OTA"));
+                           settings_display_text(UiTextId::SettingsCheckUpdates));
         set_secondary_text(secondary_items,
                            kSystemSettingsNetworkDiagItem,
-                           ui_language_text("網路檢測", "网络检测", "Net test"));
+                           settings_display_text(UiTextId::SettingsNetworkDiagnostics));
     }
 }

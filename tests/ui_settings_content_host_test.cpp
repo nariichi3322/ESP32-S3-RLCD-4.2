@@ -142,6 +142,7 @@ int main()
     populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
     expect_text(items, kSystemSettingsFactoryResetItem, "Confirm reset");
     expect_text(items, kSystemSettingsClearCodexBondsItem, "Clear pair");
+    expect_text(items, kSystemSettingsLanguageItem, "English");
     expect_text(items, kSystemSettingsOtaItem, "Check OTA");
     expect_text(items, kSystemSettingsNetworkDiagItem, "Net test");
 
