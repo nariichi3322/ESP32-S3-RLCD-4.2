@@ -15,6 +15,8 @@ The full-feature description below is retained as an architectural reference. Th
 
 ## Quick Links
 
+**LVGL is the project's primary UI framework.** It manages page layouts, text, menus, and status widgets, while large clock digits, images, and charts use LVGL Canvas and custom drawing. The RLCD driver handles monochrome output and prioritizes partial refreshes to balance readability and power consumption.
+
 - [Chinese User Guide](docs/User_zh.md)
 - [English User Guide](docs/User.md)
 - [Contributing Guide](CONTRIBUTING.md)
@@ -29,7 +31,14 @@ The full-feature description below is retained as an architectural reference. Th
 - [Official Waveshare ESP32-S3-RLCD-4.2 product page](https://www.waveshare.com/product/esp32-s3-rlcd-4.2.htm): official board overview, specifications, and purchasing information.
 - [Official Waveshare ESP32-S3-RLCD-4.2 documentation](https://docs.waveshare.com/ESP32-S3-RLCD-4.2): interfaces, schematic, examples, and hardware resources.
 - [ESP32-S3-RLCD-4.2_UP](https://github.com/wickenzh/ESP32-S3-RLCD-4.2_UP): OTA firmware mirror with available firmware and version information.
-- [ESP32-S3-RLCD-4.2_Web](https://github.com/wickenzh/ESP32-S3-RLCD-4.2_Web): web-based desktop client for device configuration and custom resource management.
+- [Open the web client](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/): convert images/GIFs, configure resources, verify and flash firmware, and read serial logs. [Source and guide](host_web/README.md).
+
+## Source Layout
+
+- `RLCD_CLOCK/`: ESP-IDF firmware, components, fonts, simulator and tests. Run `idf.py build` from this directory.
+- `host_web/`: browser client. Pages publishes only website files and the latest 10 verified firmware releases.
+- `firmware/`: OTA manifests; `docs/`: user guides and Power Demo; `previews/`: SDL previews.
+- `.github/`: firmware builds and website deployment. Web updates deploy independently without creating firmware versions.
 
 ## Project Scope
 
@@ -43,7 +52,7 @@ Core goals:
 - **Stability first:** OTA, audio, display, and network tasks use explicit state and resource guards.
 - **Maintainable structure:** pages, weather, configuration, audio, sensors, OTA, and Xiaozhi AI are maintained by responsibility.
 
-## Seven Work Pages
+## Nine Work Pages
 
 The default order is shown below. Pages can be disabled or reordered in Settings, while the firmware always keeps at least one work page enabled.
 
@@ -54,7 +63,8 @@ The default order is shown below. Pages can be disabled or reordered in Settings
 5. **Calendar:** current-month calendar, lunar dates, festivals, and today highlighting; six-row months keep the current date visible.
 6. **Temperature/Humidity History:** local temperature and humidity history with trend information.
 7. **Xiaozhi AI:** local wake word, voice conversations, captions, spoken replies, one-shot alarms, Pomodoro timers, and weather-city configuration.
-
+8. **Aggregate Clock:** a seconds-updating local clock that combines weather, forecast range, lunar date, and local sensor data.
+9. **Codex Usage:** encrypted BLE display of Codex usage and quota status from the companion application.
 Every page follows a partial-refresh-first policy. Second-level pages update only changing digits, minute-level pages redraw only when time, data, or visible state changes, and hidden pages do not continue unnecessary rendering.
 
 ## Provisioning and Networking
@@ -68,7 +78,7 @@ Initial configuration is completed through the device setup portal:
 
 Network activity is demand-driven:
 
-- Weather Clock and Weather Board request weather only when the page is enabled and data is missing or due for synchronization.
+- Weather Clock, Weather Board, and Aggregate Clock share cached Open-Meteo weather; forecast and missing-data updates are requested only when required, and startup prefetch for enabled pages is staggered.
 - Picture Clock requests the daily saying only when needed.
 - NTP runs during startup, manual synchronization, and scheduled time-maintenance points.
 - OTA, Network Diagnostics, and manual synchronization run only after explicit user actions.
@@ -113,11 +123,11 @@ The standalone [Power Demo](docs/Power%20Demo/README.md) under `docs/Power Demo/
 
 ## Source Layout
 
-- `main/`: application entry point and firmware business modules.
-- `components/`: board support, display, audio, resources, and third-party components.
-- `partitions.csv`: ESP32-S3 partition table.
-- `CMakeLists.txt`: ESP-IDF project entry point.
-- `sdkconfig.defaults`: default project configuration.
+- `RLCD_CLOCK/main/`: application entry point and firmware business modules.
+- `RLCD_CLOCK/components/`: board support, display, audio, resources, and third-party components.
+- `RLCD_CLOCK/partitions.csv`: ESP32-S3 partition table.
+- `RLCD_CLOCK/CMakeLists.txt`: ESP-IDF project entry point.
+- `RLCD_CLOCK/sdkconfig.defaults`: default project configuration.
 - `docs/`: user guides and the standalone Power Demo.
 - `previews/`: every detailed SDL page preview and the generated contact sheets.
 - `.github/`: public firmware build and source-release workflow.

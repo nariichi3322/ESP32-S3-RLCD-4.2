@@ -1,0 +1,293 @@
+# 固件主组件的源码清单和构建依赖配置。
+# ESP-IDF's component-requirements pass evaluates this file in a separate
+# CMake context. Keep the default here as well as in the project root so that
+# the requirements pass does not mistake an omitted custom cache variable for
+# an invalid locale.
+if(NOT DEFINED APP_UI_LOCALE OR "${APP_UI_LOCALE}" STREQUAL "")
+    set(APP_UI_LOCALE "zh-TW")
+endif()
+
+if("${APP_UI_LOCALE}" STREQUAL "zh-TW")
+    set(WEATHER_CLOCK_APP_UI_LOCALE_ID 0)
+    set(WEATHER_CLOCK_APP_UI_LOCALE_TAG "zh-TW")
+    set(WEATHER_CLOCK_LOCALE_ASSETS
+        "assets/zh_font_16.c"
+        "assets/zh_flip_lunar_22.c"
+        "assets/zh_pomodoro_title_24.c")
+elseif("${APP_UI_LOCALE}" STREQUAL "zh-CN")
+    set(WEATHER_CLOCK_APP_UI_LOCALE_ID 1)
+    set(WEATHER_CLOCK_APP_UI_LOCALE_TAG "zh-CN")
+    set(WEATHER_CLOCK_LOCALE_ASSETS
+        "assets/zh_font_16.c"
+        "assets/zh_flip_lunar_22.c"
+        "assets/zh_pomodoro_title_24.c")
+elseif("${APP_UI_LOCALE}" STREQUAL "en")
+    set(WEATHER_CLOCK_APP_UI_LOCALE_ID 2)
+    set(WEATHER_CLOCK_APP_UI_LOCALE_TAG "en")
+    # Weather geocoding can temporarily return a CJK region name when the
+    # English lookup is unavailable. Keep the compact Chinese font as a
+    # fallback so that external location text never becomes tofu boxes.
+    set(WEATHER_CLOCK_LOCALE_ASSETS
+        "assets/zh_font_16.c")
+elseif("${APP_UI_LOCALE}" STREQUAL "ja")
+    set(WEATHER_CLOCK_APP_UI_LOCALE_ID 3)
+    set(WEATHER_CLOCK_APP_UI_LOCALE_TAG "ja")
+    set(WEATHER_CLOCK_LOCALE_ASSETS
+        "assets/ja_font_16.c"
+        "assets/ja_font_extra.c")
+else()
+    message(FATAL_ERROR "APP_UI_LOCALE must be zh-TW, zh-CN, en, or ja")
+endif()
+
+idf_component_register(
+    SRCS
+        "core/main.cpp"
+        "codex/codex_usage_protocol.cpp"
+        "codex/codex_usage_state.cpp"
+        "codex/codex_usage_ble.cpp"
+        "core/app_task_startup.cpp"
+        "core/app_metadata.cpp"
+        "core/app_event_group.cpp"
+        "core/app_hardware.cpp"
+        "core/chime_runtime_state.cpp"
+        "core/active_work_page_state.cpp"
+        "core/startup_state.cpp"
+        "core/ascii_text.cpp"
+        "ui/ui_canvas.cpp"
+        "ui/ui_bitmap.cpp"
+        "ui/ui_status_gif.cpp"
+        "ui/ui_progress.cpp"
+        "ui/ui_dseg_render.cpp"
+        "ui/ui_dseg_clock.cpp"
+        "ui/ui_widgets.cpp"
+        "ui/ui_time_format.cpp"
+        "ui/ui_task_notify.cpp"
+        "ui/ui_work_status.cpp"
+        "ui/ui_page_state.cpp"
+        "ui/ui_work_page_catalog.cpp"
+        "ui/ui_work_page_order_policy.cpp"
+        "ui/ui_object_refs.cpp"
+        "ui/ui_aux_pages.cpp"
+        "ui/ui_boot_screen.cpp"
+        "ui/ui_settings_page.cpp"
+        "ui/ui_settings_content.cpp"
+        "ui/ui_battery.cpp"
+        "ui/ui_battery_blink.cpp"
+        "ui/ui_setup_status.cpp"
+        "ui/ui_info_page_state.cpp"
+        "ui/ui_settings_feedback.cpp"
+        "ui/ui_settings_activity_state.cpp"
+        "ui/ui_settings_confirmation_state.cpp"
+        "ui/ui_settings_navigation_state.cpp"
+        "ui/ui_settings_navigation.cpp"
+        "ui/ui_settings_ota_panel.cpp"
+        "ui/ui_settings_actions.cpp"
+        "ui/ui_history.cpp"
+        "ui/ui_history_chart.cpp"
+        "ui/ui_history_format.cpp"
+        "ui/ui_history_window.cpp"
+        "ui/ui_gallery.cpp"
+        "ui/ui_gallery_selection.cpp"
+        "ui/ui_gallery_rotation_state.cpp"
+        "ui/ui_flip_clock.cpp"
+        "ui/ui_flip_clock_runtime.cpp"
+        "ui/ui_inverted_clock_card.cpp"
+        "ui/ui_flip_sensor_mood.cpp"
+        "ui/ui_xiaozhi.cpp"
+        "ui/ui_xiaozhi_face.cpp"
+        "ui/ui_xiaozhi_subtitle.cpp"
+        "ui/ui_calendar.cpp"
+        "ui/ui_calendar_layout.cpp"
+        "ui/ui_weather_board.cpp"
+        "ui/ui_weather_board_mode.cpp"
+        "ui/ui_weather_board_sun.cpp"
+        "ui/ui_weather_board_text.cpp"
+        "ui/ui_aggregate_clock.cpp"
+        "ui/ui_aggregate_clock_view.cpp"
+        "ui/ui_clock.cpp"
+        "ui/ui_clock_object_state.cpp"
+        "ui/ui_clock_runtime.cpp"
+        "ui/ui_clock_seconds_state.cpp"
+        "ui/ui_clock_time.cpp"
+        "ui/ui_visible_cache.cpp"
+        "ui/ui_visible_data_sync.cpp"
+        "ui/ui_loop_schedule.cpp"
+        "ui/ui_language.cpp"
+        "ui/ui_font_provider.cpp"
+        "ui/ui_i18n.cpp"
+        "ui/ui_codex_usage.cpp"
+        "ui/ui_codex_pairing.cpp"
+        "ui/ui_runtime_schedule.cpp"
+        "ui/ui_status_refresh_policy.cpp"
+        "ui/ui_work_page_update.cpp"
+        "ui/ui_views.cpp"
+        "ui/ui_display_flush.cpp"
+        "ui/calendar_lunar.cpp"
+        "storage/custom_assets.cpp"
+        "storage/custom_asset_catalog.cpp"
+        "storage/custom_asset_format.cpp"
+        "storage/device_settings_persistence.cpp"
+        "storage/saved_config_loader.cpp"
+        "network/network_config.cpp"
+        "network/network_chime_storage.cpp"
+        "network/network_config_events.cpp"
+        "network/network_runtime_events.cpp"
+        "network/network_sync_request_generation.cpp"
+        "network/network_factory_reset.cpp"
+        "network/network_config_nvs.cpp"
+        "network/network_credentials_state.cpp"
+        "network/offline_mode_state.cpp"
+        "network/manual_weather_city_state.cpp"
+        "network/network_weather_city_storage.cpp"
+        "network/network_page_storage.cpp"
+        "network/network_provisioning.cpp"
+        "network/manual_time_parser.cpp"
+        "network/network_provisioning_session.cpp"
+        "network/weather_city_text.cpp"
+        "network/weather_city_pending_state.cpp"
+        "network/weather_city_mcp.cpp"
+        "network/network_form.cpp"
+        "network/provisioning_form_fields.cpp"
+        "network/captive_dns_packet.cpp"
+        "network/wifi_radio_state.cpp"
+        "network/wifi_portal_state.cpp"
+        "network/setup_portal_control.cpp"
+        "network/wifi_portal.cpp"
+        "network/wifi_portal_http.cpp"
+        "network/wifi_portal_dns.cpp"
+        "network/wifi_portal_html_text.cpp"
+        "network/wifi_portal_pages.cpp"
+        "network/ntp_runtime_state.cpp"
+        "network/ntp_server_config.cpp"
+        "network/ntp_services.cpp"
+        "network/network_http_transaction_lock.cpp"
+        "network/http_client.cpp"
+        "network/network_gzip.cpp"
+        "network/network_https_resources.cpp"
+        "network/network_json.cpp"
+        "network/network_url.cpp"
+        "network/open_meteo_client.cpp"
+        "network/open_meteo_parser.cpp"
+        "network/weather_icons.cpp"
+        "network/weather_snapshot_store.cpp"
+        "network/weather_state.cpp"
+        "network/weather_update.cpp"
+        "network/ip_geolocation.cpp"
+        "network/daily_saying_parser.cpp"
+        "network/daily_saying_state.cpp"
+        "network/daily_saying.cpp"
+        "network/network_diagnostics.cpp"
+        "network/network_diagnostics_probe.cpp"
+        "network/network_public_ip_parser.cpp"
+        "network/network_diagnostics_state.cpp"
+        "network/network_cache_policy.cpp"
+        "network/network_boot_sync.cpp"
+        "network/network_services.cpp"
+        "network/network_boot_refresh_state.cpp"
+        "network/network_sync_requests.cpp"
+        "network/network_ntp_schedule_state.cpp"
+        "network/network_sync_runtime.cpp"
+        "network/network_sync_wait.cpp"
+        "network/network_sync_schedule.cpp"
+        "ota/ota_download_http.cpp"
+        "ota/ota_manifest_client.cpp"
+        "ota/ota_manifest_parser.cpp"
+        "ota/ota_manifest_workspace.cpp"
+        "ota/ota_network_session.cpp"
+        "ota/ota_runtime_guards.cpp"
+        "ota/ota_runtime_state.cpp"
+        "ota/ota_services.cpp"
+        "sensors/power_services.cpp"
+        "sensors/rtc_services.cpp"
+        "sensors/battery_runtime_state.cpp"
+        "sensors/battery_charging_state.cpp"
+        "sensors/battery_services.cpp"
+        "sensors/hourly_sensor_history_state.cpp"
+        "sensors/local_sensor_state.cpp"
+        "sensors/sensor_history.cpp"
+        "sensors/sensor_trend.cpp"
+        "sensors/sensor_time.cpp"
+        "sensors/sensor_services.cpp"
+        "audio/audio_services.cpp"
+        "audio/audio_chime.cpp"
+        "alarm/alarm_replacement_policy.cpp"
+        "alarm/alarm_storage.cpp"
+        "alarm/reminder_schedule.cpp"
+        "alarm/alarm_runtime_state.cpp"
+        "alarm/alarm_services.cpp"
+        "pomodoro/pomodoro_runtime_state.cpp"
+        "pomodoro/pomodoro_services.cpp"
+        "xiaozhi/xiaozhi_activation_client.cpp"
+        "xiaozhi/xiaozhi_activation_flow.cpp"
+        "xiaozhi/xiaozhi_activation_storage.cpp"
+        "xiaozhi/xiaozhi_ai.cpp"
+        "xiaozhi/xiaozhi_auto_return_state.cpp"
+        "xiaozhi/xiaozhi_audio_frames.cpp"
+        "xiaozhi/xiaozhi_binding_voice.cpp"
+        "xiaozhi/xiaozhi_binding_voice_state.cpp"
+        "xiaozhi/xiaozhi_conversation_events.cpp"
+        "xiaozhi/xiaozhi_conversation_io.cpp"
+        "xiaozhi/xiaozhi_mcp_arguments.cpp"
+        "xiaozhi/xiaozhi_mcp_json.cpp"
+        "xiaozhi/xiaozhi_mcp.cpp"
+        "xiaozhi/xiaozhi_mcp_schema.cpp"
+        "xiaozhi/xiaozhi_power_session.cpp"
+        "xiaozhi/xiaozhi_runtime_diagnostics.cpp"
+        "xiaozhi/xiaozhi_server_hello_parser.cpp"
+        "xiaozhi/xiaozhi_snapshot_state.cpp"
+        "xiaozhi/xiaozhi_text_utils.cpp"
+        "xiaozhi/xiaozhi_tts_playback.cpp"
+        "xiaozhi/xiaozhi_voice.cpp"
+        "xiaozhi/xiaozhi_voice_codec.cpp"
+        "xiaozhi/xiaozhi_voice_io_storage.cpp"
+        "xiaozhi/xiaozhi_websocket_session.cpp"
+        "input/input_tasks.cpp"
+        "assets/boot_anim.c"
+        ${WEATHER_CLOCK_LOCALE_ASSETS}
+        "assets/weather_icons_36.c"
+        "assets/aggregate_numeric_20.c"
+    INCLUDE_DIRS
+        "."
+        "core"
+        "codex"
+        "ui"
+        "network"
+        "ota"
+        "sensors"
+        "audio"
+        "alarm"
+        "pomodoro"
+        "xiaozhi"
+        "input"
+        "storage"
+        "assets"
+    REQUIRES
+        app_bsp
+        port_bsp
+        lvgl__lvgl
+        nvs_flash
+        esp_wifi
+        esp_netif
+        esp_event
+        esp_http_client
+        esp_http_server
+        esp_https_ota
+        lwip
+        app_update
+        spi_flash
+        esp_timer
+        esp_pm
+        esp_adc
+        esp_driver_gpio
+        json
+        mbedtls
+        bt
+        tcp_transport)
+
+string(TIMESTAMP WEATHER_CLOCK_BUILD_DATE "%Y-%m-%d")
+idf_build_get_property(WEATHER_CLOCK_PROJECT_VER PROJECT_VER)
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    WEATHER_CLOCK_BUILD_DATE="${WEATHER_CLOCK_BUILD_DATE}"
+    PROJECT_VER="${WEATHER_CLOCK_PROJECT_VER}"
+    APP_UI_LOCALE=${WEATHER_CLOCK_APP_UI_LOCALE_ID}
+    APP_UI_LOCALE_TAG="${WEATHER_CLOCK_APP_UI_LOCALE_TAG}")

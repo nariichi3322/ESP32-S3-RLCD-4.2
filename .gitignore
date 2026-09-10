@@ -1,6 +1,7 @@
 # ESP-IDF build output and downloaded managed components
 /build/
 /managed_components/
+/RLCD_CLOCK/managed_components/
 
 # Local ESP-IDF configuration backups
 /sdkconfig.old

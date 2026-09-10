@@ -1,0 +1,527 @@
+// 管理工作页名称、启用状态、页面特征和用户自定义顺序。
+#include "ui_work_page_catalog_internal.h"
+
+#include "active_work_page_state_internal.h"
+#include "app_constexpr.h"
+#include "offline_mode_state.h"
+#include "scoped_semaphore_lock.h"
+#include "ui_work_page_order_policy.h"
+#include "ui_i18n.h"
+#include "ui_language.h"
+
+#include <atomic>
+#include <string.h>
+
+namespace {
+constexpr int kFirstWorkPage = kWorkPageWeatherClock;
+constexpr int kFallbackWorkPage = kWorkPageWeatherClock;
+constexpr uint8_t kWorkPageTraitRequiresNetwork = 1U << 0;
+constexpr uint8_t kWorkPageTraitLowRefreshIdle = 1U << 1;
+constexpr uint8_t kWorkPageTraitWeatherData = 1U << 2;
+constexpr uint8_t kWorkPageTraitDailySaying = 1U << 3;
+constexpr uint8_t kWorkPageTraitExtendedWeatherData = 1U << 4;
+constexpr uint8_t kWorkPageTraitAirQuality = 1U << 5;
+constexpr uint8_t kKnownWorkPageTraits =
+    kWorkPageTraitRequiresNetwork |
+    kWorkPageTraitLowRefreshIdle |
+    kWorkPageTraitWeatherData |
+    kWorkPageTraitDailySaying |
+    kWorkPageTraitExtendedWeatherData |
+    kWorkPageTraitAirQuality;
+
+struct WorkPageDescriptor {
+    uint8_t page;
+    UiTextId name_id;
+    uint8_t traits;
+};
+
+constexpr WorkPageDescriptor kWorkPageDescriptors[kWorkPageCount] = {
+    {kWorkPageWeatherClock,
+      UiTextId::WorkPageWeatherClock,
+     kWorkPageTraitRequiresNetwork | kWorkPageTraitWeatherData},
+    {kWorkPageGallery,
+      UiTextId::WorkPageGallery,
+     kWorkPageTraitRequiresNetwork | kWorkPageTraitLowRefreshIdle |
+         kWorkPageTraitDailySaying},
+    {kWorkPageWeatherBoard,
+     UiTextId::WorkPageWeatherBoard,
+      kWorkPageTraitRequiresNetwork | kWorkPageTraitLowRefreshIdle |
+          kWorkPageTraitWeatherData | kWorkPageTraitExtendedWeatherData |
+          kWorkPageTraitAirQuality},
+    {kWorkPageFlipClock, UiTextId::WorkPageFlipClock, 0},
+    {kWorkPageCalendar, UiTextId::WorkPageCalendar, kWorkPageTraitLowRefreshIdle},
+    {kWorkPageHistory, UiTextId::WorkPageHistory,
+     kWorkPageTraitLowRefreshIdle},
+    {kWorkPageXiaozhiAI, UiTextId::WorkPageXiaozhi, kWorkPageTraitRequiresNetwork},
+    {kWorkPageAggregateClock, UiTextId::WorkPageAggregateClock,
+     kWorkPageTraitRequiresNetwork | kWorkPageTraitWeatherData |
+         kWorkPageTraitExtendedWeatherData},
+    {kWorkPageCodexUsage, UiTextId::Codex, kWorkPageTraitLowRefreshIdle},
+};
+
+constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
+    kWorkPageWeatherClock,
+    kWorkPageGallery,
+    kWorkPageWeatherBoard,
+    kWorkPageFlipClock,
+    kWorkPageCalendar,
+    kWorkPageHistory,
+    kWorkPageXiaozhiAI,
+    kWorkPageAggregateClock,
+    kWorkPageCodexUsage,
+};
+StaticTaskMutex s_work_page_order_mutex;
+uint8_t s_work_page_order[kWorkPageCount] = {
+    kWorkPageWeatherClock,
+    kWorkPageGallery,
+    kWorkPageWeatherBoard,
+    kWorkPageFlipClock,
+    kWorkPageCalendar,
+    kWorkPageHistory,
+    kWorkPageXiaozhiAI,
+    kWorkPageAggregateClock,
+    kWorkPageCodexUsage,
+};
+constexpr WorkPageMask work_page_mask(int page)
+{
+    return work_page_mask_bit(page);
+}
+
+constexpr WorkPageMask kAllWorkPageMask =
+    static_cast<WorkPageMask>((1U << kWorkPageCount) - 1U);
+std::atomic<WorkPageMask> s_work_page_enabled_mask{kAllWorkPageMask};
+
+constexpr WorkPageMask work_page_mask_for_trait(uint8_t trait)
+{
+    WorkPageMask mask = 0;
+    for (const WorkPageDescriptor &descriptor : kWorkPageDescriptors) {
+        if ((descriptor.traits & trait) != 0) {
+            mask = static_cast<WorkPageMask>(mask | work_page_mask(descriptor.page));
+        }
+    }
+    return mask;
+}
+
+constexpr WorkPageMask kNetworkWorkPageMask =
+    work_page_mask_for_trait(kWorkPageTraitRequiresNetwork);
+constexpr WorkPageMask kLowRefreshIdleWorkPageMask =
+    work_page_mask_for_trait(kWorkPageTraitLowRefreshIdle);
+constexpr WorkPageMask kWeatherDataWorkPageMask =
+    work_page_mask_for_trait(kWorkPageTraitWeatherData);
+constexpr WorkPageMask kDailySayingWorkPageMask =
+    work_page_mask_for_trait(kWorkPageTraitDailySaying);
+constexpr WorkPageMask kExtendedWeatherDataWorkPageMask =
+    work_page_mask_for_trait(kWorkPageTraitExtendedWeatherData);
+constexpr WorkPageMask kAirQualityWorkPageMask =
+    work_page_mask_for_trait(kWorkPageTraitAirQuality);
+constexpr WorkPageMask kLocalWorkPageMask =
+    static_cast<WorkPageMask>(~kNetworkWorkPageMask) & kAllWorkPageMask;
+
+constexpr bool work_page_descriptors_are_indexed_by_id()
+{
+    for (size_t i = 0; i < array_count(kWorkPageDescriptors); ++i) {
+        if (kWorkPageDescriptors[i].page != i) {
+            return false;
+        }
+    }
+    return true;
+}
+
+template <size_t N>
+constexpr bool page_list_covers_each_work_page_once(const uint8_t (&pages)[N])
+{
+    if (N != kWorkPageCount) {
+        return false;
+    }
+    for (int page = kFirstWorkPage; page < kWorkPageCount; ++page) {
+        int hits = 0;
+        for (uint8_t candidate : pages) {
+            if (candidate == page) {
+                ++hits;
+            }
+        }
+        if (hits != 1) {
+            return false;
+        }
+    }
+    return true;
+}
+
+constexpr bool work_page_descriptor_names_are_nonempty()
+{
+    for (const WorkPageDescriptor &descriptor : kWorkPageDescriptors) {
+        if (static_cast<unsigned>(descriptor.name_id) >=
+            static_cast<unsigned>(UiTextId::Count)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+constexpr bool work_page_descriptor_traits_are_valid()
+{
+    constexpr uint8_t kNetworkDataTraits =
+        kWorkPageTraitWeatherData | kWorkPageTraitDailySaying |
+        kWorkPageTraitExtendedWeatherData | kWorkPageTraitAirQuality;
+    for (const WorkPageDescriptor &descriptor : kWorkPageDescriptors) {
+        if ((descriptor.traits & ~kKnownWorkPageTraits) != 0) {
+            return false;
+        }
+        if ((descriptor.traits & kNetworkDataTraits) != 0 &&
+            (descriptor.traits & kWorkPageTraitRequiresNetwork) == 0) {
+            return false;
+        }
+        if ((descriptor.traits & kWorkPageTraitExtendedWeatherData) != 0 &&
+            (descriptor.traits & kWorkPageTraitWeatherData) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+constexpr bool work_page_has_trait(int page, uint8_t trait)
+{
+    return page >= kFirstWorkPage &&
+           page < kWorkPageCount &&
+           (kWorkPageDescriptors[page].traits & trait) != 0;
+}
+
+bool copy_normalized_work_page_order(uint8_t *order,
+                                     size_t order_size,
+                                     WorkPageMask page_mask)
+{
+    if (!order || order_size != sizeof(s_work_page_order)) {
+        return false;
+    }
+    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
+    if (!lock) {
+        return false;
+    }
+    work_page_order_policy::normalize(s_work_page_order,
+                                      sizeof(s_work_page_order),
+                                      page_mask,
+                                      kDefaultWorkPageOrder,
+                                      sizeof(kDefaultWorkPageOrder));
+    memcpy(order, s_work_page_order, sizeof(s_work_page_order));
+    return true;
+}
+
+static_assert(kFirstWorkPage == 0, "work page ids must start at zero");
+static_assert(kFallbackWorkPage == kWorkPageWeatherClock, "work page order fallback must remain weather clock");
+static_assert(kWorkPageCount > 0, "there must be at least one work page");
+static_assert(kWorkPageCount <= static_cast<int>(sizeof(WorkPageMask) * 8),
+              "work page enabled mask must represent every work page");
+static_assert(kLocalWorkPageMask != 0, "offline mode requires at least one local work page");
+static_assert((kLocalWorkPageMask & kNetworkWorkPageMask) == 0,
+              "local and network work page masks must not overlap");
+static_assert(kLowRefreshIdleWorkPageMask != 0,
+              "low-refresh idle page mask must not be empty");
+static_assert((kLowRefreshIdleWorkPageMask & ~kAllWorkPageMask) == 0,
+              "low-refresh idle page mask must only contain work pages");
+static_assert((kWeatherDataWorkPageMask & ~kNetworkWorkPageMask) == 0,
+              "weather-data pages must require network access");
+static_assert((kDailySayingWorkPageMask & ~kNetworkWorkPageMask) == 0,
+              "daily-saying pages must require network access");
+static_assert((kExtendedWeatherDataWorkPageMask & ~kWeatherDataWorkPageMask) == 0,
+              "extended-weather pages must consume basic weather data");
+static_assert(array_count(kDefaultWorkPageOrder) == kWorkPageCount,
+              "default work page order must cover every work page");
+static_assert(array_count(kWorkPageDescriptors) == kDisplaySettingsPageItemCount,
+              "display setting page mapping must match the settings item count");
+static_assert(array_count(kWorkPageDescriptors) == kWorkPageCount,
+              "work page descriptors must cover every work page");
+static_assert(work_page_descriptor_names_are_nonempty(),
+              "work page descriptor names must be non-empty");
+static_assert(static_cast<unsigned>(UiTextId::WorkPageUnknown) <
+                  static_cast<unsigned>(UiTextId::Count),
+              "unknown work page text id must be valid");
+static_assert(work_page_descriptors_are_indexed_by_id(),
+              "work page descriptors must follow the contiguous work page ids");
+static_assert(work_page_descriptor_traits_are_valid(),
+              "network data traits must only belong to network pages");
+static_assert(page_list_covers_each_work_page_once(kDefaultWorkPageOrder),
+              "default work page order must include every work page exactly once");
+}
+
+bool work_page_catalog_init()
+{
+    return s_work_page_order_mutex.init();
+}
+
+bool is_work_page_enabled(int page)
+{
+    if (!work_page_order_policy::is_work_page(page)) {
+        return false;
+    }
+    const WorkPageMask saved_mask = work_page_enabled_mask_load();
+    const WorkPageMask effective_mask = offline_mode_enabled_load()
+                                       ? work_page_mask_for_offline_mode(saved_mask)
+                                       : saved_mask;
+    return (effective_mask & work_page_mask(page)) != 0;
+}
+
+WorkPageMask work_page_enabled_mask_load()
+{
+    return s_work_page_enabled_mask.load(std::memory_order_acquire);
+}
+
+void work_page_enabled_mask_store(WorkPageMask page_mask)
+{
+    s_work_page_enabled_mask.store(page_mask, std::memory_order_release);
+}
+
+bool work_page_requires_network(int page)
+{
+    return work_page_order_policy::is_work_page(page) &&
+           work_page_has_trait(page, kWorkPageTraitRequiresNetwork);
+}
+
+bool work_page_uses_low_refresh_idle(int page)
+{
+    return work_page_order_policy::is_work_page(page) &&
+           work_page_has_trait(page, kWorkPageTraitLowRefreshIdle);
+}
+
+WorkPageDataRequirements work_page_data_requirements(int page)
+{
+    return {
+        work_page_has_trait(page, kWorkPageTraitWeatherData),
+        work_page_has_trait(page, kWorkPageTraitExtendedWeatherData),
+        work_page_has_trait(page, kWorkPageTraitDailySaying),
+        work_page_has_trait(page, kWorkPageTraitAirQuality),
+    };
+}
+
+WorkPageDataRequirements enabled_work_page_data_requirements(WorkPageMask page_mask)
+{
+    page_mask = static_cast<WorkPageMask>(page_mask & kAllWorkPageMask);
+    return {
+        (page_mask & kWeatherDataWorkPageMask) != 0,
+        (page_mask & kExtendedWeatherDataWorkPageMask) != 0,
+        (page_mask & kDailySayingWorkPageMask) != 0,
+        (page_mask & kAirQualityWorkPageMask) != 0,
+    };
+}
+
+WorkPageMask normalize_work_page_enabled_mask(WorkPageMask page_mask)
+{
+    page_mask &= kAllWorkPageMask;
+    if (page_mask == 0) {
+        return kAllWorkPageMask;
+    }
+    if (!work_page_order_policy::mask_has_valid_home(page_mask)) {
+        page_mask |= work_page_mask(kWorkPageWeatherClock);
+    }
+    return page_mask;
+}
+
+WorkPageMask work_page_mask_for_offline_mode(WorkPageMask page_mask)
+{
+    WorkPageMask local_mask = static_cast<WorkPageMask>(page_mask & kLocalWorkPageMask);
+    if (local_mask != 0) {
+        return local_mask;
+    }
+    uint8_t order[kWorkPageCount] = {};
+    if (work_page_order_copy(order, sizeof(order)) &&
+        work_page_order_policy::order_is_valid(order, sizeof(order))) {
+        for (uint8_t page : order) {
+            if (!work_page_requires_network(page)) {
+                return work_page_mask(page);
+            }
+        }
+    }
+    return work_page_mask(kWorkPageFlipClock);
+}
+
+const char *work_page_name(int page)
+{
+    if (!work_page_order_policy::is_work_page(page)) {
+        return ui_text(UiTextId::WorkPageUnknown);
+    }
+    return ui_text(kWorkPageDescriptors[page].name_id);
+}
+
+int first_enabled_work_page()
+{
+    const WorkPageMask saved_mask = work_page_enabled_mask_load();
+    const WorkPageMask page_mask = offline_mode_enabled_load()
+                                  ? work_page_mask_for_offline_mode(saved_mask)
+                                  : saved_mask;
+    uint8_t order[kWorkPageCount] = {};
+    if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
+        return kFallbackWorkPage;
+    }
+    int index = work_page_order_policy::first_enabled_index(
+        order, sizeof(order), page_mask);
+    return work_page_order_policy::index_found(index)
+               ? order[index]
+               : kFallbackWorkPage;
+}
+
+void reset_work_page_order()
+{
+    static_assert(sizeof(kDefaultWorkPageOrder) == sizeof(s_work_page_order),
+                  "default work page order storage must match runtime order storage");
+    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
+    if (!lock) {
+        return;
+    }
+    memcpy(s_work_page_order, kDefaultWorkPageOrder, sizeof(s_work_page_order));
+}
+
+void normalize_work_page_order()
+{
+    const WorkPageMask page_mask = work_page_enabled_mask_load();
+    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
+    if (!lock) {
+        return;
+    }
+    work_page_order_policy::normalize(s_work_page_order,
+                                      sizeof(s_work_page_order),
+                                      page_mask,
+                                      kDefaultWorkPageOrder,
+                                      sizeof(kDefaultWorkPageOrder));
+}
+
+bool work_page_mask_has_valid_home(WorkPageMask page_mask)
+{
+    return work_page_order_policy::mask_has_valid_home(page_mask);
+}
+
+bool work_page_order_copy(uint8_t *order, size_t order_size)
+{
+    if (!order || order_size != sizeof(s_work_page_order)) {
+        return false;
+    }
+    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
+    if (!lock) {
+        return false;
+    }
+    memcpy(order, s_work_page_order, sizeof(s_work_page_order));
+    return true;
+}
+
+bool work_page_order_normalize_and_copy(uint8_t *order, size_t order_size)
+{
+    return copy_normalized_work_page_order(
+        order, order_size, work_page_enabled_mask_load());
+}
+
+void work_page_order_replace(const uint8_t *order, size_t order_size)
+{
+    uint8_t replacement[kWorkPageCount] = {};
+    if (work_page_order_policy::order_is_valid(order, order_size)) {
+        memcpy(replacement, order, sizeof(replacement));
+    } else {
+        memcpy(replacement, kDefaultWorkPageOrder, sizeof(replacement));
+    }
+    work_page_order_policy::normalize(replacement,
+                                      sizeof(replacement),
+                                      work_page_enabled_mask_load(),
+                                      kDefaultWorkPageOrder,
+                                      sizeof(kDefaultWorkPageOrder));
+    ScopedSemaphoreLock lock(s_work_page_order_mutex.handle());
+    if (!lock) {
+        return;
+    }
+    memcpy(s_work_page_order, replacement, sizeof(s_work_page_order));
+}
+
+bool work_page_order_swapped_copy_preserving_home(int first_index,
+                                                  int second_index,
+                                                  uint8_t *order,
+                                                  size_t order_size)
+{
+    const WorkPageMask page_mask = work_page_enabled_mask_load();
+    if (!copy_normalized_work_page_order(order, order_size, page_mask)) {
+        return false;
+    }
+    return work_page_order_policy::swap_entries_preserving_home(
+        order,
+        order_size,
+        page_mask,
+        first_index,
+        second_index);
+}
+
+int next_enabled_work_page(int current_page)
+{
+    const WorkPageMask saved_mask = work_page_enabled_mask_load();
+    const WorkPageMask page_mask = offline_mode_enabled_load()
+                                  ? work_page_mask_for_offline_mode(saved_mask)
+                                  : saved_mask;
+    uint8_t order[kWorkPageCount] = {};
+    if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
+        return kFallbackWorkPage;
+    }
+    if (!work_page_order_policy::is_work_page(current_page)) {
+        int first_index = work_page_order_policy::first_enabled_index(
+            order, sizeof(order), page_mask);
+        current_page = work_page_order_policy::index_found(first_index)
+                           ? order[first_index]
+                           : kFallbackWorkPage;
+    }
+    int current_index = work_page_order_policy::index_of(
+        order, sizeof(order), current_page);
+    int next_index = work_page_order_policy::next_enabled_index(
+        order, sizeof(order), page_mask, current_index);
+    return work_page_order_policy::index_found(next_index)
+               ? order[next_index]
+               : kFallbackWorkPage;
+}
+
+int first_enabled_work_page_order_index()
+{
+    const WorkPageMask saved_mask = work_page_enabled_mask_load();
+    const WorkPageMask page_mask = offline_mode_enabled_load()
+                                  ? work_page_mask_for_offline_mode(saved_mask)
+                                  : saved_mask;
+    uint8_t order[kWorkPageCount] = {};
+    if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
+        return 0;
+    }
+    int first_index = work_page_order_policy::first_enabled_index(
+        order, sizeof(order), page_mask);
+    return work_page_order_policy::index_found(first_index) ? first_index : 0;
+}
+
+int next_enabled_work_page_order_index(int current_order_index)
+{
+    const WorkPageMask saved_mask = work_page_enabled_mask_load();
+    const WorkPageMask page_mask = offline_mode_enabled_load()
+                                  ? work_page_mask_for_offline_mode(saved_mask)
+                                  : saved_mask;
+    uint8_t order[kWorkPageCount] = {};
+    if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
+        return 0;
+    }
+    current_order_index = work_page_order_policy::valid_enabled_index(
+        order, sizeof(order), page_mask, current_order_index);
+    int next_index = work_page_order_policy::next_enabled_index(
+        order, sizeof(order), page_mask, current_order_index);
+    return work_page_order_policy::index_found(next_index)
+               ? next_index
+               : work_page_order_policy::valid_enabled_index(
+                     order, sizeof(order), page_mask, -1);
+}
+
+int valid_enabled_work_page_order_index(int current_order_index)
+{
+    const WorkPageMask saved_mask = work_page_enabled_mask_load();
+    const WorkPageMask page_mask = offline_mode_enabled_load()
+                                  ? work_page_mask_for_offline_mode(saved_mask)
+                                  : saved_mask;
+    uint8_t order[kWorkPageCount] = {};
+    if (!copy_normalized_work_page_order(order, sizeof(order), page_mask)) {
+        return 0;
+    }
+    return work_page_order_policy::valid_enabled_index(
+        order, sizeof(order), page_mask, current_order_index);
+}
+
+void ensure_active_work_page_enabled()
+{
+    if (!is_work_page_enabled(active_work_page_load())) {
+        active_work_page_store(first_enabled_work_page());
+    }
+}

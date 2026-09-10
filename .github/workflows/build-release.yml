@@ -50,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          project_version="$(sed -n 's/.*PROJECT_VER "\(v[^"]*\)".*/\1/p' CMakeLists.txt | head -n 1)"
+          project_version="$(sed -n 's/.*PROJECT_VER "\(v[^"]*\)".*/\1/p' RLCD_CLOCK/CMakeLists.txt | head -n 1)"
           if [[ "$project_version" != "$EXPECTED_VERSION" ]]; then
             echo "标签版本 $EXPECTED_VERSION 与工程版本 $project_version 不一致" >&2
             exit 1
@@ -63,20 +63,34 @@ jobs:
             exit 1
           fi
 
+      - name: 准备私有 OTA 端点
+        env:
+          OTA_MANIFEST_URL: ${{ secrets.WEATHER_CLOCK_OTA_MANIFEST_URL }}
+          OTA_BACKUP_MANIFEST_URL: ${{ secrets.WEATHER_CLOCK_OTA_BACKUP_MANIFEST_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/prepare_ota_endpoint.py \
+            --output RLCD_CLOCK/main/core/ota_endpoint_local.h
+          test -s RLCD_CLOCK/main/core/ota_endpoint_local.h
+          echo "Private OTA endpoint configuration prepared"
+
       - name: 校验四語言文字目錄
         shell: bash
         run: python3 tools/generate_ui_text_catalog.py
+        working-directory: RLCD_CLOCK
 
       - name: 静态检查 UI 文字集中化
         shell: bash
         run: python3 tools/check_ui_text_catalog.py
+        working-directory: RLCD_CLOCK
 
       - name: 编译四种语言并生成完整刷写固件
         uses: espressif/esp-idf-ci-action@v1
         with:
           esp_idf_version: v5.5.5
           target: esp32s3
-          path: .
+          path: RLCD_CLOCK
           command: >-
             set -euo pipefail;
             for locale in zh-TW zh-CN en ja; do
@@ -95,7 +109,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/validate_locale_artifacts.py \
+          python3 ../.github/scripts/validate_locale_artifacts.py \
             --version "${VERSION}" \
             --image "zh-TW=weather_clock_${VERSION}.bin" \
             --image "zh-CN=weather_clock_${VERSION}_zh-CN.bin" \
@@ -111,6 +125,7 @@ jobs:
             test "$(stat -c %s "$image")" -lt $((0x6C0000));
             sha256sum "$image" "$merged";
           done
+        working-directory: RLCD_CLOCK
 
       - name: 等待同版本 Release
         env:
@@ -139,7 +154,7 @@ jobs:
         run: |
           set -euo pipefail
           artifact_base="https://github.com/$GITHUB_REPOSITORY/releases/download/$VERSION"
-          python3 .github/scripts/update_locale_manifests.py \
+          python3 ../.github/scripts/update_locale_manifests.py \
             --version "$VERSION" \
             --image "zh-TW=weather_clock_${VERSION}.bin" \
             --image "zh-CN=weather_clock_${VERSION}_zh-CN.bin" \
@@ -147,16 +162,17 @@ jobs:
             --image "ja=weather_clock_${VERSION}_ja.bin" \
             --merged "weather_clock_${VERSION}_merged.bin" \
             --artifact-base "$artifact_base" \
-            --notes-file firmware/OTA_RELEASE_NOTES.md \
-            --latest firmware/latest.json \
-            --versions firmware/versions.json
+            --notes-file ../firmware/OTA_RELEASE_NOTES.md \
+            --latest ../firmware/latest.json \
+            --versions ../firmware/versions.json
+        working-directory: RLCD_CLOCK
 
       - name: 保存 Actions 构建产物
         uses: actions/upload-artifact@v4
         with:
           name: weather-clock-${{ steps.version.outputs.version }}
           path: |
-            weather_clock_${{ steps.version.outputs.version }}*.bin
+            RLCD_CLOCK/weather_clock_${{ steps.version.outputs.version }}*.bin
             firmware/latest.json
             firmware/versions.json
           if-no-files-found: error
@@ -171,7 +187,7 @@ jobs:
           set -euo pipefail
           body_before="$(gh release view "$VERSION" --json body --jq .body)"
           gh release upload "$VERSION" \
-            weather_clock_${VERSION}*.bin \
+            RLCD_CLOCK/weather_clock_${VERSION}*.bin \
             --clobber
           body_after="$(gh release view "$VERSION" --json body --jq .body)"
           if [[ "$body_before" != "$body_after" ]]; then
