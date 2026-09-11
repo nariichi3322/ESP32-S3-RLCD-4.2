@@ -1,0 +1,3 @@
+# ESP-IDF project-local settings are machine-specific and must not be committed.
+/CMakeUserPresets.json
+/.vscode/
