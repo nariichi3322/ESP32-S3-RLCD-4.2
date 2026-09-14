@@ -192,6 +192,42 @@ void set_weather_label_long_mode(lv_obj_t *label, lv_label_long_mode_t mode)
     lv_label_set_long_mode(label, mode);
 }
 
+lv_coord_t current_temperature_text_width(const lv_obj_t *label)
+{
+    if (!label) {
+        return 0;
+    }
+    const char *text = lv_label_get_text(label);
+    const lv_font_t *font = lv_obj_get_style_text_font(label, LV_PART_MAIN);
+    if (!text || !font) {
+        return 0;
+    }
+    lv_point_t text_size = {};
+    lv_txt_get_size(&text_size,
+                    text,
+                    font,
+                    lv_obj_get_style_text_letter_space(label, LV_PART_MAIN),
+                    lv_obj_get_style_text_line_space(label, LV_PART_MAIN),
+                    LV_COORD_MAX,
+                    LV_TEXT_FLAG_NONE);
+    return text_size.x > 0 ? text_size.x : 0;
+}
+
+bool position_current_unit_label()
+{
+    WeatherBoardObjectRefs &objects = s_weather_board_objects;
+    if (!objects.current_temp_label || !objects.current_unit_label) {
+        return false;
+    }
+    const lv_coord_t unit_x = kWeatherBoardCurrentTempX +
+                              current_temperature_text_width(objects.current_temp_label);
+    if (lv_obj_get_x(objects.current_unit_label) == unit_x) {
+        return false;
+    }
+    lv_obj_set_x(objects.current_unit_label, unit_x);
+    return true;
+}
+
 void style_weather_card(lv_obj_t *obj)
 {
     if (!obj) {
@@ -347,6 +383,7 @@ void build_current_weather_panel(lv_obj_t *screen)
                                                       kWeatherBoardCurrentUnitText,
                                                       &lv_font_montserrat_24);
     set_weather_label_align(objects.current_unit_label, LV_TEXT_ALIGN_LEFT);
+    position_current_unit_label();
 
     objects.current_icon_label = make_label(screen,
                                             kWeatherBoardCurrentIconX,
@@ -440,6 +477,7 @@ bool update_current_weather_panel(const WeatherData &weather,
         changed |= set_label_text_if_changed(objects.city_label,
                                              text_or_dash(weather.city));
         changed |= set_label_text_if_changed(objects.current_temp_label, temp_line);
+        changed |= position_current_unit_label();
         changed |= set_label_text_if_changed(objects.current_icon_label,
                                              weather_icon_or_default(weather.icon_kind).c_str());
         changed |= set_label_text_if_changed(objects.current_text_label,
@@ -458,6 +496,7 @@ bool update_current_weather_panel(const WeatherData &weather,
     changed |= set_label_text_if_changed(objects.city_label, weather_board_dash());
     changed |= set_label_text_if_changed(objects.current_temp_label,
                                          weather_board_dash());
+    changed |= position_current_unit_label();
     changed |= set_label_text_if_changed(objects.current_icon_label, "");
     changed |= set_label_text_if_changed(objects.current_text_label,
                                           (bits & kWifiConnectedBit)

@@ -41,8 +41,7 @@ constexpr WorkPageDescriptor kWorkPageDescriptors[kWorkPageCount] = {
      kWorkPageTraitRequiresNetwork | kWorkPageTraitWeatherData},
     {kWorkPageGallery,
       UiTextId::WorkPageGallery,
-     kWorkPageTraitRequiresNetwork | kWorkPageTraitLowRefreshIdle |
-         kWorkPageTraitDailySaying},
+     kWorkPageTraitLowRefreshIdle | kWorkPageTraitDailySaying},
     {kWorkPageWeatherBoard,
      UiTextId::WorkPageWeatherBoard,
       kWorkPageTraitRequiresNetwork | kWorkPageTraitLowRefreshIdle |
@@ -161,8 +160,8 @@ constexpr bool work_page_descriptor_names_are_nonempty()
 constexpr bool work_page_descriptor_traits_are_valid()
 {
     constexpr uint8_t kNetworkDataTraits =
-        kWorkPageTraitWeatherData | kWorkPageTraitDailySaying |
-        kWorkPageTraitExtendedWeatherData | kWorkPageTraitAirQuality;
+        kWorkPageTraitWeatherData | kWorkPageTraitExtendedWeatherData |
+        kWorkPageTraitAirQuality;
     for (const WorkPageDescriptor &descriptor : kWorkPageDescriptors) {
         if ((descriptor.traits & ~kKnownWorkPageTraits) != 0) {
             return false;
@@ -220,8 +219,6 @@ static_assert((kLowRefreshIdleWorkPageMask & ~kAllWorkPageMask) == 0,
               "low-refresh idle page mask must only contain work pages");
 static_assert((kWeatherDataWorkPageMask & ~kNetworkWorkPageMask) == 0,
               "weather-data pages must require network access");
-static_assert((kDailySayingWorkPageMask & ~kNetworkWorkPageMask) == 0,
-              "daily-saying pages must require network access");
 static_assert((kExtendedWeatherDataWorkPageMask & ~kWeatherDataWorkPageMask) == 0,
               "extended-weather pages must consume basic weather data");
 static_assert(array_count(kDefaultWorkPageOrder) == kWorkPageCount,

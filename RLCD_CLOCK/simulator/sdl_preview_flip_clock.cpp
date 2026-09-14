@@ -111,22 +111,22 @@ void build_flip_clock_preview_body(lv_obj_t *screen, const struct tm *local)
     char day_text[8];
     std::snprintf(day_text, sizeof(day_text), "%d", local->tm_mday);
     lv_obj_t *day = sdl_preview_widgets::make_label_with_font(
-        screen, 270, 196, 112, 52, day_text, &lv_font_montserrat_48);
+        screen, 270, 203, 112, 52, day_text, &lv_font_montserrat_48);
     lv_obj_t *day_bold_x = sdl_preview_widgets::make_label_with_font(
-        screen, 271, 196, 112, 52, day_text, &lv_font_montserrat_48);
+        screen, 271, 203, 112, 52, day_text, &lv_font_montserrat_48);
     lv_obj_t *day_bold_y = sdl_preview_widgets::make_label_with_font(
-        screen, 270, 197, 112, 52, day_text, &lv_font_montserrat_48);
+        screen, 270, 204, 112, 52, day_text, &lv_font_montserrat_48);
     lv_obj_t *day_labels[] = {day, day_bold_x, day_bold_y};
     style_white_center_labels(day_labels, sizeof(day_labels) / sizeof(day_labels[0]));
 
     lv_obj_t *lunar = sdl_preview_widgets::make_label_with_font(
-        screen, 270, 243, 112, 42, "初八", &zh_flip_lunar_22);
+        screen, 270, 256, 112, 25, "初八", &zh_flip_lunar_22);
     lv_obj_t *lunar_bold_x = sdl_preview_widgets::make_label_with_font(
-        screen, 271, 243, 112, 42, "初八", &zh_flip_lunar_22);
+        screen, 271, 256, 112, 25, "初八", &zh_flip_lunar_22);
     lv_obj_t *lunar_bold_y = sdl_preview_widgets::make_label_with_font(
-        screen, 270, 244, 112, 42, "初八", &zh_flip_lunar_22);
+        screen, 270, 257, 112, 25, "初八", &zh_flip_lunar_22);
     lv_obj_t *lunar_bold_xy = sdl_preview_widgets::make_label_with_font(
-        screen, 271, 244, 112, 42, "初八", &zh_flip_lunar_22);
+        screen, 271, 257, 112, 25, "初八", &zh_flip_lunar_22);
     lv_obj_t *lunar_labels[] = {lunar, lunar_bold_x, lunar_bold_y, lunar_bold_xy};
     style_white_center_labels(lunar_labels, sizeof(lunar_labels) / sizeof(lunar_labels[0]));
 }

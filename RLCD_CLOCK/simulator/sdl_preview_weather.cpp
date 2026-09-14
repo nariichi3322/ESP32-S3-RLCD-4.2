@@ -26,6 +26,27 @@ void style_weather_preview_card(lv_obj_t *obj)
     lv_obj_set_style_radius(obj, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(obj, 0, LV_PART_MAIN);
 }
+
+void position_current_unit_label(lv_obj_t *temperature, lv_obj_t *unit)
+{
+    if (!temperature || !unit) {
+        return;
+    }
+    const char *text = lv_label_get_text(temperature);
+    const lv_font_t *font = lv_obj_get_style_text_font(temperature, LV_PART_MAIN);
+    if (!text || !font) {
+        return;
+    }
+    lv_point_t text_size = {};
+    lv_txt_get_size(&text_size,
+                    text,
+                    font,
+                    lv_obj_get_style_text_letter_space(temperature, LV_PART_MAIN),
+                    lv_obj_get_style_text_line_space(temperature, LV_PART_MAIN),
+                    LV_COORD_MAX,
+                    LV_TEXT_FLAG_NONE);
+    lv_obj_set_x(unit, kWeatherBoardCurrentTempX + (text_size.x > 0 ? text_size.x : 0));
+}
 } // namespace
 
 const char *preview_weather_icon_text(const char *kind)
@@ -52,20 +73,21 @@ void build_weather_board_preview_body(lv_obj_t *screen)
                kWeatherBoardCurrentCityW,
                kWeatherBoardCurrentCityH,
                "杭州");
-    make_label_with_font(screen,
-                         kWeatherBoardCurrentTempX,
-                         kWeatherBoardCurrentTempY,
-                         kWeatherBoardCurrentTempW,
-                         kWeatherBoardCurrentTempH,
-                         "26",
-                         &lv_font_montserrat_48);
-    make_label_with_font(screen,
+    lv_obj_t *temperature = make_label_with_font(screen,
+                                                  kWeatherBoardCurrentTempX,
+                                                  kWeatherBoardCurrentTempY,
+                                                  kWeatherBoardCurrentTempW,
+                                                  kWeatherBoardCurrentTempH,
+                                                  "26",
+                                                  &lv_font_montserrat_48);
+    lv_obj_t *unit = make_label_with_font(screen,
                          kWeatherBoardCurrentUnitX,
                          kWeatherBoardCurrentUnitY,
                          kWeatherBoardCurrentUnitW,
                          kWeatherBoardCurrentUnitH,
                          "°C",
                          &lv_font_montserrat_24);
+    position_current_unit_label(temperature, unit);
     lv_obj_t *icon = make_label(screen,
                                 kWeatherBoardCurrentIconX,
                                 kWeatherBoardCurrentIconY,
@@ -88,11 +110,11 @@ void build_weather_board_preview_body(lv_obj_t *screen)
                "今日 22/29°C");
 
     static constexpr const char *kDays[] = {
-        "周二\n23日", "周三\n24日", "周四\n25日", "周五\n26日", "周六\n27日", "周日\n28日",
+        "周二\n23日", "周三\n24日", "周四\n25日", "周五\n26日", "周六\n27日",
     };
-    static constexpr const char *kTexts[] = {"晴", "多云转晴", "小到中雨", "阴", "雨夹雪", "大到暴雨"};
-    static constexpr const char *kIcons[] = {"clear", "partly", "rain", "cloud", "snow", "storm"};
-    static constexpr const char *kRanges[] = {"22/29°C", "23/30°C", "-3/2°C", "22/28°C", "-8/-2°C", "18/24°C"};
+    static constexpr const char *kTexts[] = {"晴", "多云转晴", "小到中雨", "阴", "雨夹雪"};
+    static constexpr const char *kIcons[] = {"clear", "partly", "rain", "cloud", "snow"};
+    static constexpr const char *kRanges[] = {"22/29°C", "23/30°C", "-3/2°C", "22/28°C", "-8/-2°C"};
     static_assert(array_count(kDays) == array_count(kTexts) &&
                       array_count(kDays) == array_count(kIcons) &&
                       array_count(kDays) == array_count(kRanges) &&

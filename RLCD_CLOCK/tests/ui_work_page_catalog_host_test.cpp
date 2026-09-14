@@ -217,12 +217,12 @@ int main()
     assert(strcmp(work_page_name(kWorkPageCodexUsage), "Codex") == 0);
     assert(strcmp(work_page_name(-1), "未知页面") == 0);
     ui_language_store(UiLanguage::English);
-    assert(strcmp(work_page_name(kWorkPageFlipClock), "Temp/Humi") == 0);
-    assert(strcmp(work_page_name(kWorkPageHistory), "History") == 0);
+    assert(strcmp(work_page_name(kWorkPageFlipClock), "T&H-Clock") == 0);
+    assert(strcmp(work_page_name(kWorkPageHistory), "T&H-His") == 0);
     ui_language_store(UiLanguage::Traditional);
 
     assert(work_page_requires_network(kWorkPageWeatherClock));
-    assert(work_page_requires_network(kWorkPageGallery));
+    assert(!work_page_requires_network(kWorkPageGallery));
     assert(work_page_requires_network(kWorkPageWeatherBoard));
     assert(work_page_requires_network(kWorkPageAggregateClock));
     assert(work_page_requires_network(kWorkPageXiaozhiAI));
@@ -290,7 +290,8 @@ int main()
     const WorkPageMask local_pages = page_bit(kWorkPageFlipClock) |
                                 page_bit(kWorkPageCalendar);
     assert(work_page_mask_for_offline_mode(work_page_enabled_mask_load()) ==
-           (page_bit(kWorkPageFlipClock) |
+           (page_bit(kWorkPageGallery) |
+            page_bit(kWorkPageFlipClock) |
             page_bit(kWorkPageCalendar) |
             page_bit(kWorkPageHistory) |
             page_bit(kWorkPageCodexUsage)));
@@ -298,10 +299,14 @@ int main()
                                            page_bit(kWorkPageWeatherClock)) ==
            local_pages);
     assert(work_page_mask_for_offline_mode(page_bit(kWorkPageWeatherClock)) ==
-           page_bit(kWorkPageFlipClock));
+           page_bit(kWorkPageGallery));
     work_page_enabled_mask_store(all_pages);
     g_catalog_offline_mode.store(true, std::memory_order_release);
     assert(!is_work_page_enabled(kWorkPageWeatherClock));
+    assert(is_work_page_enabled(kWorkPageGallery));
+    assert(!is_work_page_enabled(kWorkPageWeatherBoard));
+    assert(!is_work_page_enabled(kWorkPageXiaozhiAI));
+    assert(!is_work_page_enabled(kWorkPageAggregateClock));
     assert(is_work_page_enabled(kWorkPageCodexUsage));
     assert(work_page_enabled_mask_load() == all_pages);
     g_catalog_offline_mode.store(false, std::memory_order_release);

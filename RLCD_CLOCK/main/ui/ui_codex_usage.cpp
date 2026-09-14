@@ -137,23 +137,23 @@ void build_codex_usage_page()
     s_primary_title = make_label_with_font(s_online_content, 18, 6, 170, 18,
                                            codex_usage_text(kPrimaryTitlePlaceholder),
                                            ui_font(UiFontRole::Body16));
-    s_percent = make_label_with_font(s_online_content, 18, 24, 170, 32, ui_text(UiTextId::UiPlaceholder), &lv_font_montserrat_24);
-    s_reset = make_label_with_font(s_online_content, 18, 54, 170, 20,
+    s_percent = make_label_with_font(s_online_content, 18, 24, 170, 35, ui_text(UiTextId::UiPlaceholder), &lv_font_montserrat_32);
+    s_reset = make_label_with_font(s_online_content, 18, 60, 170, 18,
                                    codex_usage_text(kResetPlaceholder),
                                    ui_font(UiFontRole::Body16));
-    make_black_bar(s_online_content, 18, 79, 170, 2);
+    make_black_bar(s_online_content, 18, 80, 170, 2);
     s_secondary_title = make_label_with_font(s_online_content, 18, 85, 170, 18,
                                              codex_usage_text(kPrimaryTitlePlaceholder),
                                              ui_font(UiFontRole::Body16));
-    s_secondary_percent = make_label_with_font(s_online_content, 18, 103, 170, 32, ui_text(UiTextId::UiPlaceholder), &lv_font_montserrat_24);
-    s_secondary_reset = make_label_with_font(s_online_content, 18, 133, 170, 20,
-                                             codex_usage_text(kResetPlaceholder),
-                                             ui_font(UiFontRole::Body16));
-    make_black_bar(s_online_content, 18, 157, 170, 2);
-    make_label_with_font(s_online_content, 18, 162, 108, 18,
+    s_secondary_percent = make_label_with_font(s_online_content, 18, 103, 170, 35, ui_text(UiTextId::UiPlaceholder), &lv_font_montserrat_32);
+    s_secondary_reset = make_label_with_font(s_online_content, 18, 140, 170, 18,
+                                              codex_usage_text(kResetPlaceholder),
+                                              ui_font(UiFontRole::Body16));
+    make_black_bar(s_online_content, 18, 160, 170, 2);
+    make_label_with_font(s_online_content, 18, 165, 108, 18,
                          codex_usage_text(kPaidCreditsTitle),
                          ui_font(UiFontRole::Body16));
-    s_paid = make_label_with_font(s_online_content, 126, 159, 62, 24, ui_text(UiTextId::UiPlaceholder), &lv_font_montserrat_16);
+    s_paid = make_label_with_font(s_online_content, 126, 164, 62, 19, ui_text(UiTextId::UiPlaceholder), &lv_font_montserrat_16);
     if (s_paid) lv_obj_set_style_text_align(s_paid, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     make_black_bar(s_online_content, 198, 9, 2, 174);
     s_today = metric(s_online_content, 212, 9, codex_usage_text(kTodayTitle));
@@ -192,7 +192,7 @@ bool update_codex_usage_page(const struct tm &local,
     changed |= set_obj_visible(s_online_content, feature_enabled);
     changed |= set_obj_visible(s_offline_content, !feature_enabled);
     if (!feature_enabled) return changed;
-    if (!view.snapshot_valid) {
+    if (!view.snapshot_valid || !view.data_valid) {
         changed |= update_quota_block(s_primary_title, s_percent, s_reset,
                                       false, 0, 0, 0, 0, now);
         changed |= update_quota_block(s_secondary_title, s_secondary_percent,

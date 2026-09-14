@@ -68,10 +68,15 @@ static constexpr int kFlipDatePanelY = kFlipSensorPanelY;
 static constexpr int kFlipDatePanelW = kCardW;
 static constexpr int kFlipDatePanelH = kFlipSensorPanelH;
 static constexpr int kFlipDatePanelRadius = kFlipSensorPanelRadius;
-static constexpr int kFlipDayTextY = 196;
 static constexpr int kFlipDayTextH = 52;
-static constexpr int kFlipLunarTextY = 249;
-static constexpr int kFlipLunarTextH = 42;
+static constexpr int kFlipLunarTextH = 25;
+static constexpr int kFlipDateTextGap = 1;
+static constexpr int kFlipDateTextBlockH =
+    kFlipDayTextH + kFlipDateTextGap + kFlipLunarTextH;
+static constexpr int kFlipDateTextBlockY =
+    kFlipDatePanelY + (kFlipDatePanelH - kFlipDateTextBlockH) / 2;
+static constexpr int kFlipDayTextY = kFlipDateTextBlockY;
+static constexpr int kFlipLunarTextY = kFlipDayTextY + kFlipDayTextH + kFlipDateTextGap;
 static constexpr int kFlipDateBoldOffset = 1;
 static constexpr int kFlipDateBoldYOffset = 1;
 EXT_RAM_BSS_ATTR lv_color_t *s_flip_clock_card_canvas_buffer[kCardCount];

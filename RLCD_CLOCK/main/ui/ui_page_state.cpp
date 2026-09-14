@@ -260,6 +260,7 @@ void apply_clock_mode_visibility(bool setup_active, bool low_battery_mode)
     const bool low = low_battery_mode;
     const bool seconds_visible = weather_clock_seconds_visible_load();
     apply_flip_clock_seconds_visibility(seconds_visible);
+    apply_aggregate_clock_seconds_visibility(seconds_visible);
     if (surface.time_canvas) {
         lv_obj_set_x(surface.time_canvas,
                      seconds_visible

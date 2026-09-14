@@ -14,6 +14,7 @@
 #include "ui_icons.h"
 #include "ui_page_state.h"
 #include "ui_text_format.h"
+#include "ui_fonts.h"
 #include "ui_widgets.h"
 #include "work_page_ids.h"
 
@@ -125,6 +126,20 @@ bool set_text_on_labels(const char *text, Labels... labels)
     return changed;
 }
 
+void set_label_font(const lv_font_t *font, lv_obj_t *label)
+{
+    if (!font || !label) {
+        return;
+    }
+    lv_obj_set_style_text_font(label, font, LV_PART_MAIN);
+}
+
+template <typename... Labels>
+void set_font_on_labels(const lv_font_t *font, Labels... labels)
+{
+    (set_label_font(font, labels), ...);
+}
+
 bool update_sensor_text()
 {
     const FlipClockObjectRefs &objects = flip_clock_object_refs();
@@ -226,6 +241,11 @@ bool update_date_text(const struct tm &local)
                                   objects.lunar_bold_x_label,
                                   objects.lunar_bold_y_label,
                                   objects.lunar_bold_xy_label);
+    set_font_on_labels(ui_font(UiFontRole::Calendar22),
+                       objects.lunar_label,
+                       objects.lunar_bold_x_label,
+                       objects.lunar_bold_y_label,
+                       objects.lunar_bold_xy_label);
     return changed;
 }
 

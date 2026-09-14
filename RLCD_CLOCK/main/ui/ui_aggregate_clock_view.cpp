@@ -4,12 +4,20 @@
 #include "dseg_digits.h"
 #include "ui_fonts.h"
 #include "ui_i18n.h"
+#include <cstdio>
 #include <cstring>
 #include <initializer_list>
 
 LV_FONT_DECLARE(aggregate_numeric_20);
 
 namespace {
+constexpr int kAggregateDigitX[3] = {24, 148, 272};
+constexpr int kAggregateSeparatorX[2] = {135, 259};
+constexpr int kAggregateTwoCardX[2] = {86, 210};
+constexpr int kAggregateTwoCardSeparatorX = 197;
+constexpr char kAggregateTemperatureUnit[] = "°C";
+constexpr char kAggregateTemperaturePlaceholder[] = "--.-";
+
 lv_obj_t *panel(lv_obj_t *root, int x, int y, int w, int h, bool black) {
     lv_obj_t *p = lv_obj_create(root);
     lv_obj_remove_style_all(p);
@@ -19,6 +27,14 @@ lv_obj_t *panel(lv_obj_t *root, int x, int y, int w, int h, bool black) {
     lv_obj_set_style_bg_opa(p,LV_OPA_COVER,0);
     lv_obj_clear_flag(p,LV_OBJ_FLAG_SCROLLABLE);
     return p;
+}
+bool set_visible(lv_obj_t *obj, bool visible) {
+    if(!obj) return false;
+    const bool already_visible=!lv_obj_has_flag(obj,LV_OBJ_FLAG_HIDDEN);
+    if(already_visible==visible) return false;
+    if(visible) lv_obj_clear_flag(obj,LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(obj,LV_OBJ_FLAG_HIDDEN);
+    return true;
 }
 lv_obj_t *label(lv_obj_t *root,int x,int y,int w,int h,const char *text,
                 const lv_font_t *font=nullptr,bool white=false) {
@@ -112,16 +128,18 @@ void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t 
     for(int i=0;i<3;++i) {
         v.digits[i]=lv_canvas_create(root);
         lv_obj_remove_style_all(v.digits[i]);
-        lv_obj_set_pos(v.digits[i],24+i*124,76);
+        lv_obj_set_pos(v.digits[i],kAggregateDigitX[i],76);
         if(buffers[i]) {
             lv_canvas_set_buffer(v.digits[i],buffers[i],104,80,LV_IMG_CF_TRUE_COLOR);
             draw_pair(v.digits[i],-1);
         }
     }
     // Circle centers follow the visible digit bounds, not the font baseline.
-    for(int x : {135,259}) for(int y : {100,124}) {
-        lv_obj_t *dot=panel(root,x,y,6,6,false);
-        lv_obj_set_style_radius(dot,LV_RADIUS_CIRCLE,0);
+    for(int separator=0;separator<2;++separator) for(int dot=0;dot<2;++dot) {
+        lv_obj_t *dot_obj=panel(root,kAggregateSeparatorX[separator],
+                                dot==0?100:124,6,6,false);
+        v.separators[separator][dot]=dot_obj;
+        lv_obj_set_style_radius(dot_obj,LV_RADIUS_CIRCLE,0);
     }
     // Static texture stays outside the changing glyphs and never needs a timer.
     stipple(root,20,72,10,88,Fade::Right,true);
@@ -158,9 +176,10 @@ void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t 
     embolden(v.lunar);
     sensor_icon(root,255,240,aggregate_temperature_bits);
     sensor_icon(root,255,265,aggregate_humidity_bits);
-    v.local_temp=label(root,285,241,93,24,
-                       ui_text(UiTextId::AggregateLocalTemperaturePlaceholder),
+    v.local_temp=label(root,285,241,60,24,kAggregateTemperaturePlaceholder,
                        &aggregate_numeric_20,true);
+    v.local_temp_unit=label(root,347,241,32,24,kAggregateTemperatureUnit,
+                            ui_font(UiFontRole::Metric16),true);
     v.humidity=label(root,285,266,93,24,
                      ui_text(UiTextId::AggregateHumidityPlaceholder),
                      &aggregate_numeric_20,true);
@@ -169,7 +188,9 @@ void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t 
 bool aggregate_clock_view_time(AggregateClockView &v,int hour,int minute,int second) {
     bool changed=false;
     const int next[3]={hour,minute,second};
-    for(int i=0;i<3;++i) if(v.digits[i] && lv_canvas_get_img(v.digits[i])->data && next[i]!=v.values[i]) {
+    for(int i=0;i<3;++i) if((i<2 || v.seconds_visible) &&
+                             v.digits[i] && lv_canvas_get_img(v.digits[i])->data &&
+                             next[i]!=v.values[i]) {
         draw_pair(v.digits[i],next[i]); v.values[i]=next[i]; changed=true;
     }
     return changed;
@@ -177,4 +198,35 @@ bool aggregate_clock_view_time(AggregateClockView &v,int hour,int minute,int sec
 bool aggregate_clock_set_text(lv_obj_t *label,const char *text) {
     if(!label || !text || std::strcmp(lv_label_get_text(label),text)==0) return false;
     lv_label_set_text(label,text); return true;
+}
+bool aggregate_clock_view_set_seconds_visible(AggregateClockView &v,bool visible) {
+    bool changed=v.seconds_visible!=visible;
+    v.seconds_visible=visible;
+    if(v.digits[0]) {
+        lv_obj_set_x(v.digits[0],visible?kAggregateDigitX[0]:kAggregateTwoCardX[0]);
+        changed|=set_visible(v.digits[0],true);
+    }
+    if(v.digits[1]) {
+        lv_obj_set_x(v.digits[1],visible?kAggregateDigitX[1]:kAggregateTwoCardX[1]);
+        changed|=set_visible(v.digits[1],true);
+    }
+    for(int dot=0;dot<2;++dot) if(v.separators[0][dot]) {
+        lv_obj_set_x(v.separators[0][dot],
+                     visible?kAggregateSeparatorX[0]:kAggregateTwoCardSeparatorX);
+        changed|=set_visible(v.separators[0][dot],true);
+    }
+    changed|=set_visible(v.digits[2],visible);
+    for(int dot=0;dot<2;++dot) changed|=set_visible(v.separators[1][dot],visible);
+    if(visible && changed) v.values[2]=-1;
+    return changed;
+}
+bool aggregate_clock_view_set_local_temperature(AggregateClockView &v,
+                                                bool available,
+                                                float temperature) {
+    char numeric[24]={};
+    if(available) std::snprintf(numeric,sizeof(numeric),"%.1f",temperature);
+    else std::strncpy(numeric,kAggregateTemperaturePlaceholder,sizeof(numeric)-1);
+    bool changed=aggregate_clock_set_text(v.local_temp,numeric);
+    changed|=aggregate_clock_set_text(v.local_temp_unit,kAggregateTemperatureUnit);
+    return changed;
 }

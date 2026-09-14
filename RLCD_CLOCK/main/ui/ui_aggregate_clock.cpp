@@ -14,6 +14,7 @@
 #include "weather_icons.h"
 #include "ui_i18n.h"
 #include "ui_text_format.h"
+#include "ui_clock_seconds_state.h"
 #include "local_sensor_state.h"
 #include "calendar_lunar.h"
 #include "sensor_time.h"
@@ -47,6 +48,12 @@ void build_aggregate_clock_page() {
     for(auto &buffer:s_buffers) ensure_canvas_buffer(&buffer,kAggregateDigitWidth,kAggregateDigitHeight);
     s_buffer_retry_us=esp_timer_get_time()+5000000;
     aggregate_clock_view_build(root,s_view,s_buffers);
+    aggregate_clock_view_set_seconds_visible(s_view,weather_clock_seconds_visible_load());
+}
+
+void apply_aggregate_clock_seconds_visibility(bool visible) {
+    if(!aggregate_clock_view_set_seconds_visible(s_view,visible)) return;
+    if(lv_obj_t *root=work_page_root(kWorkPageAggregateClock)) lv_obj_invalidate(root);
 }
 
 bool update_aggregate_clock_page(const struct tm &local) {
@@ -96,22 +103,18 @@ bool update_aggregate_clock_page(const struct tm &local) {
     if(!s_sensor_valid || sensor_version!=s_sensor_version) {
         LocalSensorStateSnapshot sensor;
         if(local_sensor_state_snapshot_load(&sensor)) {
-            char temp[24] = {};
             char humi[24] = {};
             if(sensor.available) {
-                ui_text_format::format_or_fallback(
-                    temp, sizeof(temp), ui_text(UiTextId::AggregateLocalTemperaturePlaceholder),
-                    ui_format(UiTextId::StatusSensorTempFormat), sensor.temperature);
+                changed |= aggregate_clock_view_set_local_temperature(
+                    s_view, true, sensor.temperature);
                 ui_text_format::format_or_fallback(
                     humi, sizeof(humi), ui_text(UiTextId::AggregateHumidityPlaceholder),
                     ui_format(UiTextId::StatusSensorHumidityFormat), sensor.humidity);
             } else {
-                ui_text_format::copy(temp, sizeof(temp),
-                                     ui_text(UiTextId::AggregateLocalTemperaturePlaceholder));
+                changed |= aggregate_clock_view_set_local_temperature(s_view,false,0.0f);
                 ui_text_format::copy(humi, sizeof(humi),
                                      ui_text(UiTextId::AggregateHumidityPlaceholder));
             }
-            changed |= aggregate_clock_set_text(s_view.local_temp,temp);
             changed |= aggregate_clock_set_text(s_view.humidity,humi);
             s_sensor_version=sensor.version; s_sensor_valid=true;
         }

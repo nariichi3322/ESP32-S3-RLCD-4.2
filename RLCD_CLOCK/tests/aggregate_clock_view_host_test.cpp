@@ -22,6 +22,26 @@ int main() {
     AggregateClockView view;
     aggregate_clock_view_build(lv_scr_act(),view,buffers);
     lv_obj_update_layout(lv_scr_act());
+    assert(std::strcmp(lv_label_get_text(view.local_temp),"--.-")==0);
+    assert(std::strcmp(lv_label_get_text(view.local_temp_unit),"°C")==0);
+    assert(aggregate_clock_view_set_local_temperature(view,true,25.3f));
+    assert(std::strcmp(lv_label_get_text(view.local_temp),"25.3")==0);
+    assert(std::strcmp(lv_label_get_text(view.local_temp_unit),"°C")==0);
+    assert(!aggregate_clock_view_set_local_temperature(view,true,25.3f));
+    assert(aggregate_clock_view_set_local_temperature(view,false,0.0f));
+    assert(std::strcmp(lv_label_get_text(view.local_temp),"--.-")==0);
+    assert(std::strcmp(lv_label_get_text(view.local_temp_unit),"°C")==0);
+    assert(lv_obj_get_x(view.digits[0])==24);
+    assert(lv_obj_get_x(view.digits[1])==148);
+    assert(lv_obj_get_x(view.digits[2])==272);
+    assert(lv_obj_get_x(view.separators[0][0])==135);
+    assert(lv_obj_get_x(view.separators[0][1])==135);
+    assert(lv_obj_get_x(view.separators[1][0])==259);
+    assert(lv_obj_get_x(view.separators[1][1])==259);
+    for(int i=0;i<3;++i) assert(!lv_obj_has_flag(view.digits[i],LV_OBJ_FLAG_HIDDEN));
+    for(int separator=0;separator<2;++separator)
+        for(int dot=0;dot<2;++dot)
+            assert(!lv_obj_has_flag(view.separators[separator][dot],LV_OBJ_FLAG_HIDDEN));
     for(int day=1;day<=31;++day) {
         char text[3]; std::snprintf(text,sizeof(text),"%d",day);
         aggregate_clock_set_text(view.day,text);
@@ -42,6 +62,46 @@ int main() {
     for(const auto &area:areas) {
         std::fprintf(stderr,"second flush: %d,%d-%d,%d\n",area.x1,area.y1,area.x2,area.y2);
         // LVGL canvas reserves five pixels of transform draw margin.
+        assert(area.x1>=267 && area.x2<=380);
+        assert(area.y1>=71 && area.y2<=160);
+    }
+    assert(std::memcmp(hour.data(),pixels[0],sizeof(pixels[0]))==0);
+    assert(std::memcmp(minute.data(),pixels[1],sizeof(pixels[1]))==0);
+    assert(aggregate_clock_view_set_seconds_visible(view,false));
+    assert(lv_obj_get_x(view.digits[0])==86);
+    assert(lv_obj_get_x(view.digits[1])==210);
+    assert(lv_obj_get_x(view.separators[0][0])==197);
+    assert(lv_obj_get_x(view.separators[0][1])==197);
+    assert(!lv_obj_has_flag(view.digits[0],LV_OBJ_FLAG_HIDDEN));
+    assert(!lv_obj_has_flag(view.digits[1],LV_OBJ_FLAG_HIDDEN));
+    assert(lv_obj_has_flag(view.digits[2],LV_OBJ_FLAG_HIDDEN));
+    assert(!lv_obj_has_flag(view.separators[0][0],LV_OBJ_FLAG_HIDDEN));
+    assert(!lv_obj_has_flag(view.separators[0][1],LV_OBJ_FLAG_HIDDEN));
+    assert(lv_obj_has_flag(view.separators[1][0],LV_OBJ_FLAG_HIDDEN));
+    assert(lv_obj_has_flag(view.separators[1][1],LV_OBJ_FLAG_HIDDEN));
+    lv_refr_now(nullptr);
+    areas.clear();
+    assert(!aggregate_clock_view_time(view,14,36,2));
+    lv_refr_now(nullptr);
+    assert(areas.empty());
+    assert(std::memcmp(hour.data(),pixels[0],sizeof(pixels[0]))==0);
+    assert(std::memcmp(minute.data(),pixels[1],sizeof(pixels[1]))==0);
+    assert(aggregate_clock_view_set_seconds_visible(view,true));
+    assert(lv_obj_get_x(view.digits[0])==24);
+    assert(lv_obj_get_x(view.digits[1])==148);
+    assert(lv_obj_get_x(view.digits[2])==272);
+    assert(lv_obj_get_x(view.separators[0][0])==135);
+    assert(lv_obj_get_x(view.separators[1][0])==259);
+    for(int i=0;i<3;++i) assert(!lv_obj_has_flag(view.digits[i],LV_OBJ_FLAG_HIDDEN));
+    for(int separator=0;separator<2;++separator)
+        for(int dot=0;dot<2;++dot)
+            assert(!lv_obj_has_flag(view.separators[separator][dot],LV_OBJ_FLAG_HIDDEN));
+    lv_refr_now(nullptr);
+    areas.clear();
+    assert(aggregate_clock_view_time(view,14,36,2));
+    lv_refr_now(nullptr);
+    assert(!areas.empty());
+    for(const auto &area:areas) {
         assert(area.x1>=267 && area.x2<=380);
         assert(area.y1>=71 && area.y2<=160);
     }

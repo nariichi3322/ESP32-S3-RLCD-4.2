@@ -54,12 +54,12 @@ void build_codex_preview_body(lv_obj_t *screen, const char *mode)
         snprintf(text, sizeof(text), "--");
     }
     sdl_preview_widgets::make_label_with_font(
-        screen, 18, 91, 170, 32, text, &lv_font_montserrat_24);
+        screen, 18, 91, 170, 35, text, &lv_font_montserrat_32);
     char reset[32];
     snprintf(reset, sizeof(reset), "RESET %s", fixture.reset);
     sdl_preview_widgets::make_label_with_font(
-        screen, 18, 121, 170, 20, reset, &lv_font_montserrat_12);
-    sdl_preview_widgets::make_black_bar(screen, 18, 146, 170, 2);
+        screen, 18, 127, 170, 18, reset, &lv_font_montserrat_12);
+    sdl_preview_widgets::make_black_bar(screen, 18, 147, 170, 2);
     snprintf(text, sizeof(text), "CODEX LEFT (%s)", fixture.secondary_window);
     sdl_preview_widgets::make_label_with_font(
         screen, 18, 152, 170, 18, text, &lv_font_montserrat_12);
@@ -68,15 +68,15 @@ void build_codex_preview_body(lv_obj_t *screen, const char *mode)
     else
         snprintf(text, sizeof(text), "--");
     sdl_preview_widgets::make_label_with_font(
-        screen, 18, 170, 170, 32, text, &lv_font_montserrat_24);
+        screen, 18, 170, 170, 35, text, &lv_font_montserrat_32);
     snprintf(reset, sizeof(reset), "RESET %s", fixture.secondary_reset);
     sdl_preview_widgets::make_label_with_font(
-        screen, 18, 200, 170, 20, reset, &lv_font_montserrat_12);
-    sdl_preview_widgets::make_black_bar(screen, 18, 224, 170, 2);
+        screen, 18, 207, 170, 18, reset, &lv_font_montserrat_12);
+    sdl_preview_widgets::make_black_bar(screen, 18, 227, 170, 2);
     sdl_preview_widgets::make_label_with_font(
-        screen, 18, 229, 108, 18, "PAID CREDITS", &lv_font_montserrat_12);
+        screen, 18, 232, 108, 18, "PAID CREDITS", &lv_font_montserrat_12);
     lv_obj_t *paid = sdl_preview_widgets::make_label_with_font(
-        screen, 126, 226, 62, 24,
+        screen, 126, 231, 62, 19,
         fixture.data_valid ? fixture.paid : "--", &lv_font_montserrat_16);
     lv_obj_set_style_text_align(paid, LV_TEXT_ALIGN_RIGHT, LV_PART_MAIN);
     sdl_preview_widgets::make_black_bar(screen, 198, 76, 2, 174);

@@ -14,7 +14,10 @@ struct AggregateClockView {
     lv_obj_t *month = nullptr;
     lv_obj_t *lunar = nullptr;
     lv_obj_t *local_temp = nullptr;
+    lv_obj_t *local_temp_unit = nullptr;
     lv_obj_t *humidity = nullptr;
+    lv_obj_t *separators[2][2] = {};
+    bool seconds_visible = true;
 };
 
 inline constexpr int kAggregateDigitWidth = 104;
@@ -22,4 +25,8 @@ inline constexpr int kAggregateDigitHeight = 80;
 void aggregate_clock_view_build(lv_obj_t *root, AggregateClockView &view,
                                 lv_color_t *const buffers[3]);
 bool aggregate_clock_view_time(AggregateClockView &view, int hour, int minute, int second);
+bool aggregate_clock_view_set_seconds_visible(AggregateClockView &view, bool visible);
+bool aggregate_clock_view_set_local_temperature(AggregateClockView &view,
+                                                bool available,
+                                                float temperature);
 bool aggregate_clock_set_text(lv_obj_t *label, const char *text);

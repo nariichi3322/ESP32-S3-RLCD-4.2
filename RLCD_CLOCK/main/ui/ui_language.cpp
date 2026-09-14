@@ -120,6 +120,9 @@ const char *ui_language_text(const char *traditional,
 const char *ui_language_localize(const char *text)
 {
     if (!text) return "";
+    // A bare placeholder is shared by every locale.  Do not let it match the
+    // locale-specific AggregateMonthPlaceholder entry (English is also "--").
+    if (strcmp(text, "--") == 0) return text;
     for (const CatalogLiteral &literal : kCatalogLiterals) {
 #if defined(APP_UI_LOCALE)
         if (strcmp(text, literal.traditional) == 0 ||
