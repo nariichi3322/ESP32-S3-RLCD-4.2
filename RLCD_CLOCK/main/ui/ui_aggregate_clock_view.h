@@ -30,8 +30,9 @@ void aggregate_clock_view_build(lv_obj_t *root, AggregateClockView &view,
 bool aggregate_clock_view_time(AggregateClockView &view, int hour, int minute, int second);
 bool aggregate_clock_view_set_seconds_visible(AggregateClockView &view, bool visible);
 bool aggregate_clock_view_set_local_temperature(AggregateClockView &view,
-                                                bool available,
-                                                float temperature);
+                                                 bool available,
+                                                 float temperature);
 bool aggregate_clock_set_text(lv_obj_t *label, const char *text);
+bool aggregate_clock_set_city_text(lv_obj_t *label, const char *text);
 
 bool aggregate_clock_weather_theme(AggregateClockView &view,int weather_kind);

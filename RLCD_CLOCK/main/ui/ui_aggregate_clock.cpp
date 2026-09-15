@@ -7,6 +7,7 @@
 #include "ui_work_status.h"
 #include "ui_progress.h"
 #include "ui_widgets.h"
+#include "ui_fonts.h"
 #include "ui_work_page_layout.h"
 #include "ui_canvas_primitives.h"
 #include "work_page_ids.h"
@@ -151,7 +152,7 @@ bool update_aggregate_clock_page(const struct tm &local) {
                     break;
                 }
             }
-            changed |= aggregate_clock_set_text(
+            changed |= aggregate_clock_set_city_text(
                 s_view.city,
                 weather.city[0] ? weather.city : ui_text(UiTextId::AggregateWaitingData));
             changed |= aggregate_clock_set_text(

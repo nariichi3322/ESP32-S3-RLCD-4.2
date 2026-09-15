@@ -21,6 +21,22 @@
             "cacheVariables": {
                 "IDF_TARGET": "esp32s3",
                 "APP_UI_LOCALE": "zh-TW"
+            },
+            "vendor": {
+                "espressif/vscode-esp-idf": {
+                    "schemaVersion": 1,
+                    "settings": [
+                        {
+                            "type": "compileArgs",
+                            "value": [
+                                "-G Ninja",
+                                "-DPYTHON_DEPS_CHECKED=1",
+                                "-DESP_PLATFORM=1",
+                                "-DAPP_UI_LOCALE=zh-TW"
+                            ]
+                        }
+                    ]
+                }
             }
         },
         {
@@ -32,6 +48,22 @@
             "cacheVariables": {
                 "IDF_TARGET": "esp32s3",
                 "APP_UI_LOCALE": "zh-CN"
+            },
+            "vendor": {
+                "espressif/vscode-esp-idf": {
+                    "schemaVersion": 1,
+                    "settings": [
+                        {
+                            "type": "compileArgs",
+                            "value": [
+                                "-G Ninja",
+                                "-DPYTHON_DEPS_CHECKED=1",
+                                "-DESP_PLATFORM=1",
+                                "-DAPP_UI_LOCALE=zh-CN"
+                            ]
+                        }
+                    ]
+                }
             }
         },
         {
@@ -43,6 +75,22 @@
             "cacheVariables": {
                 "IDF_TARGET": "esp32s3",
                 "APP_UI_LOCALE": "en"
+            },
+            "vendor": {
+                "espressif/vscode-esp-idf": {
+                    "schemaVersion": 1,
+                    "settings": [
+                        {
+                            "type": "compileArgs",
+                            "value": [
+                                "-G Ninja",
+                                "-DPYTHON_DEPS_CHECKED=1",
+                                "-DESP_PLATFORM=1",
+                                "-DAPP_UI_LOCALE=en"
+                            ]
+                        }
+                    ]
+                }
             }
         },
         {
@@ -54,6 +102,22 @@
             "cacheVariables": {
                 "IDF_TARGET": "esp32s3",
                 "APP_UI_LOCALE": "ja"
+            },
+            "vendor": {
+                "espressif/vscode-esp-idf": {
+                    "schemaVersion": 1,
+                    "settings": [
+                        {
+                            "type": "compileArgs",
+                            "value": [
+                                "-G Ninja",
+                                "-DPYTHON_DEPS_CHECKED=1",
+                                "-DESP_PLATFORM=1",
+                                "-DAPP_UI_LOCALE=ja"
+                            ]
+                        }
+                    ]
+                }
             }
         }
     ],

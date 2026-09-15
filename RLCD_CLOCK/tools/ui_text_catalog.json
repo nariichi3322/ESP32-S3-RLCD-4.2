@@ -1773,7 +1773,7 @@
     { "id": "WorkPageAggregateClock", "zh-TW": "聚合時鐘", "zh-CN": "聚合时钟", "en": "Aggregate", "ja": "統合時計" },
     { "id": "WorkPageUnknown", "zh-TW": "未知頁面", "zh-CN": "未知页面", "en": "Unknown page", "ja": "未知のページ" },
     { "id": "AggregateWaitingData", "zh-TW": "等待資料", "zh-CN": "等待数据", "en": "Waiting", "ja": "データ待ち" },
-    { "id": "AggregateTodayWeather", "zh-TW": "今日天氣", "zh-CN": "今日天气", "en": "Today", "ja": "今日の天気" },
+    { "id": "AggregateTodayWeather", "zh-TW": "今日天氣", "zh-CN": "今日天气", "en": "Today", "ja": "今日天気" },
     { "id": "AggregateWeatherTemperaturePlaceholder", "zh-TW": "--°C", "zh-CN": "--°C", "en": "--°C", "ja": "--°C" },
     { "id": "AggregateWeatherRangeFormat", "zh-TW": "最高 %s°C  最低 %s°C", "zh-CN": "最高 %s°C  最低 %s°C", "en": "High %s°C  Low %s°C", "ja": "最高 %s°C  最低 %s°C" },
     { "id": "AggregateLocalTemperaturePlaceholder", "zh-TW": "--.-°C", "zh-CN": "--.-°C", "en": "--.-°C", "ja": "--.-°C" },

@@ -5,6 +5,7 @@
 #include "dseg_digits.h"
 #include "ui_fonts.h"
 #include "ui_i18n.h"
+#include "ui_language.h"
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
@@ -18,6 +19,7 @@ constexpr int kAggregateTwoCardX[2] = {86, 210};
 constexpr int kAggregateTwoCardSeparatorX = 197;
 constexpr char kAggregateTemperatureUnit[] = "°C";
 constexpr char kAggregateTemperaturePlaceholder[] = "--.-";
+constexpr int kDarkLabelOverdrawPasses = 5;
 
 lv_obj_t *panel(lv_obj_t *root, int x, int y, int w, int h, bool black) {
     lv_obj_t *p = lv_obj_create(root);
@@ -47,16 +49,27 @@ lv_obj_t *label(lv_obj_t *root,int x,int y,int w,int h,const char *text,
     lv_label_set_text(p,text);
     return p;
 }
-void embolden(lv_obj_t *obj) {
-    // Reuse the lunar subset; a one-pixel overstrike avoids another Chinese font.
+void style_dark_label(lv_obj_t *obj) {
+    if (!obj) return;
+    lv_obj_set_style_text_color(obj,lv_color_white(),LV_PART_MAIN);
+    lv_obj_set_style_text_opa(obj,LV_OPA_COVER,LV_PART_MAIN);
+    if (!ui_language_is_japanese() && !ui_language_is_english()) return;
     lv_obj_add_event_cb(obj,[](lv_event_t *e) {
+        if (!e || lv_event_get_code(e)!=LV_EVENT_DRAW_POST) return;
         lv_obj_t *label=lv_event_get_target(e);
-        lv_area_t area; lv_obj_get_coords(label,&area);
-        ++area.x1; ++area.x2;
+        const char *text=label ? lv_label_get_text(label) : nullptr;
+        lv_draw_ctx_t *ctx=lv_event_get_draw_ctx(e);
+        if (!label || !text || !text[0] || !ctx) return;
         lv_draw_label_dsc_t style; lv_draw_label_dsc_init(&style);
         lv_obj_init_draw_label_dsc(label,LV_PART_MAIN,&style);
-        lv_draw_label(lv_event_get_draw_ctx(e),&style,&area,lv_label_get_text(label),nullptr);
-    },LV_EVENT_DRAW_MAIN,nullptr);
+        if (style.opa<=LV_OPA_MIN || !style.font) return;
+        lv_area_t area;
+        lv_obj_get_content_coords(label,&area);
+        // Match the calendar weekday header: accumulate the same pixels.
+        // A one-pixel shift creates a second gray glyph on the binary RLCD.
+        for (int pass=0; pass<kDarkLabelOverdrawPasses; ++pass)
+            lv_draw_label(ctx,&style,&area,text,nullptr);
+    },LV_EVENT_DRAW_POST,nullptr);
 }
 enum class Fade { Right, Left, Down, Up };
 void stipple(lv_obj_t *root,int x,int y,int w,int h,Fade fade,bool white=false) {
@@ -178,7 +191,9 @@ void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t 
     panel(root,248,238,134,56,true);
     stipple(root,372,242,8,48,Fade::Left,true);
     v.city=label(root,26,180,126,20,ui_text(UiTextId::AggregateWaitingData),nullptr,true);
-    label(root,160,180,72,20,ui_text(UiTextId::AggregateTodayWeather),nullptr,true);
+    style_dark_label(v.city);
+    lv_obj_t *today=label(root,160,180,72,20,ui_text(UiTextId::AggregateTodayWeather),nullptr,true);
+    style_dark_label(today);
     v.icon=label(root,31,207,48,42,"",&weather_icons_36);
     v.weather=label(root,28,250,88,20,ui_text(UiTextId::UiPlaceholder));
     v.temperature=label(root,108,202,128,54,
@@ -193,8 +208,6 @@ void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t 
                   ui_font(UiFontRole::Calendar22));
     lv_obj_set_style_text_align(v.month,LV_TEXT_ALIGN_CENTER,0);
     lv_obj_set_style_text_align(v.lunar,LV_TEXT_ALIGN_CENTER,0);
-    embolden(v.month);
-    embolden(v.lunar);
     sensor_icon(root,255,240,aggregate_temperature_bits);
     sensor_icon(root,255,265,aggregate_humidity_bits);
     v.local_temp=label(root,285,241,60,24,kAggregateTemperaturePlaceholder,
@@ -219,6 +232,13 @@ bool aggregate_clock_view_time(AggregateClockView &v,int hour,int minute,int sec
 bool aggregate_clock_set_text(lv_obj_t *label,const char *text) {
     if(!label || !text || std::strcmp(lv_label_get_text(label),text)==0) return false;
     lv_label_set_text(label,text); return true;
+}
+bool aggregate_clock_set_city_text(lv_obj_t *label,const char *text) {
+    if(!label || !text) return false;
+    lv_obj_set_style_text_font(label,
+                               ui_font_for_text(text,ui_font(UiFontRole::Body16)),
+                               LV_PART_MAIN);
+    return aggregate_clock_set_text(label,text);
 }
 bool aggregate_clock_view_set_seconds_visible(AggregateClockView &v,bool visible) {
     bool changed=v.seconds_visible!=visible;
