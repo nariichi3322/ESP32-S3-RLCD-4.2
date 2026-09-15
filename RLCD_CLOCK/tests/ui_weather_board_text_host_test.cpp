@@ -83,10 +83,14 @@ int main()
     assert(strcmp(out, "日落 18:47") == 0);
 
     WeatherForecastData forecast = {};
-    assert(strcmp(weather_board_advice_text(forecast), "等待更多天氣資料") == 0);
+    struct tm today = {};
+    today.tm_year = 126;
+    today.tm_mon = 6;
+    today.tm_mday = 12;
+    assert(strcmp(weather_board_advice_text(forecast, today), "等待更多天氣資料") == 0);
     forecast.ready = true;
     strcpy(forecast.advice, "天气平稳，适合轻装出行。");
-    assert(strcmp(weather_board_advice_text(forecast), "天氣平穩，適合輕裝出行。") == 0);
+    assert(strcmp(weather_board_advice_text(forecast, today), "天氣平穩，適合輕裝出行。") == 0);
 
     ui_language_store(UiLanguage::Simplified);
     strcpy(day.date, "2026-07-12");
@@ -109,6 +113,29 @@ int main()
     assert(strcmp(out, "Sunrise 05:12") == 0);
     format_weather_board_sunset_line(&day, out, sizeof(out));
     assert(strcmp(out, "Sunset 18:47") == 0);
+    forecast.ready = true;
+    forecast.count=2;
+    forecast.days[0].valid=true;
+    strcpy(forecast.days[0].date,"2026-07-11");
+    strcpy(forecast.days[0].text,"小雨");
+    forecast.days[0].weather_code = 61;
+    strcpy(forecast.advice,"过期的带伞提醒");
+    forecast.days[1].valid=true;
+    strcpy(forecast.days[1].date,"2026-07-12");
+    strcpy(forecast.days[1].text,"晴");
+    forecast.days[1].weather_code = 0;
+    strcpy(forecast.days[1].temp_max,"26");
+    strcpy(forecast.days[1].temp_min,"20");
+    assert(strcmp(weather_board_advice_text(forecast,today),ui_weather_advice(0))==0);
+    strcpy(forecast.days[1].text,"雷阵雨");
+    forecast.days[1].weather_code = 95;
+    assert(strcmp(weather_board_advice_text(forecast,today),ui_weather_advice(95))==0);
+    today.tm_mday=13;
+    assert(strcmp(weather_board_advice_text(forecast,today),ui_language_localize(forecast.advice))==0);
+    today.tm_mday=11;
+    assert(strcmp(weather_board_advice_text(forecast,today),ui_weather_advice(61))==0);
+    today.tm_year=70;
+    assert(strcmp(weather_board_advice_text(forecast,today),"等待更多天氣資料")==0);
 
     format_today_range(day, nullptr, 0);
     format_forecast_date_line(day, nullptr, 0);

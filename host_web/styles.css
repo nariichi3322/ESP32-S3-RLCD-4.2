@@ -155,6 +155,11 @@ h1 {
   justify-content: flex-end;
 }
 
+.top-meta .top-version { font-size: 12px; white-space: nowrap; }
+.top-meta .hosting-note { color: var(--muted); }
+#sourceRepoLink { height: 38px; flex: 0 0 38px; }
+.source-plus { display: block; width: 20px; height: 20px; background: currentColor; mask: url('./assets/icons/plus.svg') center / contain no-repeat; }
+
 .status-pill {
   min-height: 34px;
   display: inline-flex;
@@ -194,7 +199,7 @@ h1 {
 
 .tabs {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
   padding: 8px;
   border-bottom: 1px solid var(--line);
@@ -236,6 +241,41 @@ h1 {
 .tab-panel.is-active {
   display: block;
 }
+
+.screen-gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.simulator-heading, .sim-section-title { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.simulator-heading h2 { margin: 0; font-size: 18px; line-height: 1.25; font-weight: 760; }
+.sim-section-title h3 { margin: 0; font-size: 15px; line-height: 1.4; font-weight: 700; }
+.simulator-heading p, .sim-build, .sim-status, .sim-section-title span { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.simulator-heading p { margin: 8px 0; }
+.sim-build { margin: 8px 0 16px; padding-bottom: 16px; border-bottom: 1px solid var(--line); overflow-wrap: anywhere; }
+.simulator-actions { display: flex; align-items: center; gap: 12px; }
+.simulator-actions > * { flex-shrink: 0; }
+#simPortalToggle { width: 140px; }
+#simPortalToggle[aria-pressed="true"] { background: var(--accent-soft); border-color: #3e668e; }
+.simulator-layout { width: 100%; }
+.virtual-portal { max-width: 640px; margin: 0 auto; }
+.device-workspace { display: grid; grid-template-columns: minmax(0, 440px) minmax(280px, 1fr); gap: 32px; align-items: center; }
+.device-display, .device-settings { min-width: 0; }
+.device-settings { padding-left: 24px; border-left: 1px solid var(--line); }
+.device-settings .sim-status { margin: 0 0 16px; min-height: 18px; }
+.device-settings .form-grid { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.device-settings .action-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.device-settings .action-strip button { min-width: 0; white-space: normal; line-height: 1.4; padding: 8px 12px; }
+.simulator-layout > [hidden] { display: none; }
+.virtual-device, .virtual-portal { min-width: 0; }
+.device-keys { display: grid; grid-template-columns: 96px minmax(0, 1fr) 96px; align-items: center; gap: 8px; max-width: 440px; margin: 16px auto 8px; }
+.device-keys button { min-width: 96px; touch-action: none; user-select: none; }
+.device-key-help { min-width: 0; text-align: center; }
+.device-key-help p { margin: 0; color: var(--muted); font-size: 12px; line-height: 18px; overflow-wrap: anywhere; }
+#simulatorCanvas { display: block; width: 100%; max-width: 440px; height: auto; aspect-ratio: 4/3; background: #edf0f3; image-rendering: pixelated; margin: 0 auto; border: 8px solid #30363d; border-radius: 8px; }
+#portalSimulator { width: 100%; height: 660px; border: 1px solid var(--line); border-radius: 6px; margin-top: 16px; background: #f5f5f7; }
+.screen-snapshots { margin-top: 24px; border-top: 1px solid var(--line); padding-top: 16px; }
+.screen-snapshots summary { cursor: pointer; margin-bottom: 16px; }
+.virtual-device:focus-visible { outline: 2px solid #87bfff; outline-offset: 4px; }
+.screen-gallery figure { margin: 0; min-width: 0; }
+.screen-gallery figcaption { margin-bottom: 12px; font-size: 16px; font-weight: 650; }
+.screen-gallery img { display: block; width: 100%; max-width: 400px; height: auto; aspect-ratio: 4 / 3; object-fit: contain; background: white; border: 1px solid var(--line); border-radius: 8px; }
 
 .work-summary {
   display: grid;
@@ -283,6 +323,7 @@ label span,
 }
 
 .summary-note {
+  white-space: pre-line;
   min-width: 0;
   margin: 0;
   align-self: center;
@@ -723,6 +764,29 @@ input[type="range"] {
   gap: 14px;
 }
 
+.quick-title { margin: 0 0 16px; font-size: 18px; }
+.quick-notice { border-left: 3px solid var(--warn); padding: 0 0 0 12px; margin-bottom: 20px; color: var(--warn); line-height: 1.6; }
+.quick-notice p { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 8px; margin: 0; text-wrap: pretty; }
+.quick-notice strong { color: var(--ink); font-weight: 750; white-space: nowrap; }
+.quick-notice p > span { min-width: 0; overflow-wrap: anywhere; }
+.quick-notice p + p { margin-top: 8px; }
+.quick-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(4, auto); gap: 16px 32px; }
+.quick-field-group { min-width: 0; display: grid; grid-row: span 4; grid-template-rows: subgrid; }
+.quick-field-group h3 { font-size: 15px; font-weight: 700; line-height: 1.4; margin: 0; }
+.quick-fields label, .quick-password-field { display: grid; grid-template-rows: 15px 40px auto; gap: 6px; min-width: 0; align-content: start; }
+.quick-password-field > label { display: block; }
+.quick-password-control { position: relative; min-width: 0; height: 40px; }
+.quick-password-control input { padding-right: 44px; }
+.quick-password-toggle { position: absolute; right: 1px; top: 1px; width: 38px; height: 38px; min-height: 38px; padding: 0; background: transparent; color: var(--muted); border-radius: 6px; }
+.quick-password-toggle:hover { color: var(--ink); background: #262c33; }
+.quick-password-toggle span { width: 18px; height: 18px; background: currentColor; mask: url('./assets/icons/eye.svg') center / contain no-repeat; }
+.quick-password-toggle[aria-pressed="true"] span { mask-image: url('./assets/icons/eye-off.svg'); }
+.quick-fields small, .quick-status { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.quick-result-label { display: block; margin-top: 16px; color: var(--muted); font-size: 12px; }
+#quickResult { min-height: 84px; margin-top: 6px; font-family: monospace; overflow-wrap: anywhere; }
+.quick-fallback { border-top: 1px solid var(--line); margin-top: 24px; padding-top: 16px; }
+.quick-fallback summary { cursor: pointer; margin-bottom: 16px; }
+
 .settings-card {
   display: block;
 }
@@ -923,7 +987,7 @@ progress {
   }
 
   .tabs {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 0;
     padding: 4px;
   }

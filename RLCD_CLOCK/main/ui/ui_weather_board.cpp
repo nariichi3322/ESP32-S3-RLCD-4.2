@@ -554,7 +554,7 @@ bool update_weather_detail_panel(const struct tm &local,
     changed |= set_label_text_if_changed(objects.sun_countdown_label,
                                          sun_countdown_line);
     changed |= set_label_text_if_changed(objects.advice_label,
-                                         weather_board_advice_text(forecast));
+                                         weather_board_advice_text(forecast,local));
     return changed;
 }
 
@@ -676,6 +676,8 @@ bool update_weather_board_page(const struct tm &local)
     }
     if (minute_refresh_due && (!full_refresh_due || !full_snapshot_loaded)) {
         changed |= update_weather_board_sun_countdown(local);
+        changed |= set_label_text_if_changed(s_weather_board_objects.advice_label,
+            weather_board_advice_text(s_weather_board_snapshot.forecast,local));
     }
     if (full_refresh_due && full_snapshot_loaded) {
         s_weather_board_refresh_cache.last_weather_state_version =

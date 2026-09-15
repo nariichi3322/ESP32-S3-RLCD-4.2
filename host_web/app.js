@@ -18,7 +18,7 @@ const MAX_OTA_MANIFEST_URL_BYTES = 255;
 const PARTITION_TABLE_OFFSET = 0x8000;
 const PARTITION_TABLE_SIZE = 0x1000;
 const FIRMWARE_RELEASES_MANIFEST_URL = "./firmware/releases.json";
-const DEFAULT_SUMMARY_NOTE = "资源包可同时包含 GIF 动图、静图和兜底配置；写入设备后重启，固件会优先加载自定义资源。";
+const DEFAULT_SUMMARY_NOTE = "资源包支持 GIF、静图和兜底配置。\n写入并重启后，优先加载自定义资源。";
 const MERGED_TARGET = {
   value: "merged",
   label: "0x0：完整 merged 固件",
@@ -40,14 +40,12 @@ const serialCommand = $("#serialCommand");
 const rxBytes = $("#rxBytes");
 const lastLineTime = $("#lastLineTime");
 const cacheState = $("#cacheState");
-const installAppBtn = $("#installAppBtn");
 
 let port;
 let reader;
 let writer;
 let keepReading = false;
 let receivedBytes = 0;
-let deferredInstallPrompt;
 let convertedGif;
 let convertedImages = [];
 let generatedAssetPackage;
@@ -1992,30 +1990,25 @@ async function writeFirmware() {
   }
 }
 
-function activateTab(tabId) {
+function activateTab(tabId, updateAddress = true) {
+  if (!$$(".tab").some(tab => tab.dataset.tab === tabId)) tabId = "assets";
   clearNextStepHint();
   $$(".tab").forEach((tab) => tab.classList.toggle("is-active", tab.dataset.tab === tabId));
   $$(".tab-panel").forEach((panel) => panel.classList.toggle("is-active", panel.id === tabId));
+  if (updateAddress && window.location.hash !== `#${tabId}`) {
+    window.history.pushState(null, "", `#${tabId}`);
+  }
+  window.dispatchEvent(new CustomEvent("host-tab-change", { detail: tabId }));
 }
 
 function bindTabs() {
   $$(".tab").forEach((tab) => {
     tab.addEventListener("click", () => activateTab(tab.dataset.tab));
   });
-}
-
-function bindInstall() {
-  window.addEventListener("beforeinstallprompt", (event) => {
-    event.preventDefault();
-    deferredInstallPrompt = event;
-    installAppBtn.disabled = false;
-  });
-  installAppBtn.addEventListener("click", async () => {
-    if (!deferredInstallPrompt) return;
-    deferredInstallPrompt.prompt();
-    await deferredInstallPrompt.userChoice;
-    deferredInstallPrompt = undefined;
-  });
+  const restoreTab = () => activateTab(window.location.hash.slice(1), false);
+  window.addEventListener("hashchange", restoreTab);
+  window.addEventListener("popstate", restoreTab);
+  restoreTab();
 }
 
 async function registerServiceWorker() {
@@ -2036,7 +2029,6 @@ bindTabs();
 document.addEventListener("click", clearNextStepHint, true);
 document.addEventListener("input", clearNextStepHint, true);
 document.addEventListener("change", clearNextStepHint, true);
-bindInstall();
 renderFirmwareTargets();
 setSerialSupport();
 registerServiceWorker();

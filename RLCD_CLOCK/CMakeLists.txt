@@ -6,7 +6,6 @@ set(PROJECT_VER "v100.0.3")
 # stable because ui_lang_v1 stores them in NVS.
 set(APP_UI_LOCALE "zh-TW" CACHE STRING "App UI locale (zh-TW, zh-CN, en, ja)")
 set_property(CACHE APP_UI_LOCALE PROPERTY STRINGS zh-TW zh-CN en ja)
-
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 set(EXTRA_COMPONENT_DIRS
     components/ExternLib/SensorLib

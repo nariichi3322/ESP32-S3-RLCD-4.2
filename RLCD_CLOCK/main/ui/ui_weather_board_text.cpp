@@ -1,6 +1,5 @@
 // 實作天氣看板不依賴 LVGL 的日期、溫度、空氣品質與日照文字格式。
 #include "ui_weather_board_text.h"
-
 #include "app_constexpr.h"
 #include "app_time_constants.h"
 #include "ui_text_format.h"
@@ -244,12 +243,22 @@ void format_weather_board_sunset_line(const WeatherForecastDay *today,
                                     : ui_text(UiTextId::TimePlaceholder));
 }
 
-const char *weather_board_advice_text(const WeatherForecastData &forecast)
+const char *weather_board_advice_text(const WeatherForecastData &forecast, const struct tm &local)
 {
-    if (forecast.ready && forecast.count > 0 && forecast.days[0].valid) {
-        return ui_weather_advice(forecast.days[0].weather_code);
+    if (!forecast.ready || local.tm_year < 100 || local.tm_mon < 0 ||
+        local.tm_mon > 11 || local.tm_mday < 1 || local.tm_mday > 31) {
+        return weather_board_advice_placeholder();
     }
-    return forecast.ready && forecast.advice[0]
-               ? ui_language_localize(forecast.advice)
-               : weather_board_advice_placeholder();
+    char date[12] = {};
+    if (!strftime(date, sizeof(date), "%Y-%m-%d", &local)) {
+        return weather_board_advice_placeholder();
+    }
+    for (int i = 0; i < forecast.count && i < kWeatherForecastDays; ++i) {
+        const auto &day = forecast.days[i];
+        if (day.valid && strcmp(day.date, date) == 0) {
+            return ui_weather_advice(day.weather_code);
+        }
+    }
+    return forecast.advice[0] ? ui_language_localize(forecast.advice)
+                              : weather_board_advice_placeholder();
 }

@@ -1,3 +1,4 @@
+#include "sdl_preview_sample_data.h"
 // 實作 SDL 天氣看板與供應商中立的單色天氣符號。
 #include "sdl_preview_weather.h"
 
@@ -72,7 +73,7 @@ void build_weather_board_preview_body(lv_obj_t *screen)
                kWeatherBoardCurrentCityY,
                kWeatherBoardCurrentCityW,
                kWeatherBoardCurrentCityH,
-               "杭州");
+               kPreviewCityLabel);
     lv_obj_t *temperature = make_label_with_font(screen,
                                                   kWeatherBoardCurrentTempX,
                                                   kWeatherBoardCurrentTempY,

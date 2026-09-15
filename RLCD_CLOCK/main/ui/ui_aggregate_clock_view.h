@@ -3,6 +3,9 @@
 #include "lvgl.h"
 
 struct AggregateClockView {
+    lv_obj_t *weather_panel = nullptr;
+    int weather_kind = -1;
+    int texture_read_width = -1;
     lv_obj_t *digits[3] = {};
     int values[3] = {-1, -1, -1};
     lv_obj_t *city = nullptr;
@@ -30,3 +33,5 @@ bool aggregate_clock_view_set_local_temperature(AggregateClockView &view,
                                                 bool available,
                                                 float temperature);
 bool aggregate_clock_set_text(lv_obj_t *label, const char *text);
+
+bool aggregate_clock_weather_theme(AggregateClockView &view,int weather_kind);

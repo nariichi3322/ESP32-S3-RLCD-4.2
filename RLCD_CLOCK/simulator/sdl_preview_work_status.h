@@ -23,6 +23,7 @@ public:
     void set_status_icons_visible(bool visible);
     void set_bluetooth_state(const char *state);
     void set_bluetooth_visible(bool visible);
+    void set_simulated_status(bool wifi, bool chime, bool alarm);
 
 private:
     void build_battery(lv_obj_t *parent);

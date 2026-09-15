@@ -22,8 +22,13 @@ set(LV_CONF_PATH "${CMAKE_CURRENT_LIST_DIR}/lv_conf.h" CACHE STRING "" FORCE)
 set(LV_CONF_INCLUDE_SIMPLE ON CACHE BOOL "" FORCE)
 set(LV_LVGL_H_INCLUDE_SIMPLE ON CACHE BOOL "" FORCE)
 
-add_subdirectory("../managed_components/lvgl__lvgl" "${CMAKE_BINARY_DIR}/lvgl" EXCLUDE_FROM_ALL)
+set(WEATHER_CLOCK_LVGL_DIR "${CMAKE_CURRENT_LIST_DIR}/../managed_components/lvgl__lvgl" CACHE PATH "LVGL source directory")
+add_subdirectory("${WEATHER_CLOCK_LVGL_DIR}" "${CMAKE_BINARY_DIR}/lvgl" EXCLUDE_FROM_ALL)
 
+if(EMSCRIPTEN)
+    set(SDL2_CFLAGS_OTHER "-sUSE_SDL=2")
+    set(SDL2_LDFLAGS "-sUSE_SDL=2")
+else()
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(SDL2 QUIET sdl2)
@@ -46,6 +51,7 @@ if(NOT SDL2_FOUND)
     separate_arguments(SDL2_CFLAGS_OTHER NATIVE_COMMAND "${SDL2_CFLAGS_TEXT}")
     separate_arguments(SDL2_LDFLAGS NATIVE_COMMAND "${SDL2_LDFLAGS_TEXT}")
     set(SDL2_INCLUDE_DIRS "")
+endif()
 endif()
 
 add_executable(weather_clock_sdl
@@ -88,3 +94,34 @@ target_compile_definitions(weather_clock_sdl PRIVATE
     WEATHER_CLOCK_PROJECT_VER="${WEATHER_CLOCK_PROJECT_VER}")
 target_link_options(weather_clock_sdl PRIVATE ${SDL2_LDFLAGS})
 target_link_libraries(weather_clock_sdl PRIVATE lvgl)
+
+if(EMSCRIPTEN)
+    target_compile_definitions(weather_clock_sdl PRIVATE WEATHER_CLOCK_WEB_SIMULATOR=1)
+    target_include_directories(weather_clock_sdl PRIVATE "${CMAKE_BINARY_DIR}")
+    target_link_options(weather_clock_sdl PRIVATE
+        "-sMODULARIZE=1" "-sEXPORT_ES6=1" "-sEXPORT_NAME=createWeatherClock"
+        "-sALLOW_MEMORY_GROWTH=1" "-sINITIAL_MEMORY=33554432" "-sMAXIMUM_MEMORY=134217728"
+        "-sENVIRONMENT=web" "-sNO_EXIT_RUNTIME=1"
+        "-sEXPORTED_FUNCTIONS=['_main','_demo_tick','_demo_key','_demo_scene','_demo_reset','_demo_state','_demo_build_info']"
+        "-sEXPORTED_RUNTIME_METHODS=['UTF8ToString']")
+    set_target_properties(weather_clock_sdl PROPERTIES OUTPUT_NAME "weather-clock" SUFFIX ".js")
+endif()
+
+if(NOT EMSCRIPTEN)
+add_executable(web_demo_state_test "web_demo_state_test.cpp")
+target_include_directories(web_demo_state_test PRIVATE "../main/core" "../main/ui")
+
+add_executable(aggregate_clock_view_test
+    "../main/assets/aggregate_numeric_20.c"
+    "../main/assets/zh_flip_lunar_22.c"
+    "../tests/aggregate_clock_view_host_test.cpp"
+    "../main/ui/ui_aggregate_clock_view.cpp"
+    "../main/assets/zh_font_16.c"
+    "../main/assets/weather_icons_36.c")
+target_include_directories(aggregate_clock_view_test PRIVATE "../main/ui" "../main/assets")
+target_link_libraries(aggregate_clock_view_test PRIVATE lvgl)
+
+add_executable(settings_visual_style_test "../tests/settings_visual_style_host_test.cpp")
+target_include_directories(settings_visual_style_test PRIVATE "../main/ui" "../components/app_bsp")
+target_link_libraries(settings_visual_style_test PRIVATE lvgl)
+endif()

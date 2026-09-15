@@ -26,7 +26,7 @@ bool get_weather_full_snapshot(WeatherData *weather,
                                WeatherForecastData *forecast,
                                WeatherAirData *air)
 {
-    ScopedSemaphoreLock lock(s_weather_state_mutex);
+    ScopedSemaphoreLock lock(s_weather_state_mutex, pdMS_TO_TICKS(50));
     if (!lock) return false;
     weather_snapshot_store_read(s_weather_store, weather, forecast, air);
     return true;
@@ -50,7 +50,7 @@ bool weather_ready_state_load()
 bool weather_cache_status_snapshot_load(WeatherCacheStatusSnapshot *out)
 {
     if (!out) return false;
-    ScopedSemaphoreLock lock(s_weather_state_mutex);
+    ScopedSemaphoreLock lock(s_weather_state_mutex, pdMS_TO_TICKS(50));
     if (!lock) return false;
     out->last_sync_time = s_weather_store.last_sync_time;
     out->version = s_weather_version.load(std::memory_order_acquire);
