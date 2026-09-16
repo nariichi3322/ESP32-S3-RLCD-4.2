@@ -39,7 +39,7 @@ constexpr size_t kNetworkDiagLocationTextSize = 32;
 constexpr size_t kNetworkDiagCityTextSize = 32;
 constexpr size_t kNetworkDiagPublicIpTextSize = 48;
 constexpr int kNetworkDiagNtpMaxRetries = 5;
-constexpr const char *kNetworkDiagPublicIpUrl = "https://uapis.cn/api/v1/network/myip";
+constexpr const char *kNetworkDiagPublicIpUrl = "https://ipwho.is/?fields=success,ip";
 constexpr const char *kNetworkDiagGithubDnsHost = "raw.githubusercontent.com";
 constexpr const char *kNetworkDiagForecastDnsHost = "api.open-meteo.com";
 constexpr const char *kNetworkDiagGeocodingDnsHost = "geocoding-api.open-meteo.com";

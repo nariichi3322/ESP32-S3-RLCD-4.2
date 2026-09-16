@@ -173,6 +173,7 @@ idf_component_register(
         "network/weather_state.cpp"
         "network/weather_update.cpp"
         "network/ip_geolocation.cpp"
+        "network/ip_geolocation_parser.cpp"
         "network/daily_saying_parser.cpp"
         "network/daily_saying_state.cpp"
         "network/daily_saying.cpp"
