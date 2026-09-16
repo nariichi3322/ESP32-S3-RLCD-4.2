@@ -19,6 +19,7 @@ constexpr int kAggregateTwoCardX[2] = {86, 210};
 constexpr int kAggregateTwoCardSeparatorX = 197;
 constexpr char kAggregateTemperatureUnit[] = "°C";
 constexpr char kAggregateTemperaturePlaceholder[] = "--.-";
+constexpr int kAggregateLocalTemperatureUnitGap = 2;
 constexpr int kDarkLabelOverdrawPasses = 5;
 
 lv_obj_t *panel(lv_obj_t *root, int x, int y, int w, int h, bool black) {
@@ -134,6 +135,15 @@ void draw_pair(lv_obj_t *canvas,int value) {
     }
     lv_obj_invalidate(canvas);
 }
+void position_local_temperature_unit(AggregateClockView &v,const char *numeric) {
+    if (!v.local_temp || !v.local_temp_unit || !numeric) return;
+    lv_point_t size={};
+    lv_txt_get_size(&size,numeric,&aggregate_numeric_20,0,0,
+                    LV_COORD_MAX,LV_TEXT_FLAG_NONE);
+    lv_obj_set_x(v.local_temp_unit,
+                 lv_obj_get_style_x(v.local_temp,LV_PART_MAIN)+
+                     size.x+kAggregateLocalTemperatureUnitGap);
+}
 }
 
 void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t *const buffers[3]) {
@@ -213,7 +223,8 @@ void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t 
     v.local_temp=label(root,285,241,60,24,kAggregateTemperaturePlaceholder,
                        &aggregate_numeric_20,true);
     v.local_temp_unit=label(root,347,241,32,24,kAggregateTemperatureUnit,
-                            ui_font(UiFontRole::Metric16),true);
+                            &aggregate_numeric_20,true);
+    position_local_temperature_unit(v,kAggregateTemperaturePlaceholder);
     v.humidity=label(root,285,266,93,24,
                      ui_text(UiTextId::AggregateHumidityPlaceholder),
                      &aggregate_numeric_20,true);
@@ -269,6 +280,7 @@ bool aggregate_clock_view_set_local_temperature(AggregateClockView &v,
     else std::strncpy(numeric,kAggregateTemperaturePlaceholder,sizeof(numeric)-1);
     bool changed=aggregate_clock_set_text(v.local_temp,numeric);
     changed|=aggregate_clock_set_text(v.local_temp_unit,kAggregateTemperatureUnit);
+    position_local_temperature_unit(v,numeric);
     return changed;
 }
 

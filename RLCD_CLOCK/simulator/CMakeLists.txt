@@ -77,6 +77,7 @@ add_executable(weather_clock_sdl
     "../main/assets/boot_anim.c"
     "../main/assets/zh_font_16.c"
     "../main/assets/weather_icons_36.c"
+    "../main/assets/aggregate_numeric_20.c"
     "../main/assets/zh_flip_lunar_22.c"
     "../main/assets/zh_pomodoro_title_24.c")
 
@@ -116,9 +117,15 @@ add_executable(aggregate_clock_view_test
     "../main/assets/zh_flip_lunar_22.c"
     "../tests/aggregate_clock_view_host_test.cpp"
     "../main/ui/ui_aggregate_clock_view.cpp"
+    "../main/ui/ui_font_provider.cpp"
+    "../main/ui/ui_language.cpp"
+    "../main/ui/ui_i18n.cpp"
     "../main/assets/zh_font_16.c"
+    "../main/assets/zh_pomodoro_title_24.c"
     "../main/assets/weather_icons_36.c")
-target_include_directories(aggregate_clock_view_test PRIVATE "../main/ui" "../main/assets")
+target_include_directories(aggregate_clock_view_test PRIVATE
+    "../main/ui" "../main/assets" "../main/network")
+target_compile_definitions(aggregate_clock_view_test PRIVATE APP_UI_LOCALE=0)
 target_link_libraries(aggregate_clock_view_test PRIVATE lvgl)
 
 add_executable(settings_visual_style_test "../tests/settings_visual_style_host_test.cpp")

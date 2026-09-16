@@ -5,6 +5,7 @@
 #include "ui_work_page_layout.h"
 
 LV_FONT_DECLARE(zh_font_16);
+LV_FONT_DECLARE(aggregate_numeric_20);
 LV_FONT_DECLARE(weather_icons_36);
 
 namespace {
@@ -70,6 +71,9 @@ void build_aggregate_clock_preview_body(lv_obj_t *screen)
     centered_label(screen, 325, 204, 54, 27, "初五", &zh_font_16);
 
     make_panel(screen, 248, 238, 134, 56, true);
-    centered_label(screen, 255, 241, 120, 22, "室內 25.3°C", &lv_font_montserrat_12);
+    centered_label(screen, 253, 241, 32, 24, "室內", &zh_font_16);
+    lv_obj_t *local_temperature = make_label_with_font(
+        screen, 285, 241, 93, 24, "25.3°C", &aggregate_numeric_20);
+    lv_obj_set_style_text_align(local_temperature, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     centered_label(screen, 255, 266, 120, 22, "濕度 58%", &lv_font_montserrat_12);
 }

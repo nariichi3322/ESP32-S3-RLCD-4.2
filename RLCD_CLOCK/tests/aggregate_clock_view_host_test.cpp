@@ -7,6 +7,13 @@
 #include <vector>
 #include <cstdio>
 LV_FONT_DECLARE(weather_icons_36);
+LV_FONT_DECLARE(aggregate_numeric_20);
+
+static lv_coord_t text_width(const char *text, const lv_font_t *font) {
+    lv_point_t size={};
+    lv_txt_get_size(&size,text,font,0,0,LV_COORD_MAX,LV_TEXT_FLAG_NONE);
+    return size.x;
+}
 
 static std::vector<lv_area_t> areas;
 static void flush(lv_disp_drv_t *driver,const lv_area_t *area,lv_color_t *) {
@@ -57,15 +64,35 @@ int main() {
     AggregateClockView view;
     aggregate_clock_view_build(lv_scr_act(),view,buffers);
     lv_obj_update_layout(lv_scr_act());
+    lv_font_glyph_dsc_t degree_glyph;
+    assert(lv_font_get_glyph_dsc(&aggregate_numeric_20,&degree_glyph,0x00b0,0));
+    assert(degree_glyph.box_w>0 && degree_glyph.box_h>0);
+    assert(text_width("°C",&aggregate_numeric_20)>0);
+    assert(text_width("°C",&aggregate_numeric_20)<=lv_obj_get_width(view.local_temp_unit));
+    assert(lv_obj_get_style_text_font(view.local_temp,0)==
+           lv_obj_get_style_text_font(view.local_temp_unit,0));
     assert(std::strcmp(lv_label_get_text(view.local_temp),"--.-")==0);
     assert(std::strcmp(lv_label_get_text(view.local_temp_unit),"°C")==0);
+    assert(lv_obj_get_x(view.local_temp_unit)==
+           lv_obj_get_x(view.local_temp)+text_width("--.-",&aggregate_numeric_20)+2);
     assert(aggregate_clock_view_set_local_temperature(view,true,25.3f));
+    lv_obj_update_layout(lv_scr_act());
     assert(std::strcmp(lv_label_get_text(view.local_temp),"25.3")==0);
     assert(std::strcmp(lv_label_get_text(view.local_temp_unit),"°C")==0);
+    assert(lv_obj_get_x(view.local_temp_unit)==
+           lv_obj_get_x(view.local_temp)+text_width("25.3",&aggregate_numeric_20)+2);
     assert(!aggregate_clock_view_set_local_temperature(view,true,25.3f));
+    assert(aggregate_clock_view_set_local_temperature(view,true,-12.3f));
+    lv_obj_update_layout(lv_scr_act());
+    assert(std::strcmp(lv_label_get_text(view.local_temp),"-12.3")==0);
+    assert(lv_obj_get_x(view.local_temp_unit)==
+           lv_obj_get_x(view.local_temp)+text_width("-12.3",&aggregate_numeric_20)+2);
     assert(aggregate_clock_view_set_local_temperature(view,false,0.0f));
+    lv_obj_update_layout(lv_scr_act());
     assert(std::strcmp(lv_label_get_text(view.local_temp),"--.-")==0);
     assert(std::strcmp(lv_label_get_text(view.local_temp_unit),"°C")==0);
+    assert(lv_obj_get_x(view.local_temp_unit)==
+           lv_obj_get_x(view.local_temp)+text_width("--.-",&aggregate_numeric_20)+2);
     assert(lv_obj_get_x(view.digits[0])==24);
     assert(lv_obj_get_x(view.digits[1])==148);
     assert(lv_obj_get_x(view.digits[2])==272);
@@ -77,7 +104,7 @@ int main() {
     for(int separator=0;separator<2;++separator)
         for(int dot=0;dot<2;++dot)
             assert(!lv_obj_has_flag(view.separators[separator][dot],LV_OBJ_FLAG_HIDDEN));
-    assert(lv_obj_get_y(view.icon)>174+40);
+    assert(lv_obj_get_y(view.icon)==207);
     assert(lv_obj_get_height(view.icon)>=lv_obj_get_style_text_font(view.icon,0)->line_height);
     for(int day=1;day<=31;++day) {
         char text[3]; std::snprintf(text,sizeof(text),"%d",day);
@@ -112,6 +139,7 @@ int main() {
     assert(std::memcmp(hour.data(),pixels[0],sizeof(pixels[0]))==0);
     assert(std::memcmp(minute.data(),pixels[1],sizeof(pixels[1]))==0);
     assert(aggregate_clock_view_set_seconds_visible(view,false));
+    lv_obj_update_layout(lv_scr_act());
     assert(lv_obj_get_x(view.digits[0])==86);
     assert(lv_obj_get_x(view.digits[1])==210);
     assert(lv_obj_get_x(view.separators[0][0])==197);
@@ -131,6 +159,7 @@ int main() {
     assert(std::memcmp(hour.data(),pixels[0],sizeof(pixels[0]))==0);
     assert(std::memcmp(minute.data(),pixels[1],sizeof(pixels[1]))==0);
     assert(aggregate_clock_view_set_seconds_visible(view,true));
+    lv_obj_update_layout(lv_scr_act());
     assert(lv_obj_get_x(view.digits[0])==24);
     assert(lv_obj_get_x(view.digits[1])==148);
     assert(lv_obj_get_x(view.digits[2])==272);
