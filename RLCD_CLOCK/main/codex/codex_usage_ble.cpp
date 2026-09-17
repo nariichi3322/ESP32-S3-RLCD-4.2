@@ -46,6 +46,8 @@ constexpr UBaseType_t kControlTaskPriority = 3;
 constexpr uint32_t kControlNotifyDesired = 1U << 0;
 constexpr uint32_t kControlNotifyHostExited = 1U << 1;
 constexpr uint32_t kControlNotifyClearBonds = 1U << 2;
+constexpr uint32_t kControlNotifyFirstStatusWatchdog = 1U << 3;
+constexpr uint32_t kControlNotifyAdvertisingRetry = 1U << 4;
 constexpr uint16_t kNoConnection = BLE_HS_CONN_HANDLE_NONE;
 
 static_assert(3U + 2U + 16U <= 31U,
@@ -78,12 +80,23 @@ std::atomic<uint32_t> s_pairing_generation{0};
 std::atomic<bool> s_pairing_visible{false};
 std::atomic<uint32_t> s_last_reject_log_tick{0};
 std::atomic<bool> s_desired_enabled{false};
+std::atomic<bool> s_graceful_stop_pending{false};
+std::atomic<uint32_t> s_graceful_stop_deadline{0};
+std::atomic<bool> s_immediate_stop{false};
 std::atomic<TaskHandle_t> s_control_task{nullptr};
 std::atomic_flag s_control_task_starting = ATOMIC_FLAG_INIT;
 SemaphoreHandle_t s_clear_bonds_done = nullptr;
 std::atomic<bool> s_clear_bonds_pending{false};
 std::atomic<bool> s_clear_bonds_result{false};
 uint16_t s_status_value_handle = 0;
+
+void notify_control_task(uint32_t notification)
+{
+    TaskHandle_t control = s_control_task.load(std::memory_order_acquire);
+    if (control) {
+        (void)xTaskNotify(control, notification, eSetBits);
+    }
+}
 
 uint32_t monotonic_ms()
 {
@@ -154,7 +167,7 @@ int status_access(uint16_t conn_handle, uint16_t,
     return 0;
 }
 
-void first_status_watchdog(void *)
+void first_status_watchdog_owned()
 {
     const uint32_t now = monotonic_ms();
     const uint32_t secure_since =
@@ -173,6 +186,13 @@ void first_status_watchdog(void *)
             (void)ble_gap_terminate(connection, BLE_ERR_REM_USER_CONN_TERM);
         }
     }
+}
+
+void first_status_watchdog(void *)
+{
+    // esp_timer callbacks may only wake the control task. NimBLE calls stay
+    // on the control task so a deadline cannot race host deinit.
+    notify_control_task(kControlNotifyFirstStatusWatchdog);
 }
 
 void schedule_first_status_watchdog()
@@ -215,6 +235,7 @@ int start_advertising();
 void start_advertising_with_retry();
 void advertising_retry_timer_callback(void *);
 void reset_transport_session_state();
+void clear_transport_session_state();
 
 int gap_event(ble_gap_event *event, void *)
 {
@@ -381,7 +402,9 @@ void start_advertising_with_retry()
 
 void advertising_retry_timer_callback(void *)
 {
-    start_advertising_with_retry();
+    // Retry timers never call NimBLE directly; the control task owns the
+    // resulting advertising operation.
+    notify_control_task(kControlNotifyAdvertisingRetry);
 }
 
 void on_sync()
@@ -477,6 +500,7 @@ bool initialize_transport()
 
 bool start_transport_owned()
 {
+    if (s_stopping.load(std::memory_order_acquire)) return false;
     if (s_running.load(std::memory_order_acquire)) return true;
     const bool initialized = initialize_transport();
     if (initialized && s_desired_enabled.load(std::memory_order_acquire)) {
@@ -505,13 +529,18 @@ void delete_transport_timers()
 
 bool stop_transport_owned()
 {
+    const bool hard_stop_requested =
+        s_immediate_stop.load(std::memory_order_acquire);
     s_stopping.store(true, std::memory_order_release);
     s_running.store(false, std::memory_order_release);
+    // A hard stop is allowed to hide pairing immediately.  Keep transport
+    // connection state intact until NimBLE has actually stopped so callbacks
+    // can still finish the termination/deinit sequence safely.
+    if (hard_stop_requested) clear_pairing();
     if (s_advertising_retry_timer) {
         (void)esp_timer_stop(s_advertising_retry_timer);
     }
     s_advertising_retry_attempt.store(0, std::memory_order_release);
-    clear_pairing();
     (void)ble_gap_adv_stop();
     const uint16_t connection = s_connection.load(std::memory_order_acquire);
     if (connection != kNoConnection) {
@@ -545,21 +574,33 @@ bool stop_transport_owned()
             delete_transport_timers();
         }
     }
-    reset_transport_session_state();
+    if (deinitialized) {
+        clear_transport_session_state();
+        s_graceful_stop_pending.store(false, std::memory_order_release);
+        s_graceful_stop_deadline.store(0, std::memory_order_release);
+        s_immediate_stop.store(false, std::memory_order_release);
+    }
     s_stopping.store(false, std::memory_order_release);
     return deinitialized;
 }
 
 void reset_transport_session_state()
 {
+    // Keep pairing separate: graceful page stops must retain it, while
+    // clear_transport_session_state() is used only for hard/finished stops.
     s_connection.store(kNoConnection, std::memory_order_release);
     s_connection_secure.store(false, std::memory_order_release);
     s_status_received.store(false, std::memory_order_release);
     s_secure_since_tick.store(0, std::memory_order_release);
     codex_usage_state_connection_changed(false, false);
     codex_usage_state_reset();
-    clear_pairing();
     notify_ui_task();
+}
+
+void clear_transport_session_state()
+{
+    clear_pairing();
+    reset_transport_session_state();
 }
 
 bool clear_bonds_owned()
@@ -581,14 +622,20 @@ bool clear_bonds_owned()
     const esp_err_t deinit_result = nimble_port_deinit();
     ESP_LOGI(kTag, "bond clear=%u deinit=%s", cleared,
              esp_err_to_name(deinit_result));
-    reset_transport_session_state();
+    clear_transport_session_state();
     return cleared && deinit_result == ESP_OK;
 }
 
 void control_task(void *)
 {
     uint32_t retry_attempt = 0;
+    uint32_t pending_notifications = 0;
     for (;;) {
+        uint32_t new_notifications = 0;
+        (void)xTaskNotifyWait(0, UINT32_MAX, &new_notifications, 0);
+        pending_notifications |= new_notifications;
+        const uint32_t notifications = pending_notifications;
+        pending_notifications = 0;
         if (s_clear_bonds_pending.exchange(false, std::memory_order_acq_rel)) {
             s_clear_bonds_result.store(clear_bonds_owned(),
                                        std::memory_order_release);
@@ -596,15 +643,36 @@ void control_task(void *)
             retry_attempt = 0;
             continue;
         }
+        if ((notifications & kControlNotifyFirstStatusWatchdog) != 0) {
+            first_status_watchdog_owned();
+        }
+        if ((notifications & kControlNotifyAdvertisingRetry) != 0) {
+            start_advertising_with_retry();
+        }
         const bool desired = s_desired_enabled.load(std::memory_order_acquire);
         const bool initialized = s_initialized.load(std::memory_order_acquire);
         const bool running = s_running.load(std::memory_order_acquire);
+        const TickType_t now = xTaskGetTickCount();
+        const bool graceful_stop_pending =
+            s_graceful_stop_pending.load(std::memory_order_acquire);
+        const TickType_t graceful_stop_deadline = static_cast<TickType_t>(
+            s_graceful_stop_deadline.load(std::memory_order_acquire));
         const CodexBleLifecycleAction action =
-            codex_ble_lifecycle_action(initialized, running, desired);
+            codex_ble_lifecycle_action(initialized,
+                                       running,
+                                       desired,
+                                       graceful_stop_pending,
+                                       now,
+                                       graceful_stop_deadline);
         if (action == CodexBleLifecycleAction::kStop) {
             if (running || initialized) {
                 if (!stop_transport_owned()) {
-                    vTaskDelay(pdMS_TO_TICKS(kHostStopRetryMs));
+                    uint32_t stop_notifications = 0;
+                    (void)xTaskNotifyWait(0,
+                                          UINT32_MAX,
+                                          &stop_notifications,
+                                          pdMS_TO_TICKS(kHostStopRetryMs));
+                    pending_notifications |= stop_notifications;
                     continue;
                 }
             }
@@ -620,14 +688,30 @@ void control_task(void *)
                 codex_ble_transport_retry_delay_ms(retry_attempt++);
             ESP_LOGW(kTag, "transport start failed; retry in %u ms",
                      static_cast<unsigned>(delay_ms));
-            uint32_t notifications = 0;
-            (void)xTaskNotifyWait(0, UINT32_MAX, &notifications,
+            uint32_t retry_notifications = 0;
+            (void)xTaskNotifyWait(0,
+                                  UINT32_MAX,
+                                  &retry_notifications,
                                   pdMS_TO_TICKS(delay_ms));
+            pending_notifications |= retry_notifications;
             continue;
         }
         retry_attempt = 0;
-        uint32_t notifications = 0;
-        (void)xTaskNotifyWait(0, UINT32_MAX, &notifications, portMAX_DELAY);
+        TickType_t wait_ticks = portMAX_DELAY;
+        if (!desired && graceful_stop_pending && (initialized || running)) {
+            wait_ticks = codex_ble_lifecycle_wait_ticks(
+                desired,
+                graceful_stop_pending,
+                xTaskGetTickCount(),
+                graceful_stop_deadline);
+            wait_ticks = app_tick_nonzero_delay(wait_ticks);
+        }
+        uint32_t wake_notifications = 0;
+        (void)xTaskNotifyWait(0,
+                              UINT32_MAX,
+                              &wake_notifications,
+                              wait_ticks);
+        pending_notifications |= wake_notifications;
     }
 }
 
@@ -659,19 +743,65 @@ bool ensure_control_task()
 
 bool codex_usage_ble_request_enabled(bool enabled)
 {
-    s_desired_enabled.store(enabled, std::memory_order_release);
-    if (!enabled) {
-        clear_pairing();
-        reset_transport_session_state();
+    return codex_usage_ble_request_page_state(enabled, !enabled);
+}
+
+bool codex_usage_ble_request_page_state(bool should_run, bool immediate_stop)
+{
+    if (should_run) {
+        s_desired_enabled.store(true, std::memory_order_release);
+        s_graceful_stop_pending.store(false, std::memory_order_release);
+        s_graceful_stop_deadline.store(0, std::memory_order_release);
+        s_immediate_stop.store(false, std::memory_order_release);
+    } else {
+        s_desired_enabled.store(false, std::memory_order_release);
+        if (immediate_stop) {
+            s_graceful_stop_pending.store(false, std::memory_order_release);
+            s_graceful_stop_deadline.store(0, std::memory_order_release);
+            // A later graceful request must not downgrade an outstanding hard
+            // stop while the transport is still shutting down.
+            s_immediate_stop.store(true, std::memory_order_release);
+        } else if (!s_immediate_stop.load(std::memory_order_acquire)) {
+            if (!s_graceful_stop_pending.load(std::memory_order_acquire)) {
+                const TickType_t deadline =
+                    xTaskGetTickCount() +
+                    pdMS_TO_TICKS(kCodexBleGracefulStopMs);
+                s_graceful_stop_deadline.store(
+                    static_cast<uint32_t>(deadline),
+                    std::memory_order_release);
+            }
+            s_graceful_stop_pending.store(true, std::memory_order_release);
+        }
     }
-    if (!enabled && !s_control_task.load(std::memory_order_acquire)) return true;
-    if (!ensure_control_task()) {
+
+    const bool has_transport =
+        s_initialized.load(std::memory_order_acquire) ||
+        s_running.load(std::memory_order_acquire) ||
+        s_stopping.load(std::memory_order_acquire);
+    TaskHandle_t control = s_control_task.load(std::memory_order_acquire);
+
+    // No task is needed for an already-deinitialized transport.  Preserve the
+    // legacy cleanup caller's synchronous state reset in the hard-stop case.
+    if (!has_transport && !should_run && immediate_stop) {
+        // Legacy cleanup can arrive before transport/task creation.  Clear the
+        // pairing overlay explicitly even though there is no control task to
+        // perform the normal deinit path.
+        clear_transport_session_state();
+    }
+    if (!should_run && !has_transport && !control) return true;
+    if (!control && !ensure_control_task()) {
         ESP_LOGW(kTag, "%s", "BLE control task unavailable");
         return false;
     }
-    xTaskNotify(s_control_task.load(std::memory_order_acquire),
-                kControlNotifyDesired, eSetBits);
+    notify_control_task(kControlNotifyDesired);
     return true;
+}
+
+bool codex_usage_ble_transport_running()
+{
+    return s_running.load(std::memory_order_acquire) &&
+           !s_stopping.load(std::memory_order_acquire) &&
+           !s_immediate_stop.load(std::memory_order_acquire);
 }
 
 bool codex_usage_ble_clear_bonds()

@@ -1,8 +1,9 @@
-// 管理网络和音频期间的电源管理锁，避免关键流程被睡眠打断。
+// 管理网络、音频和 USB 烧录唤醒期间的电源管理锁，避免关键流程被睡眠打断。
 #include "power_services_internal.h"
 
 #include "app_metadata.h"
 #include "scoped_semaphore_lock.h"
+#include "usb_programming_wake_policy.h"
 
 #include <esp_err.h>
 #include <esp_log.h>
@@ -19,6 +20,8 @@
 #define POWER_MUTEX_CREATE_FAILED_LOG_FORMAT "pm lock mutex create failed"
 #define POWER_PM_LOCK_CREATE_FAILED_LOG_FORMAT "%s pm lock create failed: %s"
 #define POWER_DISABLED_LOG_FORMAT "power management disabled in sdkconfig"
+#define POWER_USB_WAKE_REQUEST_FAILED_LOG_FORMAT \
+    "usb programming wake window request failed"
 
 namespace {
 constexpr const char *kNetworkPmLockName = "network_sync";
@@ -31,6 +34,18 @@ constexpr const char *kAudioWakePmLogName = "audio_wake";
 constexpr const char *kAudioCpuPmLogName = "audio_cpu";
 constexpr const char *kAudioWakePmCreateLogName = "audio wake";
 constexpr const char *kAudioCpuPmCreateLogName = "audio cpu";
+constexpr const char *kUsbProgrammingPmLockName = "usb_programming_wake";
+constexpr const char *kUsbProgrammingPmLogName = "usb_programming_wake";
+constexpr const char *kUsbProgrammingPmCreateLogName = "usb programming wake";
+
+constexpr TickType_t kUsbProgrammingWakeWindowTicks =
+    pdMS_TO_TICKS(kUsbProgrammingWakeWindowMs);
+static_assert(kUsbProgrammingWakeWindowTicks > 0,
+              "USB programming wake window must span at least one tick");
+
+bool s_usb_programming_wake_window_requested = false;
+bool s_usb_programming_wake_release_pending = false;
+TickType_t s_usb_programming_wake_deadline = 0;
 } // namespace
 
 #if CONFIG_PM_ENABLE
@@ -54,6 +69,7 @@ PmLockRuntime s_network_pm_lock_runtime;
 PmLockRuntime s_audio_pm_lock_runtime;
 PmLockRuntime s_audio_wake_pm_lock_runtime;
 PmLockRuntime s_audio_cpu_pm_lock_runtime;
+PmLockRuntime s_usb_programming_pm_lock_runtime;
 const PmLockDescriptor kNetworkPmLock = {
     ESP_PM_NO_LIGHT_SLEEP,
     kNetworkPmLockName,
@@ -82,13 +98,21 @@ const PmLockDescriptor kAudioCpuPmLock = {
     kAudioCpuPmCreateLogName,
     &s_audio_cpu_pm_lock_runtime,
 };
+const PmLockDescriptor kUsbProgrammingPmLock = {
+    ESP_PM_NO_LIGHT_SLEEP,
+    kUsbProgrammingPmLockName,
+    kUsbProgrammingPmLogName,
+    kUsbProgrammingPmCreateLogName,
+    &s_usb_programming_pm_lock_runtime,
+};
 const PmLockDescriptor *const kPmLockCatalog[] = {
     &kNetworkPmLock,
     &kAudioPmLock,
     &kAudioWakePmLock,
     &kAudioCpuPmLock,
+    &kUsbProgrammingPmLock,
 };
-static_assert(sizeof(kPmLockCatalog) / sizeof(kPmLockCatalog[0]) == 4,
+static_assert(sizeof(kPmLockCatalog) / sizeof(kPmLockCatalog[0]) == 5,
               "All PM locks must be registered in the initialization catalog");
 
 constexpr uint32_t kPmLockMutexTimeoutMs = 1000;
@@ -320,6 +344,7 @@ bool get_power_lock_depth_snapshot(PowerLockDepthSnapshot *out)
     out->audio = s_audio_pm_lock_runtime.depth;
     out->audio_wake = s_audio_wake_pm_lock_runtime.depth;
     out->audio_cpu = s_audio_cpu_pm_lock_runtime.depth;
+    out->usb_programming = s_usb_programming_pm_lock_runtime.depth;
 #endif
     return true;
 }
@@ -360,4 +385,55 @@ bool set_audio_performance_mode(bool enabled)
     (void)enabled;
     return true;
 #endif
+}
+
+bool request_usb_programming_wake_window(TickType_t now)
+{
+#if CONFIG_PM_ENABLE
+    if (!set_pm_lock_active(kUsbProgrammingPmLock, true)) {
+        ESP_LOGW(TAG, "%s", POWER_USB_WAKE_REQUEST_FAILED_LOG_FORMAT);
+        return false;
+    }
+#endif
+    s_usb_programming_wake_window_requested = true;
+    s_usb_programming_wake_release_pending = false;
+    s_usb_programming_wake_deadline =
+        usb_programming_wake_window_deadline(now,
+                                             kUsbProgrammingWakeWindowTicks);
+    return true;
+}
+
+void service_usb_programming_wake_window(TickType_t now)
+{
+    if (!s_usb_programming_wake_window_requested ||
+        usb_programming_wake_window_pending(
+            true, now, s_usb_programming_wake_deadline)) {
+        return;
+    }
+
+    s_usb_programming_wake_release_pending = true;
+#if CONFIG_PM_ENABLE
+    if (!set_pm_lock_active(kUsbProgrammingPmLock, false)) {
+        return;
+    }
+#endif
+    s_usb_programming_wake_window_requested = false;
+    s_usb_programming_wake_release_pending = false;
+    s_usb_programming_wake_deadline = 0;
+}
+
+bool usb_programming_wake_window_active(TickType_t now)
+{
+    return s_usb_programming_wake_window_requested &&
+           (s_usb_programming_wake_release_pending ||
+            usb_programming_wake_window_pending(
+                true, now, s_usb_programming_wake_deadline));
+}
+
+TickType_t usb_programming_wake_window_remaining_ticks(TickType_t now)
+{
+    return usb_programming_wake_window_remaining_ticks(
+        s_usb_programming_wake_window_requested,
+        now,
+        s_usb_programming_wake_deadline);
 }

@@ -504,7 +504,7 @@ bool update_work_page_status_icons(int page,
     changed |= set_obj_visible(wifi, wifi_visible);
     changed |= set_obj_visible(alarm, allow && status.alarm_enabled);
     const bool bluetooth_visible =
-        codex_ble_icon_should_show(page, allow, status.codex_enabled);
+        codex_ble_icon_should_show(allow, status.codex_transport_running);
     if (bluetooth_visible &&
         page_status.last_bluetooth_state != status.codex_link_state) {
         draw_1bit_icon(bluetooth,

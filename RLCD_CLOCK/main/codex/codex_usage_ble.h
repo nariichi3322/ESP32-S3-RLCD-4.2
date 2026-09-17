@@ -11,6 +11,8 @@ struct CodexPairingSnapshot {
 };
 
 bool codex_usage_ble_request_enabled(bool enabled);
+bool codex_usage_ble_request_page_state(bool should_run, bool immediate_stop);
+bool codex_usage_ble_transport_running();
 bool codex_usage_ble_clear_bonds();
 bool codex_usage_ble_pairing_snapshot(CodexPairingSnapshot *out);
 void codex_usage_ble_clear_pairing_overlay();

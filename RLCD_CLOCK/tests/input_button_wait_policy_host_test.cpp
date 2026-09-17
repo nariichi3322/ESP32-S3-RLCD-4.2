@@ -2,6 +2,7 @@
 #include "input_button_wait_policy.h"
 
 #include <assert.h>
+#include <stdint.h>
 
 int main()
 {
@@ -10,6 +11,20 @@ int main()
     assert(!button_task_can_wait_for_edge(true, true, false, true));
     assert(!button_task_can_wait_for_edge(true, false, true, true));
     assert(!button_task_can_wait_for_edge(true, false, false, true));
+    assert(!button_task_can_wait_for_edge(true, false, false, false, true));
+
+    assert(button_task_wait_mode(true, false, false, false, false) ==
+           ButtonTaskWaitMode::kIndefiniteNotification);
+    assert(button_task_wait_mode(true, false, false, false, true) ==
+           ButtonTaskWaitMode::kTimedNotification);
+    assert(button_task_wait_mode(true, true, false, true, true) ==
+           ButtonTaskWaitMode::kTimedNotification);
+    assert(button_task_wait_mode(false, false, false, false, true) ==
+           ButtonTaskWaitMode::kPollingDelay);
+
+    assert(button_task_wait_ticks<uint32_t>(UINT32_MAX, true, 20) == 20);
+    assert(button_task_wait_ticks<uint32_t>(0, true, 0) == 1);
+    assert(button_task_wait_ticks<uint32_t>(20, false, 0) == 20);
 
     assert(button_task_poll_delay_ms(true, false, false) ==
            kButtonPressedPollMs);

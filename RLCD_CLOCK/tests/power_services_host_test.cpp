@@ -1,5 +1,6 @@
-// 验证网络与音频 PM 锁的嵌套计数、失败回滚和作用域互斥释放语义。
+// 验证网络、音频与 USB 唤醒 PM 锁的嵌套计数、失败回滚和作用域互斥释放语义。
 #include "power_services_internal.h"
+#include "usb_programming_wake_policy.h"
 
 #include "app_metadata.h"
 
@@ -25,7 +26,7 @@ struct FakePmLock {
 };
 
 namespace {
-FakePmLock s_locks[4] = {};
+FakePmLock s_locks[5] = {};
 int s_lock_count = 0;
 int s_lock_create_attempts = 0;
 int s_configure_calls = 0;
@@ -44,7 +45,11 @@ FakePmLock *find_lock(const char *name)
     return nullptr;
 }
 
-void expect_depths(int network, int audio, int wake, int cpu)
+void expect_depths(int network,
+                   int audio,
+                   int wake,
+                   int cpu,
+                   int usb_programming = 0)
 {
     PowerLockDepthSnapshot snapshot = {};
     assert(get_power_lock_depth_snapshot(&snapshot));
@@ -52,6 +57,7 @@ void expect_depths(int network, int audio, int wake, int cpu)
     assert(snapshot.audio == audio);
     assert(snapshot.audio_wake == wake);
     assert(snapshot.audio_cpu == cpu);
+    assert(snapshot.usb_programming == usb_programming);
 }
 } // namespace
 
@@ -132,32 +138,34 @@ int main()
     s_fail_create_name = "audio_wake_80";
     init_power_management();
     assert(s_configure_calls == 1);
-    assert(s_lock_create_attempts == 4);
-    assert(s_lock_count == 3);
+    assert(s_lock_create_attempts == 5);
+    assert(s_lock_count == 4);
     assert(find_lock("network_sync"));
     assert(find_lock("audio_play"));
     assert(!find_lock("audio_wake_80"));
     assert(find_lock("audio_cpu_max"));
+    assert(find_lock("usb_programming_wake"));
 
     s_fail_configure = false;
     s_fail_create_name = nullptr;
     init_power_management();
     assert(g_mutex_create_calls == 2);
     assert(s_configure_calls == 2);
-    assert(s_lock_create_attempts == 5);
-    assert(s_lock_count == 4);
+    assert(s_lock_create_attempts == 6);
+    assert(s_lock_count == 5);
 
     init_power_management();
     assert(s_configure_calls == 2);
-    assert(s_lock_create_attempts == 5);
-    assert(s_lock_count == 4);
+    assert(s_lock_create_attempts == 6);
+    assert(s_lock_count == 5);
     expect_depths(0, 0, 0, 0);
 
     FakePmLock *network = find_lock("network_sync");
     FakePmLock *audio = find_lock("audio_play");
     FakePmLock *wake = find_lock("audio_wake_80");
     FakePmLock *cpu = find_lock("audio_cpu_max");
-    assert(network && audio && wake && cpu);
+    FakePmLock *usb_programming = find_lock("usb_programming_wake");
+    assert(network && audio && wake && cpu && usb_programming);
 
     assert(acquire_network_awake_lock());
     assert(g_last_mutex_take_timeout == 1000);
@@ -251,5 +259,41 @@ int main()
     assert(set_audio_performance_mode(false));
     release_audio_awake_lock();
     expect_depths(0, 0, 0, 0);
+
+    // The application lock is separate from the IDF monitor's Host-SOF lock.
+    FakePmLock host_sof = {};
+    host_sof.name = "usb_serial_jtag";
+    assert(esp_pm_lock_acquire(&host_sof) == ESP_OK);
+
+    constexpr TickType_t kFirstPress = 100;
+    constexpr TickType_t kWindowTicks =
+        pdMS_TO_TICKS(kUsbProgrammingWakeWindowMs);
+    constexpr TickType_t kRepeatedPress = kFirstPress + 100;
+    constexpr TickType_t kRepeatedDeadline = kRepeatedPress + kWindowTicks;
+    const int usb_acquires_before_window = usb_programming->acquire_attempts;
+    assert(request_usb_programming_wake_window(kFirstPress));
+    assert(usb_programming->acquire_attempts ==
+           usb_acquires_before_window + 1);
+    expect_depths(0, 0, 0, 0, 1);
+    assert(usb_programming_wake_window_active(kFirstPress));
+    assert(host_sof.held);
+
+    // A repeated button request only moves the deadline; it does not acquire
+    // the same PM lock a second time.
+    assert(request_usb_programming_wake_window(kRepeatedPress));
+    assert(usb_programming->acquire_attempts ==
+           usb_acquires_before_window + 1);
+    expect_depths(0, 0, 0, 0, 1);
+    service_usb_programming_wake_window(kFirstPress + kWindowTicks - 1);
+    expect_depths(0, 0, 0, 0, 1);
+    assert(usb_programming_wake_window_active(kFirstPress + kWindowTicks - 1));
+    service_usb_programming_wake_window(kRepeatedDeadline);
+    expect_depths(0, 0, 0, 0, 0);
+    assert(usb_programming->release_attempts == 1);
+    assert(!usb_programming_wake_window_active(kRepeatedDeadline));
+    assert(host_sof.held);
+    service_usb_programming_wake_window(kRepeatedDeadline + 1);
+    assert(usb_programming->release_attempts == 1);
+    assert(esp_pm_lock_release(&host_sof) == ESP_OK);
     return 0;
 }

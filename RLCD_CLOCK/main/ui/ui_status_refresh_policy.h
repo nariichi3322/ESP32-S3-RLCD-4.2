@@ -12,6 +12,7 @@ struct UiStatusRefreshSnapshot {
     bool wifi_radio_on = false;
     bool alarm_enabled = false;
     bool codex_enabled = false;
+    bool codex_transport_running = false;
     uint8_t codex_link_state = 0;
 };
 

@@ -22,7 +22,7 @@ glyph delivery, streamed notification/Ogg playback, and MQTT/UDP hardening are
 not copied because they either do not apply to this WebSocket-only port or
 would change the validated RLCD audio lifecycle.
 
-Production remains on ESP-IDF 5.5.3 and ESP-SR 2.3.1. ESP-SR 2.4.7 is retained
+Production remains on ESP-IDF 5.5.5 and ESP-SR 2.3.1. ESP-SR 2.4.7 is retained
 only as a possible isolated hardware A/B experiment for full-duplex AEC; it
 must not be adopted without repeated wake, long-TTS, page-lifecycle, memory,
 power, and codec regression testing. ESP-SR 2.5.x is not a production upgrade

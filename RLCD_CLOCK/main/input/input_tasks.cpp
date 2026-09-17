@@ -12,6 +12,7 @@
 #include "network_sync_requests.h"
 #include "ota_services.h"
 #include "pomodoro_services.h"
+#include "power_services.h"
 #include "task_notification_target.h"
 #include "ui_info_page_state.h"
 #include "ui_clock_seconds_state.h"
@@ -24,6 +25,7 @@
 #include "ui_work_page_catalog.h"
 #include "wifi_portal_state.h"
 
+#include "driver/usb_serial_jtag.h"
 #include "esp_sleep.h"
 #include "esp_log.h"
 #include "freertos/task.h"
@@ -40,6 +42,7 @@
 #define BUTTON_CLOCK_SECONDS_LOG_FORMAT "weather clock seconds display: %s"
 #define BUTTON_CLOCK_SECONDS_SAVE_FAILED_LOG "failed to save weather clock seconds display"
 #define BUTTON_WEATHER_BOARD_FORECAST_MODE_LOG_FORMAT "weather board forecast mode: %s"
+#define BUTTON_USB_SOF_STATUS_LOG_FORMAT "usb serial/jtag SOF host: %s"
 
 namespace {
 constexpr int kButtonDebounceMs = 18;
@@ -258,14 +261,27 @@ void button_task(void *)
     bool boot_long_handled = false;
     bool boot_press_stopped_alert = false;
     bool key_press_stopped_alert = false;
+    bool usb_sof_status_sampled = false;
+    bool last_usb_sof_connected = false;
 
     for (;;) {
         TickType_t now = xTaskGetTickCount();
+        service_usb_programming_wake_window(now);
+        const bool usb_sof_connected = usb_serial_jtag_is_connected();
+        if (!usb_sof_status_sampled ||
+            usb_sof_connected != last_usb_sof_connected) {
+            ESP_LOGI(TAG,
+                     BUTTON_USB_SOF_STATUS_LOG_FORMAT,
+                     usb_sof_connected ? "present" : "absent");
+            last_usb_sof_connected = usb_sof_connected;
+            usb_sof_status_sampled = true;
+        }
         bool boot_pressed = gpio_get_level(kBootButtonGpio) == 0;
         bool key_pressed = gpio_get_level(kKeyButtonGpio) == 0;
 
         if (boot_pressed) {
             if (boot_pressed_since == 0) {
+                (void)request_usb_programming_wake_window(now);
                 boot_pressed_since = now;
                 boot_long_handled = false;
                 boot_press_stopped_alert = alarm_stop_ringing_from_button() ||
@@ -318,6 +334,7 @@ void button_task(void *)
 
         if (key_pressed) {
             if (key_pressed_since == 0) {
+                (void)request_usb_programming_wake_window(now);
                 key_pressed_since = now;
                 key_press_opened_settings = false;
                 key_long_handled = false;
@@ -389,10 +406,15 @@ void button_task(void *)
         }
         const bool press_tracking_active =
             boot_pressed_since != 0 || key_pressed_since != 0;
-        if (button_task_can_wait_for_edge(edge_wakeup_ready,
-                                          boot_pressed,
-                                          key_pressed,
-                                          press_tracking_active)) {
+        const bool wake_window_active =
+            usb_programming_wake_window_active(now);
+        const ButtonTaskWaitMode wait_mode = button_task_wait_mode(
+            edge_wakeup_ready,
+            boot_pressed,
+            key_pressed,
+            press_tracking_active,
+            wake_window_active);
+        if (wait_mode == ButtonTaskWaitMode::kIndefiniteNotification) {
             (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
             continue;
         }
@@ -415,6 +437,14 @@ void button_task(void *)
         const int delay_ms = button_task_poll_delay_ms(any_button_pressed,
                                                        interactive_surface,
                                                        low_refresh_surface);
-        vTaskDelay(pdMS_TO_TICKS(delay_ms));
+        const TickType_t delay_ticks = button_task_wait_ticks(
+            pdMS_TO_TICKS(delay_ms),
+            wake_window_active,
+            usb_programming_wake_window_remaining_ticks(now));
+        if (wait_mode == ButtonTaskWaitMode::kTimedNotification) {
+            (void)ulTaskNotifyTake(pdTRUE, delay_ticks);
+        } else {
+            vTaskDelay(delay_ticks);
+        }
     }
 }

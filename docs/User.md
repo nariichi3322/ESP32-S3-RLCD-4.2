@@ -16,7 +16,7 @@ Weather data: [Open-Meteo Forecast API](https://open-meteo.com/en/docs) and [Geo
 
 ## CODEX Usage Bluetooth
 
-The CODEX page is controlled by the common page visibility and order settings. Bluetooth starts only while the normal CODEX page is visible. Leaving that page, entering low-battery mode, Settings, or another auxiliary page stops Bluetooth and clears connection and pairing-overlay state. The Bluetooth status icon is only visible on the CODEX page.
+The CODEX page is controlled by the common page visibility and order settings. Bluetooth starts while the normal CODEX page is visible, and opening the Settings overlay from CODEX keeps the Bluetooth transport and pairing state available. Leaving CODEX for an ordinary work page requests a graceful stop: Bluetooth and its pairing/connection state are retained for up to 60 seconds, and returning to CODEX during that window cancels the stop. While the transport remains active, the top Bluetooth status icon continues to reflect its current link state on the visible work page. At the deadline, the transport stops and the icon disappears. Low-battery mode, OTA Checking or Updating, a queued or active setup portal, and non-Settings auxiliary pages stop Bluetooth immediately.
 
 Use **System > Clear CODEX pairing** to remove saved bonds when pairing a different client.
 

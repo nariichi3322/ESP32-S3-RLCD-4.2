@@ -7,6 +7,7 @@
 #include "ui_clock_seconds_state.h"
 #include "app_metadata.h"
 #include "battery_runtime_state.h"
+#include "codex_ble_page_policy.h"
 #include "codex_usage_protocol.h"
 #include "ui_clock.h"
 #include "ui_clock_header_objects.h"
@@ -318,9 +319,8 @@ bool update_top_status_icons(bool alert_visible,
                                allow && status.wifi_radio_on);
     changed |= set_obj_visible(header.alarm_status_icon_canvas,
                                allow && status.alarm_enabled);
-    // The clock header never owns the CODEX transport indicator. BLE and its
-    // icon belong exclusively to the dedicated CODEX page.
-    const bool bluetooth_visible = false;
+    const bool bluetooth_visible =
+        codex_ble_icon_should_show(allow, status.codex_transport_running);
     if (bluetooth_visible &&
         header.bluetooth_status_state != status.codex_link_state) {
         const uint8_t *bits = codex_bt_disconnect_icon_bits;

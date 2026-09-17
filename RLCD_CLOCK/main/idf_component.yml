@@ -1,7 +1,7 @@
 # 声明主组件通过 ESP-IDF 组件管理器拉取的依赖。
 dependencies:
   idf:
-    version: '>=4.4.0'
+    version: '>=5.5.5'
   lvgl/lvgl: ^8.4.0
   espressif/esp_audio_codec: ~2.4.1
   espressif/esp_audio_effects: ~1.2.1

@@ -50,6 +50,11 @@ int main()
     assert(!ui_sensor_status_refresh_due(changed, stable, true, false));
 
     changed = stable;
+    changed.codex_transport_running = true;
+    assert(ui_status_refresh_due(changed, stable, true, false));
+    assert(!ui_sensor_status_refresh_due(changed, stable, true, false));
+
+    changed = stable;
     changed.codex_link_state = 2;
     assert(ui_status_refresh_due(changed, stable, true, false));
     assert(!ui_sensor_status_refresh_due(changed, stable, true, false));

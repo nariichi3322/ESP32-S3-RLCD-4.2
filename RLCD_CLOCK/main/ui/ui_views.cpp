@@ -26,6 +26,7 @@
 #include "ota_runtime_state.h"
 #include "ota_services.h"
 #include "sensor_time.h"
+#include "setup_portal_control.h"
 #include "ui_battery.h"
 #include "ui_battery_blink.h"
 #include "ui_clock_seconds_state.h"
@@ -127,16 +128,20 @@ void apply_xiaozhi_page_activation(bool requested_active,
 }
 
 void apply_codex_page_activation(bool requested_active,
-                                 bool &previous_requested_active)
+                                 bool immediate_stop,
+                                 bool &previous_requested_active,
+                                 bool &previous_immediate_stop,
+                                 bool &previous_valid)
 {
-    if (requested_active == previous_requested_active) {
+    if (previous_valid &&
+        requested_active == previous_requested_active &&
+        immediate_stop == previous_immediate_stop) {
         return;
     }
-    // The BLE transport owns a bounded retry task after a failed start. Record
-    // the requested state so leaving the page always sends a matching stop and
-    // cancels that retry path.
-    if (codex_usage_ble_request_enabled(requested_active)) {
+    if (codex_usage_ble_request_page_state(requested_active, immediate_stop)) {
         previous_requested_active = requested_active;
+        previous_immediate_stop = immediate_stop;
+        previous_valid = true;
     }
 }
 
@@ -174,6 +179,8 @@ void ui_task(void *)
     bool xiaozhi_activation_requested = false;
     bool xiaozhi_activation_request_valid = false;
     bool codex_activation_requested = false;
+    bool codex_immediate_stop_requested = false;
+    bool codex_activation_request_valid = false;
     int low_battery_resume_page = kWorkPageWeatherClock;
     bool low_battery_resume_pending = false;
     uint8_t lvgl_lock_failures = 0;
@@ -216,14 +223,19 @@ void ui_task(void *)
             true,
             xiaozhi_activation_requested,
             xiaozhi_activation_request_valid);
-        apply_codex_page_activation(
-            codex_ble_page_should_run(active_page,
-                                      battery.low_battery_mode,
-                                      runtime_surfaces.setup_portal_active,
-                                      runtime_surfaces.auxiliary_page_requested(),
-                                      runtime_surfaces.settings_requested,
-                                      ota_runtime_state_load() == kOtaUpdating),
-            codex_activation_requested);
+        const CodexBlePageDecision codex_page = codex_ble_page_decision(
+            active_page,
+            battery.low_battery_mode,
+            setup_portal_start_requested(),
+            runtime_surfaces.setup_portal_active,
+            runtime_surfaces.auxiliary_page_requested(),
+            runtime_surfaces.settings_requested,
+            ota_runtime_state_load());
+        apply_codex_page_activation(codex_page.should_run,
+                                    codex_page.immediate_stop,
+                                    codex_activation_requested,
+                                    codex_immediate_stop_requested,
+                                    codex_activation_request_valid);
 
         TickType_t tick_now = xTaskGetTickCount();
         if (active_page == kWorkPageXiaozhiAI &&
@@ -239,6 +251,8 @@ void ui_task(void *)
                 app_event_group_get_bits() & kUiWeatherNetworkStatusBits);
         }
         const bool codex_enabled = active_page == kWorkPageCodexUsage;
+        const bool codex_transport_running =
+            codex_usage_ble_transport_running();
         uint8_t codex_link_state = static_cast<uint8_t>(
             CodexUsageLinkState::Disconnected);
         CodexUsageSnapshotView codex_view{};
@@ -259,6 +273,7 @@ void ui_task(void *)
             wifi_radio_on_load(),
             alarm_is_enabled(),
             codex_enabled,
+            codex_transport_running,
             codex_link_state,
         };
         bool status_fallback_elapsed = app_tick_interval_elapsed(
@@ -660,6 +675,31 @@ void ui_task(void *)
                 xiaozhi_last_activity_tick,
                 last_xiaozhi_activity_sequence);
             active_page = active_work_page_load();
+            const UiRuntimeSurfaceSnapshot final_runtime_surfaces =
+                ui_runtime_surface_snapshot_load();
+            const CodexBlePageDecision final_codex_page =
+                codex_ble_page_decision(
+                    active_page,
+                    battery.low_battery_mode,
+                    setup_portal_start_requested(),
+                    final_runtime_surfaces.setup_portal_active,
+                    final_runtime_surfaces.auxiliary_page_requested(),
+                    final_runtime_surfaces.settings_requested,
+                    ota_runtime_state_load());
+            // The page can be corrected by low-battery recovery, setup
+            // handling, or auto-return above.  Only send a second request
+            // when the final decision differs from the first one this loop;
+            // apply_codex_page_activation() also suppresses duplicate state
+            // requests and keeps all lifecycle work in the BLE control task.
+            if (final_codex_page.should_run != codex_page.should_run ||
+                final_codex_page.immediate_stop != codex_page.immediate_stop) {
+                apply_codex_page_activation(
+                    final_codex_page.should_run,
+                    final_codex_page.immediate_stop,
+                    codex_activation_requested,
+                    codex_immediate_stop_requested,
+                    codex_activation_request_valid);
+            }
             if (visible_work_page != active_page) {
                 show_active_work_page();
                 visible_work_page = active_page;
