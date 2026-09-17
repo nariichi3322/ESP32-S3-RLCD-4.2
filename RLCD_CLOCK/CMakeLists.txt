@@ -1,6 +1,6 @@
 # 配置天气时钟 ESP-IDF 工程版本、项目名和额外组件目录。
 cmake_minimum_required(VERSION 3.16)
-set(PROJECT_VER "v100.0.3")
+set(PROJECT_VER "v100.0.4")
 
 # Build one language-specific App image at a time. The numeric ids are kept
 # stable because ui_lang_v1 stores them in NVS.

@@ -2,16 +2,15 @@
 
 > **Language:** English (current) · [Chinese](README.md)
 
-This fork is a low-power local clock firmware for the **ESP32-S3** and a **4.2-inch RLCD display**. It exposes the original offline pages and uses Wi-Fi only for setup, NTP synchronization, and user-initiated OTA updates.
+This fork is a low-power weather-clock firmware for the **ESP32-S3** and a **4.2-inch RLCD display**. It provides weather, calendar, temperature/humidity history, aggregate clock, Xiaozhi AI, and Codex usage pages. Wi-Fi is used on demand for provisioning, weather, daily sayings, NTP, diagnostics, and user-initiated OTA updates.
 
-## Current Build: Local UI + NTP + Manual OTA
+## Current Build: Multi-page Weather Clock + Manual OTA
 
 - Configure primary/backup Wi-Fi and the NTP server through the setup portal.
 - Open **System → Check Update** and press BOOT to check manually. If an update is available, press BOOT again within 60 seconds to install it.
-- Weather, Daily Saying, Xiaozhi AI, and Network Diagnostics have no user entry and do not start routine network activity. OTA is never checked automatically.
+- Weather, Daily Saying, Xiaozhi AI, Network Diagnostics, manual synchronization, and OTA run only after the corresponding user action or scheduled data refresh. OTA is never checked automatically.
+- Weather, Picture Clock, Weather Board, Temperature/Humidity Clock, Calendar, Temperature/Humidity History, Aggregate Clock, Xiaozhi AI, and Codex Usage can be disabled or reordered in Settings. Offline mode remains available for pages that do not require network data.
 - OTA manifests for this fork are published from the `nariichi3322` branch; `main` remains reserved for upstream synchronization.
-
-The full-feature description below is retained as an architectural reference. The current behavior is defined by the section above.
 
 ## Quick Links
 
@@ -119,7 +118,7 @@ The standalone [Power Demo](docs/Power%20Demo/README.md) under `docs/Power Demo/
 - Audio: microphone, codec, power amplifier, and speaker for Xiaozhi AI and alert sounds.
 - Network: Wi-Fi for provisioning, weather, daily saying, NTP, OTA, and diagnostics.
 - Storage: NVS for network and user settings, plus a separate resource partition for replaceable assets.
-- Development framework: ESP-IDF `v5.5.3`; graphical interface: LVGL `v8.4.0`.
+- Development framework: ESP-IDF `v5.5.5`; graphical interface: LVGL `v8.4.0`.
 
 ## Source Layout
 
@@ -136,12 +135,12 @@ See the [Contributing Guide](CONTRIBUTING.md) for build and contribution require
 
 ## OTA and Custom Resources
 
-The device reads an OTA manifest and downloads an App firmware image. When a public version tag is published, the source repository builds two release artifacts:
+The device reads an OTA manifest and downloads the App image for its target locale. When a public version tag is published, the source repository builds four locale-specific App images and corresponding full-flash artifacts:
 
-- `weather_clock_vX.X.X.bin`: App-only image for OTA or address-specific App flashing while preserving the existing partition table and NVS.
-- `weather_clock_vX.X.X_merged.bin`: complete image containing the bootloader, partition table, OTA data, speech models, and App for recovery or partition-layout changes.
+- `weather_clock_vX.X.X.bin`: Traditional Chinese App-only image; `_zh-CN.bin`, `_en.bin`, and `_ja.bin` are the other locale images for OTA or address-specific App flashing.
+- `weather_clock_vX.X.X_*_merged.bin`: locale-specific complete image containing the bootloader, partition table, OTA data, speech models, and App for recovery or partition-layout changes.
 
-OTA cannot update the partition table. When release notes require a full flash, do not use App-only OTA as a substitute. The desktop client can also write custom image resources; built-in assets remain available as a fallback when custom data is absent or invalid.
+OTA cannot update the partition table. v100.0.4 adds a `lang` partition and shrinks the `assets` partition, so devices using the v100.0.3 or earlier layout must first flash the matching `_merged.bin`; they must not use App-only OTA directly. Back up NVS settings and custom resources before a full flash. The desktop client can also write custom image resources; built-in assets remain available as a fallback when custom data is absent or invalid.
 
 ## Open-source Origin and Third-Party Licenses
 

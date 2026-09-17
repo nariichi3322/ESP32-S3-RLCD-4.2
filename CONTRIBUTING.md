@@ -17,7 +17,7 @@
 ### 开发环境
 
 - 目标芯片：ESP32-S3。
-- 推荐 ESP-IDF：`v5.5.3`，与公开仓库 GitHub Actions 使用的版本一致。
+- 推荐 ESP-IDF：`v5.5.5`，与公开仓库 GitHub Actions 使用的版本一致。
 - 从仓库根目录执行固件构建：
 
 ```bash
@@ -70,7 +70,7 @@ Thank you for contributing code, documentation, or tests to the ESP32-S3 RLCD 4.
 ### Development Environment
 
 - Target chip: ESP32-S3.
-- Recommended ESP-IDF version: `v5.5.3`, matching the public GitHub Actions build.
+- Recommended ESP-IDF version: `v5.5.5`, matching the public GitHub Actions build.
 - Build the firmware from the repository root:
 
 ```bash

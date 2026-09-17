@@ -32,6 +32,34 @@ Remove-Item Env:SDKCONFIG_DEFAULTS
 
 公开源码默认使用占位 OTA 地址。自建固件需要在 `main/core/ota_endpoint_local.h` 配置自己的 `WEATHER_CLOCK_OTA_MANIFEST_URL` 和 `WEATHER_CLOCK_OTA_BACKUP_MANIFEST_URL`；该本地配置不能提交。缺少此文件不影响编译。正式发行固件的 OTA 地址由 GitHub Actions 注入。
 
+## 版本与正式 OTA
+
+当前源码准备发布版本为 **v100.0.4**，版本值定义在 `CMakeLists.txt` 的 `PROJECT_VER`，并必须与 GitHub Release tag 完全一致。正式 Release 会分别构建 `zh-TW`、`zh-CN`、`en` 和 `ja` 四种语言的 App 镜像，以及对应的完整刷写镜像；`firmware/` 中的 OTA 清单由构建流程在取得实际固件后自动写入 SHA-256 与文件大小。
+
+v100.0.4 调整了分区表：新增 `lang` 分区并缩小 `assets` 分区。使用 v100.0.3 或更早版本分区表的设备，必须先以对应语言的 `_merged.bin` 完整刷写，不能直接使用 App-only OTA；完成分区迁移后，后续相同分区格式的版本才可使用 App-only OTA。完整刷写前请先备份需要保留的 NVS 设置与自定义资源。
+
+本地构建可通过 `APP_UI_LOCALE=zh-TW`、`zh-CN`、`en` 或 `ja` 选择语言，例如：
+
+```sh
+idf.py -B build_en -DAPP_UI_LOCALE=en build
+```
+
+`APP_UI_LOCALE` 只决定该 App 镜像的编译语言；Release OTA 清单会根据设备目标语言选择对应映像。
+
+## Version and official OTA
+
+The source tree is being prepared as **v100.0.4**. The version is defined by `PROJECT_VER` in `CMakeLists.txt` and must exactly match the GitHub Release tag. Official Releases build `zh-TW`, `zh-CN`, `en`, and `ja` App images plus matching full-flash images; the OTA manifests under `firmware/` receive their SHA-256 values and file sizes from the build workflow after the actual firmware exists.
+
+v100.0.4 changes the partition table by adding `lang` and shrinking `assets`. Devices using the v100.0.3 or earlier layout must first flash the matching `_merged.bin` and must not use App-only OTA directly. After the partition migration, App-only OTA is available only to devices confirmed to use the new layout. Back up NVS settings and custom resources before a full flash.
+
+Select the compiled locale with `APP_UI_LOCALE=zh-TW`, `zh-CN`, `en`, or `ja`, for example:
+
+```sh
+idf.py -B build_en -DAPP_UI_LOCALE=en build
+```
+
+`APP_UI_LOCALE` selects the compiled locale of that App image. The Release OTA manifest selects the matching image for the device's target locale.
+
 ## English
 
 This directory is a standalone ESP-IDF **v5.5.5** project. Activate that SDK, enter this directory and run `idf.py build`. No sibling directory or repository-root script is required.
