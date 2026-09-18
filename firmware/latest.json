@@ -1,7 +1,33 @@
 {
-  "version": "v100.0.3",
-  "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.3/weather_clock_v100.0.3.bin",
-  "sha256": "bd26f4cc970b18023e372ef4825196a83c4a8079c023f4dcdb37f192938de77b",
-  "size": 6469840,
-  "notes": "v100.0.3：共 13 项更新。\n1. 天氣服務全面改用免 API Key 的 Open-Meteo，提供目前天氣、六日預報與…\n2. 天氣城市改為選填：可手動輸入全球城市，留空時則以 IP 座標自動定位。\n3. 恢復可選的線上／離線模式；離線啟動可手動設定日期時間，重新儲存有效 Wi-Fi 設定後…\n4. 修正 CODEX 頁面第二次進入後 BLE 無法再次連線的問題，並改善快速切頁、啟動失…\n5. 從 CODEX 頁開啟一般設定時保持 BLE 連線；僅在停用 CODEX 頁、進入配置…\n6. 簡化 IP 自動定位的城市名稱，例如「中國 台灣 新北市」現在顯示為「新北」。\n其余 7 项见源码仓库同版本 Release。"
+  "version": "v100.0.4",
+  "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.4/weather_clock_v100.0.4.bin",
+  "sha256": "1e45e17d01c25fdf67499b09a407cac0ca6996d8ec156e1f569746108013ed19",
+  "size": 6618272,
+  "images": {
+    "zh-TW": {
+      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.4/weather_clock_v100.0.4.bin",
+      "sha256": "1e45e17d01c25fdf67499b09a407cac0ca6996d8ec156e1f569746108013ed19",
+      "size": 6618272,
+      "locale": "zh-TW"
+    },
+    "zh-CN": {
+      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.4/weather_clock_v100.0.4_zh-CN.bin",
+      "sha256": "b266fef75767f7b2791c435caa5dbb5bef771daf477f36c0f3b272e85ac0887e",
+      "size": 6618272,
+      "locale": "zh-CN"
+    },
+    "en": {
+      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.4/weather_clock_v100.0.4_en.bin",
+      "sha256": "c3762d73c11abad484a5199230d6894156a3ca9a63b18b165a5da23bb492743b",
+      "size": 6609504,
+      "locale": "en"
+    },
+    "ja": {
+      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.4/weather_clock_v100.0.4_ja.bin",
+      "sha256": "16758f68e9516452f6bd23e3008e8a84c37ac5ab4dd3c187e1498a7ed8391560",
+      "size": 5871936,
+      "locale": "ja"
+    }
+  },
+  "notes": "v100.0.4：共 11 项更新。\n1. 舊分區先刷 v100.0.4 merged，勿直接 App-only OTA。\n2. 建立繁體中文、簡體中文、English 與日本語四種固件版本；OTA 清單會依裝置選擇…\n3. 天氣看板新增每日預報與逐時預報卡片切換，方便依螢幕版面選擇所需資訊。\n4. 新增聚合時鐘頁，整合時間、天氣、預報高低溫、農曆日期與本機感測器資料。\n5.…"
 }
