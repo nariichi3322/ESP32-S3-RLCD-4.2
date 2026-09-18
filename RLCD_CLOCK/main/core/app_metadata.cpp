@@ -25,7 +25,9 @@ const char *const APP_BUILD_DATE = WEATHER_CLOCK_BUILD_DATE;
 const char *const APP_LOCALE = APP_UI_LOCALE_TAG;
 const uint8_t APP_LOCALE_ID = static_cast<uint8_t>(APP_UI_LOCALE);
 
-__attribute__((used, section(".rodata")))
+// ESP-IDF reserves this section for custom image descriptions.  The linker
+// places it after esp_app_desc at a stable image offset.
+__attribute__((section(".rodata_custom_desc")))
 const WeatherClockAppMetadata APP_IMAGE_METADATA = {
     0x57434C31U, // "WCL1"
     1,

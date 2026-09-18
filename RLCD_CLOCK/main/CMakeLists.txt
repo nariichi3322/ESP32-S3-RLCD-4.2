@@ -293,3 +293,7 @@ target_compile_definitions(${COMPONENT_LIB} PRIVATE
     PROJECT_VER="${WEATHER_CLOCK_PROJECT_VER}"
     APP_UI_LOCALE=${WEATHER_CLOCK_APP_UI_LOCALE_ID}
     APP_UI_LOCALE_TAG="${WEATHER_CLOCK_APP_UI_LOCALE_TAG}")
+
+# Keep the custom image metadata in the firmware even though it is only
+# consumed by release/OTA validators scanning the raw image.
+target_link_libraries(${COMPONENT_LIB} "-u APP_IMAGE_METADATA")
