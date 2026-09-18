@@ -80,6 +80,15 @@ jobs:
         run: python3 tools/generate_ui_text_catalog.py
         working-directory: RLCD_CLOCK
 
+      - name: 准备 UI 文字静态检查依赖
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.5.5
+          target: esp32s3
+          path: RLCD_CLOCK
+          command: >-
+            idf.py -B build_ui_catalog -DAPP_UI_LOCALE=ja reconfigure
+
       - name: 静态检查 UI 文字集中化
         shell: bash
         run: python3 tools/check_ui_text_catalog.py
