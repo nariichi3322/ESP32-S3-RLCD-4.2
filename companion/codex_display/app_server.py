@@ -1,6 +1,7 @@
 # Adapted from codex-usage-display (MIT); see THIRD_PARTY_NOTICES.md
 import asyncio
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -10,6 +11,12 @@ from typing import Any, Optional
 
 class AppServerError(RuntimeError):
     pass
+
+
+_REQUEST_TIMEOUT_SECONDS = 30
+_INITIALIZE_TIMEOUT_SECONDS = 45
+_INITIALIZE_ATTEMPTS = 3
+_INITIALIZE_RETRY_DELAYS = (2, 5)
 
 
 def _bundled_windows_codex() -> Optional[str]:
@@ -52,6 +59,25 @@ class AppServerClient:
     async def start(self) -> None:
         if self._process is not None:
             return
+        for attempt in range(1, _INITIALIZE_ATTEMPTS + 1):
+            try:
+                await self._start_once()
+                return
+            except asyncio.TimeoutError:
+                await self.stop()
+                if attempt == _INITIALIZE_ATTEMPTS:
+                    raise
+                delay = _INITIALIZE_RETRY_DELAYS[attempt - 1]
+                logging.warning(
+                    "Codex app-server initialize timed out; restarting and "
+                    "retrying (%d/%d) in %d seconds",
+                    attempt, _INITIALIZE_ATTEMPTS, delay)
+                await asyncio.sleep(delay)
+            except BaseException:
+                await self.stop()
+                raise
+
+    async def _start_once(self) -> None:
         options = {"creationflags": subprocess.CREATE_NO_WINDOW} if os.name == "nt" else {}
         self._process = await asyncio.create_subprocess_exec(
             self._binary, "app-server", stdin=asyncio.subprocess.PIPE,
@@ -61,7 +87,8 @@ class AppServerClient:
         await self.request("initialize", {
             "clientInfo": {"name": "codex_usage_display",
                            "title": "Codex Usage Display", "version": "0.1.0"},
-            "capabilities": {"experimentalApi": True}})
+            "capabilities": {"experimentalApi": True}},
+            timeout_seconds=_INITIALIZE_TIMEOUT_SECONDS)
         await self.notify("initialized", {})
 
     async def stop(self) -> None:
@@ -84,7 +111,8 @@ class AppServerClient:
         await self._reader
         raise AppServerError("Codex app-server exited")
 
-    async def request(self, method: str, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    async def request(self, method: str, params: Optional[dict[str, Any]] = None,
+                      timeout_seconds: float = _REQUEST_TIMEOUT_SECONDS) -> dict[str, Any]:
         request_id = self._next_id
         self._next_id += 1
         future = asyncio.get_running_loop().create_future()
@@ -92,9 +120,9 @@ class AppServerClient:
         message: dict[str, Any] = {"method": method, "id": request_id}
         if params is not None:
             message["params"] = params
-        await self._send(message)
         try:
-            return await asyncio.wait_for(future, 20)
+            await self._send(message)
+            return await asyncio.wait_for(future, timeout_seconds)
         finally:
             self._pending.pop(request_id, None)
 
