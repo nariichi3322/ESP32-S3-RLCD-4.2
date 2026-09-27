@@ -1,6 +1,9 @@
 // [Simplified Chinese, Traditional Chinese (Taiwan), Japanese, English]
 export const staticMessages = [
 ['最新版本','最新版本','最新バージョン','Latest version'],
+['构建时间加载中','載入建置時間','ビルド日時を読み込み中','Loading build time'],
+['该版本构建时间暂不可用','此版本的建置時間暫不可用','このバージョンのビルド日時は利用できません','Build time unavailable for this version'],
+['构建时间暂不可用','建置時間暫不可用','ビルド日時は利用できません','Build time unavailable'],
 ['版本说明','版本說明','バージョンの説明','Release notes'],
 ['资源包尚未生成','素材包尚未建立','素材パック未作成','Asset pack not generated'],
 ['请先在“资源制作”中完成素材转换并点击“生成资源包”，生成后才能读取设备并写入资源。','請先在「素材製作」完成素材轉換並點擊「產生素材包」；建立後才能讀取裝置並寫入素材。','先に「素材の作成」で素材を変換し、「素材パックを作成」を押してください。作成後にデバイスを読み取り、素材を書き込めます。','Complete conversion in Create assets and click Build asset pack before reading the device or writing assets.'],

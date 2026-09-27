@@ -20,7 +20,7 @@ const PARTITION_TABLE_OFFSET = 0x8000;
 const PARTITION_TABLE_SIZE = 0x1000;
 const FIRMWARE_RELEASES_MANIFEST_URL = "./firmware/releases.json";
 const FIRMWARE_RELEASES_SOURCE_URL = "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases";
-const HOST_WEB_VERSION = "v1.0.6";
+const HOST_WEB_VERSION = "v1.0.8";
 const DEFAULT_SUMMARY_NOTE = "资源包支持 GIF、静图和兜底配置。\n写入并重启后，优先加载自定义资源。";
 const MERGED_TARGET = {
   value: "merged",
@@ -81,6 +81,41 @@ let firmwareFlashSizeText = "-";
 let firmwareInstallBusy = false;
 let firmwareInstallSnapshot;
 let firmwareSession;
+let simulatorBuildInfo;
+
+function updateFirmwareVersionBuildTime() {
+  const target = $("#firmwareVersionBuildTime");
+  if (!target) return;
+  if (!simulatorBuildInfo) {
+    setText(target, () => tr("构建时间加载中"));
+    return;
+  }
+  const normalizeVersion = (version) => String(version || "").replace(/^v/i, "");
+  if (normalizeVersion(simulatorBuildInfo.firmwareVersion) !== normalizeVersion(remoteFirmwareManifest?.version)) {
+    setText(target, () => tr("该版本构建时间暂不可用"));
+    return;
+  }
+  const builtAt = new Date(simulatorBuildInfo.builtAt);
+  const dateText = Number.isNaN(builtAt.getTime()) ? String(simulatorBuildInfo.builtAt || "-") : builtAt.toLocaleString(getLanguage());
+  setText(target, () => tr`构建于 ${dateText}`);
+}
+
+async function loadFirmwareSimulatorBuildInfo() {
+  const target = $("#firmwareVersionBuildTime");
+  if (!target) return;
+  try {
+    const response = await fetch("./simulator/build-info.json", { cache: "no-store" });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const info = await response.json();
+    if (!info.firmwareVersion || !info.builtAt || Number.isNaN(new Date(info.builtAt).getTime())) throw new Error("Invalid firmware build time");
+    simulatorBuildInfo = info;
+  } catch (error) {
+    simulatorBuildInfo = undefined;
+    setText(target, () => tr("构建时间暂不可用"));
+    return;
+  }
+  updateFirmwareVersionBuildTime();
+}
 
 async function closeFirmwareSession() {
   const session = firmwareSession;
@@ -1414,6 +1449,7 @@ function updateFirmwareInstallSummary() {
   setText($("#firmwareInstallVersion"), () => manifest?.version || tr("在线固件加载失败"));
   setText($("#firmwareInstallNotesVersion"), () => manifest?.version || tr("加载中"));
   setText($("#firmwareInstallNotes"), () => manifest?.notes ? formatFirmwareNotes(manifest.notes, manifest.version) : tr("等待固件清单"));
+  updateFirmwareVersionBuildTime();
   setAttr($("#firmwareInstallNotes"), "title", () => manifest?.notes || "");
   const notesLink = $("#firmwareInstallNotesLink");
   if (notesLink) {
@@ -1423,6 +1459,7 @@ function updateFirmwareInstallSummary() {
   setText($("#firmwareInstallDevice"), () => firmwareDevicePort
     ? (firmwareFlashSizeText === "-" ? describePort(firmwareDevicePort) : `${describePort(firmwareDevicePort)} / ${firmwareFlashSizeText}`)
     : tr("未连接"));
+  updateFirmwareSimulatorBuildInfo();
   const ready = Boolean(firmwareSession && firmwareDevicePort && firmwareChipVerified && firmwareFlashSizeBytes > 0 && selectedRemoteFirmwareImage("merged"));
   $("#firmwareInstallConnectBtn").disabled = !("serial" in navigator) || firmwareInstallBusy;
   $("#firmwareInstallBtn").disabled = !ready || firmwareInstallBusy;
@@ -2271,9 +2308,11 @@ bindTabs();
 document.addEventListener("click", clearNextStepHint, true);
 document.addEventListener("input", clearNextStepHint, true);
 document.addEventListener("change", clearNextStepHint, true);
+window.addEventListener("host-language-change", updateFirmwareVersionBuildTime);
 renderFirmwareTargets();
 setSerialSupport();
 registerServiceWorker();
+loadFirmwareSimulatorBuildInfo();
 loadRemoteFirmwareManifest().catch((error) => {
   showFirmwareOptionMessage("在线固件加载失败");
   setText($("#firmwareWriteState"), () => tr("在线固件加载失败"));
