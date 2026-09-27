@@ -86,7 +86,7 @@ async function fetchFirmwareBuildTimes(candidates) {
   const wantedVersions = new Set(candidates.map(({ version }) => version.replace(/^v/i, "").toLowerCase()));
   const response = await fetchJson(`https://api.github.com/repos/${SOURCE_REPOSITORY}/actions/runs?event=release&per_page=100`);
   const runs = Array.isArray(response?.workflow_runs) ? response.workflow_runs : [];
-  const firmwareRuns = runs.filter((run) => run.conclusion === "success" && run.workflow_name === "构建固件并附加到 Release");
+  const firmwareRuns = runs.filter((run) => run.conclusion === "success" && run.name === "构建固件并附加到 Release");
   const buildTimes = new Map();
   for (const run of firmwareRuns) {
     const version = String(run.display_title || "").trim();
