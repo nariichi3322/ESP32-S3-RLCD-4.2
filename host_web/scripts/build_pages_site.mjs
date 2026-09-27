@@ -81,6 +81,23 @@ async function fetchJson(url) {
   return response.json();
 }
 
+async function fetchFirmwareBuildTimes(candidates) {
+  if (!process.env.GH_API_TOKEN) return new Map();
+  const wantedVersions = new Set(candidates.map(({ version }) => version.replace(/^v/i, "").toLowerCase()));
+  const response = await fetchJson(`https://api.github.com/repos/${SOURCE_REPOSITORY}/actions/runs?event=release&per_page=100`);
+  const runs = Array.isArray(response?.workflow_runs) ? response.workflow_runs : [];
+  const firmwareRuns = runs.filter((run) => run.conclusion === "success" && run.workflow_name === "构建固件并附加到 Release");
+  const buildTimes = new Map();
+  for (const run of firmwareRuns) {
+    const version = String(run.display_title || "").trim();
+    if (!version || !wantedVersions.has(version.replace(/^v/i, "").toLowerCase()) || buildTimes.has(version) || !run.jobs_url) continue;
+    const jobs = await fetchJson(run.jobs_url);
+    const buildStep = (jobs.jobs || []).flatMap((job) => job.steps || []).find((step) => step.name === "编译并生成双固件" && step.conclusion === "success");
+    if (buildStep?.completed_at) buildTimes.set(version, buildStep.completed_at);
+  }
+  return buildTimes;
+}
+
 async function downloadVerifiedAsset(asset, destination) {
   const response = await fetchWithRetry(asset.downloadUrl, {
     headers: { "User-Agent": "weather-clock-pages-deploy" },
@@ -122,6 +139,7 @@ async function buildFirmwareMirror() {
     .filter((release) => /^v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$/.test(release.version) && release.app && release.merged)
     .slice(0, releaseLimit);
   if (candidates.length === 0) throw new Error("No complete GitHub Release firmware set found");
+  const firmwareBuildTimes = await fetchFirmwareBuildTimes(candidates);
 
   const firmwareRoot = path.join(OUTPUT_ROOT, "firmware", "releases");
   await mkdir(firmwareRoot, { recursive: true });
@@ -143,6 +161,7 @@ async function buildFirmwareMirror() {
       version: release.version,
       notes: release.notes,
       release_url: release.releaseUrl,
+      firmware_build_time: firmwareBuildTimes.get(release.version) || firmwareBuildTimes.get(release.version.replace(/^v/i, "")) || "",
       app: manifestAsset(release.app),
       merged: manifestAsset(release.merged)
     });

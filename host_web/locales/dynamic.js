@@ -131,7 +131,7 @@ export const dynamicMessages = [
 ['写入完成，正在复位','寫入完成，正在重設','書き込み完了、リセット中','Write complete; resetting'],
 ['写入完成，设备已复位','寫入完成，裝置已重設','書き込み・リセット完了','Write complete; device reset'],
 ['请先生成资源包。\n','請先產生素材包。\n','先に素材パックを作成してください。\n','Build an asset pack first.\n'],
-['构建于 {0}','建置於 {0}','ビルド日時：{0}','Built {0}'],
+['固件构建于 {0}','韌體建置於 {0}','ファームウェア構築日時：{0}','Firmware built {0}'],
 ['请先生成资源包，再读取设备分区表。\n','請先產生素材包，再讀取裝置分割表。\n','先に素材パックを作成してから、デバイスのパーティション表を読み取ってください。\n','Build an asset pack before reading the device partition table.\n'],
 ['请先生成资源包，再进行资源写入操作。\n','請先產生素材包，再進行素材寫入操作。\n','先に素材パックを作成してから、素材を書き込んでください。\n','Build an asset pack before writing assets.\n'],
 ['请先选择设备并核对分区表。\n','請先選擇裝置並核對分割表。\n','先にデバイスを選びパーティション表を確認してください。\n','Select a device and verify its partitions first.\n'],

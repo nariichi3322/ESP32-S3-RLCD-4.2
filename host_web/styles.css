@@ -1158,7 +1158,9 @@ progress::-moz-progress-bar { background: var(--accent); }
 .firmware-install-facts > div + div { padding-left: 14px; border-left: 1px solid var(--line); }
 .firmware-install-facts span { display: block; color: var(--muted); font-size: 12px; }
 .firmware-install-facts strong { display: block; margin-top: 5px; overflow-wrap: anywhere; }
-.firmware-install-facts small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
+.firmware-version-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; min-width: 0; margin-top: 5px; }
+.firmware-version-line strong { margin-top: 0; }
+.firmware-install-facts small { display: inline; color: var(--muted); font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }
 .firmware-notes-panel { min-width: 0; min-height: 340px; display: flex; flex-direction: column; padding: 0; }
 .firmware-notes-panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
 .firmware-notes-panel-heading div { min-width: 0; }
