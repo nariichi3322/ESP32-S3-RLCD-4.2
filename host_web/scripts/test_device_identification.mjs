@@ -52,3 +52,34 @@ for (const failure of ['', 'flash', 'connect']) {
   else assert.equal(vm.runInContext('firmwareFlashSizeBytes', context), 16 * 1024 * 1024);
 }
 console.log('Bundled Flash ID capacity, partition read, error preservation and reset cleanup passed.');
+
+const summarySource = source.slice(source.indexOf('function updateFirmwareInstallSummary('), source.indexOf('\nfunction setFirmwareInstallBusy('));
+const summaryElements = new Map();
+const getSummaryElement = selector => {
+  if (!summaryElements.has(selector)) summaryElements.set(selector, { disabled: true, hidden: false, textContent: '' });
+  return summaryElements.get(selector);
+};
+const summaryContext = vm.createContext({
+  tr: text => text,
+  $: getSummaryElement,
+  setText: (element, render) => { element.textContent = render(); },
+  setAttr() {},
+  updateFirmwareVersionBuildTime() {},
+  formatFirmwareNotes: () => 'fixture notes',
+  selectedRemoteFirmwareImage: () => ({ url: 'fixture.bin' }),
+  firmwareDevicePort: {},
+  firmwareFlashSizeText: '16 MB',
+  firmwareFlashSizeBytes: 16 * 1024 * 1024,
+  firmwareSession: {},
+  firmwareChipVerified: true,
+  firmwareInstallBusy: false,
+  remoteFirmwareManifest: { version: 'v1.0.11', notes: 'fixture' },
+  describePort: () => 'USB test',
+  formatBytes: String,
+  navigator: { serial: {} }
+});
+vm.runInContext(summarySource, summaryContext);
+summaryContext.updateFirmwareInstallSummary();
+assert.equal(getSummaryElement('#firmwareInstallConnectBtn').disabled, false);
+assert.equal(getSummaryElement('#firmwareInstallBtn').disabled, false);
+console.log('Verified install summary keeps device connection and installation available.');

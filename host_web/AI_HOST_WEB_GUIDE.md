@@ -103,6 +103,12 @@ cancel, duplicate clicks and failed writes must leave the main install blocked
 or retryable. Completion shows setup/Quick setup guidance without navigation.
 Mobile browsers can view the page but Web Serial still needs desktop Chrome/Edge.
 
+The updateFirmwareInstallSummary function runs during device identification and
+cleanup. Keep its dependencies defined in app.js; an exception there can abort
+cleanup before the connect button is re-enabled. The device-identification
+regression test executes this summary with a verified-session fixture and
+asserts both connection and installation buttons are available.
+
 ## Scope
 
 Quick configuration stays on the `settings` hash and uses `quick-config.js` to
