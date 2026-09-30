@@ -1,6 +1,20 @@
 {
-  "latest": "v1.6.12",
+  "latest": "v1.6.13",
   "items": [
+    {
+      "version": "v1.6.13",
+      "notes": "v1.6.13：共 1 项更新。\n1. 修复零点附近成功校时后短时间内重复进行 NTP 同步的问题，减少不必要的 Wi-Fi…\n完整说明见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.13/weather_clock_v1.6.13.bin",
+        "sha256": "d019bcc6f2f4edb4ddf80de7f73f64f692599f02aa9536728906aee957a966d3",
+        "size": 6311696
+      },
+      "merged": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.13/weather_clock_v1.6.13_merged.bin",
+        "sha256": "1afbcc6a9535b8860cbdfb66b84ae4410d346084dba9722650f19766321fa3f0",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.6.12",
       "notes": "v1.6.12：共 4 项更新。\n1. 修复 NTP 备用服务器未实际启用的问题，优先使用阿里时间服务器，并启用腾讯与公共时间…\n2. 增强和风天气慢请求与失败阶段诊断，便于定位连接、首包等待及响应耗时异常。\n3. 显示刷新诊断改为每小时汇总，页面切换时仍即时记录，减少重复日志。\n4. 优化天气时钟动画差分绘制，跳过未变化像素，降低秒级动画的处理开销。\n完整说明见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.4/weather_clock_v1.6.4_merged.bin",
         "sha256": "0eb3c694b64a37069b10babfb3a3913fca2801faa65a58f4940b99da6e9f63f0",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.6.3",
-      "notes": "v1.6.3：共 3 项更新。\n1. 修复天气看板建议可能沿用过期日期天气的问题，改为按当天日期匹配有效预报；雨雪天气明确提…\n2. 优化聚合时钟晴雨视觉：晴天显示弧形光晕与放射点线，雨天显示不等宽深波浪云层与斜雨线；靠…\n3. 聚合天气图案仅随已有整点天气结果切换，状态不变不额外重绘，不增加联网或动画任务。\n完整说明见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.3/weather_clock_v1.6.3.bin",
-        "sha256": "7210008ba77e7b50a5edb2246ff2d40c6e43b7a3990c00256911a150cd670ff8",
-        "size": 6288000
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.3/weather_clock_v1.6.3_merged.bin",
-        "sha256": "d62c596eb158aa695e746e62c02fc499e486a3e284d5af410919d2062ec7efcc",
         "size": 16509951
       }
     }
