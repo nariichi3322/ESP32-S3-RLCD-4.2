@@ -6,6 +6,8 @@
 #include "sensor_time.h"
 
 namespace {
+constexpr time_t kRecentNtpSuccessGraceSeconds = 5 * 60;
+
 void clear_retry(NetworkNtpScheduleState *state)
 {
     state->next_retry_at = 0;
@@ -39,7 +41,13 @@ NetworkNtpRetryUpdate finish_network_ntp_attempt(
         state->boot_due = false;
         state->daily_pending = false;
         clear_retry(state);
-        state->next_daily_at = next_local_midnight_time(now);
+        time_t next_daily_at = next_local_midnight_time(now);
+        // A fresh sync just before midnight also satisfies the imminent daily check.
+        if (next_daily_at > now &&
+            next_daily_at - now <= kRecentNtpSuccessGraceSeconds) {
+            next_daily_at = next_local_midnight_time(next_daily_at);
+        }
+        state->next_daily_at = next_daily_at;
         return update;
     }
     if (!retry_required) {
