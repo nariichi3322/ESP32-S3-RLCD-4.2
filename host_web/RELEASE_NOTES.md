@@ -1,8 +1,8 @@
 # WeatherClock Studio v1.0.11 · 2026-09-29
 
-### 在线固件安装修复
+### Online Firmware Installation Fix
 
-- 修复设备识别过程中的状态更新异常。ESP32-S3 与 Flash 识别完成后，页面会继续读取分区表，并正确恢复连接和安装按钮状态。
+- Fixed a state-refresh exception during device identification. After ESP32-S3 and Flash detection, the page now continues partition-table inspection and correctly restores the Connect and Install buttons.
 
 # WeatherClock Studio v1.0.6 · 2026-09-25
 
