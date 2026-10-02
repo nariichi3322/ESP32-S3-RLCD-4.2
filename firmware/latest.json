@@ -1,7 +1,7 @@
 {
-  "version": "v1.6.13",
-  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.13/weather_clock_v1.6.13.bin",
-  "sha256": "d019bcc6f2f4edb4ddf80de7f73f64f692599f02aa9536728906aee957a966d3",
-  "size": 6311696,
-  "notes": "v1.6.13：共 1 项更新。\n1. 修复零点附近成功校时后短时间内重复进行 NTP 同步的问题，减少不必要的 Wi-Fi…\n完整说明见源码仓库同版本 Release。"
+  "version": "v1.6.14",
+  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.14/weather_clock_v1.6.14.bin",
+  "sha256": "89bbaf7cf5c88390479ec0659f76364b3bd09963cb6dd4f9639a6a04de22d5bb",
+  "size": 6311776,
+  "notes": "v1.6.14：共 1 项更新。\n1. 修复和风天气请求传输失败后保留失效 HTTP 客户端状态、导致后续接口可能读取到上一请…\n完整说明见源码仓库同版本 Release。"
 }

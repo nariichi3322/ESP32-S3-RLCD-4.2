@@ -1,6 +1,20 @@
 {
-  "latest": "v1.6.13",
+  "latest": "v1.6.14",
   "items": [
+    {
+      "version": "v1.6.14",
+      "notes": "v1.6.14：共 1 项更新。\n1. 修复和风天气请求传输失败后保留失效 HTTP 客户端状态、导致后续接口可能读取到上一请…\n完整说明见源码仓库同版本 Release。",
+      "app": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.14/weather_clock_v1.6.14.bin",
+        "sha256": "89bbaf7cf5c88390479ec0659f76364b3bd09963cb6dd4f9639a6a04de22d5bb",
+        "size": 6311776
+      },
+      "merged": {
+        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.14/weather_clock_v1.6.14_merged.bin",
+        "sha256": "c371a641dc19c95b3403243c31e0ac2adbda019001567f6b1d955e6a06c12226",
+        "size": 16509951
+      }
+    },
     {
       "version": "v1.6.13",
       "notes": "v1.6.13：共 1 项更新。\n1. 修复零点附近成功校时后短时间内重复进行 NTP 同步的问题，减少不必要的 Wi-Fi…\n完整说明见源码仓库同版本 Release。",
@@ -124,20 +138,6 @@
       "merged": {
         "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.5/weather_clock_v1.6.5_merged.bin",
         "sha256": "a26bf0bc7505dd5628e9f615ce0ee9c0ffc45ca083b775cde434a856ea174818",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.6.4",
-      "notes": "v1.6.4：共 4 项更新。\n1. 聚合天气新增四枚用户提供的 14px 雪花素材，按雨雪天气错落显示并复用既有云层与整点…\n2. Host Web 新增界面预览直达与页签哈希导航，支持刷新、前进后退及离线回退。\n3. 修复聚合天气晴天、夜晴和雨雪代码分类边界：夜晴代码回归普通样式，雨纹仅用于支持的雨雪代…\n4. 优化雨雪天气图案与温度读数的空间避让，保持四枚雪花位置稳定，不增加动画或额外联网。\n完整说明见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.4/weather_clock_v1.6.4.bin",
-        "sha256": "9e65b3d4f006638103088eab86538bb9f7be6c53b16dcd75fea6be1d26e28db1",
-        "size": 6288368
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.4/weather_clock_v1.6.4_merged.bin",
-        "sha256": "0eb3c694b64a37069b10babfb3a3913fca2801faa65a58f4940b99da6e9f63f0",
         "size": 16509951
       }
     }
