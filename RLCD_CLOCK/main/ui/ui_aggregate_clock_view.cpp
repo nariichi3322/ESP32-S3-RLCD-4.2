@@ -175,14 +175,14 @@ void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t 
         // Leave a clean reading zone around the temperature, including long/negative values.
         const int texture_bottom=v.weather_kind>=4?118:98;
         for(int y=28;y<=texture_bottom;++y) for(int x=2;x<=219;++x) {
-            if(y>=44 && y<=88 && x>=88 && x<=92+v.texture_read_width)continue;
+            if(v.weather_kind!=6 && y>=44 && y<=88 && x>=88 && x<=92+v.texture_read_width)continue;
             // Taper the lobes into the reading zone instead of flattening the whole band.
             const int left=88,right=92+v.texture_read_width;
             const int distance=x<left?left-x:x>right?x-right:0;
             const int cloud_bottom=distance>=10?40:35+distance/2;
-            const bool pixel=v.weather_kind>=4?
+            const bool pixel=(v.weather_kind==4 || v.weather_kind==5)?
                 aggregate_cloud_pixel(v.weather_kind,x,y,right,v.texture_weather_width,v.texture_range_width):
-                aggregate_weather_texture_pixel(v.weather_kind,x,y,cloud_bottom,right);
+                aggregate_weather_texture_pixel(v.weather_kind,x,y,cloud_bottom,right,v.texture_weather_width,v.texture_range_width);
             if(!pixel)continue;
             const int px=a.x1+x,py=a.y1+y;
             lv_area_t p={(lv_coord_t)px,(lv_coord_t)py,(lv_coord_t)px,(lv_coord_t)py};
@@ -203,6 +203,20 @@ void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t 
     v.city=label(root,26,180,126,20,"等待数据",&zh_font_16,true);
     label(root,160,180,72,20,"今日天气",&zh_font_16,true);
     v.icon=label(root,31,215,48,38,"",&qweather_icons_36);
+    lv_obj_add_event_cb(v.icon,[](lv_event_t *e) {
+        const auto &view=*static_cast<AggregateClockView *>(lv_event_get_user_data(e));
+        if(view.weather_kind!=6)return;
+        lv_area_t area; lv_obj_get_coords(lv_event_get_target(e),&area);
+        lv_draw_rect_dsc_t ink; lv_draw_rect_dsc_init(&ink);
+        ink.bg_color=lv_color_black(); ink.radius=LV_RADIUS_CIRCLE;
+        for(const auto &bar:aggregate_fog_paths::icon_bars) {
+            lv_area_t line={static_cast<lv_coord_t>(area.x1+bar[0]),
+                            static_cast<lv_coord_t>(area.y1+bar[2]),
+                            static_cast<lv_coord_t>(area.x1+bar[1]),
+                            static_cast<lv_coord_t>(area.y1+bar[2]+2)};
+            lv_draw_rect(lv_event_get_draw_ctx(e),&ink,&line);
+        }
+    },LV_EVENT_DRAW_MAIN,&v);
     v.weather=label(root,28,254,88,17,"--");
     v.temperature=label(root,108,210,128,54,"-- C",&lv_font_montserrat_48);
     v.range=label(root,26,274,208,17,"最高 -- C  最低 -- C",&zh_font_16);
@@ -238,7 +252,7 @@ bool aggregate_clock_set_text(lv_obj_t *label,const char *text) {
 
 bool aggregate_clock_weather_theme(AggregateClockView &v,int kind) {
     if(!v.weather_panel || !v.temperature)return false;
-    if(kind<0 || kind>5)kind=0;
+    if(kind<0 || kind>6)kind=0;
     lv_obj_update_layout(v.weather_panel);
     lv_point_t size={};
     lv_txt_get_size(&size,lv_label_get_text(v.temperature),
@@ -257,6 +271,8 @@ bool aggregate_clock_weather_theme(AggregateClockView &v,int kind) {
         v.texture_read_width=size.x;
         return false;
     }
+    if(v.weather_kind!=kind && v.icon)
+        lv_obj_set_style_text_opa(v.icon,kind==6?LV_OPA_TRANSP:LV_OPA_COVER,0);
     v.weather_kind=kind;
     v.texture_read_width=size.x;
     lv_obj_invalidate(v.weather_panel);

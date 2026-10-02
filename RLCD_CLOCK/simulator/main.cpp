@@ -42,7 +42,7 @@ static time_t g_web_time = 0;
 #else
 static constexpr int kWindowScale = 2;
 #endif
-static const char *APP_VERSION = "v1.6.14";
+static const char *APP_VERSION = "v1.6.15";
 
 static SdlPreviewBackend g_sdl_preview(kDisplayWidth, kDisplayHeight);
 static sdl_preview_progress::Canvas g_work_page_day_progress;
@@ -196,11 +196,13 @@ static void build_aggregate_clock_preview_ui()
     aggregate_clock_set_text(view.humidity,"58%");
     const char *theme=getenv("WEATHER_CLOCK_SDL_WEATHER_THEME");
     aggregate_clock_weather_theme(view,4);
-    if(theme && (strcmp(theme,"cloudy")==0 || strcmp(theme,"overcast")==0)) {
+    if(theme && (strcmp(theme,"fog")==0 || strcmp(theme,"cloudy")==0 || strcmp(theme,"overcast")==0)) {
         const bool overcast=strcmp(theme,"overcast")==0;
-        aggregate_clock_weather_theme(view,overcast?5:4);
-        aggregate_clock_set_text(view.icon,weather_icon_text(overcast?"104":"101").c_str());
-        aggregate_clock_set_text(view.weather,overcast?"阴":"多云");
+        const bool fog=strcmp(theme,"fog")==0;
+        if(fog)aggregate_clock_set_text(view.weather,"雾");
+        aggregate_clock_weather_theme(view,fog?6:overcast?5:4);
+        aggregate_clock_set_text(view.icon,weather_icon_text(fog?"501":overcast?"104":"101").c_str());
+        aggregate_clock_set_text(view.weather,fog?"雾":overcast?"阴":"多云");
     }
     if(theme && (strcmp(theme,"day")==0 || strcmp(theme,"rain")==0 || strcmp(theme,"snow")==0)) {
         const bool rain=strcmp(theme,"rain")==0;

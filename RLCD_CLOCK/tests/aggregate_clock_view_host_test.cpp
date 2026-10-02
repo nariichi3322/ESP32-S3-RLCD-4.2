@@ -62,7 +62,22 @@ int main() {
     assert(cloud_pixels>100 && overcast_pixels>cloud_pixels);
     for(int y=28;y<44;++y)for(int x=63;x<175;++x)
         assert(!aggregate_weather_texture_pixel(4,x,y,40,215));
-    assert(aggregate_weather_kind("501")==0);
+    for(int code=500;code<=599;++code) {
+        char text[4]; std::snprintf(text,sizeof(text),"%d",code);
+        const bool fog=code==500 || code==501 || code==509 || code==510 || code==514 || code==515;
+        assert(aggregate_weather_kind(text)==(fog?6:0));
+    }
+    int fog_pixels=0;
+    for(int y=-1;y<=120;++y)for(int x=-1;x<=222;++x) {
+        const bool pixel=aggregate_weather_texture_pixel(6,x,y,40,198,16,208);
+        fog_pixels+=pixel;
+        if(x<2 || x>219 || y<28 || y>98)assert(!pixel);
+        if(x>=86 && x<=200 && y>=44 && y<=82)assert(!pixel);
+        for(const auto &bar:aggregate_fog_paths::icon_bars)
+            if(x>=13+bar[0] && x<=13+bar[1] && y>=41+bar[2] && y<=43+bar[2])assert(!pixel);
+        if(x>=8 && x<=28 && y>=79 && y<=98)assert(!pixel);
+    }
+    assert(fog_pixels>400);
     assert(aggregate_weather_kind("9999")==0);
     assert(aggregate_weather_kind(nullptr)==0);
     assert(aggregate_weather_kind("30x")==0);
@@ -151,7 +166,7 @@ int main() {
     for(int i=0;i<5000;++i) {
         aggregate_clock_set_text(view.temperature,i%2?"-2 C":"26 C");
         aggregate_clock_set_text(view.weather,i%2?"晴":"小雨");
-        aggregate_clock_weather_theme(view,i%6);
+        aggregate_clock_weather_theme(view,i%7);
         aggregate_clock_view_time(view,(i/3600)%24,(i/60)%60,i%60);
     }
     lv_refr_now(nullptr);
@@ -166,6 +181,26 @@ int main() {
     areas.clear();
     assert(!aggregate_clock_weather_theme(view,2));
     lv_refr_now(nullptr); assert(areas.empty());
+    areas.clear();
+    assert(aggregate_clock_weather_theme(view,6));
+    assert(lv_obj_get_style_text_opa(view.icon,0)==LV_OPA_TRANSP);
+    lv_refr_now(nullptr);
+    for(const auto &area:areas)assert(area.y1>=169 && area.x1>=13 && area.x2<=253);
+    areas.clear();
+    assert(!aggregate_clock_weather_theme(view,6));
+    lv_refr_now(nullptr); assert(areas.empty());
+    assert(aggregate_clock_view_time(view,12,34,56));
+    lv_refr_now(nullptr); areas.clear();
+    int fog_draws=0;
+    lv_obj_add_event_cb(view.weather_panel,[](lv_event_t *e) {
+        ++*static_cast<int *>(lv_event_get_user_data(e));
+    },LV_EVENT_DRAW_MAIN,&fog_draws);
+    assert(aggregate_clock_view_time(view,12,34,57));
+    lv_refr_now(nullptr);
+    assert(!areas.empty() && fog_draws==0);
+    for(const auto &area:areas)assert(area.y1>=71 && area.y2<=160 && area.x1>=319);
+    assert(aggregate_clock_weather_theme(view,1));
+    assert(lv_obj_get_style_text_opa(view.icon,0)==LV_OPA_COVER);
     // Canvas allocation failure must leave recoverable objects, not missing slots.
     aggregate_clock_set_text(view.temperature,"26 C");
     aggregate_clock_set_text(view.range,"最高 29 C  最低 22 C");

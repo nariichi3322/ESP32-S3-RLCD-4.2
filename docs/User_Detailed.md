@@ -43,6 +43,8 @@ A small header clock appears only where the main content does not already show t
 | Xiaozhi AI | Wake word, conversation, subtitles, tools | Session and timer events |
 | Aggregate Clock | Second clock, today's weather, dates, local readings | Reuses the same time, weather, and sensor services |
 
+The Aggregate Clock background follows the weather data. Fog appears as layered horizontal bands; the background is not animated, while the clock continues to update every second.
+
 Weather-service temperature and the onboard sensor describe different locations. Trend arrows compare rolling averages of valid samples from the last four hours; samples accumulate again after reboot.
 
 Built-in images match the weekday and change at midnight. Uploaded galleries take priority and can rotate every 30 minutes, 1, 6, 12, or 24 hours, aligned to midnight. Daily text has its own cache.

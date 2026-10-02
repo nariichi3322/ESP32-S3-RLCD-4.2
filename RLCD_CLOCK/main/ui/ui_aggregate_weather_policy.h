@@ -1,4 +1,4 @@
-// 聚合天气主题纯判断：依据缓存天气代码区分晴、雨、雪、多云和阴。
+// 聚合天气主题纯判断：依据缓存天气代码区分晴、雨、雪、多云、阴和雾。
 #pragma once
 #include <cstring>
 inline int aggregate_weather_kind(const char *code) {
@@ -12,5 +12,6 @@ inline int aggregate_weather_kind(const char *code) {
     if(value==100)return 1;
     if(value==101 || value==102 || value==103 || value==151 || value==152 || value==153)return 4;
     if(value==104)return 5;
+    if(value==500 || value==501 || value==509 || value==510 || value==514 || value==515)return 6;
     return 0;
 }

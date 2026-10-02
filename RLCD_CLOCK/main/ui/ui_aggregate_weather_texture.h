@@ -1,7 +1,31 @@
-// 单色天气装饰：晴天光晕、雨天云层雨线、雪天复用用户雪花位图。
+// 单色天气装饰：晴雨雪云轮廓和手工雾带，保持坐标锚定的静态点阵。
 #pragma once
 #include "aggregate_snowflake_bits.h"
 #include "ui_aggregate_cloud_paths.h"
+#include "ui_aggregate_fog_paths.h"
+
+inline bool aggregate_fog_pixel(int x,int y,int read_right,int weather_width=88,int range_width=208) {
+    int density=aggregate_fog_paths::coverage(x,y);
+    if(!density)return false;
+    const int reading[][4]={{8,79,12+weather_width,98},
+                            {86,44,read_right+2,82},{7,99,10+range_width,117}};
+    int clearance=4;
+    const auto protect=[&](int left,int top,int right,int bottom) {
+        const int dx=x<left?left-x:x>right?x-right:0;
+        const int dy=y<top?top-y:y>bottom?y-bottom:0;
+        const int distance=dx>dy?dx:dy;
+        if(distance<clearance)clearance=distance;
+    };
+    for(const auto &r:reading)protect(r[0],r[1],r[2],r[3]);
+    for(const auto &bar:aggregate_fog_paths::icon_bars)
+        protect(13+bar[0],41+bar[2],13+bar[1],43+bar[2]);
+    if(clearance==0)return false;
+    density=density*clearance/4;
+    unsigned grain=static_cast<unsigned>(x)*374761393U+static_cast<unsigned>(y)*668265263U;
+    grain=(grain^(grain>>13))*1274126177U;
+    grain^=grain>>16;
+    return grain%100U < static_cast<unsigned>(density);
+}
 
 inline int aggregate_cloud_depth(bool overcast,int x,int y) {
     if(x<2 || x>219 || y<28 || y>118)return 0;
@@ -38,7 +62,9 @@ inline bool aggregate_cloud_pixel(int kind,int x,int y,int read_right,int weathe
     return grain%100U < density;
 }
 
-inline bool aggregate_weather_texture_pixel(int kind,int x,int y,int cloud_bottom=40,int read_right=0) {
+inline bool aggregate_weather_texture_pixel(int kind,int x,int y,int cloud_bottom=40,int read_right=0,
+                                            int weather_width=88,int range_width=208) {
+    if(kind==6)return aggregate_fog_pixel(x,y,read_right,weather_width,range_width);
     if(kind==4 || kind==5)return aggregate_cloud_pixel(kind,x,y,read_right);
     if(x<2 || x>219 || y<28 || y>98) return false;
     if(kind==2 || kind==3) {
