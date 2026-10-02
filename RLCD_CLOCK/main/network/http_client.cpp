@@ -611,8 +611,11 @@ esp_err_t HttpTextSession::get(const char *url,
                               status,
                               result);
         runtime_health_note_event(RuntimeHealthEvent::kHttpFailure);
-        if (!allow_reuse_) {
+        // A failed transfer can retain a pending response inside ESP-IDF.
+        if (err != ESP_OK || !allow_reuse_) {
             cleanup_client();
+        }
+        if (!allow_reuse_) {
             release_transaction_lock();
         } else {
             buffer_ = {};
