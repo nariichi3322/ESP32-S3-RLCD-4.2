@@ -1,7 +1,7 @@
 {
-  "version": "v1.6.14",
-  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.14/weather_clock_v1.6.14.bin",
-  "sha256": "89bbaf7cf5c88390479ec0659f76364b3bd09963cb6dd4f9639a6a04de22d5bb",
-  "size": 6311776,
-  "notes": "v1.6.14：共 1 项更新。\n1. 修复和风天气请求传输失败后保留失效 HTTP 客户端状态、导致后续接口可能读取到上一请…\n完整说明见源码仓库同版本 Release。"
+  "version": "v1.6.15",
+  "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.6.15/weather_clock_v1.6.15.bin",
+  "sha256": "da57f99486317667e9e8f1df32eb20b599f251dcfde73fb6b39ed8f03d6c9b6e",
+  "size": 6316144,
+  "notes": "v1.6.15：共 1 项更新。\n1. 聚合时钟新增雾天视觉，使用错落的横向雾带与点阵过渡。\n完整说明见源码仓库同版本 Release。"
 }
