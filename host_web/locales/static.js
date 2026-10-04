@@ -203,6 +203,7 @@ export const staticMessages = [
 ['网络检测','網路檢測','ネットワーク診断','Network diagnostics'],
 ['联网配置','連網設定','ネットワーク設定','Network setup'],
 ['聚合天气场景','整合天氣場景','統合画面の天気','Overview weather'],
+['雾','霧','霧','Fog'],
 ['聚合时钟','整合時鐘','統合時計','Overview clock'],
 ['聚合时钟 SDL 预览','整合時鐘 SDL 預覽','統合時計のSDLプレビュー','Overview clock SDL preview'],
 ['自动定位不准时填写城市名；留空会恢复 IP 自动定位。','自動定位不準時填寫城市名稱；留空會恢復 IP 自動定位。','自動位置判定が不正確な場合は都市名を入力。空欄でIP自動判定に戻ります。','Enter a city if automatic location is inaccurate. Blank restores IP-based location.'],

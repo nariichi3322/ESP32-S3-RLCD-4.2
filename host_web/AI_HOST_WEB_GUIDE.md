@@ -75,6 +75,10 @@ and CSP blocking network and form navigation. Its trusted build artifact is
 fetched through the parent service worker for offline use, then assigned to
 srcdoc. Never interpolate user input into that document.
 
+The aggregate weather selector maps scene values 20-24 to cloudy, clear, rain,
+snow and fog. The fog option must pass the fog theme to the shared firmware
+renderer; keep the four-language label in locales/static.js in sync.
+
 Pages requires generated artifacts with matching hashes; missing/corrupt files
 fail the build. `test_simulator_artifacts.mjs`, `test_pages_site.mjs`, native
 `web_demo_state_test` and browser offline/key checks cover this boundary.

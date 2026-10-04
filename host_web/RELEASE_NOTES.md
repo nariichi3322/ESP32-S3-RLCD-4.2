@@ -1,3 +1,9 @@
+# WeatherClock Studio v1.0.12 · 2026-10-04
+
+### Fog Scene in the Interactive Simulator
+
+- Added a selectable fog scene to the aggregate clock preview, using the same static fog rendering as the firmware. Weather remains simulated data.
+
 # WeatherClock Studio v1.0.11 · 2026-09-29
 
 ### Online Firmware Installation Fix
