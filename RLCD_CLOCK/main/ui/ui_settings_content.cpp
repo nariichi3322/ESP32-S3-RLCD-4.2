@@ -7,6 +7,7 @@
 #include "offline_mode_state.h"
 #include "ui_settings_confirmation_state.h"
 #include "ui_gallery_rotation_state.h"
+#include "calendar_display_mode.h"
 #include "ui_i18n.h"
 #include "ui_language.h"
 #include "ui_text_format.h"
@@ -224,6 +225,23 @@ void populate_settings_secondary_items(
                               kSystemSettingsLanguageItem,
                               settings_display_format(UiTextId::SettingsLanguageFormat),
                               ui_text(language_name));
+        UiTextId calendar_display_name = UiTextId::CalendarDisplayOff;
+        switch (calendar_display_mode_load()) {
+        case CalendarDisplayMode::ChineseLunar:
+            calendar_display_name = UiTextId::CalendarDisplayChineseLunar;
+            break;
+        case CalendarDisplayMode::JapaneseKyureki:
+            calendar_display_name = UiTextId::CalendarDisplayJapaneseKyureki;
+            break;
+        case CalendarDisplayMode::Off:
+        default:
+            break;
+        }
+        format_secondary_text(
+            secondary_items,
+            kSystemSettingsCalendarDisplayItem,
+            settings_display_format(UiTextId::SettingsCalendarDisplay),
+            ui_text(calendar_display_name));
         set_secondary_text(secondary_items,
                            kSystemSettingsSetupItem,
                            settings_display_text(UiTextId::SettingsSetup));

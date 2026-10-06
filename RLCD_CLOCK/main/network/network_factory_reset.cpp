@@ -28,6 +28,7 @@ using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
 using network_config_keys::kWeatherClockSecondsKey;
 using network_config_keys::kUiLanguageKey;
+using network_config_keys::kCalendarDisplayModeKey;
 using network_page_storage::kPageMaskV1Key;
 using network_page_storage::kPageMaskV2Key;
 using network_page_storage::kPageMaskV3Key;
@@ -82,10 +83,11 @@ constexpr const char *kSavedConfigKeys[] = {
     kGalleryRotationKey,
     kWeatherClockSecondsKey,
     kUiLanguageKey,
+    kCalendarDisplayModeKey,
     "codex_ble_v1",
 };
 
-static_assert(array_count(kSavedConfigKeys) == 34,
+static_assert(array_count(kSavedConfigKeys) == 35,
               "factory reset key registry count changed; update its host test");
 static_assert(cstr_array_nonempty(kSavedConfigKeys),
               "factory reset config keys must be non-empty");
@@ -137,6 +139,8 @@ static_assert(cstr_array_contains(kSavedConfigKeys, kWeatherClockSecondsKey),
               "factory reset must clear weather clock seconds setting");
 static_assert(cstr_array_contains(kSavedConfigKeys, kUiLanguageKey),
               "factory reset must clear UI language setting");
+static_assert(cstr_array_contains(kSavedConfigKeys, kCalendarDisplayModeKey),
+              "factory reset must clear calendar display mode setting");
 static_assert(cstr_array_contains(kSavedConfigKeys, "codex_ble_v1"),
               "factory reset must clear obsolete Codex feature setting");
 } // namespace

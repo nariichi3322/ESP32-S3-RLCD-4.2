@@ -28,6 +28,7 @@
 #include <esp_log.h>
 
 #include <string.h>
+#include <stdio.h>
 
 namespace {
 namespace settings_layout = ui_settings_layout;
@@ -755,13 +756,15 @@ bool update_settings_page()
         changed |= set_obj_visible(s_settings_system_page_label,
                                    indicator_visible);
         if (indicator_visible) {
-            const char *page_text = nullptr;
+            char page_text[8] = {};
             if (display_manager) {
-                page_text = manager_page == 0 ? "1/2" : "2/2";
+                strlcpy(page_text, manager_page == 0 ? "1/2" : "2/2", sizeof(page_text));
             } else {
-                page_text = system_settings_page_for_selection(selected) == 0
-                                ? "1/2"
-                                : "2/2";
+                snprintf(page_text,
+                         sizeof(page_text),
+                         "%d/%d",
+                         system_settings_page_for_selection(selected) + 1,
+                         kSystemSettingsPageCount);
             }
             changed |= set_label_text_if_changed(s_settings_system_page_label,
                                                  page_text);

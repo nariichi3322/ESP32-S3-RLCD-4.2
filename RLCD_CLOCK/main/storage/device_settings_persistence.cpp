@@ -10,6 +10,7 @@
 #include "ui_gallery_rotation_state_internal.h"
 #include "ui_clock_seconds_state_internal.h"
 #include "ui_language_internal.h"
+#include "calendar_display_mode.h"
 #include "ui_work_page_catalog_internal.h"
 #include "ui_work_page_order_policy.h"
 #include "xiaozhi_auto_return_state_internal.h"
@@ -26,6 +27,7 @@ using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
 using network_config_keys::kWeatherClockSecondsKey;
 using network_config_keys::kUiLanguageKey;
+using network_config_keys::kCalendarDisplayModeKey;
 
 namespace {
 constexpr const char *kNvsActionSavingHourlyReminder = "saving hourly reminder";
@@ -35,11 +37,13 @@ constexpr const char *kNvsActionSavingXiaozhiAutoReturn = "saving Xiaozhi auto r
 constexpr const char *kNvsActionSavingGalleryRotation = "saving gallery rotation";
 constexpr const char *kNvsActionSavingClockSeconds = "saving clock seconds";
 constexpr const char *kNvsActionSavingUiLanguage = "saving UI language";
+constexpr const char *kNvsActionSavingCalendarDisplayMode = "saving calendar display mode";
 constexpr const char *kNvsFailureContextPageSettings = "page settings";
 constexpr const char *kNvsFailureContextXiaozhiAutoReturn = "Xiaozhi auto return";
 constexpr const char *kNvsFailureContextGalleryRotation = "gallery rotation";
 constexpr const char *kNvsFailureContextClockSeconds = "clock seconds";
 constexpr const char *kNvsFailureContextUiLanguage = "UI language";
+constexpr const char *kNvsFailureContextCalendarDisplayMode = "calendar display mode";
 #define NVS_SAVE_HOURLY_REMINDER_FAILED_FORMAT "nvs save hourly reminder failed: %s"
 #define NVS_SAVE_PAGE_ORDER_FAILED_FORMAT "nvs save page order failed: %s"
 #define NVS_SAVE_U8_SETTING_FAILED_FORMAT "nvs save %s failed: %s"
@@ -207,5 +211,18 @@ bool set_ui_language_setting(UiLanguage language)
         return false;
     }
     ui_language_store(language);
+    return true;
+}
+
+bool set_calendar_display_mode_setting(CalendarDisplayMode mode)
+{
+    mode = normalize_calendar_display_mode(static_cast<uint8_t>(mode));
+    if (!save_changed_u8_setting(kNvsActionSavingCalendarDisplayMode,
+                                 kNvsFailureContextCalendarDisplayMode,
+                                 kCalendarDisplayModeKey,
+                                 static_cast<uint8_t>(mode))) {
+        return false;
+    }
+    calendar_display_mode_store(mode);
     return true;
 }

@@ -7,7 +7,7 @@ int main()
 {
     using namespace ui_settings_layout;
 
-    static_assert(kSettingsListRowCount == 8,
+    static_assert(kSettingsListRowCount == 9,
                   "settings list must cover every secondary slot");
     static_assert(kSettingsGridCapacity == 8,
                   "settings compact grid must remain four rows by two columns");

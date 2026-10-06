@@ -14,6 +14,7 @@ struct CalendarDayInfo {
     int lunar_month = 0;
     int lunar_day = 0;
     bool lunar_leap = false;
+    bool lunar_available = false;
     char subtext[kCalendarLunarSubtextSize] = {};
 };
 

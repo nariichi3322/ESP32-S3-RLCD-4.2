@@ -2,7 +2,7 @@
 #pragma once
 
 inline constexpr int kSettingsPrimaryCount = 4;
-inline constexpr int kSettingsSecondaryMaxCount = 8;
+inline constexpr int kSettingsSecondaryMaxCount = 9;
 inline constexpr int kSettingsLabelCount =
     kSettingsPrimaryCount + kSettingsSecondaryMaxCount;
 
@@ -32,16 +32,19 @@ inline constexpr int kDisplaySettingsGridItemCount =
 
 inline constexpr int kSystemSettingsOfflineItem = 0;
 inline constexpr int kSystemSettingsLanguageItem = 1;
-inline constexpr int kSystemSettingsSetupItem = 2;
-inline constexpr int kSystemSettingsInfoItem = 3;
-inline constexpr int kSystemSettingsOtaItem = 4;
-inline constexpr int kSystemSettingsNetworkDiagItem = 5;
-inline constexpr int kSystemSettingsClearCodexBondsItem = 6;
-inline constexpr int kSystemSettingsFactoryResetItem = 7;
+inline constexpr int kSystemSettingsCalendarDisplayItem = 2;
+inline constexpr int kSystemSettingsSetupItem = 3;
+inline constexpr int kSystemSettingsInfoItem = 4;
+inline constexpr int kSystemSettingsOtaItem = 5;
+inline constexpr int kSystemSettingsNetworkDiagItem = 6;
+inline constexpr int kSystemSettingsClearCodexBondsItem = 7;
+inline constexpr int kSystemSettingsFactoryResetItem = 8;
 inline constexpr int kSystemSettingsSecondaryCount =
     kSystemSettingsFactoryResetItem + 1;
 inline constexpr int kSystemSettingsPageItemCount = 4;
-inline constexpr int kSystemSettingsPageCount = 2;
+inline constexpr int kSystemSettingsPageCount =
+    (kSystemSettingsSecondaryCount + kSystemSettingsPageItemCount - 1) /
+    kSystemSettingsPageItemCount;
 
 enum SettingsSyncOp {
     kSettingsSyncNone = 0,
@@ -68,6 +71,6 @@ static_assert(kDisplaySettingsSecondaryCount ==
               "display settings count must include gallery rotation");
 static_assert(kDisplaySettingsGridItemCount == kDisplaySettingsSecondaryCount,
               "all display settings items use the compact grid");
-static_assert(kSystemSettingsPageItemCount * kSystemSettingsPageCount ==
+static_assert(kSystemSettingsPageItemCount * kSystemSettingsPageCount >=
                   kSystemSettingsSecondaryCount,
               "system settings pages must cover every system item");

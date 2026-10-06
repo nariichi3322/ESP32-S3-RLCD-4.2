@@ -19,6 +19,7 @@
 #include "ui_clock_seconds_state.h"
 #include "local_sensor_state.h"
 #include "calendar_lunar.h"
+#include "calendar_display_mode.h"
 #include "sensor_time.h"
 #include <cstdio>
 #include <cstring>
@@ -29,11 +30,13 @@ lv_color_t *s_buffers[3] = {};
 uint32_t s_weather_version=0, s_sensor_version=0;
 bool s_weather_valid=false, s_sensor_valid=false;
 int s_date_key=-1;
+int s_calendar_display_mode=-1;
 int64_t s_buffer_retry_us=0;
 }
 
 void clear_aggregate_clock_refs() {
     s_view={}; s_weather_valid=false; s_sensor_valid=false; s_date_key=-1;
+    s_calendar_display_mode=-1;
 }
 
 void build_aggregate_clock_page() {
@@ -81,25 +84,35 @@ bool update_aggregate_clock_page(const struct tm &local) {
                                             ui_text(UiTextId::AggregateMonthPlaceholder));
         changed |= aggregate_clock_set_text(s_view.lunar,
                                             ui_text(UiTextId::AggregateLunarDayPlaceholder));
-        s_date_key=-1; s_weather_valid=false;
+        s_date_key=-1; s_calendar_display_mode=-1; s_weather_valid=false;
     }
-    if(valid_time && date_key!=s_date_key) {
+    const CalendarDisplayMode display_mode=calendar_display_mode_load();
+    const int display_mode_key=static_cast<int>(display_mode);
+    if(valid_time &&
+       (date_key!=s_date_key || display_mode_key!=s_calendar_display_mode)) {
         s_weather_valid=false;
         char day[8],month[16];
         std::snprintf(day,sizeof(day),"%d",local.tm_mday);
         CalendarDayInfo lunar={};
         const bool lunar_ok=calendar_day_info(local,&lunar);
-        std::snprintf(month, sizeof(month), ui_format(UiTextId::AggregateLeapMonthJoinFormat),
-                      lunar_ok && lunar.lunar_leap ? ui_text(UiTextId::CalendarLeap) : "",
-                      lunar_ok ? calendar_lunar_month_text(lunar)
-                               : ui_text(UiTextId::AggregateMonthPlaceholder));
+        if(display_mode==CalendarDisplayMode::Off) {
+            month[0]='\0';
+        } else {
+            std::snprintf(month, sizeof(month), ui_format(UiTextId::AggregateLeapMonthJoinFormat),
+                          lunar_ok && lunar.lunar_leap ? ui_text(UiTextId::CalendarLeap) : "",
+                          lunar_ok ? calendar_lunar_month_text(lunar)
+                                   : ui_text(UiTextId::AggregateMonthPlaceholder));
+        }
         changed |= aggregate_clock_set_text(s_view.day,day);
         changed |= aggregate_clock_set_text(s_view.month,month);
         changed |= aggregate_clock_set_text(
             s_view.lunar,
-            lunar_ok ? calendar_lunar_day_text(lunar)
-                     : ui_text(UiTextId::AggregateLunarDayPlaceholder));
+            display_mode==CalendarDisplayMode::Off
+                ? ""
+                : (lunar_ok ? calendar_lunar_day_text(lunar)
+                            : ui_text(UiTextId::AggregateLunarDayPlaceholder)));
         s_date_key=date_key;
+        s_calendar_display_mode=display_mode_key;
     }
     const uint32_t sensor_version=local_sensor_state_version();
     if(!s_sensor_valid || sensor_version!=s_sensor_version) {

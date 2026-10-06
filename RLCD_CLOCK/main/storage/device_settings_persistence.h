@@ -8,6 +8,7 @@
 
 struct ChimeRuntimeSnapshot;
 enum class UiLanguage : uint8_t;
+enum class CalendarDisplayMode : uint8_t;
 
 bool save_hourly_chime_setting();
 bool set_chime_setting(const ChimeRuntimeSnapshot &settings);
@@ -18,3 +19,4 @@ bool set_xiaozhi_auto_return_setting(bool enabled);
 bool set_gallery_rotation_period_setting(uint8_t period);
 bool set_weather_clock_seconds_visible_setting(bool visible);
 bool set_ui_language_setting(UiLanguage language);
+bool set_calendar_display_mode_setting(CalendarDisplayMode mode);

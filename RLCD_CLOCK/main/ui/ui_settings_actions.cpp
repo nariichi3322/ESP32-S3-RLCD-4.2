@@ -15,6 +15,7 @@
 #include "network_diagnostics.h"
 #include "network_diagnostics_state.h"
 #include "device_settings_persistence.h"
+#include "calendar_display_mode.h"
 #include "network_runtime_events.h"
 #include "offline_mode_state.h"
 #include "ota_services.h"
@@ -480,6 +481,18 @@ void handle_system_settings_action(
         }
         set_settings_feedback(ui_text(UiTextId::SettingsLanguageChanged),
                               kSettingsFeedbackDefaultMs);
+    } else if (selected == kSystemSettingsCalendarDisplayItem) {
+        const CalendarDisplayMode current = calendar_display_mode_load();
+        const CalendarDisplayMode next =
+            current == CalendarDisplayMode::ChineseLunar
+                ? CalendarDisplayMode::JapaneseKyureki
+                : current == CalendarDisplayMode::JapaneseKyureki
+                      ? CalendarDisplayMode::Off
+                      : CalendarDisplayMode::ChineseLunar;
+        if (!set_calendar_display_mode_setting(next)) {
+            set_settings_feedback(kSettingsSaveFailedFeedback,
+                                  kSettingsFeedbackDefaultMs);
+        }
     } else if (selected == kSystemSettingsOtaItem) {
         ota_handle_info_key();
     }

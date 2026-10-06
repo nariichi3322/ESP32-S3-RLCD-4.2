@@ -3,6 +3,7 @@
 #include "ui_flip_clock_objects.h"
 
 #include "calendar_lunar.h"
+#include "calendar_display_mode.h"
 #include "flip_sensor_icons.h"
 #include "local_sensor_state.h"
 #include "ui_bitmap.h"
@@ -41,6 +42,7 @@ int s_last_humi_mood = -1;
 int s_last_temp_trend = kTrendDrawCacheInvalid;
 int s_last_humi_trend = kTrendDrawCacheInvalid;
 int s_last_date_key = -1;
+int s_last_calendar_display_mode = -1;
 
 const uint8_t *sensor_mood_icon_bits(int mood,
                                      const uint8_t *comfort_bits,
@@ -228,15 +230,17 @@ bool update_date_text(const struct tm &local)
                                        ui_text(UiTextId::FlipDayPlaceholder),
                                        ui_format(UiTextId::FlipDayFormat),
                                        local.tm_mday);
-    const char *lunar_text = lunar_ok && info.subtext[0]
-                                 ? info.subtext
-                                 : ui_text(UiTextId::FlipDayPlaceholder);
+    const char *date_subtext = calendar_display_mode_load() == CalendarDisplayMode::Off
+                                   ? info.subtext
+                                   : (lunar_ok && info.subtext[0]
+                                          ? info.subtext
+                                          : ui_text(UiTextId::FlipDayPlaceholder));
     bool changed = false;
     changed |= set_text_on_labels(day_text,
                                   objects.day_label,
                                   objects.day_bold_label,
                                   objects.day_bold_y_label);
-    changed |= set_text_on_labels(lunar_text,
+    changed |= set_text_on_labels(date_subtext,
                                   objects.lunar_label,
                                   objects.lunar_bold_x_label,
                                   objects.lunar_bold_y_label,
@@ -262,6 +266,7 @@ void reset_refresh_cache()
     s_last_temp_trend = kTrendDrawCacheInvalid;
     s_last_humi_trend = kTrendDrawCacheInvalid;
     s_last_date_key = -1;
+    s_last_calendar_display_mode = -1;
 }
 
 } // namespace
@@ -305,8 +310,12 @@ bool update_flip_clock_page(const struct tm &local,
         s_last_second = -1;
     }
 
-    if (time_snapshot.date_key != s_last_date_key) {
+    const int display_mode_key =
+        static_cast<int>(calendar_display_mode_load());
+    if (time_snapshot.date_key != s_last_date_key ||
+        display_mode_key != s_last_calendar_display_mode) {
         s_last_date_key = time_snapshot.date_key;
+        s_last_calendar_display_mode = display_mode_key;
         changed |= update_date_text(local);
     }
     if (local.tm_min != s_last_sensor_minute) {

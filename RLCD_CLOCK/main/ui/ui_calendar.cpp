@@ -6,6 +6,7 @@
 #include "app_time_constants.h"
 #include "battery_runtime_state.h"
 #include "calendar_lunar.h"
+#include "calendar_display_mode.h"
 #include "work_page_ids.h"
 #include "ui_battery.h"
 #include "ui_calendar_layout.h"
@@ -33,6 +34,7 @@ static lv_obj_t *s_calendar_canvas;
 static lv_color_t *s_calendar_canvas_buffer;
 static int s_last_calendar_drawn_month = -1;
 static int s_last_calendar_drawn_day = -1;
+static int s_last_calendar_display_mode = -1;
 static constexpr int kDarkCanvasOverdrawPasses = 5;
 
 static void canvas_fill_rect_safe(lv_img_dsc_t *image,
@@ -404,9 +406,14 @@ bool update_calendar_page(const struct tm &local)
     build_calendar_page();
     bool changed = false;
     int month_key = calendar_month_key(local);
-    if (month_key != s_last_calendar_drawn_month || local.tm_mday != s_last_calendar_drawn_day) {
+    const int display_mode_key =
+        static_cast<int>(calendar_display_mode_load());
+    if (month_key != s_last_calendar_drawn_month ||
+        local.tm_mday != s_last_calendar_drawn_day ||
+        display_mode_key != s_last_calendar_display_mode) {
         s_last_calendar_drawn_month = month_key;
         s_last_calendar_drawn_day = local.tm_mday;
+        s_last_calendar_display_mode = display_mode_key;
         draw_calendar_grid(local);
         changed = true;
     }
@@ -443,6 +450,7 @@ static bool ensure_calendar_canvas(lv_obj_t *screen)
                           LV_OPA_COVER);
         s_last_calendar_drawn_month = -1;
         s_last_calendar_drawn_day = -1;
+        s_last_calendar_display_mode = -1;
     }
     return true;
 }
@@ -484,4 +492,5 @@ void clear_calendar_object_refs()
     s_calendar_canvas = nullptr;
     s_last_calendar_drawn_month = -1;
     s_last_calendar_drawn_day = -1;
+    s_last_calendar_display_mode = -1;
 }

@@ -19,6 +19,7 @@
 #include "ui_gallery_rotation_state_internal.h"
 #include "ui_clock_seconds_state_internal.h"
 #include "ui_language_internal.h"
+#include "calendar_display_mode.h"
 #include "ui_work_page_catalog_internal.h"
 #include "xiaozhi_auto_return_state_internal.h"
 
@@ -44,6 +45,7 @@ using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
 using network_config_keys::kWeatherClockSecondsKey;
 using network_config_keys::kUiLanguageKey;
+using network_config_keys::kCalendarDisplayModeKey;
 
 namespace {
 constexpr WorkPageMask kPageMaskV4KnownBits = network_page_storage::kLegacyV4KnownPageMask;
@@ -79,6 +81,7 @@ struct LoadedSavedConfig {
     uint8_t gallery_rotation;
     uint8_t weather_clock_seconds_visible;
     uint8_t ui_language;
+    uint8_t calendar_display_mode;
     uint8_t preferred_wifi_slot;
     uint8_t page_order[kWorkPageCount];
     char manual_weather_city[kManualWeatherCityLen];
@@ -156,6 +159,8 @@ void initialize_loaded_saved_config(LoadedSavedConfig *loaded)
     loaded->weather_clock_seconds_visible =
         kDefaultWeatherClockSecondsVisible ? 1 : 0;
     loaded->ui_language = static_cast<uint8_t>(kDefaultUiLanguage);
+    loaded->calendar_display_mode =
+        static_cast<uint8_t>(default_calendar_display_mode());
     loaded->preferred_wifi_slot =
         static_cast<uint8_t>(WifiCredentialSlot::kSlotA);
 }
@@ -203,6 +208,10 @@ void read_saved_config(nvs_handle_t nvs, LoadedSavedConfig *loaded)
         kDefaultWeatherClockSecondsVisible ? 1 : 0);
     loaded->ui_language = read_nvs_u8_or_default(
         nvs, kUiLanguageKey, static_cast<uint8_t>(kDefaultUiLanguage));
+    loaded->calendar_display_mode = read_nvs_u8_or_default(
+        nvs,
+        kCalendarDisplayModeKey,
+        static_cast<uint8_t>(default_calendar_display_mode()));
     loaded->preferred_wifi_slot = read_nvs_u8_or_default(
         nvs,
         kWifiPreferredSlotKey,
@@ -260,6 +269,8 @@ bool apply_loaded_config(const LoadedSavedConfig &loaded)
     weather_clock_seconds_visible_store(
         nvs_u8_to_bool(loaded.weather_clock_seconds_visible));
     ui_language_store(normalize_ui_language(loaded.ui_language));
+    calendar_display_mode_store(
+        normalize_calendar_display_mode(loaded.calendar_display_mode));
     return apply_loaded_page_config(loaded.page_mask, loaded.page_order, loaded.have_page_order);
 }
 } // namespace

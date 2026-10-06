@@ -41,6 +41,7 @@ const char *const kExpectedKeys[] = {
     "gallery_rot_v1",
     "clock_sec_v1",
     "ui_lang_v1",
+    "cal_mode_v1",
     "codex_ble_v1",
 };
 
@@ -125,7 +126,7 @@ int main()
 {
     constexpr nvs_handle_t kNvs = 1;
     constexpr size_t kExpectedKeyCount = sizeof(kExpectedKeys) / sizeof(kExpectedKeys[0]);
-    static_assert(kExpectedKeyCount == 34,
+    static_assert(kExpectedKeyCount == 35,
                   "factory reset host test must enumerate every registered key");
 
     reset_store(true);

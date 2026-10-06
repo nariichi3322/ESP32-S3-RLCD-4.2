@@ -593,7 +593,7 @@
       "zh-TW": "勞動節",
       "zh-CN": "劳动节",
       "en": "Labour Day",
-      "ja": "労働節"
+      "ja": "メーデー"
     },
     {
       "id": "CalendarChildrensDay",
@@ -615,6 +615,83 @@
       "zh-CN": "国庆",
       "en": "National Day",
       "ja": "建国記念日"
+    },
+    {
+      "id": "CalendarTaiwanPeaceMemorialDay",
+      "zh-TW": "和平紀念日",
+      "zh-CN": "和平纪念日",
+      "en": "Peace Memorial Day",
+      "ja": "平和記念日"
+    },
+    {
+      "id": "CalendarTaiwanConstitutionDay",
+      "zh-TW": "行憲紀念日",
+      "zh-CN": "行宪纪念日",
+      "en": "Constitution Day",
+      "ja": "たいわんのけんぽう記念日"
+    },
+    {
+      "id": "CalendarTaiwanRetrocessionDay",
+      "zh-TW": "光復節",
+      "zh-CN": "光复节",
+      "en": "Taiwan Retrocession Day",
+      "ja": "たいわんのこうふく記念日"
+    },
+    {
+      "id": "CalendarJapaneseNationalFoundationDay",
+      "zh-TW": "建國紀念日",
+      "zh-CN": "建国纪念日",
+      "en": "National Foundation Day",
+      "ja": "建国記念の日"
+    },
+    {
+      "id": "CalendarJapaneseEmperorsBirthday",
+      "zh-TW": "天皇誕生日",
+      "zh-CN": "天皇诞生日",
+      "en": "Emperor's Birthday",
+      "ja": "てんのう誕生日"
+    },
+    {
+      "id": "CalendarJapaneseShowaDay",
+      "zh-TW": "昭和之日",
+      "zh-CN": "昭和之日",
+      "en": "Showa Day",
+      "ja": "しょうわの日"
+    },
+    {
+      "id": "CalendarJapaneseConstitutionMemorialDay",
+      "zh-TW": "憲法紀念日",
+      "zh-CN": "宪法纪念日",
+      "en": "Constitution Memorial Day",
+      "ja": "けんぽう記念日"
+    },
+    {
+      "id": "CalendarJapaneseGreeneryDay",
+      "zh-TW": "綠之日",
+      "zh-CN": "绿之日",
+      "en": "Greenery Day",
+      "ja": "みどりの日"
+    },
+    {
+      "id": "CalendarJapaneseMountainDay",
+      "zh-TW": "山之日",
+      "zh-CN": "山之日",
+      "en": "Mountain Day",
+      "ja": "山の日"
+    },
+    {
+      "id": "CalendarJapaneseCultureDay",
+      "zh-TW": "文化之日",
+      "zh-CN": "文化之日",
+      "en": "Culture Day",
+      "ja": "文化の日"
+    },
+    {
+      "id": "CalendarJapaneseLaborThanksgivingDay",
+      "zh-TW": "勤勞感謝日",
+      "zh-CN": "勤劳感谢日",
+      "en": "Labour Thanksgiving Day",
+      "ja": "勤労感謝の日"
     },
     {
       "id": "CalendarChristmas",
@@ -930,6 +1007,34 @@
       "zh-CN": "日语",
       "en": "Japanese",
       "ja": "日本語"
+    },
+    {
+      "id": "CalendarDisplayChineseLunar",
+      "zh-TW": "中國農曆",
+      "zh-CN": "中国农历",
+      "en": "Chinese lunar",
+      "ja": "中国の月ごよみ"
+    },
+    {
+      "id": "CalendarDisplayJapaneseKyureki",
+      "zh-TW": "日本舊曆",
+      "zh-CN": "日本旧历",
+      "en": "Japanese old calendar",
+      "ja": "日本のきゅうれき"
+    },
+    {
+      "id": "CalendarDisplayOff",
+      "zh-TW": "不顯示",
+      "zh-CN": "不显示",
+      "en": "Off",
+      "ja": "オフ"
+    },
+    {
+      "id": "SettingsCalendarDisplay",
+      "zh-TW": "曆法 %s",
+      "zh-CN": "历法 %s",
+      "en": "Calendar %s",
+      "ja": "こよみ表示 %s"
     },
     {
       "id": "SettingsLanguageFormat",
@@ -1981,7 +2086,7 @@
     ,{ "id": "WeatherBoardHourlyTempFormat", "zh-TW": "%s°C", "zh-CN": "%s°C", "en": "%s°C", "ja": "%s°C" }
     ,{ "id": "CalendarLunarMonthJoinFormat", "zh-TW": "%s%s", "zh-CN": "%s%s", "en": "%s%s", "ja": "%s%s" }
     ,{ "id": "CalendarJapaneseLunarMonthFormat", "zh-TW": "%d月", "zh-CN": "%d月", "en": "Lunar month %d", "ja": "%d月" }
-    ,{ "id": "CalendarJapaneseLeapLunarMonthFormat", "zh-TW": "閏%d月", "zh-CN": "闰%d月", "en": "Leap lunar month %d", "ja": "う%d月" }
+    ,{ "id": "CalendarJapaneseLeapLunarMonthFormat", "zh-TW": "閏%d月", "zh-CN": "闰%d月", "en": "Leap lunar month %d", "ja": "うるう%d月" }
     ,{ "id": "CalendarJapaneseLunarDayFormat", "zh-TW": "%d日", "zh-CN": "%d日", "en": "Lunar day %d", "ja": "%d日" }
     ,{ "id": "CalendarEnglishLeapLunarMonthFormat", "zh-TW": "閏農曆月份 %d", "zh-CN": "闰农历月份 %d", "en": "Leap lunar month %d", "ja": "うるう月%d" }
     ,{ "id": "CalendarLunarDay1", "zh-TW": "初一", "zh-CN": "初一", "en": "Day 1", "ja": "1日" }

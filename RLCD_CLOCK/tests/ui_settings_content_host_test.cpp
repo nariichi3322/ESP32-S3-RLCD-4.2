@@ -2,15 +2,18 @@
 #include "ui_settings_content.h"
 
 #include "manual_weather_city_state.h"
+#include "calendar_display_mode.h"
 #include "offline_mode_state.h"
 #include "offline_mode_state_internal.h"
 #include "ui_settings_confirmation_state_internal.h"
 #include "ui_gallery_rotation_state_internal.h"
 #include "ui_language_internal.h"
+#include "ui_i18n.h"
 #include "weather_city_contract.h"
 
 #include <assert.h>
 #include <string.h>
+#include <stdio.h>
 
 namespace {
 char s_manual_weather_city[kManualWeatherCityLen] = {};
@@ -54,8 +57,8 @@ int main()
                   "alarm must use the right cell of the second row");
     static_assert(kSystemSettingsPageItemCount == 4,
                   "system settings must show four items per page");
-    static_assert(kSystemSettingsSecondaryCount == 8,
-                  "system settings must expose both pages");
+    static_assert(kSystemSettingsSecondaryCount == 9,
+                  "system settings must expose every item across its pages");
     SettingsSecondaryStateSnapshot state = {};
     state.volume_percent = 60;
     state.sound_index = 2;
@@ -107,6 +110,7 @@ int main()
     expect_text(items, kDisplaySettingsAlarmItem, "鬧鐘 06:30");
 
     offline_mode_enabled_store(true);
+    calendar_display_mode_store(CalendarDisplayMode::ChineseLunar);
     settings_confirmation_request(SettingsConfirmation::kFactoryReset);
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
@@ -115,6 +119,14 @@ int main()
     expect_text(items, kSystemSettingsInfoItem, "關於本機");
     expect_text(items, kSystemSettingsClearCodexBondsItem, "清除配對");
     expect_text(items, kSystemSettingsLanguageItem, "語言 繁體");
+    char expected_calendar_text[kSettingsSecondaryTextSize] = {};
+    snprintf(expected_calendar_text,
+             sizeof(expected_calendar_text),
+             ui_format(UiTextId::SettingsCalendarDisplay),
+             ui_text(UiTextId::CalendarDisplayChineseLunar));
+    expect_text(items,
+                kSystemSettingsCalendarDisplayItem,
+                expected_calendar_text);
     expect_text(items, kSystemSettingsOtaItem, "檢查更新");
     expect_text(items, kSystemSettingsNetworkDiagItem, "網路檢測");
 
@@ -131,6 +143,36 @@ int main()
     expect_text(items, kSystemSettingsOtaItem, "检查更新");
     expect_text(items, kSystemSettingsNetworkDiagItem, "网络检测");
 
+    calendar_display_mode_store(CalendarDisplayMode::JapaneseKyureki);
+    memset(items, 0, sizeof(items));
+    populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
+    snprintf(expected_calendar_text,
+             sizeof(expected_calendar_text),
+             ui_format(UiTextId::SettingsCalendarDisplay),
+             ui_text(UiTextId::CalendarDisplayJapaneseKyureki));
+    expect_text(items,
+                kSystemSettingsCalendarDisplayItem,
+                expected_calendar_text);
+
+    calendar_display_mode_store(CalendarDisplayMode::Off);
+    memset(items, 0, sizeof(items));
+    populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
+    snprintf(expected_calendar_text,
+             sizeof(expected_calendar_text),
+             ui_format(UiTextId::SettingsCalendarDisplay),
+             ui_text(UiTextId::CalendarDisplayOff));
+    expect_text(items,
+                kSystemSettingsCalendarDisplayItem,
+                expected_calendar_text);
+
+    ui_language_store(UiLanguage::Japanese);
+    calendar_display_mode_store(CalendarDisplayMode::JapaneseKyureki);
+    memset(items, 0, sizeof(items));
+    populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
+    expect_text(items,
+                kSystemSettingsCalendarDisplayItem,
+                "こよみ表示 日本のきゅうれき");
+
     ui_language_store(UiLanguage::English);
     state.volume_percent = 60;
     memset(items, 0, sizeof(items));
@@ -140,6 +182,13 @@ int main()
     expect_text(items, kSoundSettingsAllDayItem, "All-day 0-24");
     memset(items, 0, sizeof(items));
     populate_settings_secondary_items(kSettingsPrimarySystem, state, items);
+    snprintf(expected_calendar_text,
+             sizeof(expected_calendar_text),
+             ui_format(UiTextId::SettingsCalendarDisplay),
+             ui_text(UiTextId::CalendarDisplayJapaneseKyureki));
+    expect_text(items,
+                kSystemSettingsCalendarDisplayItem,
+                expected_calendar_text);
     expect_text(items, kSystemSettingsFactoryResetItem, "Confirm reset");
     expect_text(items, kSystemSettingsClearCodexBondsItem, "Clear pair");
     expect_text(items, kSystemSettingsLanguageItem, "English");
