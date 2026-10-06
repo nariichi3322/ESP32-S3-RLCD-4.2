@@ -2,6 +2,11 @@
 
 This document is for future AI agents or developers taking over `host_web/`.
 
+Current maintenance baseline: firmware v1.6.15, Host Web v1.0.12 and cache v86.
+Read version fields rather than relying on historical paragraphs below. The
+current private checkout also has a Chinese maintenance entry at repository-root
+MAINTENANCE_START_HERE.md; that internal handoff is not part of the public export.
+
 Device identification: esptool-js 0.5.6 exposes getFlashSize() on ESPLoader,
 not chip. Successful firmware inspection retains its loader and transport for
 online installation; cancel, tab departure and installation completion release
@@ -100,9 +105,9 @@ freezes version/target while active, reuses the existing download/SHA-256/
 esptool/reset path, and never enables writing after a failed hash. It does not
 expose erase-all.
 
-Advanced firmware flashing retains local/App targets, dynamic partition checks,
-MAC/SHA256/details and baud rate. App writes require a valid device partition
-table and target capacity. Device disconnect, unknown chip/capacity, user
+Advanced flashing is not a visible user workflow. Legacy local/App state and
+helpers remain inert for compatibility; do not restore their controls as a
+maintenance refactor. Device disconnect, unknown chip/capacity, user
 cancel, duplicate clicks and failed writes must leave the main install blocked
 or retryable. Completion shows setup/Quick setup guidance without navigation.
 Mobile browsers can view the page but Web Serial still needs desktop Chrome/Edge.
@@ -131,9 +136,10 @@ The two groups share five subgrid rows (heading plus four inputs), keeping
 corresponding inputs aligned despite different help lengths. Safety notices
 use three separate complete sentences, not forced line breaks inside a paragraph.
 
-Work in this branch is limited to `host_web/`.
+For a Host Web-only task, keep changes scoped to `host_web/` unless shared
+firmware renderer or protocol work was explicitly requested.
 
-Read the repository-root AGENTS.md, TASK.md, HANDOFF.md and docs/DECISIONS.md before development. Ordinary changes follow the same rules as firmware: validate, commit and push Gitea only. Keep firmware versions unchanged for web-only work.
+Read the repository-root AGENTS.md, TASK.md, HANDOFF.md and docs/DECISIONS.md before development. Ordinary changes follow the same rules as firmware: validate, commit and push only the private development origin. Gitea development is retired; Gitee OTA is still the fallback firmware mirror. Keep firmware versions unchanged for web-only work.
 
 With explicit one-time authorization, use the unified source publisher with GITHUB_CLOCK_SOURCE_ONLY=1. The only active public repository is `wickenzh/ESP32-S3-RLCD-4.2`, with firmware under `RLCD_CLOCK/` and this app under `host_web/`. The old `_Web` repository retains its code and history, but its Pages site was removed and deployment workflow disabled at the user's request on 2026-09-09. Do not re-enable or publish the legacy site without explicit authorization.
 
@@ -147,7 +153,8 @@ The host web app is mainly a browser-based resource tool for WeatherClock:
 - Build `custom_assets.bin`.
 - Write `custom_assets.bin` to the ESP32-S3 `assets` flash partition.
 
-Firmware flashing and serial logs exist only as auxiliary tools.
+Online full firmware installation is the first/default tab; resource creation
+and writing, serial logs, shared simulation and Quick setup remain available.
 
 ## Device Resource Format
 
@@ -191,7 +198,7 @@ The browser app builds the header, entry table, payload, header CRC32, payload C
 
 ## Current UI
 
-Tab navigation uses hash routes: #screens opens the SDL gallery directly; other routes are #assets, #writer, #firmware, #serial and #settings. activateTab validates against actual tab IDs, updates history without an anchor scroll, and restores state on hashchange/popstate. Empty or unknown hashes show assets. Keep route changes independent from resource generation and device actions. Cache suffix v53 includes routing.
+Tab navigation uses hash routes: #screens opens the shared simulator directly; other routes are #assets, #writer, #firmware, #serial and #settings. activateTab validates against actual tab IDs, updates history without an anchor scroll, and restores state on hashchange/popstate. Empty or unknown hashes show firmware. Keep route changes independent from resource generation and device actions. Earlier cache v53 routing records are historical, not the current cache revision.
 
 Six tabs include `界面预览` (`screens`) after serial and before settings. Eight 400x300 SDL snapshots are served from assets/screens. GitHub deployment MUST use repository-root previews via SDL_PREVIEW_SOURCE; previews/** pushes trigger Pages. build_sdl_previews.mjs selects the eight names referenced by index.html, validates and copies the canonical PNGs, then embeds their aggregate SHA256 in SW v52's cache name. Missing/corrupt images fail deployment instead of falling back to stale bundled files. Local full-repo builds default to assets/previews; sync_sdl_previews.py is only for standalone local preview copies. Run test_sdl_preview_sync.mjs to verify upstream changes and cache invalidation. These are snapshots, not live device telemetry; normal page reopen after deployment loads the updated worker.
 
@@ -203,16 +210,18 @@ Since web v0.0.30 / cache v48, successful WCA1 generation stays on the creation 
 
 Version v0.0.27 uses a default dark desktop theme. Validate at 1440x900 and 1024x768; mobile is not a supported acceptance target per the user's scope. Keep preview pixels unchanged: light canvas backgrounds represent device output, not missing dark styling. Keep hover geometry stable, visible keyboard focus, reduced-motion support, and table overflow inside its own wrapper. Business code in app.js is unchanged by this theme update. The isolated Service Worker cache suffix is v45; its prefix and cleanup ownership remain unchanged.
 
-The app has six tabs, ordered as 资源制作, 资源写入, 固件烧录, 串口日志, 界面预览, 设置:
+The current six tabs are 固件烧录, 资源制作, 资源写入, 串口日志, 界面预览, 快捷配置:
 
-- `资源制作`: Primary tab and default view. Handles GIF and still-image conversion.
+- `资源制作`: Handles GIF and still-image conversion; it is not the default tab.
 - `资源写入`: Selects a Web Serial device, reads the ESP-IDF partition table from `0x8000`, verifies `assets` as `data / subtype 0x40`, then writes generated `custom_assets.bin` to the actual `assets` address from the device partition table.
-- `固件烧录`: Auxiliary serial flashing. `merged` firmware is written only to `0x0`. OTA App firmware is written only to dynamically discovered `ota_0` / `ota_1` partitions after reading the device partition table. Never use a fixed App slot address.
+- `固件烧录`: Default online merged installation, only at `0x0`, after identity/capacity checks and data-overwrite confirmation. Retained App helpers require dynamically discovered partitions and are not exposed as a user workflow.
 - `串口日志`: Auxiliary serial log and manual command console.
-- `界面预览`: The eight primary SDL page snapshots.
-- `设置`: Optional fallback config written into `custom_assets.bin` as WCA1 text entries. Weather city is used only when device NVS has no manual city. OTA manifest URL is a fallback after firmware built-in OTA sources. These settings do not write NVS.
+- `界面预览`: Interactive shared LVGL/SDL WebAssembly simulation of the eight pages; static snapshots remain regression/public-preview assets.
+- `快捷配置`: Local generation of the current dual-Wi-Fi/weather-source/offline provisioning URL. Optional WCA1 fallback fields remain separate resource-package inputs, not this provisioning workflow.
 
-Do not reintroduce Wi-Fi provisioning, default AP/IP panels, device info sidebars, OTA manifest reading, or notes pages unless the user asks.
+Do not add duplicate provisioning services, default AP/IP panels, device info
+sidebars or autonomous network requests as a UI refactor. Quick setup already
+exists but only generates the local URL; it never calls the device itself.
 
 All baud-rate selectors currently default to `115200`.
 

@@ -122,10 +122,10 @@ https://wickenzh.github.io/ESP32-S3-RLCD-4.2/
 
 ## 发布方式
 
-1. 普通开发与固件采用相同规则：验证后提交并同步 Gitea。
+1. 普通开发与固件采用相同规则：验证后提交并同步私有 GitHub 开发 origin，公开发布需要当次明确授权。
 2. 获得单次 GitHub 同步授权后，通过统一源码同步入口更新 `wickenzh/ESP32-S3-RLCD-4.2` 的 `host_web/`。
 3. 统一仓库 `Settings / Pages` 使用 `GitHub Actions`，根目录 `.github/workflows/pages.yml` 部署本站。
-4. 旧 `_Web` 仓库与旧站点保留，本轮不再作为开发同步目标。
+4. 旧 `_Web` 仓库代码与历史保留，但 Pages 已停用，不再作为开发目标，也不能自动恢复部署。
 5. 新站地址：
 
 ```text
