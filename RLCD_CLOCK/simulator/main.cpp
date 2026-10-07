@@ -271,7 +271,7 @@ static void build_info_preview_ui()
         "Last Weather: 2026-07-01 10:00",
         "Battery: 76%  4.05V",
         "Version: v1.4.40 / 2026-07-01",
-        "Source: github.com/wickenzh/ESP32-S3-RLCD-4.2",
+        "Source: github.com/nariichi3322/ESP32-S3-RLCD-4.2",
     };
     static const int info_y[] = {70, 104, 138, 172, 206, 276};
     for (size_t i = 0; i < sizeof(info_lines) / sizeof(info_lines[0]); ++i) {
