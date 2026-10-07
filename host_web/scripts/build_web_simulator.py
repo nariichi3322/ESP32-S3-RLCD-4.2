@@ -28,7 +28,7 @@ revision = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"]
 inputs = []
 for directory in (firmware / "simulator", firmware / "main/ui", firmware / "main/assets", firmware / "main/core"):
     inputs.extend(p for p in directory.rglob("*") if p.suffix in (".h", ".c", ".cpp", ".txt") and "build" not in p.relative_to(directory).parts)
-inputs.extend([firmware / "main/network/weather_icons.cpp", firmware / "main/network/weather_icons.h", firmware / "main/network/wifi_portal_ui_assets.h", Path(__file__), root / "host_web/portal-demo.js", firmware / "dependencies.lock", firmware / "CMakeLists.txt"])
+inputs.extend([firmware / "main/network/weather_icons.cpp", firmware / "main/network/weather_icons.h", firmware / "main/network/wifi_portal_ui_assets.h", firmware / "main/network/wifi_portal_pages.cpp", firmware / "tools/ui_text_catalog.json", Path(__file__), root / "host_web/portal-demo.js", firmware / "dependencies.lock", firmware / "CMakeLists.txt"])
 digest = hashlib.sha256()
 for p in sorted(set(inputs)):
     digest.update(str(p.relative_to(root)).encode()); digest.update(p.read_bytes())
@@ -50,8 +50,17 @@ header = (firmware / "main/network/wifi_portal_ui_assets.h").read_text()
 def literal(name):
     return re.search(r'\b'+name+r'\[\]\s*=\s*R"PORTAL\((.*?)\)PORTAL";', header, re.S).group(1)
 form = literal("kFormHtml")
-assert form.count("%s") == 3
-for value in ("Demo-WiFi", "Demo-Backup", ""):
+# Fill the localized form exactly like wifi_portal_pages.cpp does: ui_text() ids from the catalog, demo values for user fields.
+pages = (firmware / "main/network/wifi_portal_pages.cpp").read_text(encoding="utf-8")
+form_args = re.search(r'wifi_portal_ui::kFormHtml,(.*?)\);', pages, re.S).group(1)
+catalog = {entry["id"]: entry["zh-CN"] for entry in json.loads((firmware / "tools/ui_text_catalog.json").read_text(encoding="utf-8"))["entries"]}
+demo_values = {"text.safe_ssid": "Demo-WiFi", "text.safe_backup_ssid": "Demo-Backup", "text.safe_ntp_server": "", "text.safe_weather_city": ""}
+values = []
+for arg in (part.strip() for part in form_args.split(",") if part.strip()):
+    text_id = re.fullmatch(r'ui_text\(UiTextId::(\w+)\)', arg)
+    values.append(catalog[text_id.group(1)] if text_id else demo_values[arg])
+assert form.count("%s") == len(values), (form.count("%s"), len(values))
+for value in values:
     form = form.replace("%s", value, 1)
 form = form.replace("action='/save'", "action='#'").replace(" onsubmit='return beginSave(this)'", "")
 form = form.replace("例如：杭州", "例如：城市").replace("autocomplete='current-password'", "autocomplete='off'")
