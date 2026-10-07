@@ -7,6 +7,7 @@
 
 #include "sdl_preview_widgets.h"
 #include "ui_history_layout.h"
+#include "ui_i18n.h"
 
 LV_FONT_DECLARE(zh_font_16);
 
@@ -227,10 +228,10 @@ void build_history_preview_body(lv_obj_t *screen, struct tm *local)
     }
 
     lv_obj_t *temp_title =
-        make_label(screen, kTitleX, kTempTitleY, kTitleWidth, kTitleHeight, kTempTitle);
+        make_label(screen, kTitleX, kTempTitleY, kTitleWidth, kTitleHeight, ui_text(UiTextId::HistoryTemperature));
     lv_obj_set_style_text_font(temp_title, &zh_font_16, LV_PART_MAIN);
     lv_obj_t *humi_title =
-        make_label(screen, kTitleX, kHumiTitleY, kTitleWidth, kTitleHeight, kHumiTitle);
+        make_label(screen, kTitleX, kHumiTitleY, kTitleWidth, kTitleHeight, ui_text(UiTextId::HistoryHumidity));
     lv_obj_set_style_text_font(humi_title, &zh_font_16, LV_PART_MAIN);
 
     lv_obj_t *chart = lv_canvas_create(screen);
@@ -275,25 +276,25 @@ void build_history_preview_body(lv_obj_t *screen, struct tm *local)
                                   kTempAxisLabelY + i * kAxisLabelRowGap,
                                   kAxisLabelWidth,
                                   kAxisLabelHeight,
-                                  kAxisPlaceholder);
+                                  ui_text(UiTextId::HistoryAxisPlaceholder));
         humi_axis[i] = make_label(screen,
                                   kAxisLabelX,
                                   kHumiAxisLabelY + i * kAxisLabelRowGap,
                                   kAxisLabelWidth,
                                   kAxisLabelHeight,
-                                  kAxisPlaceholder);
+                                  ui_text(UiTextId::HistoryAxisPlaceholder));
         lv_obj_set_style_text_align(temp_axis[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
         lv_obj_set_style_text_align(humi_axis[i], LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
     }
 
     lv_obj_t *temp_max = make_label_with_font(
-        screen, 0, 0, kBadgeWidth, kBadgeHeight, kAxisPlaceholder, &lv_font_montserrat_12);
+        screen, 0, 0, kBadgeWidth, kBadgeHeight, ui_text(UiTextId::HistoryAxisPlaceholder), &lv_font_montserrat_12);
     lv_obj_t *temp_min = make_label_with_font(
-        screen, 0, 0, kBadgeWidth, kBadgeHeight, kAxisPlaceholder, &lv_font_montserrat_12);
+        screen, 0, 0, kBadgeWidth, kBadgeHeight, ui_text(UiTextId::HistoryAxisPlaceholder), &lv_font_montserrat_12);
     lv_obj_t *humi_max = make_label_with_font(
-        screen, 0, 0, kBadgeWidth, kBadgeHeight, kAxisPlaceholder, &lv_font_montserrat_12);
+        screen, 0, 0, kBadgeWidth, kBadgeHeight, ui_text(UiTextId::HistoryAxisPlaceholder), &lv_font_montserrat_12);
     lv_obj_t *humi_min = make_label_with_font(
-        screen, 0, 0, kBadgeWidth, kBadgeHeight, kAxisPlaceholder, &lv_font_montserrat_12);
+        screen, 0, 0, kBadgeWidth, kBadgeHeight, ui_text(UiTextId::HistoryAxisPlaceholder), &lv_font_montserrat_12);
     style_history_badge(temp_max);
     style_history_badge(temp_min);
     style_history_badge(humi_max);

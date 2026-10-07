@@ -153,7 +153,7 @@ void build_calendar_preview_body(lv_obj_t *screen, const struct tm *local)
         lv_color_t color =
             (col == kSundayColumn || col == kSaturdayColumn) ? lv_color_white() : lv_color_black();
         draw_preview_calendar_text(calendar,
-                                   kWeekdays[col],
+                                   ui_text(kWeekdays[col].id),
                                    x,
                                    kHeaderY,
                                    kCellWidth,

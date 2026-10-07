@@ -73,6 +73,10 @@ add_executable(weather_clock_sdl
     "sdl_preview_work_status.cpp"
     "sdl_preview_xiaozhi.cpp"
     "../main/ui/ui_dseg_render.cpp"
+    "../main/ui/ui_aggregate_clock_view.cpp"
+    "../main/ui/ui_font_provider.cpp"
+    "../main/ui/ui_language.cpp"
+    "../main/ui/ui_i18n.cpp"
     "../main/network/weather_icons.cpp"
     "../main/assets/boot_anim.c"
     "../main/assets/zh_font_16.c"
@@ -92,7 +96,8 @@ target_include_directories(weather_clock_sdl PRIVATE
 
 target_compile_options(weather_clock_sdl PRIVATE ${SDL2_CFLAGS_OTHER})
 target_compile_definitions(weather_clock_sdl PRIVATE
-    WEATHER_CLOCK_PROJECT_VER="${WEATHER_CLOCK_PROJECT_VER}")
+    WEATHER_CLOCK_PROJECT_VER="${WEATHER_CLOCK_PROJECT_VER}"
+    APP_UI_LOCALE=0)
 target_link_options(weather_clock_sdl PRIVATE ${SDL2_LDFLAGS})
 target_link_libraries(weather_clock_sdl PRIVATE lvgl)
 

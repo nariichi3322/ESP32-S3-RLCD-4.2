@@ -15,6 +15,7 @@
 #include "lvgl.h"
 #include "sdl_preview_backend.h"
 #include "sdl_preview_aggregate.h"
+#include "ui_aggregate_clock_view.h"
 #include "sdl_preview_boot.h"
 #include "sdl_preview_calendar.h"
 #include "sdl_preview_clock.h"
