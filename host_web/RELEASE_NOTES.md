@@ -1,3 +1,29 @@
+# WeatherClock Studio v1.0.13 · 2026-10-06
+
+### Firmware Language Selection for Online Installation
+
+- Online installation can now write the firmware in Traditional Chinese, Simplified Chinese, English or Japanese. The language list follows the images published with each release, defaults to the current page language (otherwise Traditional Chinese), and the confirmation step shows which language will be written. Older releases that only ship the Traditional Chinese image keep working unchanged.
+
+# WeatherClock Studio v1.0.12 · 2026-10-04
+
+### Fog Scene in the Interactive Simulator
+
+- Added a selectable fog scene to the aggregate clock preview, using the same static fog rendering as the firmware. Weather remains simulated data.
+
+# WeatherClock Studio v1.0.11 · 2026-09-29
+
+### Online Firmware Installation Fix
+
+- Fixed a state-refresh exception during device identification. After ESP32-S3 and Flash detection, the page now continues partition-table inspection and correctly restores the Connect and Install buttons.
+
+# WeatherClock Studio v1.0.6 · 2026-09-25
+
+### 在线安装与设备识别修复
+
+- 修正 ESP32 Flash 容量单位换算，避免把 KiB 当成字节导致正常设备被误判为容量不足。
+- 在线安装复用已建立的串口会话，减少识别成功后重复进入下载模式的失败点；安装结束、取消或异常时统一复位并释放串口。
+- 精简烧录页高级入口，安装错误保留底层提示，方便用户定位设备写入失败。
+
 ## WeatherClock Studio · 2026-09-12 更新
 
 网页版上位机现统一命名为 **WeatherClock Studio**。以下更新已通过 GitHub Pages 上线，无需为这些网页功能重新刷写固件。
@@ -8,11 +34,11 @@
 - 设备画面与场景控制采用左右布局；顶部左侧 KEY、右侧 BOOT，中间显示操作说明。按住 KEY 约 1.2 秒即可返回，松开不会再次触发短按。
 - 新增独立“配网模拟”入口，默认显示设备模拟；切换保留双方状态，虚拟配网不连接真实网络、不修改设备配置。
 - 显示模拟器实际固件版本、源码提交和构建时间，并提供 GitHub 源码入口。静态八页 SDL 图片保留为对照，预览源更新后随 Pages 部署同步；共享渲染代码更新后重新构建模拟器，新增硬件交互仍需适配。
-- 支持 [界面预览直达](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/#screens)、页签地址导航及浏览器前进/后退；首次成功缓存后支持离线重新打开模拟器和虚拟配网。
+- 支持 [界面预览直达](https://nariichi3322.github.io/ESP32-S3-RLCD-4.2/#screens)、页签地址导航及浏览器前进/后退；首次成功缓存后支持离线重新打开模拟器和虚拟配网。
 
 ### 快捷配置
 
-- 原“设置”页改为 [快捷配置](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/#settings)，支持在浏览器本地生成、复制和清空配置链接，复用当前固件的 `/save` 接口，无需修改固件。
+- 原“设置”页改为 [快捷配置](https://nariichi3322.github.io/ESP32-S3-RLCD-4.2/#settings)，支持在浏览器本地生成、复制和清空配置链接，复用当前固件的 `/save` 接口，无需修改固件。
 - 支持主/备用 Wi-Fi、选填天气城市及离线固定时间；天气城市使用设备当前的 Open-Meteo 流程，留空时恢复 IP 自动定位。
 - 主/备用 Wi-Fi 密码默认显示，可通过眼睛按钮独立隐藏。修改字段会使旧链接失效，避免复制过期配置。
 - 增加字段格式、UTF-8 长度、编码字段及请求地址长度检查，拒绝生成会被当前固件截断或超限的链接。原天气城市和 OTA 清单的资源包兜底设置保留在独立折叠区域。

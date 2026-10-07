@@ -1,5 +1,6 @@
 // 绘制聚合时钟四块差异化信息区，数字仅按变化的两位时间局部失效。
 #include "ui_aggregate_clock_view.h"
+#include "ui_canvas_primitives.h"
 #include "aggregate_sensor_icons.h"
 #include "ui_aggregate_weather_texture.h"
 #include "dseg_digits.h"
@@ -114,24 +115,38 @@ void sensor_icon(lv_obj_t *root,int x,int y,const uint8_t *bits) {
         }
     },LV_EVENT_DRAW_MAIN,const_cast<uint8_t *>(bits));
 }
+constexpr int kAggregatePairDigitCount=2;
+constexpr int kAggregateDigitSlotWidth=kAggregateDigitWidth/kAggregatePairDigitCount;
+
+void clear_digit_slot(lv_img_dsc_t *image,int slot) {
+    if(!image || slot<0 || slot>=kAggregatePairDigitCount)return;
+    const int x0=slot*kAggregateDigitSlotWidth;
+    for(int y=0;y<kAggregateDigitHeight;++y)
+        for(int x=0;x<kAggregateDigitSlotWidth;++x)
+            lv_img_buf_set_px_color(image,x0+x,y,lv_color_black());
+}
+
+void draw_digit_slot(lv_img_dsc_t *image,int slot,int digit) {
+    if(!image || slot<0 || slot>=kAggregatePairDigitCount || digit<0 || digit>9)return;
+    const DsegGlyph &g=kDSEG84Glyphs[digit];
+    const int x0=slot*kAggregateDigitSlotWidth;
+    for(int y=0;y<63;++y) for(int x=0;x<kAggregateDigitSlotWidth;++x) {
+        int sx=x*4/3-g.x_offset;
+        int sy=y*4/3-84-g.y_offset;
+        if(sx<0 || sy<0 || sx>=g.width || sy>=g.height)continue;
+        unsigned bit=sy*g.width+sx;
+        if(kDSEG84Bitmaps[g.bitmap_offset+bit/8] & (128U>>(bit%8)))
+            lv_img_buf_set_px_color(image,x0+x,8+y,lv_color_white());
+    }
+}
+
 void draw_pair(lv_obj_t *canvas,int value) {
     lv_img_dsc_t *image=lv_canvas_get_img(canvas);
-    for(int y=0;y<kAggregateDigitHeight;++y)
-        for(int x=0;x<kAggregateDigitWidth;++x)
-            lv_img_buf_set_px_color(image,x,y,lv_color_black());
+    if(!image)return;
+    for(int slot=0;slot<kAggregatePairDigitCount;++slot)clear_digit_slot(image,slot);
     if(value>=0 && value<=99) {
-        const int digits[2]={value/10,value%10};
-        for(int d=0;d<2;++d) {
-            const DsegGlyph &g=kDSEG84Glyphs[digits[d]];
-            for(int y=0;y<63;++y) for(int x=0;x<52;++x) {
-                int sx=x*4/3-g.x_offset;
-                int sy=y*4/3-84-g.y_offset;
-                if(sx<0 || sy<0 || sx>=g.width || sy>=g.height) continue;
-                unsigned bit=sy*g.width+sx;
-                if(kDSEG84Bitmaps[g.bitmap_offset+bit/8] & (128U>>(bit%8)))
-                    lv_img_buf_set_px_color(image,d*52+x,8+y,lv_color_white());
-            }
-        }
+        draw_digit_slot(image,0,value/10);
+        draw_digit_slot(image,1,value%10);
     }
     lv_obj_invalidate(canvas);
 }
@@ -143,6 +158,26 @@ void position_local_temperature_unit(AggregateClockView &v,const char *numeric) 
     lv_obj_set_x(v.local_temp_unit,
                  lv_obj_get_style_x(v.local_temp,LV_PART_MAIN)+
                      size.x+kAggregateLocalTemperatureUnitGap);
+}
+
+void draw_pair_transition(lv_obj_t *canvas,int previous,int next) {
+    if(!canvas)return;
+    lv_img_dsc_t *image=lv_canvas_get_img(canvas);
+    if(!image)return;
+    if(previous<0 || previous>99 || next<0 || next>99) {
+        draw_pair(canvas,next);
+        return;
+    }
+    const int previous_digits[kAggregatePairDigitCount]={previous/10,previous%10};
+    const int next_digits[kAggregatePairDigitCount]={next/10,next%10};
+    for(int slot=0;slot<kAggregatePairDigitCount;++slot) {
+        if(previous_digits[slot]==next_digits[slot])continue;
+        clear_digit_slot(image,slot);
+        draw_digit_slot(image,slot,next_digits[slot]);
+        const int x1=slot*kAggregateDigitSlotWidth;
+        invalidate_canvas_rect(canvas,x1,0,x1+kAggregateDigitSlotWidth-1,
+                               kAggregateDigitHeight-1);
+    }
 }
 }
 
@@ -177,13 +212,17 @@ void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t 
         lv_draw_rect_dsc_t ink; lv_draw_rect_dsc_init(&ink);
         ink.bg_color=lv_color_black();
         // Leave a clean reading zone around the temperature, including long/negative values.
-        for(int y=28;y<=98;++y) for(int x=2;x<=219;++x) {
-            if(y>=44 && y<=88 && x>=88 && x<=92+v.texture_read_width)continue;
+        const int texture_bottom=v.weather_kind>=4?118:98;
+        for(int y=28;y<=texture_bottom;++y) for(int x=2;x<=219;++x) {
+            if(v.weather_kind!=6 && y>=44 && y<=88 && x>=88 && x<=92+v.texture_read_width)continue;
             // Taper the lobes into the reading zone instead of flattening the whole band.
             const int left=88,right=92+v.texture_read_width;
             const int distance=x<left?left-x:x>right?x-right:0;
             const int cloud_bottom=distance>=10?40:35+distance/2;
-            if(!aggregate_weather_texture_pixel(v.weather_kind,x,y,cloud_bottom,right))continue;
+            const bool pixel=(v.weather_kind==4 || v.weather_kind==5)?
+                aggregate_cloud_pixel(v.weather_kind,x,y,right,v.texture_weather_width,v.texture_range_width):
+                aggregate_weather_texture_pixel(v.weather_kind,x,y,cloud_bottom,right,v.texture_weather_width,v.texture_range_width);
+            if(!pixel)continue;
             const int px=a.x1+x,py=a.y1+y;
             lv_area_t p={(lv_coord_t)px,(lv_coord_t)py,(lv_coord_t)px,(lv_coord_t)py};
             lv_draw_rect(lv_event_get_draw_ctx(e),&ink,&p);
@@ -205,6 +244,20 @@ void aggregate_clock_view_build(lv_obj_t *root,AggregateClockView &v,lv_color_t 
     lv_obj_t *today=label(root,160,180,72,20,ui_text(UiTextId::AggregateTodayWeather),nullptr,true);
     style_dark_label(today);
     v.icon=label(root,31,207,48,42,"",&weather_icons_36);
+    lv_obj_add_event_cb(v.icon,[](lv_event_t *e) {
+        const auto &view=*static_cast<AggregateClockView *>(lv_event_get_user_data(e));
+        if(view.weather_kind!=6)return;
+        lv_area_t area; lv_obj_get_coords(lv_event_get_target(e),&area);
+        lv_draw_rect_dsc_t ink; lv_draw_rect_dsc_init(&ink);
+        ink.bg_color=lv_color_black(); ink.radius=LV_RADIUS_CIRCLE;
+        for(const auto &bar:aggregate_fog_paths::icon_bars) {
+            lv_area_t line={static_cast<lv_coord_t>(area.x1+bar[0]),
+                            static_cast<lv_coord_t>(area.y1+bar[2]),
+                            static_cast<lv_coord_t>(area.x1+bar[1]),
+                            static_cast<lv_coord_t>(area.y1+bar[2]+2)};
+            lv_draw_rect(lv_event_get_draw_ctx(e),&ink,&line);
+        }
+    },LV_EVENT_DRAW_MAIN,&v);
     v.weather=label(root,28,250,88,20,ui_text(UiTextId::UiPlaceholder));
     v.temperature=label(root,108,202,128,54,
                         ui_text(UiTextId::AggregateWeatherTemperaturePlaceholder),
@@ -236,7 +289,7 @@ bool aggregate_clock_view_time(AggregateClockView &v,int hour,int minute,int sec
     for(int i=0;i<3;++i) if((i<2 || v.seconds_visible) &&
                              v.digits[i] && lv_canvas_get_img(v.digits[i])->data &&
                              next[i]!=v.values[i]) {
-        draw_pair(v.digits[i],next[i]); v.values[i]=next[i]; changed=true;
+        draw_pair_transition(v.digits[i],v.values[i],next[i]); v.values[i]=next[i]; changed=true;
     }
     return changed;
 }
@@ -286,14 +339,27 @@ bool aggregate_clock_view_set_local_temperature(AggregateClockView &v,
 
 bool aggregate_clock_weather_theme(AggregateClockView &v,int kind) {
     if(!v.weather_panel || !v.temperature)return false;
-    if(kind<0 || kind>3)kind=0;
+    if(kind<0 || kind>6)kind=0;
+    lv_obj_update_layout(v.weather_panel);
     lv_point_t size={};
     lv_txt_get_size(&size,lv_label_get_text(v.temperature),
                     lv_obj_get_style_text_font(v.temperature,0),0,0,400,LV_TEXT_FLAG_NONE);
-    if(v.weather_kind==kind && (kind==0 || v.texture_read_width==size.x)) {
+    const auto text_width=[](lv_obj_t *label) {
+        lv_point_t text={};
+        lv_txt_get_size(&text,lv_label_get_text(label),lv_obj_get_style_text_font(label,0),0,0,400,LV_TEXT_FLAG_NONE);
+        return static_cast<int>(text.x);
+    };
+    const int weather_width=text_width(v.weather),range_width=text_width(v.range);
+    const bool cloud_text_changed=kind>=4 &&
+        (weather_width!=v.texture_weather_width || range_width!=v.texture_range_width);
+    v.texture_weather_width=weather_width;
+    v.texture_range_width=range_width;
+    if(v.weather_kind==kind && !cloud_text_changed && (kind==0 || v.texture_read_width==size.x)) {
         v.texture_read_width=size.x;
         return false;
     }
+    if(v.weather_kind!=kind && v.icon)
+        lv_obj_set_style_text_opa(v.icon,kind==6?LV_OPA_TRANSP:LV_OPA_COVER,0);
     v.weather_kind=kind;
     v.texture_read_width=size.x;
     lv_obj_invalidate(v.weather_panel);

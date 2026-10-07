@@ -21,6 +21,7 @@
 #include "manual_weather_city_state_internal.h"
 #include "network_factory_reset.h"
 #include "network_page_storage.h"
+#include "ip_geolocation_client.h"
 #include "network_runtime_events.h"
 #include "network_sync_requests.h"
 #include "network_page_storage_policy.h"
@@ -162,6 +163,7 @@ static void reset_saved_config_runtime_state()
     network_credentials_clear();
     ntp_server_name_store(kDefaultNtpServerName);
     manual_weather_city_store("");
+    ip_geolocation_cache_invalidate();
     clear_wifi_station_ip();
     offline_mode_enabled_store(false);
     xiaozhi_auto_return_enabled_store(kDefaultXiaozhiAutoReturnEnabled);
@@ -358,6 +360,7 @@ bool save_config(const char *ssid,
         backup_pass,
         city,
         normalized_ntp_server);
+    ip_geolocation_cache_invalidate();
     offline_mode_enabled_store(false);
     xiaozhi_ai_notify_network_configuration_changed();
     return true;
@@ -391,6 +394,7 @@ bool persist_preferred_wifi_slot(WifiCredentialSlot slot)
         return false;
     }
     network_wifi_preferred_slot_store(slot);
+    ip_geolocation_cache_invalidate();
     ESP_LOGI(TAG,
              "preferred Wi-Fi slot updated: %c",
              slot == WifiCredentialSlot::kSlotA ? 'A' : 'B');

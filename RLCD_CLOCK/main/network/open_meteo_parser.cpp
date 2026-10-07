@@ -81,8 +81,10 @@ OpenMeteoResult validate_daily(const cJSON *daily)
         const cJSON *array = array_field(daily, key);
         if (!array) return OpenMeteoResult::kMissingField;
         if (cJSON_GetArraySize(array) < kWeatherForecastDays) return OpenMeteoResult::kShortArray;
+        const bool nullable = strcmp(key, "time") != 0; // polar day/night has no sun event
         for (int i = 0; i < kWeatherForecastDays; ++i) {
             const cJSON *item = cJSON_GetArrayItem(array, i);
+            if (nullable && cJSON_IsNull(item)) continue;
             if (!cJSON_IsString(item) || !item->valuestring || !item->valuestring[0])
                 return OpenMeteoResult::kInvalidValue;
         }
@@ -162,6 +164,39 @@ int beaufort_scale(double kmh)
 void format_number(char *out, size_t out_len, double value, bool decimal)
 {
     if (out && out_len) snprintf(out, out_len, decimal ? "%.1f" : "%.0f", value);
+}
+
+// Days since 1970-01-01 for a "YYYY-MM-DD" prefix (Howard Hinnant's days_from_civil).
+bool civil_days(const char *date, long *out)
+{
+    int y = 0, m = 0, d = 0;
+    if (!date || sscanf(date, "%4d-%2d-%2d", &y, &m, &d) != 3 ||
+        m < 1 || m > 12 || d < 1 || d > 31) return false;
+    y -= m <= 2;
+    const long era = (y >= 0 ? y : y - 399) / 400;
+    const long yoe = y - era * 400;
+    const long doy = (153L * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
+    *out = era * 146097 + yoe * 365 + yoe / 4 - yoe / 100 + doy - 719468;
+    return true;
+}
+
+// "YYYY-MM-DDTHH:MM" -> "HH:MM" plus its day shift from date; null -> "--:--".
+bool sun_time(const cJSON *daily, const char *key, int index, const char *date,
+              char *out, size_t out_len, int8_t *day_offset)
+{
+    const cJSON *item = cJSON_GetArrayItem(array_field(daily, key), index);
+    *day_offset = 0;
+    if (cJSON_IsNull(item)) {
+        strlcpy(out, "--:--", out_len);
+        return true;
+    }
+    const char *text = item->valuestring;
+    long event_day = 0, day = 0;
+    if (strlen(text) < 16 || text[10] != 'T' || !civil_days(text, &event_day) ||
+        !civil_days(date, &day) || event_day - day < -1 || event_day - day > 1) return false;
+    *day_offset = static_cast<int8_t>(event_day - day);
+    strlcpy(out, text + 11, out_len);
+    return true;
 }
 
 bool coordinate_text_valid(const char *text, double minimum, double maximum)
@@ -255,11 +290,11 @@ OpenMeteoResult parse_open_meteo_forecast(const char *json,
             static_cast<int>(array_number(daily, "wind_direction_10m_dominant", i));
         format_number(day.wind_scale, sizeof(day.wind_scale),
                       beaufort_scale(array_number(daily, "wind_speed_10m_max", i)));
-        const char *sunrise = array_text(daily, "sunrise", i);
-        const char *sunset = array_text(daily, "sunset", i);
-        if (strlen(sunrise) < 16 || strlen(sunset) < 16) return OpenMeteoResult::kInvalidValue;
-        strlcpy(day.sunrise, sunrise + 11, sizeof(day.sunrise));
-        strlcpy(day.sunset, sunset + 11, sizeof(day.sunset));
+        if (!sun_time(daily, "sunrise", i, day.date, day.sunrise, sizeof(day.sunrise),
+                      &day.sunrise_day_offset) ||
+            !sun_time(daily, "sunset", i, day.date, day.sunset, sizeof(day.sunset),
+                      &day.sunset_day_offset))
+            return OpenMeteoResult::kInvalidValue;
     }
     (void)parse_hourly(current, hourly, forecast);
     return OpenMeteoResult::kOk;

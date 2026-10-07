@@ -1,6 +1,8 @@
 # ESP32-S3 RLCD 4.2 Weather Clock
 
-> **Language:** English (current) · [Chinese](README.md)
+In this fork QWeather is deprecated and not used. The firmware uses Open-Meteo only and needs no API Key or API Host. It displays US AQI and does not provide weather alerts. The public API is for non-commercial use. Data: [Open-Meteo](https://open-meteo.com/), [CAMS](https://atmosphere.copernicus.eu/); city lookup: [GeoNames](https://www.geonames.org/).
+
+> **Language:** English (current) · [Chinese](README.md) · [Traditional Chinese](README_zh_TW.md) · [Japanese](README_JA.md)
 
 This fork is a low-power weather-clock firmware for the **ESP32-S3** and a **4.2-inch RLCD display**. It provides weather, calendar, temperature/humidity history, aggregate clock, Xiaozhi AI, and Codex usage pages. Wi-Fi is used on demand for provisioning, weather, daily sayings, NTP, diagnostics, and user-initiated OTA updates.
 
@@ -16,21 +18,20 @@ This fork is a low-power weather-clock firmware for the **ESP32-S3** and a **4.2
 
 **LVGL is the project's primary UI framework.** It manages page layouts, text, menus, and status widgets, while large clock digits, images, and charts use LVGL Canvas and custom drawing. The RLCD driver handles monochrome output and prioritizes partial refreshes to balance readability and power consumption.
 
-- [Chinese User Guide](docs/User_zh.md)
-- [English User Guide](docs/User.md)
+- [Quick Guide](docs/User.md) · [Detailed User Guide](docs/User_Detailed.md)
 - [Contributing Guide](CONTRIBUTING.md)
 - [Security Policy](SECURITY.md)
 - [Third-Party Notices](THIRD_PARTY_NOTICES.md)
 - [Project License](LICENSE)
 - [Minimum-power Power Demo](docs/Power%20Demo/README.md)
-- [Device Simulation Preview](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/#screens)
+- [Device Simulation Preview](https://nariichi3322.github.io/ESP32-S3-RLCD-4.2/#screens)
 
 ## Related Projects
 
 - [Official Waveshare ESP32-S3-RLCD-4.2 product page](https://www.waveshare.com/product/esp32-s3-rlcd-4.2.htm): official board overview, specifications, and purchasing information.
 - [Official Waveshare ESP32-S3-RLCD-4.2 documentation](https://docs.waveshare.com/ESP32-S3-RLCD-4.2): interfaces, schematic, examples, and hardware resources.
 - [ESP32-S3-RLCD-4.2_UP](https://github.com/wickenzh/ESP32-S3-RLCD-4.2_UP): OTA firmware mirror with available firmware and version information.
-- [Open the web client](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/): convert images/GIFs, configure resources, verify and flash firmware, and read serial logs. [Source and guide](host_web/README.md).
+- [Open the web client](https://nariichi3322.github.io/ESP32-S3-RLCD-4.2/): convert images/GIFs, configure resources, verify and flash firmware, and read serial logs. [Source and guide](host_web/README.md).
 
 ## Source Layout
 
@@ -55,9 +56,9 @@ Core goals:
 
 The default order is shown below. Pages can be disabled or reordered in Settings, while the firmware always keeps at least one work page enabled.
 
-1. **Weather Clock:** time, date, current weather, alerts, local temperature and humidity, battery, and status icons.
+1. **Weather Clock:** time, date, current weather, local temperature and humidity, battery, and status icons.
 2. **Picture Clock:** local images, a large minute clock, and a daily saying; custom galleries support selectable rotation intervals.
-3. **Weather Board:** city weather, air quality, humidity, wind, sunrise and sunset, alerts, and multi-day forecasts.
+3. **Weather Board:** city weather, air quality, humidity, wind, sunrise and sunset, and multi-day forecasts.
 4. **Temperature/Humidity Clock:** high-contrast hours, minutes and seconds, local sensor data, trends, date, and lunar date.
 5. **Calendar:** current-month calendar, lunar dates, festivals, and today highlighting; six-row months keep the current date visible.
 6. **Temperature/Humidity History:** local temperature and humidity history with trend information.
@@ -131,7 +132,7 @@ The standalone [Power Demo](docs/Power%20Demo/README.md) under `docs/Power Demo/
 - `previews/`: every detailed SDL page preview and the generated contact sheets.
 - `.github/`: public firmware build and source-release workflow.
 
-See the [Contributing Guide](CONTRIBUTING.md) for build and contribution requirements. See the [Chinese User Guide](docs/User_zh.md) or [English User Guide](docs/User.md) for full flashing, provisioning, page operation, and troubleshooting instructions.
+See the [Contributing Guide](CONTRIBUTING.md) for build and contribution requirements. Start with the [Quick Guide](docs/User.md); see the [Detailed User Guide](docs/User_Detailed.md) for flashing, setup, page settings, and troubleshooting.
 
 ## OTA and Custom Resources
 

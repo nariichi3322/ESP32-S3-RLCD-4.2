@@ -2,7 +2,7 @@ const CACHE_PREFIX = `weather-clock-unified:${self.location.pathname}:`;
 const SDL_PREVIEW_REVISION = "local";
 const SIMULATOR_REVISION = "local";
 const SIMULATOR_ASSETS = [];
-const CACHE_NAME = `${CACHE_PREFIX}v67-${SDL_PREVIEW_REVISION}-${SIMULATOR_REVISION}`;
+const CACHE_NAME = `${CACHE_PREFIX}v87-${SDL_PREVIEW_REVISION}-${SIMULATOR_REVISION}`;
 const ASSETS = [
   "./",
   "./index.html",
@@ -10,6 +10,9 @@ const ASSETS = [
   "./app.js",
   "./simulator-ui.js",
   "./quick-config.js",
+  "./i18n.js",
+  "./locales/static.js",
+  "./locales/dynamic.js",
   "./assets/icons/eye.svg",
   "./assets/icons/plus.svg",
   "./assets/icons/eye-off.svg",
@@ -52,6 +55,19 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (/\/firmware\/releases(?:\/|\.json$)/.test(url.pathname)) {
     event.respondWith(fetch(event.request));
+    return;
+  }
+  const isNavigation = event.request.mode === "navigate" || url.pathname.endsWith("/index.html");
+  if (isNavigation) {
+    event.respondWith(
+      fetch(event.request).then((response) => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy)).catch(() => undefined);
+        }
+        return response;
+      }).catch(() => caches.match(event.request))
+    );
     return;
   }
   event.respondWith(

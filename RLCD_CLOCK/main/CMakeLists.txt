@@ -46,6 +46,8 @@ idf_component_register(
         "codex/codex_usage_state.cpp"
         "codex/codex_usage_ble.cpp"
         "core/app_task_startup.cpp"
+        "core/app_task_readiness.cpp"
+        "core/runtime_health.cpp"
         "core/app_metadata.cpp"
         "core/app_event_group.cpp"
         "core/app_hardware.cpp"
@@ -55,6 +57,7 @@ idf_component_register(
         "core/ascii_text.cpp"
         "ui/ui_canvas.cpp"
         "ui/ui_bitmap.cpp"
+        "ui/packed_1bit_diff.cpp"
         "ui/ui_status_gif.cpp"
         "ui/ui_progress.cpp"
         "ui/ui_dseg_render.cpp"
@@ -288,6 +291,14 @@ idf_component_register(
         tcp_transport)
 
 string(TIMESTAMP WEATHER_CLOCK_BUILD_DATE "%Y-%m-%d")
+option(WEATHER_CLOCK_WIFI_AB_TEST "Temporary 8-hour weather Wi-Fi A/B test" OFF)
+set(WEATHER_CLOCK_WIFI_AB_SLOT_MINUTES "20" CACHE STRING
+    "Weather Wi-Fi A/B slot duration in minutes")
+if(WEATHER_CLOCK_WIFI_AB_TEST)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE
+        WEATHER_CLOCK_WIFI_AB_TEST=1
+        WEATHER_CLOCK_WIFI_AB_SLOT_MINUTES=${WEATHER_CLOCK_WIFI_AB_SLOT_MINUTES})
+endif()
 idf_build_get_property(WEATHER_CLOCK_PROJECT_VER PROJECT_VER)
 target_compile_definitions(${COMPONENT_LIB} PRIVATE
     WEATHER_CLOCK_BUILD_DATE="${WEATHER_CLOCK_BUILD_DATE}"

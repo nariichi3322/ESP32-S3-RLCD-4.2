@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { buildSdlPreviews } from "./build_sdl_previews.mjs";
 import { copyWebSimulator } from "./copy_web_simulator.mjs";
 
-const SOURCE_REPOSITORY = "wickenzh/ESP32-S3-RLCD-4.2";
+const SOURCE_REPOSITORY = "nariichi3322/ESP32-S3-RLCD-4.2";
 const SOURCE_ROOT = fileURLToPath(new URL("../", import.meta.url));
 const OUTPUT_ROOT = path.resolve(process.argv[2] || path.join(SOURCE_ROOT, "_site"));
 if (OUTPUT_ROOT === SOURCE_ROOT || SOURCE_ROOT.startsWith(`${OUTPUT_ROOT}${path.sep}`)) {
@@ -19,11 +19,26 @@ function expectedSha256(asset) {
   return digest.startsWith("sha256:") ? digest.slice("sha256:".length) : "";
 }
 
-function findReleaseAsset(release, merged) {
+// Fork releases carry per-locale images (_zh-CN/_en/_ja, plain and _merged); the unsuffixed ones are zh-TW.
+const FIRMWARE_LOCALES = ["zh-TW", "zh-CN", "en", "ja"];
+
+function findReleaseAsset(release, merged, locale = "zh-TW") {
   return release.assets?.find((asset) => {
     const name = String(asset?.name || "");
-    return name.toLowerCase().endsWith(".bin") && /_merged\.bin$/i.test(name) === merged;
+    const suffix = name.match(/_(zh-CN|en|ja)(?:_merged)?\.bin$/i)?.[1].toLowerCase() || "zh-tw";
+    return name.toLowerCase().endsWith(".bin") && /_merged\.bin$/i.test(name) === merged && suffix === locale.toLowerCase();
   });
+}
+
+// Only locales with both app and merged images are usable.
+function findLocaleAssets(release) {
+  const locales = {};
+  for (const locale of FIRMWARE_LOCALES) {
+    const app = normalizeAsset(findReleaseAsset(release, false, locale));
+    const merged = normalizeAsset(findReleaseAsset(release, true, locale));
+    if (app && merged) locales[locale] = { app, merged };
+  }
+  return locales;
 }
 
 function normalizeAsset(asset) {
@@ -34,6 +49,21 @@ function normalizeAsset(asset) {
   if (!name.endsWith(".bin") || !/^[a-f0-9]{64}$/.test(sha256) || !Number.isSafeInteger(size) || size <= 0) return undefined;
   if (!downloadUrl.startsWith(`https://github.com/${SOURCE_REPOSITORY}/releases/download/`)) return undefined;
   return { name, sha256, size, downloadUrl };
+}
+
+function releaseNotes(release, version) {
+  const body = String(release?.body || "").trim();
+  if (body) return body;
+  const name = String(release?.name || "").trim();
+  return name && name !== version ? name : "";
+}
+
+function releaseUrl(release, version) {
+  const expectedPrefix = `https://github.com/${SOURCE_REPOSITORY}/releases`;
+  const value = String(release?.html_url || "").trim();
+  return value === expectedPrefix || value.startsWith(`${expectedPrefix}/`)
+    ? value
+    : `${expectedPrefix}/tag/${encodeURIComponent(version)}`;
 }
 
 async function fetchWithRetry(url, options, label) {
@@ -66,6 +96,23 @@ async function fetchJson(url) {
   return response.json();
 }
 
+async function fetchFirmwareBuildTimes(candidates) {
+  if (!process.env.GH_API_TOKEN) return new Map();
+  const wantedVersions = new Set(candidates.map(({ version }) => version.replace(/^v/i, "").toLowerCase()));
+  const response = await fetchJson(`https://api.github.com/repos/${SOURCE_REPOSITORY}/actions/runs?event=release&per_page=100`);
+  const runs = Array.isArray(response?.workflow_runs) ? response.workflow_runs : [];
+  const firmwareRuns = runs.filter((run) => run.conclusion === "success" && run.name === "构建固件并附加到 Release");
+  const buildTimes = new Map();
+  for (const run of firmwareRuns) {
+    const version = String(run.display_title || "").trim();
+    if (!version || !wantedVersions.has(version.replace(/^v/i, "").toLowerCase()) || buildTimes.has(version) || !run.jobs_url) continue;
+    const jobs = await fetchJson(run.jobs_url);
+    const buildStep = (jobs.jobs || []).flatMap((job) => job.steps || []).find((step) => step.name === "编译并生成双固件" && step.conclusion === "success");
+    if (buildStep?.completed_at) buildTimes.set(version, buildStep.completed_at);
+  }
+  return buildTimes;
+}
+
 async function downloadVerifiedAsset(asset, destination) {
   const response = await fetchWithRetry(asset.downloadUrl, {
     headers: { "User-Agent": "weather-clock-pages-deploy" },
@@ -86,7 +133,7 @@ async function downloadVerifiedAsset(asset, destination) {
 async function copyStaticSite() {
   await rm(OUTPUT_ROOT, { recursive: true, force: true });
   await mkdir(OUTPUT_ROOT, { recursive: true });
-  for (const name of ["index.html", "app.js", "simulator-ui.js", "quick-config.js", "styles.css", "sw.js", "assets", "vendor", ".nojekyll"]) {
+  for (const name of ["index.html", "app.js", "simulator-ui.js", "quick-config.js", "i18n.js", "locales", "styles.css", "sw.js", "assets", "vendor", ".nojekyll"]) {
     await cp(path.join(SOURCE_ROOT, name), path.join(OUTPUT_ROOT, name), { recursive: true });
   }
   await mkdir(path.join(OUTPUT_ROOT, "firmware"), { recursive: true });
@@ -99,13 +146,16 @@ async function buildFirmwareMirror() {
     .filter((release) => !release.draft && !release.prerelease)
     .map((release) => ({
       version: String(release.tag_name || "").trim(),
-      notes: String(release.name || release.body || "").trim(),
-      app: normalizeAsset(findReleaseAsset(release, false)),
-      merged: normalizeAsset(findReleaseAsset(release, true))
+      notes: releaseNotes(release, String(release.tag_name || "").trim()),
+      releaseUrl: releaseUrl(release, String(release.tag_name || "").trim()),
+      locales: findLocaleAssets(release)
     }))
-    .filter((release) => /^v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$/.test(release.version) && release.app && release.merged)
-    .slice(0, releaseLimit);
+    .filter((release) => /^v?[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9.-]+)?$/.test(release.version) && release.locales["zh-TW"])
+    .slice(0, releaseLimit)
+    // Keep the Pages site small: only the newest release mirrors every locale, older ones keep zh-TW.
+    .map((release, index) => index === 0 ? release : { ...release, locales: { "zh-TW": release.locales["zh-TW"] } });
   if (candidates.length === 0) throw new Error("No complete GitHub Release firmware set found");
+  const firmwareBuildTimes = await fetchFirmwareBuildTimes(candidates);
 
   const firmwareRoot = path.join(OUTPUT_ROOT, "firmware", "releases");
   await mkdir(firmwareRoot, { recursive: true });
@@ -113,7 +163,7 @@ async function buildFirmwareMirror() {
   for (const release of candidates) {
     const releaseRoot = path.join(firmwareRoot, release.version);
     await mkdir(releaseRoot, { recursive: true });
-    for (const asset of [release.app, release.merged]) {
+    for (const asset of Object.values(release.locales).flatMap(({ app, merged }) => [app, merged])) {
       process.stdout.write(`Mirroring ${release.version} ${asset.name}\n`);
       await downloadVerifiedAsset(asset, path.join(releaseRoot, asset.name));
     }
@@ -126,8 +176,12 @@ async function buildFirmwareMirror() {
     items.push({
       version: release.version,
       notes: release.notes,
-      app: manifestAsset(release.app),
-      merged: manifestAsset(release.merged)
+      release_url: release.releaseUrl,
+      firmware_build_time: firmwareBuildTimes.get(release.version) || firmwareBuildTimes.get(release.version.replace(/^v/i, "")) || "",
+      // app/merged stay the zh-TW pair for older Host Web builds; "locales" lists every language with a full pair.
+      app: manifestAsset(release.locales["zh-TW"].app),
+      merged: manifestAsset(release.locales["zh-TW"].merged),
+      locales: Object.fromEntries(Object.entries(release.locales).map(([locale, { app, merged }]) => [locale, { app: manifestAsset(app), merged: manifestAsset(merged) }]))
     });
   }
   const manifest = {

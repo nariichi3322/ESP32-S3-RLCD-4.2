@@ -4,6 +4,7 @@
 #include "active_work_page_state_internal.h"
 #include "alarm_services.h"
 #include "app_metadata.h"
+#include "app_task_readiness.h"
 #include "battery_runtime_state.h"
 #include "device_settings_persistence.h"
 #include "input_button_config.h"
@@ -13,6 +14,7 @@
 #include "ota_services.h"
 #include "pomodoro_services.h"
 #include "power_services.h"
+#include "runtime_health.h"
 #include "task_notification_target.h"
 #include "ui_info_page_state.h"
 #include "ui_clock_seconds_state.h"
@@ -253,6 +255,7 @@ void button_task(void *)
 
     s_button_task_target.publish(xTaskGetCurrentTaskHandle());
     const bool edge_wakeup_ready = setup_button_edge_wakeup();
+    regular_app_task_mark_ready(RegularAppTaskId::kButton);
 
     TickType_t boot_pressed_since = 0;
     TickType_t key_pressed_since = 0;
@@ -265,6 +268,7 @@ void button_task(void *)
     bool last_usb_sof_connected = false;
 
     for (;;) {
+        runtime_health_record_current_task_stack(RegularAppTaskId::kButton);
         TickType_t now = xTaskGetTickCount();
         service_usb_programming_wake_window(now);
         const bool usb_sof_connected = usb_serial_jtag_is_connected();

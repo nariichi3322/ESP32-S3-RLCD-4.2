@@ -48,6 +48,9 @@ struct WeatherForecastDay {
     char wind_scale[8] = {};
     char sunrise[8] = {};
     char sunset[8] = {};
+    // Calendar-day shift of sunrise/sunset relative to date (-1, 0, +1).
+    int8_t sunrise_day_offset = 0;
+    int8_t sunset_day_offset = 0;
 };
 
 struct WeatherForecastHour {

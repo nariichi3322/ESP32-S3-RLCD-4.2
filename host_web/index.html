@@ -18,11 +18,17 @@
     </div>
     <div class="top-meta">
       <span>使用 Edge / Chrome · 素材与配置本地处理，不上传服务器</span>
-      <span class="top-version"><b>v0.0.30</b> · <span id="cacheState">离线缓存准备中</span> · <span class="hosting-note">页面服务托管于 GitHub Pages</span></span>
+      <span class="top-version"><b id="hostVersion">v1.0.13</b> · <span id="cacheState">离线缓存准备中</span> · <span class="hosting-note">页面服务托管于 GitHub Pages</span></span>
     </div>
     <div class="top-actions">
       <span id="serialSupport" class="status-pill">检测中</span>
-      <a id="sourceRepoLink" class="icon-button link-button" href="https://github.com/wickenzh/ESP32-S3-RLCD-4.2" target="_blank" rel="noopener noreferrer" title="打开 GitHub 源码主页" aria-label="打开 GitHub 源码主页">
+      <select id="languageSelect" class="language-select" aria-label="切换语言" title="切换语言" translate="no">
+        <option value="zh-CN">简体中文</option>
+        <option value="zh-TW">繁體中文</option>
+        <option value="ja">日本語</option>
+        <option value="en">English</option>
+      </select>
+      <a id="sourceRepoLink" class="icon-button link-button" href="https://github.com/nariichi3322/ESP32-S3-RLCD-4.2" target="_blank" rel="noopener noreferrer" title="打开 GitHub 源码主页" aria-label="打开 GitHub 源码主页">
         <span class="source-plus" aria-hidden="true"></span>
       </a>
     </div>
@@ -31,15 +37,15 @@
   <main class="layout">
     <section class="workspace">
       <nav class="tabs" aria-label="上位机功能">
-        <button class="tab is-active" data-tab="assets" type="button">资源制作</button>
+        <button class="tab is-active" data-tab="firmware" type="button">固件烧录</button>
+        <button class="tab" data-tab="assets" type="button">资源制作</button>
         <button class="tab" data-tab="writer" type="button">资源写入</button>
-        <button class="tab" data-tab="firmware" type="button">固件烧录</button>
         <button class="tab" data-tab="serial" type="button">串口日志</button>
         <button class="tab" data-tab="screens" type="button">界面预览</button>
         <button class="tab" data-tab="settings" type="button">快捷配置</button>
       </nav>
 
-      <section id="assets" class="tab-panel is-active">
+      <section id="assets" class="tab-panel">
         <div class="work-summary">
           <div class="summary-specs">
             <div><span>GIF 动图</span><strong>84 x 84 / 60 帧</strong></div>
@@ -151,10 +157,11 @@
           <div><h2>交互模拟器</h2><p>LVGL + SDL2 · WebAssembly（Emscripten）</p></div>
           <div class="simulator-actions">
             <button id="simPortalToggle" class="secondary-button" type="button" aria-pressed="false" aria-controls="simPortalPanel">配网模拟</button>
-            <a class="link-button" href="https://github.com/wickenzh/ESP32-S3-RLCD-4.2" target="_blank" rel="noopener noreferrer">GitHub 源码</a>
+            <a class="link-button" href="https://github.com/nariichi3322/ESP32-S3-RLCD-4.2" target="_blank" rel="noopener noreferrer">GitHub 源码</a>
           </div>
         </div>
         <p id="simulatorBuildInfo" class="sim-build" role="status">等待加载模拟器构建信息</p>
+        <p class="sim-language-note">语言切换仅影响网页工具，固件画面、配网模拟及原始串口输出保持原样。</p>
         <div class="simulator-layout">
           <section class="virtual-device" aria-label="虚拟设备" tabindex="0">
             <div class="sim-section-title"><h3>虚拟设备</h3><button id="simReset" class="secondary-button" type="button" disabled>重置设备</button></div>
@@ -176,7 +183,7 @@
               <label><span>显示场景</span><select id="simScene" disabled>
                 <option value="0">天气时钟</option><option value="1">图片时钟</option><option value="2">天气看板</option><option value="3">温湿时钟</option><option value="4">日历</option><option value="5">温湿历史</option><option value="6">小智 AI</option><option value="7">聚合时钟</option><option value="8">设置</option><option value="9">关于本机</option><option value="10">网络检测</option><option value="11">检查更新</option><option value="12">设备配网提示</option><option value="13">天气预警</option><option value="14">低电量</option><option value="15">启动页</option>
               </select></label>
-              <label><span>聚合天气场景</span><select id="simWeather" disabled><option value="20">多云</option><option value="21">晴</option><option value="22">雨</option><option value="23">雪</option></select></label>
+              <label><span>聚合天气场景</span><select id="simWeather" disabled><option value="20">多云</option><option value="21">晴</option><option value="22">雨</option><option value="23">雪</option><option value="24">雾</option></select></label>
             </div>
             <div class="action-strip"><button id="simDialogue" class="secondary-button" type="button" disabled>模拟对话</button><button id="simPomodoro" class="secondary-button" type="button" disabled>开始 / 取消番茄钟</button></div>
             </div>
@@ -282,17 +289,21 @@
       </section>
 
       <section id="writer" class="tab-panel">
+        <div id="writerLockedNotice" class="writer-locked-notice" role="status">
+          <div><strong>资源包尚未生成</strong><p>请先在“资源制作”中完成素材转换并点击“生成资源包”，生成后才能读取设备并写入资源。</p></div>
+          <button id="goToAssetsFromWriterBtn" class="secondary-button" type="button">前往资源制作</button>
+        </div>
         <div class="toolbar">
           <label class="select-field">
             <span>写入波特率</span>
-            <select id="assetBaudRate">
+            <select id="assetBaudRate" disabled>
               <option value="115200" selected>115200</option>
               <option value="230400">230400</option>
               <option value="460800">460800</option>
               <option value="921600">921600</option>
             </select>
           </label>
-          <button id="selectAssetDeviceBtn" class="primary-button" type="button">① 选择并核对设备</button>
+          <button id="selectAssetDeviceBtn" class="primary-button" type="button" disabled>① 选择并核对设备</button>
           <button id="writeAssetsBtn" class="primary-button" type="button" disabled>② 串口写入资源</button>
           <button id="eraseAssetsBtn" class="secondary-button" type="button" disabled>清空资源分区</button>
         </div>
@@ -327,23 +338,61 @@
         <pre id="writeLog" class="terminal compact-terminal">生成资源包后，请先读取设备分区表，再写入设备 assets 分区。</pre>
       </section>
 
-      <section id="firmware" class="tab-panel">
+      <section id="firmware" class="tab-panel is-active">
+        <div class="firmware-install-card">
+          <div class="firmware-install-layout">
+            <div class="firmware-install-main">
+              <div class="firmware-install-heading">
+                <div><h2>在线完整安装</h2><p>默认安装最新正式版 merged 固件，适合首次安装或分区迁移。</p></div>
+                <span id="firmwareInstallConnection" class="status-pill">设备未连接</span>
+              </div>
+              <div class="firmware-install-facts">
+                <div><span>最新版本</span><div class="firmware-version-line"><strong id="firmwareInstallVersion">加载中</strong><small id="firmwareVersionBuildTime">固件构建时间加载中</small></div></div>
+                <div><span>已选设备</span><strong id="firmwareInstallDevice">未连接</strong></div>
+                <div><span>固件语言</span><select id="firmwareLocaleSelect" aria-label="固件语言" translate="no" disabled></select></div>
+              </div>
+              <p class="firmware-install-warning">这会覆盖固件、分区表和设备资源。确认后将下载、校验并写入最新 merged 固件。</p>
+              <div class="firmware-install-actions">
+                <button id="firmwareInstallConnectBtn" class="primary-button" type="button">① 连接设备并识别</button>
+                <button id="firmwareInstallBtn" class="primary-button" type="button" disabled>② 安装最新固件</button>
+              </div>
+              <div id="firmwareInstallConfirm" class="firmware-confirm" hidden>
+                <p><strong>请确认完整安装</strong><span>这会覆盖固件、分区表和设备资源。确认后将下载、校验并写入最新 merged 固件。</span><span id="firmwareInstallConfirmLocale"></span></p>
+                <div><button id="firmwareInstallCancelBtn" class="secondary-button" type="button">取消</button><button id="firmwareInstallConfirmBtn" class="primary-button" type="button">我已了解并继续</button></div>
+              </div>
+              <div class="progress-block firmware-install-progress">
+                <div class="progress-head"><span id="firmwareInstallState">连接设备后可安装</span><strong id="firmwareInstallPercent">0%</strong></div>
+                <progress id="firmwareInstallProgress" value="0" max="100"></progress>
+              </div>
+              <p id="firmwareInstallResult" class="firmware-install-result">安装完成后设备会自动复位；页面不会自动跳转，可按需打开配网或快捷配置。</p>
+            </div>
+            <aside class="firmware-notes-panel">
+              <div class="firmware-notes-panel-heading">
+                <div><span>版本说明</span><strong id="firmwareInstallNotesVersion">加载中</strong></div>
+                <span>GitHub Release</span>
+              </div>
+              <div class="firmware-notes-body"><p id="firmwareInstallNotes">-</p></div>
+              <a id="firmwareInstallNotesLink" href="https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases" target="_blank" rel="noopener noreferrer" hidden>查看完整发布说明</a>
+            </aside>
+          </div>
+        </div>
+        <template id="firmwareInternalState">
         <div class="form-grid">
           <label>
-            <span>① 固件来源</span>
+            <span>固件来源</span>
             <select id="firmwareSource">
               <option value="remote" selected>GitHub Release</option>
               <option value="local">自定义固件文件</option>
             </select>
           </label>
           <label>
-            <span>① 选择在线固件</span>
+            <span>选择在线固件</span>
             <select id="remoteFirmwareSelect">
               <option value="">正在加载固件清单</option>
             </select>
           </label>
           <label class="wide-field file-picker">
-            <span>③ 选择自定义 bin 文件</span>
+            <span>选择自定义 bin 文件</span>
             <input id="firmwareInput" type="file" accept=".bin,application/octet-stream" disabled>
           </label>
           <label>
@@ -363,10 +412,10 @@
           </label>
         </div>
         <div class="action-strip">
-          <button id="selectFirmwareDeviceBtn" class="secondary-button" type="button">② 选择并读取分区表</button>
+          <button id="selectFirmwareDeviceBtn" class="secondary-button" type="button">① 选择并读取分区表</button>
           <button id="refreshFirmwareBtn" class="secondary-button" type="button">刷新在线固件</button>
-          <button id="downloadFirmwareBtn" class="secondary-button" type="button">③ 下载并校验固件</button>
-          <button id="writeFirmwareBtn" class="primary-button" type="button" disabled>④ 串口烧录固件</button>
+          <button id="downloadFirmwareBtn" class="secondary-button" type="button">② 下载并校验固件</button>
+          <button id="writeFirmwareBtn" class="primary-button" type="button" disabled>③ 串口烧录固件</button>
         </div>
         <div class="device-panel">
           <div class="metrics writer-metrics">
@@ -397,6 +446,7 @@
           <progress id="firmwareWriteProgress" value="0" max="100"></progress>
         </div>
         <output id="flashResult" class="output-box">默认读取 GitHub Release 提供的最近版本固件。首次迁移到 v1.5.x 分区表时请使用完整 merged 固件写入 0x0。</output>
+        </template>
       </section>
     </section>
   </main>

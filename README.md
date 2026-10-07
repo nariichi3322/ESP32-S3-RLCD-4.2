@@ -1,6 +1,6 @@
 # ESP32-S3 RLCD 4.2 天气时钟
 
-> **语言：** 简体中文（当前） · [English](README_EN.md)
+> **语言：** 简体中文（当前） · [English](README_EN.md) · [繁體中文](README_zh_TW.md) · [日本語](README_JA.md)
 
 这是一个基于 **ESP32-S3** 和 **4.2 英寸 RLCD 屏幕** 的低功耗天气时钟固件。当前版本提供天气、日历、温湿度历史、聚合时钟、小智 AI 与 Codex 用量等工作页面；Wi-Fi 按需用于配网、天气、每日文字、NTP、网络检测与用户主动 OTA。
 
@@ -19,21 +19,20 @@
 
 **界面主要基于 LVGL 开发。** 页面布局、文字、菜单和状态控件由 LVGL 管理；大号时钟、图片和曲线等通过 LVGL Canvas 与自定义绘制实现。底层 RLCD 驱动负责单色输出，并优先采用局部刷新，兼顾显示效果与低功耗。
 
-- [中文用户使用说明](docs/User_zh.md)
-- [English User Guide](docs/User.md)
+- [简易用户手册](docs/User_zh.md) · [用户详细说明](docs/User_Detailed_zh.md)
 - [贡献指南 / Contributing Guide](CONTRIBUTING.md)
 - [安全政策 / Security Policy](SECURITY.md)
 - [第三方开源许可说明](THIRD_PARTY_NOTICES.md)
 - [项目许可证](LICENSE)
 - [最低功耗 Power Demo](docs/Power%20Demo/README.md)
-- [实机模拟预览](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/#screens)
+- [实机模拟预览](https://nariichi3322.github.io/ESP32-S3-RLCD-4.2/#screens)
 
 ## 关联项目
 
 - [微雪 ESP32-S3-RLCD-4.2 官方产品页](https://www.waveshare.com/product/esp32-s3-rlcd-4.2.htm)：本项目所使用开发板的官方介绍、规格和购买信息。
 - [微雪 ESP32-S3-RLCD-4.2 官方文档](https://docs.waveshare.com/ESP32-S3-RLCD-4.2)：开发板接口、原理图、示例和硬件资料。
 - [ESP32-S3-RLCD-4.2_UP](https://github.com/wickenzh/ESP32-S3-RLCD-4.2_UP)：OTA 固件镜像仓库，可查看可用固件及版本信息。
-- [在线上位机](https://wickenzh.github.io/ESP32-S3-RLCD-4.2/)：配置资源、转换图片/GIF、校验并烧录固件、查看串口日志；[源码与说明](host_web/README.md)。
+- [在线上位机](https://nariichi3322.github.io/ESP32-S3-RLCD-4.2/)：配置资源、转换图片/GIF、校验并烧录固件、查看串口日志；[源码与说明](host_web/README.md)。
 
 ## 源码目录
 
@@ -58,9 +57,9 @@
 
 默认页面顺序如下，用户可以在设置中关闭页面或重新排序；系统始终保留至少一个可用工作页。
 
-1. **天气时钟**：时间、日期、实时天气、预警、本地温湿度、电池和状态图标。
+1. **天气时钟**：时间、日期、实时天气、本地温湿度、电池和状态图标。
 2. **图片时钟**：本地图片、大号分钟时间和每日文字；自定义图库支持多档切换周期。
-3. **天气看板**：城市天气、空气质量、湿度、风力、日出日落、预警和未来天气。
+3. **天气看板**：城市天气、空气质量、湿度、风力、日出日落和未来天气。
 4. **温湿时钟**：高对比时分秒、本地温湿度、趋势、日期和农历。
 5. **日历**：当月日历、农历、节日和今日高亮；极端六行月份会保持当前日期可见。
 6. **温湿历史**：记录并显示本地温湿度历史与趋势。
@@ -71,10 +70,12 @@
 
 ## 配置与联网
 
+本分支已弃用和风天气（QWeather），不再使用；固件只使用 Open-Meteo，无需 API Key / API Host，也没有天气源切换开关。空气质量显示 US AQI，不提供天气预警。公共服务仅限非商业使用，数据来自 [Open-Meteo](https://open-meteo.com/) / [CAMS](https://atmosphere.copernicus.eu/)，城市查询使用 [GeoNames](https://www.geonames.org/)。
+
 首次使用通过设备配网页完成配置：
 
 - 支持主 Wi-Fi 和可选备用 Wi-Fi；主网络连续不可用时会尝试备用网络，成功后可按既有策略晋升。
-- 聯網天氣使用 Open-Meteo 公開 API，不需要 API Key；可選填城市，留空時以 IP 座標自動定位。
+- 联网天气使用 Open-Meteo 公开 API，不需要 API Key；可选填城市，留空时以 IP 坐标自动定位。
 - 天气城市可以使用公网 IP 自动定位，也可以通过配网页、上位机或小智 AI 设置手动城市。
 - 不配置 Wi-Fi 时，可以填写本地日期时间并进入离线模式。
 
@@ -134,7 +135,7 @@
 - `previews/`：由当前源码生成的全部详细 SDL 页面预览和总览图。
 - `.github/`：公开仓库的固件构建与源码发布工作流。
 
-构建与提交要求见 [贡献指南](CONTRIBUTING.md)。完整刷机、仅更新 App、配网、页面操作和常见问题见 [中文用户手册](docs/User_zh.md) 或 [English User Guide](docs/User.md)。
+构建与提交要求见 [贡献指南](CONTRIBUTING.md)。先阅读[简易用户手册](docs/User_zh.md)，完整刷机、配网、页面设置和故障处理见[用户详细说明](docs/User_Detailed_zh.md)。
 
 ## OTA 与自定义资源
 

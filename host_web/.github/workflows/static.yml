@@ -2,7 +2,7 @@ name: Deploy GitHub Pages
 
 on:
   push:
-    branches: [main]
+    branches: [nariichi3322]
     paths:
       - 'host_web/**'
       - 'RLCD_CLOCK/**'
@@ -25,7 +25,7 @@ concurrency:
 jobs:
   build:
     if: >-
-      github.repository == 'wickenzh/ESP32-S3-RLCD-4.2' &&
+      github.repository == 'nariichi3322/ESP32-S3-RLCD-4.2' &&
       (github.event_name != 'workflow_run' ||
        (github.event.workflow_run.conclusion == 'success' &&
         github.event.workflow_run.head_repository.full_name == github.repository &&

@@ -11,6 +11,7 @@ assert.equal(url.pathname, '/save');
 assert.equal(url.searchParams.get('ssid'), base.ssid);
 assert.equal(url.searchParams.get('pass'), base.pass);
 assert.equal(url.searchParams.get('weather_city'), '杭州');
+assert.equal(url.searchParams.has('weather_provider'), false);
 assert.equal(url.searchParams.has('api_host'), false);
 assert.equal(url.searchParams.has('api_key'), false);
 assert.equal(url.hash, '');
@@ -23,6 +24,14 @@ assert.throws(() => makeQuickConfigLink({...base, ssid: '城'.repeat(11)}), /32 
 assert.throws(() => makeQuickConfigLink({...base, pass: 'a'.repeat(65)}), /64 字节/);
 assert.throws(() => makeQuickConfigLink({...base, pass: '&'.repeat(54)}), /编码后过长/);
 const retained = makeQuickConfigLink({ssid: 'Demo'});
+for (const length of [1, 7]) {
+  assert.throws(() => makeQuickConfigLink({...base, pass: 'a'.repeat(length)}), /主 Wi-Fi 密码至少/);
+  assert.throws(() => makeQuickConfigLink({...base, backup_ssid: 'Backup', backup_pass: 'a'.repeat(length)}), /备用 Wi-Fi 密码至少/);
+}
+assert.doesNotThrow(() => makeQuickConfigLink({...base, pass: 'a'.repeat(8)}));
+assert.doesNotThrow(() => makeQuickConfigLink({...base, backup_ssid: 'Backup', backup_pass: 'a'.repeat(8)}));
+assert.doesNotThrow(() => makeQuickConfigLink({...base, pass: '', backup_ssid: 'Backup', backup_pass: ''}));
+assert.doesNotThrow(() => makeQuickConfigLink({manual_time: '2028-01-01T00:00', pass: 'a'}));
 assert.ok(retained.warnings.some(text => text.includes('自动定位')));
 const offline = makeQuickConfigLink({ssid: '', manual_time: '2028-02-29T09:30', api_key: 'IGNORED'});
 assert.equal(offline.offline, true);
@@ -40,5 +49,6 @@ assert.match(html, /id="quickGenerate"[^>]*disabled/);
 assert.match(html, /id="customWeatherCity"/);
 assert.match(html, /id="customOtaServer"/);
 assert.doesNotMatch(html, /QWeather|qweather|API Key|API Host/);
-assert.doesNotMatch(source, /QWeather|qweather|api_key|api_host/);
+assert.doesNotMatch(source, /QWeather|qweather|api_key|api_host|weather_provider|providerToggle/);
+assert.doesNotMatch(html, /quickOpenMeteo|use_open_meteo/);
 console.log('Quick configuration encoding, validation, privacy and compatibility tests passed.');

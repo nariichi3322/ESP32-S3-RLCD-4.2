@@ -199,7 +199,20 @@ static void build_aggregate_clock_preview_ui()
     aggregate_clock_set_text(view.local_temp,"25.6 C");
     aggregate_clock_set_text(view.humidity,"58%");
     const char *theme=getenv("WEATHER_CLOCK_SDL_WEATHER_THEME");
-    aggregate_clock_weather_theme(view,0);
+    aggregate_clock_weather_theme(view,4);
+    if(theme && (strcmp(theme,"fog")==0 || strcmp(theme,"cloudy")==0 || strcmp(theme,"overcast")==0)) {
+        const bool overcast=strcmp(theme,"overcast")==0;
+        const bool fog=strcmp(theme,"fog")==0;
+        if(fog)aggregate_clock_set_text(view.weather,"雾");
+        aggregate_clock_weather_theme(view,fog?6:overcast?5:4);
+        // Provider-neutral: fog is WMO weather_code 45 / WeatherIconKind::kFog.
+        aggregate_clock_set_text(
+            view.icon,
+            weather_icon_text(fog ? WeatherIconKind::kFog
+                                  : overcast ? WeatherIconKind::kCloudy
+                                             : WeatherIconKind::kPartlyCloudy).c_str());
+        aggregate_clock_set_text(view.weather,fog?"雾":overcast?"阴":"多云");
+    }
     if(theme && (strcmp(theme,"day")==0 || strcmp(theme,"rain")==0 || strcmp(theme,"snow")==0)) {
         const bool rain=strcmp(theme,"rain")==0;
         const bool snow=strcmp(theme,"snow")==0;
@@ -484,7 +497,15 @@ static void render_web_demo()
     if(g_demo.scene==WebDemoState::Settings || g_demo.scene==WebDemoState::Pages || g_demo.scene==WebDemoState::Order) {
         build_web_settings_page(g_demo,WEB_FIRMWARE_VERSION);
     } else if(g_demo.scene==WebDemoState::Work) {
-        if(g_demo.weather) setenv("WEATHER_CLOCK_SDL_WEATHER_THEME",g_demo.weather==1?"day":g_demo.weather==2?"rain":"snow",1);
+        const char *weather_theme = nullptr;
+        switch (g_demo.weather) {
+        case 1: weather_theme = "day"; break;
+        case 2: weather_theme = "rain"; break;
+        case 3: weather_theme = "snow"; break;
+        case 4: weather_theme = "fog"; break;
+        default: break;
+        }
+        if (weather_theme) setenv("WEATHER_CLOCK_SDL_WEATHER_THEME", weather_theme, 1);
         else unsetenv("WEATHER_CLOCK_SDL_WEATHER_THEME");
         const char *mode=kDemoModes[g_demo.page];
         if(g_demo.page==6) {
@@ -562,8 +583,12 @@ EMSCRIPTEN_KEEPALIVE void demo_scene(int scene) {
         const WebDemoState::Scene scenes[]={WebDemoState::Info,WebDemoState::Diagnostics,WebDemoState::Ota,WebDemoState::Setup,WebDemoState::Alert,WebDemoState::Low,WebDemoState::Boot};
         g_demo.work(g_demo_now);g_demo.scene=scenes[scene-9];
         if(scene==10)g_demo.start_operation("正在网络检测...",g_demo_now,3000);
-    } else if(scene>=20&&scene<=23){g_demo.work(g_demo_now);g_demo.page=7;g_demo.weather=scene-20;g_demo.dirty=true;}
-    else if(scene==30){g_demo.page=6;g_demo.work(g_demo_now);g_demo.conversation=1;g_demo.conversation_until=g_demo_now+1000;}
+    } else if (scene >= 20 && scene <= 24) {
+        g_demo.work(g_demo_now);
+        g_demo.page = 7;
+        g_demo.weather = scene - 20;
+        g_demo.dirty = true;
+    } else if(scene==30){g_demo.page=6;g_demo.work(g_demo_now);g_demo.conversation=1;g_demo.conversation_until=g_demo_now+1000;}
     else if(scene==31){g_demo.page=6;g_demo.work(g_demo_now);g_demo.pomodoro_completed=false;g_demo.pomodoro_until=g_demo.pomodoro_until?0:g_demo_now+25*60*1000;}
     render_web_demo();
 }

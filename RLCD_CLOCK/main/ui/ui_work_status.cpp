@@ -1,5 +1,6 @@
 // 统一构建和刷新非天气时钟工作页顶部状态栏。
 #include "ui_work_status.h"
+#include "ui_celsius_marker.h"
 
 #include "app_constexpr.h"
 #include "app_display_config.h"
@@ -322,6 +323,7 @@ void build_work_page_status_bar(lv_obj_t *screen,
                                            &lv_font_montserrat_16);
         if (labels.summary) {
             style_work_page_sensor_summary(labels.summary);
+            ui_enable_celsius_marker(labels.summary);
         }
     }
     if (show_time) {

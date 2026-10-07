@@ -8,10 +8,12 @@
 #include "network_credentials_state.h"
 #include "network_sync_runtime.h"
 #include "open_meteo_client.h"
+#include "ui_language.h"
 #include "weather_state_internal.h"
 
 #include <esp_attr.h>
 #include <esp_log.h>
+#include <esp_timer.h>
 
 #include <string.h>
 
@@ -31,13 +33,43 @@ struct WeatherUpdateWorkspace {
 };
 EXT_RAM_BSS_ATTR WeatherUpdateWorkspace s_workspace;
 
+// Geocoding results barely change; reuse them for a day. Only the network task touches this.
+constexpr int64_t kCityCacheTtlUs = 24LL * 60 * 60 * 1000000;
+struct CityCache {
+    char query[kManualWeatherCityLen];
+    char language[8];
+    char city[kCityNameSize];
+    char latitude[sizeof(WeatherData{}.lat)];
+    char longitude[sizeof(WeatherData{}.lon)];
+    int64_t expires_us;
+};
+EXT_RAM_BSS_ATTR CityCache s_city_cache;
+
 bool resolve_city(const char *query, WeatherUpdateWorkspace *workspace)
 {
-    return workspace && query &&
-           open_meteo_lookup_city(query, workspace->city, sizeof(workspace->city),
-                                  workspace->latitude, sizeof(workspace->latitude),
-                                  workspace->longitude, sizeof(workspace->longitude)) ==
-               OpenMeteoResult::kOk;
+    if (!workspace || !query) return false;
+    const char *language = ui_language_open_meteo_tag();
+    const int64_t now_us = esp_timer_get_time();
+    if (s_city_cache.expires_us > now_us && strcmp(s_city_cache.query, query) == 0 &&
+        strcmp(s_city_cache.language, language) == 0) {
+        strlcpy(workspace->city, s_city_cache.city, sizeof(workspace->city));
+        strlcpy(workspace->latitude, s_city_cache.latitude, sizeof(workspace->latitude));
+        strlcpy(workspace->longitude, s_city_cache.longitude, sizeof(workspace->longitude));
+        return true;
+    }
+    if (open_meteo_lookup_city(query, workspace->city, sizeof(workspace->city),
+                               workspace->latitude, sizeof(workspace->latitude),
+                               workspace->longitude, sizeof(workspace->longitude)) !=
+        OpenMeteoResult::kOk) {
+        return false;
+    }
+    strlcpy(s_city_cache.query, query, sizeof(s_city_cache.query));
+    strlcpy(s_city_cache.language, language, sizeof(s_city_cache.language));
+    strlcpy(s_city_cache.city, workspace->city, sizeof(s_city_cache.city));
+    strlcpy(s_city_cache.latitude, workspace->latitude, sizeof(s_city_cache.latitude));
+    strlcpy(s_city_cache.longitude, workspace->longitude, sizeof(s_city_cache.longitude));
+    s_city_cache.expires_us = now_us + kCityCacheTtlUs;
+    return true;
 }
 
 WeatherUpdateResult fetch_and_commit(WeatherUpdateWorkspace *workspace)
@@ -74,8 +106,8 @@ WeatherUpdateResult perform_weather_update(WeatherUpdateScope scope)
         }
         return fetch_and_commit(&workspace);
     }
-    if (!ip_geolocation_lookup(workspace.location, sizeof(workspace.location), workspace.ip_city,
-                               sizeof(workspace.ip_city))) {
+    if (!ip_geolocation_lookup_cached(workspace.location, sizeof(workspace.location),
+                                      workspace.ip_city, sizeof(workspace.ip_city))) {
         ESP_LOGW(TAG, "%s", "IP geolocation lookup failed");
         return WeatherUpdateResult::kFailed;
     }

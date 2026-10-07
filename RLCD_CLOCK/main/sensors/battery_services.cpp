@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <time.h>
+#include <atomic>
 
 #define BATTERY_ADC_CALIBRATION_RELEASE_FAILED_LOG_FORMAT "battery adc calibration release failed: %s"
 #define BATTERY_ADC_UNIT_RELEASE_FAILED_LOG_FORMAT "battery adc unit release failed: %s"
@@ -33,6 +34,8 @@
 #define BATTERY_CHARGING_STARTED_LOG_FORMAT "battery charging detected voltage=%.3fV soc=%d%%"
 #define BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT "battery charging animation completed voltage=%.3fV soc=%d%%"
 #define BATTERY_CHARGING_STOPPED_LOG_FORMAT "battery charging cleared voltage=%.3fV soc=%d%%"
+#define BATTERY_CHARGING_EVIDENCE_LOG_FORMAT \
+    "battery charge estimate: previous=%.3fV delta=%.3fV peak_before=%.3fV stop_before=%d"
 #define BATTERY_FULL_CHARGE_RECORDED_LOG_FORMAT "battery full charge recorded voltage=%.3fV soc=%d%%"
 #define BATTERY_FULL_CHARGE_NVS_OPEN_FAILED_LOG_FORMAT "open battery full-charge history nvs failed: %s"
 #define BATTERY_FULL_CHARGE_NVS_READ_FAILED_LOG_FORMAT "read battery full-charge history failed: %s"
@@ -46,6 +49,12 @@ static adc_cali_handle_t s_battery_adc_cali = nullptr;
 static bool s_battery_adc_ready = false;
 static bool s_battery_adc_channel_ready = false;
 static bool s_battery_adc_cali_ready = false;
+static std::atomic<bool> s_charge_confirmation_pending{false};
+
+bool battery_charge_confirmation_pending()
+{
+    return s_charge_confirmation_pending.load(std::memory_order_relaxed);
+}
 static constexpr float kBatteryVoltageDivider = 3.0f;
 static constexpr float kBatteryMillivoltsToVolts = 0.001f;
 static constexpr int kBatteryChargingStopAdcSteps = 2;
@@ -80,6 +89,8 @@ static constexpr BatteryChargingPolicy kBatteryChargingPolicy = {
     kBatteryChargingAnimationStopPercent,
     kBatteryChargingAnimationIdleTicks,
     kBatteryChargeHistoryMinSessionTicks,
+    pdMS_TO_TICKS(kBatteryChargingConfirmMs),
+    pdMS_TO_TICKS(kBatteryChargingConfirmTimeoutMs),
 };
 
 struct BatteryReading {
@@ -477,6 +488,7 @@ bool sample_battery()
     static BatteryChargingTracker charging_tracker;
     static int consecutive_read_failures = 0;
     static bool full_charge_time_pending = false;
+    static bool full_charge_session_recorded = false;
     BatteryRuntimeSnapshot previous;
     if (!battery_runtime_snapshot_load(&previous)) {
         return false;
@@ -491,6 +503,8 @@ bool sample_battery()
             previous.charging,
             previous.animation_complete,
         };
+        [[maybe_unused]] const float peak_before = charging_tracker.peak_voltage;
+        [[maybe_unused]] const int stop_samples_before = charging_tracker.stop_samples;
         BatteryChargingState next_state = derive_battery_charging_state(
             reading,
             previous.voltage,
@@ -498,6 +512,15 @@ bool sample_battery()
             charging_tracker,
             now_tick);
         apply_battery_reading(reading, next_state, &next);
+        s_charge_confirmation_pending.store(
+            !next_state.charging && charging_tracker.rise_samples > 0,
+            std::memory_order_relaxed);
+        // Voltage trend is not a USB-present or charger-status signal.
+        if (previous.charging != next.charging) {
+            ESP_LOGI(TAG, BATTERY_CHARGING_EVIDENCE_LOG_FORMAT,
+                     previous.voltage, reading.voltage - previous.voltage,
+                     peak_before, stop_samples_before);
+        }
         bool completed_charge_session_is_meaningful =
             next_state.charging &&
             battery_charging_session_elapsed(charging_tracker,
@@ -505,6 +528,7 @@ bool sample_battery()
                                              kBatteryChargeHistoryMinSessionTicks);
         if (!previous.charging && next.charging) {
             full_charge_time_pending = false;
+            full_charge_session_recorded = false;
             ESP_LOGI(TAG, BATTERY_CHARGING_STARTED_LOG_FORMAT, next.voltage, next.percent);
         }
         if (!previous.animation_complete && next.animation_complete) {
@@ -512,16 +536,19 @@ bool sample_battery()
                      BATTERY_CHARGING_ANIMATION_COMPLETED_LOG_FORMAT,
                      next.voltage,
                      next.percent);
-            if (battery_full_charge_history_should_update(
+        }
+        // Animation may stop on a plateau below full; that is not a full charge.
+        if (battery_full_charge_history_should_update(
                     next.charging,
                     charging_tracker.session_started_below_full_threshold,
-                    previous.animation_complete,
-                    next.animation_complete,
+                    full_charge_session_recorded,
+                    next.percent >= kBatteryChargingAnimationStopPercent,
                     completed_charge_session_is_meaningful)) {
-                full_charge_time_pending = true;
-            }
+            full_charge_time_pending = true;
+            full_charge_session_recorded = true;
         }
-        if (full_charge_time_pending && next.charging && next.animation_complete) {
+        if (full_charge_time_pending && next.charging &&
+            next.percent >= kBatteryChargingAnimationStopPercent) {
             time_t recorded_at = 0;
             if (current_full_charge_time(&recorded_at)) {
                 next.last_full_charge_time = recorded_at;
@@ -535,6 +562,7 @@ bool sample_battery()
         }
         if (previous.charging && !next.charging) {
             full_charge_time_pending = false;
+            full_charge_session_recorded = false;
             ESP_LOGI(TAG, BATTERY_CHARGING_STOPPED_LOG_FORMAT, next.voltage, next.percent);
         }
         release_battery_gauge();
@@ -542,6 +570,11 @@ bool sample_battery()
             (void)save_last_full_charge_time(full_charge_time_to_persist);
         }
     } else {
+        // A failed ADC batch cannot confirm an earlier voltage excursion.
+        s_charge_confirmation_pending.store(false, std::memory_order_relaxed);
+        if (!previous.charging) {
+            reset_battery_charging_tracker(&charging_tracker);
+        }
         if (consecutive_read_failures <= kBatteryReadFailureMaxGraceSamples) {
             ++consecutive_read_failures;
         }

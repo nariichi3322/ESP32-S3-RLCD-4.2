@@ -10,7 +10,7 @@ static_assert(kLowBatteryEnterPercent == 10);
 static_assert(kLowBatteryExitPercent == 13);
 static_assert(kBatteryChargingRiseVoltage == 0.035f);
 static_assert(kBatteryChargingStopVoltage == 0.006f);
-static_assert(kBatteryChargingRiseSamples == 1);
+static_assert(kBatteryChargingRiseSamples == 3);
 static_assert(kBatteryChargingStopSamples == 5);
 static_assert(kBatteryChargingAnimationStopPercent == 96);
 static_assert(kBatteryChargingAnimationIdleMs == 10 * 60 * 1000);
@@ -62,6 +62,32 @@ BatteryChargingInput input(float previous,
 
 int main()
 {
+    BatteryChargingPolicy confirmed = kPolicy;
+    confirmed.rise_samples_required = 3;
+    confirmed.confirmation_min_ticks = 2;
+    confirmed.confirmation_timeout_ticks = 5;
+    BatteryChargingTracker pending;
+    BatteryChargingState pending_state;
+    update_battery_charging_state(input(4.059f, 4.107f, 99, 100), confirmed, &pending, &pending_state);
+    assert(!pending_state.charging && pending.rise_samples == 1);
+    update_battery_charging_state(input(4.107f, 4.065f, 95, 101), confirmed, &pending, &pending_state);
+    assert(!pending_state.charging && pending.rise_samples == 0);
+    update_battery_charging_state(input(3.8f, 3.84f, 75, 200), confirmed, &pending, &pending_state);
+    update_battery_charging_state(input(3.84f, 3.841f, 75, 201), confirmed, &pending, &pending_state);
+    assert(!pending_state.charging);
+    update_battery_charging_state(input(3.841f, 3.84f, 75, 202), confirmed, &pending, &pending_state);
+    assert(pending_state.charging && pending.session_start_tick == 202);
+    assert(!pending_state.animation_complete);
+    pending = {}; pending_state = {};
+    update_battery_charging_state(input(3.8f, 3.84f, 75, 100), confirmed, &pending, &pending_state);
+    update_battery_charging_state(input(3.84f, 3.84f, 75, 106), confirmed, &pending, &pending_state);
+    assert(!pending_state.charging && pending.rise_samples == 0);
+    pending = {}; pending_state = {};
+    update_battery_charging_state(input(3.8f, 3.84f, 75, UINT32_MAX - 1), confirmed, &pending, &pending_state);
+    update_battery_charging_state(input(3.84f, 3.84f, 75, UINT32_MAX), confirmed, &pending, &pending_state);
+    update_battery_charging_state(input(3.84f, 3.84f, 75, 0), confirmed, &pending, &pending_state);
+    assert(pending_state.charging);
+
     assert(!update_battery_charging_state(input(3.8f, 3.9f, 50, 0),
                                            kPolicy,
                                            nullptr,

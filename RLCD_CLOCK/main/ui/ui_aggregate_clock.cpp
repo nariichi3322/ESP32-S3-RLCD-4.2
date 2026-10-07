@@ -32,6 +32,11 @@ bool s_weather_valid=false, s_sensor_valid=false;
 int s_date_key=-1;
 int s_calendar_display_mode=-1;
 int64_t s_buffer_retry_us=0;
+
+bool digit_buffers_ready() {
+    for(const lv_color_t *buffer:s_buffers)if(!buffer)return false;
+    return true;
+}
 }
 
 void clear_aggregate_clock_refs() {
@@ -51,7 +56,7 @@ void build_aggregate_clock_page() {
     make_black_bar(root,18,54,364,4);
     build_work_page_day_progress(root,kWorkPageAggregateClock);
     for(auto &buffer:s_buffers) ensure_canvas_buffer(&buffer,kAggregateDigitWidth,kAggregateDigitHeight);
-    s_buffer_retry_us=esp_timer_get_time()+5000000;
+    s_buffer_retry_us=digit_buffers_ready()?0:esp_timer_get_time()+5000000;
     aggregate_clock_view_build(root,s_view,s_buffers);
     aggregate_clock_view_set_seconds_visible(s_view,weather_clock_seconds_visible_load());
 }
@@ -64,14 +69,15 @@ void apply_aggregate_clock_seconds_visibility(bool visible) {
 bool update_aggregate_clock_page(const struct tm &local) {
     if(active_work_page_load()!=kWorkPageAggregateClock || !work_page_root(kWorkPageAggregateClock)) return false;
     bool changed=false;
-    if (esp_timer_get_time() >= s_buffer_retry_us) {
-        s_buffer_retry_us=esp_timer_get_time()+5000000;
+    if (!digit_buffers_ready() && esp_timer_get_time() >= s_buffer_retry_us) {
+        const int64_t retry_now_us=esp_timer_get_time();
         for (int i=0;i<3;++i) if (!s_buffers[i] &&
             ensure_canvas_buffer(&s_buffers[i],kAggregateDigitWidth,kAggregateDigitHeight)) {
             lv_canvas_set_buffer(s_view.digits[i],s_buffers[i],kAggregateDigitWidth,
                                  kAggregateDigitHeight,LV_IMG_CF_TRUE_COLOR);
             s_view.values[i]=-2;
         }
+        s_buffer_retry_us=digit_buffers_ready()?0:retry_now_us+5000000;
     }
     const bool valid_time=is_tm_plausible(local);
     changed |= aggregate_clock_view_time(s_view,valid_time?local.tm_hour:-1,

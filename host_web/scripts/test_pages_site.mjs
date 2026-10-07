@@ -15,18 +15,25 @@ globalThis.fetch = async (url) => {
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.port) {
     throw new Error('Unexpected mock request URL');
   }
-  if (parsed.hostname === 'api.github.com' && parsed.pathname === '/repos/wickenzh/ESP32-S3-RLCD-4.2/releases') {
+  if (parsed.hostname === 'api.github.com' && parsed.pathname === '/repos/nariichi3322/ESP32-S3-RLCD-4.2/releases') {
     const releases = Array.from({ length: 12 }, (_, i) => ({
-      tag_name: `v1.0.${12 - i}`, draft: false, prerelease: i === 0,
-      assets: ['', '_merged'].map(suffix => ({
-        name: `weather_clock_v1.0.${12 - i}${suffix}.bin`, size: bytes.length,
+    tag_name: `v1.0.${12 - i}`, draft: false, prerelease: i === 0,
+      name: `v1.0.${12 - i}`,
+      body: `WeatherClock release v1.0.${12 - i}.\n\n1. Improved firmware installation flow.`,
+      html_url: `https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/tag/v1.0.${12 - i}`,
+      // v1.0.11 (newest) and v1.0.9 have all four locales; v1.0.10 has en app only and ja merged only (incomplete, dropped).
+      // Only the newest release keeps non-zh-TW locales, so v1.0.9 is trimmed to zh-TW.
+      assets: [['', ''], ['_merged', ''],
+        ...(i === 1 || i === 3 ? ['_zh-CN', '_en', '_ja'].flatMap(locale => [['', locale], ['_merged', locale]]) : []),
+        ...(i === 2 ? [['', '_en'], ['_merged', '_ja']] : [])].map(([suffix, locale]) => ({
+        name: `weather_clock_v1.0.${12 - i}${locale}${suffix}.bin`, size: bytes.length,
         digest: `sha256:${badHash ? '0'.repeat(64) : digest}`,
-        browser_download_url: `https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.0.${12 - i}/firmware${suffix}.bin`
+        browser_download_url: `https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v1.0.${12 - i}/firmware${locale}${suffix}.bin`
       }))
     }));
     return Response.json(releases);
   }
-  if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/wickenzh/ESP32-S3-RLCD-4.2/releases/download/')) {
+  if (parsed.hostname === 'github.com' && parsed.pathname.startsWith('/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/')) {
     return new Response(bytes);
   }
   throw new Error('Unexpected mock request URL');
@@ -45,7 +52,7 @@ try {
     'https://api.github.com.example.invalid/releases',
     'https://example.invalid/api.github.com',
     'https://example.invalid/?host=api.github.com',
-    'http://api.github.com/repos/wickenzh/ESP32-S3-RLCD-4.2/releases',
+    'http://api.github.com/repos/nariichi3322/ESP32-S3-RLCD-4.2/releases',
     'https://api.github.com@other.invalid/releases'
   ]) {
     await assert.rejects(fetch(url), /Unexpected mock request URL/);
@@ -55,13 +62,40 @@ try {
   const manifest = JSON.parse(await readFile(path.join(process.argv[2], 'firmware/releases.json')));
   assert.equal(manifest.items.length, 10);
   assert.equal(manifest.items[0].version, 'v1.0.11');
+  assert.equal(manifest.items[0].notes, 'WeatherClock release v1.0.11.\n\n1. Improved firmware installation flow.');
+  assert.equal(manifest.items[0].release_url, 'https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/tag/v1.0.11');
   assert.equal(manifest.items[0].app.sha256, digest);
+  assert.equal(manifest.items[0].app.name, 'weather_clock_v1.0.11.bin');
+  assert.equal(manifest.items[0].merged.name, 'weather_clock_v1.0.11_merged.bin');
+  assert.deepEqual(Object.keys(manifest.items[0].locales), ['zh-TW', 'zh-CN', 'en', 'ja']);
+  assert.deepEqual(manifest.items[0].locales['zh-TW'], { app: manifest.items[0].app, merged: manifest.items[0].merged });
+  for (const locale of ['zh-CN', 'en', 'ja']) {
+    const pair = manifest.items[0].locales[locale];
+    assert.equal(pair.app.name, `weather_clock_v1.0.11_${locale}.bin`);
+    assert.equal(pair.merged.name, `weather_clock_v1.0.11_${locale}_merged.bin`);
+    assert.equal(pair.merged.url, `./firmware/releases/v1.0.11/weather_clock_v1.0.11_${locale}_merged.bin`);
+    assert.equal(pair.app.sha256, digest);
+    assert.equal(pair.app.size, bytes.length);
+    for (const asset of [pair.app, pair.merged]) {
+      assert.deepEqual([...await readFile(path.join(process.argv[2], 'firmware', asset.url.slice('./firmware/'.length)))], [...bytes]);
+    }
+  }
+  // Incomplete locale pairs are not published or mirrored; the zh-TW pair is always present.
+  assert.equal(manifest.items[1].version, 'v1.0.10');
+  assert.deepEqual(Object.keys(manifest.items[1].locales), ['zh-TW']);
+  assert.deepEqual((await readdir(path.join(process.argv[2], 'firmware/releases/v1.0.10'))).sort(), ['weather_clock_v1.0.10.bin', 'weather_clock_v1.0.10_merged.bin']);
+  assert.deepEqual(Object.keys(manifest.items[2].locales), ['zh-TW']);
+  assert.deepEqual((await readdir(path.join(process.argv[2], 'firmware/releases/v1.0.9'))).sort(), ['weather_clock_v1.0.9.bin', 'weather_clock_v1.0.9_merged.bin']);
   assert(!(await readdir(process.argv[2])).includes('scripts'));
   assert(!(await readdir(process.argv[2])).includes('AI_HOST_WEB_GUIDE.md'));
   const html = await readFile(path.join(process.argv[2], 'index.html'), 'utf8');
   const previews = [...html.matchAll(/src="(\.\/assets\/screens\/[^"?]+\.png)"/g)].map(match => match[1]);
   assert.equal(new Set(previews).size, 8);
   const sw = await readFile(path.join(process.argv[2], 'sw.js'), 'utf8');
+  for (const name of ['i18n.js', 'locales/static.js', 'locales/dynamic.js']) {
+    assert((await readFile(path.join(process.argv[2], name))).length);
+    assert(sw.includes(`./${name}`), `Language module missing from offline cache: ${name}`);
+  }
   for (const name of [...Object.keys(artifacts), 'build-info.json']) {
     assert(sw.includes(`./simulator/${name}`));
     assert((await readFile(path.join(process.argv[2], 'simulator', name))).length);

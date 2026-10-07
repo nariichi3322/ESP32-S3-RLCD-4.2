@@ -4,6 +4,7 @@
 #include "app_metadata.h"
 #include "scoped_semaphore_lock.h"
 #include "usb_programming_wake_policy.h"
+#include "runtime_health.h"
 
 #include <esp_err.h>
 #include <esp_log.h>
@@ -124,6 +125,7 @@ static_assert(kPmLockReleaseMutexTimeout > kPmLockMutexTimeout,
 
 void log_pm_lock_mutex_failure(const char *name)
 {
+    runtime_health_note_event(RuntimeHealthEvent::kPmLockFailure);
     if (!s_pm_lock_mutex.handle()) {
         ESP_LOGW(TAG, POWER_PM_LOCK_MUTEX_UNAVAILABLE_LOG_FORMAT, name);
     } else {
@@ -174,6 +176,7 @@ bool acquire_pm_lock(const PmLockDescriptor &lock)
     if (runtime.depth == 0) {
         esp_err_t err = esp_pm_lock_acquire(runtime.handle);
         if (err != ESP_OK) {
+            runtime_health_note_event(RuntimeHealthEvent::kPmLockFailure);
             ESP_LOGW(TAG,
                      POWER_PM_LOCK_ACQUIRE_FAILED_LOG_FORMAT,
                      lock.log_name,
@@ -203,6 +206,7 @@ bool release_pm_lock_handle(const PmLockDescriptor &lock)
              POWER_PM_LOCK_RELEASE_FAILED_LOG_FORMAT,
              lock.log_name,
              esp_err_to_name(err));
+    runtime_health_note_event(RuntimeHealthEvent::kPmLockFailure);
     return false;
 }
 

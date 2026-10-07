@@ -82,6 +82,31 @@ int main()
            OpenMeteoResult::kOk);
     assert(forecast.ready && forecast.count == kWeatherForecastDays && forecast.hourly_count == 0);
 
+    const char *polar_json = R"({
+      "current":{"temperature_2m":1,"relative_humidity_2m":2,"weather_code":0,
+        "wind_speed_10m":1,"wind_direction_10m":1},
+      "daily":{"time":["2026-02-28","2026-03-01","2026-03-02","2026-03-03","2026-03-04","2026-03-05"],
+        "weather_code":[0,0,0,0,0,0],"temperature_2m_max":[2,2,2,2,2,2],"temperature_2m_min":[1,1,1,1,1,1],
+        "sunrise":[null,"2026-03-01T05:30","2026-03-02T05:30","2026-03-03T05:30","2026-03-04T05:30","2026-03-05T05:30"],
+        "sunset":[null,"2026-03-02T00:10","2026-03-02T18:10","2026-03-03T18:10","2026-03-04T18:10","2026-03-05T18:10"],
+        "wind_direction_10m_dominant":[0,0,0,0,0,0],"wind_speed_10m_max":[1,1,1,1,1,1]}})";
+    assert(parse_open_meteo_forecast(polar_json, "0", "0", "", &weather, &forecast) ==
+           OpenMeteoResult::kOk);
+    assert(strcmp(forecast.days[0].sunrise, "--:--") == 0 &&
+           strcmp(forecast.days[0].sunset, "--:--") == 0);
+    assert(strcmp(forecast.days[1].sunset, "00:10") == 0 &&
+           forecast.days[1].sunset_day_offset == 1 && forecast.days[1].sunrise_day_offset == 0);
+    const char *far_sunset_json = R"({
+      "current":{"temperature_2m":1,"relative_humidity_2m":2,"weather_code":0,
+        "wind_speed_10m":1,"wind_direction_10m":1},
+      "daily":{"time":["2026-09-01","2026-09-02","2026-09-03","2026-09-04","2026-09-05","2026-09-06"],
+        "weather_code":[0,0,0,0,0,0],"temperature_2m_max":[2,2,2,2,2,2],"temperature_2m_min":[1,1,1,1,1,1],
+        "sunrise":["2026-09-01T05:30","2026-09-02T05:30","2026-09-03T05:30","2026-09-04T05:30","2026-09-05T05:30","2026-09-06T05:30"],
+        "sunset":["2026-09-03T18:10","2026-09-02T18:10","2026-09-03T18:10","2026-09-04T18:10","2026-09-05T18:10","2026-09-06T18:10"],
+        "wind_direction_10m_dominant":[0,0,0,0,0,0],"wind_speed_10m_max":[1,1,1,1,1,1]}})";
+    assert(parse_open_meteo_forecast(far_sunset_json, "0", "0", "", &weather, &forecast) ==
+           OpenMeteoResult::kInvalidValue);
+
     WeatherAirData air = {};
     assert(parse_open_meteo_air_quality(
         R"({"current":{"us_aqi":42,"pm2_5":8.5,"us_aqi_pm2_5":42,"us_aqi_pm10":20}})",

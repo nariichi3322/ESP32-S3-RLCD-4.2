@@ -2,6 +2,60 @@
 
 This document is for future AI agents or developers taking over `host_web/`.
 
+Device identification: esptool-js 0.5.6 exposes getFlashSize() on ESPLoader,
+not chip. Successful firmware inspection retains its loader and transport for
+online installation; cancel, tab departure and installation completion release
+the session. Failed inspection and resource inspection reset before disconnect.
+Preserve original installation errors. Do not reload on worker updates during
+firmware sessions. Advanced flashing is no longer exposed; its legacy DOM state
+is inert in firmwareInternalState, retained only for shared helper compatibility.
+
+The visible Host Web version is `HOST_WEB_VERSION` in `app.js`, mirrored by
+`#hostVersion` in `index.html`. Update both the displayed version and the
+Service Worker cache revision for each web release, then run the version and
+Pages tests so stale offline assets are not mistaken for the new release.
+
+The Write assets tab is intentionally read-only until `custom_assets.bin` has
+been generated. Keep the package gate on the baud selector, device selection,
+partition read, write and clear actions; the guidance button should return the
+user to Create assets without changing the resource protocol.
+
+## Local UI Languages
+
+`i18n.js` owns the zh-CN / zh-TW / ja / en selector between Web Serial status and
+the source shortcut. Default is zh-CN; only the locale is persisted under
+`weather-clock-studio:language`. Catalog rows in `locales/static.js` and
+`locales/dynamic.js` use the Simplified Chinese source message as a stable key,
+followed by Taiwan Traditional Chinese, Japanese and English translations.
+Use `tr('message')` or tagged `tr` templates; placeholders must match in all locales.
+
+Static owned text nodes and title/placeholder/aria-label/alt attributes are
+registered once. Dynamic UI uses `setText(element, () => ...)` and `setAttr` so
+switching languages updates the displayed state without replaying business
+actions. Keep render callbacks side-effect-free; capture event times rather
+than generating new timestamps on a locale change. `LocalizedError` formats
+messages lazily; firmware size/hash failures use stable codes, never translated
+message text, for classification. Never apply translation to user data or raw
+serial bytes. Translation uses textContent/attributes, not HTML injection.
+
+Firmware canvas pixels and the Wi-Fi setup iframe are explicitly outside the
+language boundary. Do not translate their HTML, add a locale bridge or modify
+firmware build inputs for host language support. Native browser dialogs and
+third-party/release text retain their original language. File chooser captions
+inside the host are localized without changing file input values.
+
+Run `test_i18n.mjs` for catalog/static coverage, placeholders and config-byte
+invariance. Existing GIF/quick-config/Pages/input tests remain required. Browser
+checks cover four locales × six tabs × 1024/1280/1440 desktop widths, state and
+BIN hash preservation, serial mocks, hash failures, persistence and offline
+switching. Update all eight User manuals for user-facing behavior changes.
+
+Mobile layout rules are scoped to `max-width: 800px`: simulator columns stack,
+KEY/help/BOOT remain a stable three-column row above the canvas, and at 480px
+the six tabs become a visible two-column grid. Do not shrink the 400x300 canvas
+below its aspect ratio or allow controls to overlap. Mobile support is for
+viewing and editing; Web Serial operations still require desktop Chrome/Edge.
+
 ## Interactive Simulator
 
 Keep the simulator aligned to the page content edges. Use 18px page headings,
@@ -21,6 +75,10 @@ and CSP blocking network and form navigation. Its trusted build artifact is
 fetched through the parent service worker for offline use, then assigned to
 srcdoc. Never interpolate user input into that document.
 
+The aggregate weather selector maps scene values 20-24 to cloudy, clear, rain,
+snow and fog. The fog option must pass the fog theme to the shared firmware
+renderer; keep the four-language label in locales/static.js in sync.
+
 Pages requires generated artifacts with matching hashes; missing/corrupt files
 fail the build. `test_simulator_artifacts.mjs`, `test_pages_site.mjs`, native
 `web_demo_state_test` and browser offline/key checks cover this boundary.
@@ -31,6 +89,29 @@ also dispatch a short press. Mouse capture cancellation, focus loss and tab
 changes cancel pending holds. Keyboard K/B uses the same timing. Run
 `node host_web/scripts/test_simulator_keys.mjs` for the input regression checks.
 This browser adapter does not change physical firmware button handling.
+
+## Simplified Firmware Install
+
+The Firmware tab presents the latest merged Release as the default Online full
+installation. Full install only needs verified ESP32-S3 identity and a known
+Flash capacity; an empty or invalid partition table is allowed because merged
+firmware includes the partition table. It requires an explicit confirmation,
+freezes version/target while active, reuses the existing download/SHA-256/
+esptool/reset path, and never enables writing after a failed hash. It does not
+expose erase-all.
+
+Advanced firmware flashing retains local/App targets, dynamic partition checks,
+MAC/SHA256/details and baud rate. App writes require a valid device partition
+table and target capacity. Device disconnect, unknown chip/capacity, user
+cancel, duplicate clicks and failed writes must leave the main install blocked
+or retryable. Completion shows setup/Quick setup guidance without navigation.
+Mobile browsers can view the page but Web Serial still needs desktop Chrome/Edge.
+
+The updateFirmwareInstallSummary function runs during device identification and
+cleanup. Keep its dependencies defined in app.js; an exception there can abort
+cleanup before the connect button is re-enabled. The device-identification
+regression test executes this summary with a verified-session fixture and
+asserts both connection and installation buttons are available.
 
 ## Scope
 
@@ -142,7 +223,7 @@ Update the displayed web version in `index.html` on every user-visible developme
 Use the deployed GitHub Pages URL for preview and testing:
 
 ```text
-https://wickenzh.github.io/ESP32-S3-RLCD-4.2/
+https://nariichi3322.github.io/ESP32-S3-RLCD-4.2/
 ```
 
 Do not add local HTTP/HTTPS preview servers back into `host_web/` unless the user explicitly asks.
@@ -171,5 +252,8 @@ Do not add local HTTP/HTTPS preview servers back into `host_web/` unless the use
 - The serial writing path uses a repository-local pinned copy of `esptool-js 0.5.6` under `host_web/vendor/`; do not replace it with runtime CDN imports. Preserve its license and update the service-worker asset list when changing versions. `esptool-js` expects file data as a binary string, so `Uint8Array` payloads are converted before calling `writeFlash`.
 - After `writeFlash`, the app explicitly pulses serial RTS/DTR signals to reset the ESP32-S3. Keep this behavior unless hardware reset wiring changes.
 - The resource writer must keep the partition-table preflight: read flash `0x8000..0x8FFF`, parse 32-byte ESP-IDF partition entries, and only enable resource write/erase after finding `assets` with type `data`, subtype `0x40`, and enough space for the generated resource package.
-- Firmware flashing uses GitHub Release assets from `wickenzh/ESP32-S3-RLCD-4.2` as the sole online source. GitHub's final Release asset CDN does not expose CORS headers for JavaScript byte access, so the page must never fetch Release binaries directly. `.github/workflows/static.yml` runs `scripts/build_pages_site.mjs` to mirror the latest 10 complete releases into the ephemeral Pages artifact, after checking size and GitHub asset `digest` (`sha256:...`); do not commit mirrored bin files to Git history. The deployed page reads same-origin `firmware/releases.json` and same-origin firmware bytes, then verifies size and SHA256 again in browser memory before enabling flashing. Online firmware remains fully automatic; only the separate custom-firmware source uses a file picker. Accept the merged asset only for the `0x0` target and the App asset only for dynamically discovered App targets.
+- Firmware flashing uses GitHub Release assets from `nariichi3322/ESP32-S3-RLCD-4.2` as the sole online source. GitHub's final Release asset CDN does not expose CORS headers for JavaScript byte access, so the page must never fetch Release binaries directly. `.github/workflows/static.yml` runs `scripts/build_pages_site.mjs` to mirror the latest 10 complete releases into the ephemeral Pages artifact, after checking size and GitHub asset `digest` (`sha256:...`); do not commit mirrored bin files to Git history. The deployed page reads same-origin `firmware/releases.json` and same-origin firmware bytes, then verifies size and SHA256 again in browser memory before enabling flashing. Online firmware remains fully automatic; only the separate custom-firmware source uses a file picker. Accept the merged asset only for the `0x0` target and the App asset only for dynamically discovered App targets.
 - WeatherClock v1.5.x adds a `model` partition. The web host must not write App binaries to `assets`, `model`, `nvs`, bootloader, partition-table, or any fixed legacy address. Future standalone model flashing must also discover `model` address and size from the device partition table.
+## 双天气源快捷配置
+
+weather_provider协议值为qweather/open_meteo，开关默认关。Open-Meteo忽略并不输出api_key/api_host，保留DOM输入方便切回；离线链接不输出天气字段。四语词库同步动态警告和静态说明，语言切换不重新生成、不修改参数或用户输入。表单右栏使用同一subgrid，新增开关说明须放在标题容器，不能额外挤占既有五行导致后续字段重叠。

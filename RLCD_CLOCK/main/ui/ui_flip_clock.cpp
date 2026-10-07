@@ -11,6 +11,7 @@
 #include "ui_clock_seconds_state.h"
 #include "ui_draw_cache.h"
 #include "ui_fonts.h"
+#include "ui_celsius_marker.h"
 #include "ui_inverted_clock_card.h"
 #include "ui_i18n.h"
 #include "ui_page_state.h"
@@ -123,6 +124,7 @@ lv_obj_t *make_flip_sensor_value_label(lv_obj_t *parent,
         return nullptr;
     }
     style_flip_white_label(label, align);
+    ui_enable_celsius_marker(label);
     return label;
 }
 

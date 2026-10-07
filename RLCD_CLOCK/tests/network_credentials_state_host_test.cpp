@@ -30,13 +30,20 @@ int main()
     assert(network_wifi_credentials_copy(ssid, sizeof(ssid), password, sizeof(password)));
     assert(strcmp(ssid, "primary") == 0);
     assert(strcmp(password, "secret") == 0);
+    assert(network_wifi_current_ssid_snapshot(ssid, sizeof(ssid)));
+    assert(strcmp(ssid, "primary") == 0);
 
     assert(network_wifi_select_slot(WifiCredentialSlot::kSlotB));
     assert(network_wifi_credentials_copy(ssid, sizeof(ssid), password, sizeof(password)));
     assert(strcmp(ssid, "backup") == 0);
     assert(strcmp(password, "backup-secret") == 0);
+    assert(network_wifi_current_ssid_snapshot(ssid, sizeof(ssid)));
+    assert(strcmp(ssid, "backup") == 0);
 
     network_credentials_clear();
     assert(!network_all_online_credentials_configured());
+    memset(ssid, 'x', sizeof(ssid));
+    assert(!network_wifi_current_ssid_snapshot(ssid, sizeof(ssid)));
+    assert(ssid[0] == '\0');
     return 0;
 }

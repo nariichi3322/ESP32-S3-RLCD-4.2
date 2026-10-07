@@ -19,6 +19,7 @@
 #include "wifi_portal_dns.h"
 #include "wifi_portal_http.h"
 #include "wifi_portal_state_internal.h"
+#include "runtime_health.h"
 #include "wifi_radio_services_internal.h"
 #include "wifi_radio_state_internal.h"
 
@@ -52,6 +53,7 @@ esp_event_handler_instance_t s_ip_event_handler_instance = nullptr;
 std::atomic<bool> s_wifi_stop_requested{false};
 std::atomic<bool> s_wifi_stop_when_idle_requested{false};
 StaticTaskMutex s_wifi_lifecycle_mutex;
+uint32_t s_wifi_power_generation = 0;
 StaticTaskMutex s_wifi_failover_mutex;
 WifiDriverInitState s_wifi_driver_init_state =
     WifiDriverInitState::kRetryable;
@@ -216,7 +218,6 @@ constexpr uint32_t kWifiPowerSaveRetryMs = 10;
 constexpr unsigned kWifiPowerSaveAttempts = 3;
 constexpr TickType_t kWifiPowerSaveRetryDelay =
     pdMS_TO_TICKS(kWifiPowerSaveRetryMs);
-constexpr uint32_t kWifiPrimaryAttemptWindowMs = 12000;
 constexpr TickType_t kWifiPrimaryAttemptWindowTicks =
     pdMS_TO_TICKS(kWifiPrimaryAttemptWindowMs);
 static_assert(kSetupResultDeliveryAttempts > 0,
@@ -882,6 +883,7 @@ bool start_wifi_radio(bool enable_setup_portal)
         ESP_LOGW(TAG, "%s", WIFI_LIFECYCLE_MUTEX_UNAVAILABLE_LOG);
         return false;
     }
+    ++s_wifi_power_generation;
     if (offline_mode_enabled_load() && !enable_setup_portal) {
         ESP_LOGI(TAG, WIFI_START_SKIPPED_OFFLINE_LOG);
         return false;
@@ -1070,6 +1072,7 @@ static bool stop_wifi_radio_internal(WifiRadioStopAttempt attempt)
     err = esp_wifi_stop();
     if (err != ESP_OK && err != ESP_ERR_WIFI_NOT_STARTED) {
         ESP_LOGW(TAG, WIFI_STOP_FAILED_FORMAT, esp_err_to_name(err));
+        runtime_health_note_event(RuntimeHealthEvent::kWifiStopFailure);
         // Keep deliberate-stop ownership while the retry is pending. Clearing
         // it here lets the asynchronous disconnect event reconnect the STA
         // between failed stop attempts and extends the high-power window.
@@ -1113,6 +1116,53 @@ void stop_wifi_radio(bool force_setup_portal)
             : WifiRadioStopAttempt::kNormal);
     if (force_setup_portal && !stopped && setup_portal_active_load()) {
         (void)request_setup_portal_stop();
+    }
+}
+
+WeatherWifiPerformanceGuard::WeatherWifiPerformanceGuard(bool enabled)
+{
+    if (!enabled) {
+        return;
+    }
+    ScopedSemaphoreLock lock(s_wifi_lifecycle_mutex);
+    if (!lock || !wifi_radio_on_load() || setup_portal_active_load() ||
+        xiaozhi_ai_network_keepalive_active()) {
+        return;
+    }
+    wifi_ps_type_t previous = WIFI_PS_NONE;
+    esp_err_t err = esp_wifi_get_ps(&previous);
+    if (err == ESP_OK && previous != WIFI_PS_NONE) {
+        err = esp_wifi_set_ps(WIFI_PS_NONE);
+        if (err == ESP_OK) {
+            previous_mode_ = static_cast<int>(previous);
+            generation_ = s_wifi_power_generation;
+            changed_ = true;
+            ESP_LOGI(TAG, "weather Wi-Fi performance window: power save off");
+        }
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "weather Wi-Fi performance request failed: %s", esp_err_to_name(err));
+    }
+}
+
+WeatherWifiPerformanceGuard::~WeatherWifiPerformanceGuard()
+{
+    if (!changed_) {
+        return;
+    }
+    ScopedSemaphoreLock lock(s_wifi_lifecycle_mutex);
+    // A new start/mode transition owns its power policy; never restore stale state.
+    if (!lock || !wifi_radio_on_load() || generation_ != s_wifi_power_generation ||
+        setup_portal_active_load() || xiaozhi_ai_network_keepalive_active()) {
+        return;
+    }
+    wifi_ps_type_t current = WIFI_PS_NONE;
+    esp_err_t err = esp_wifi_get_ps(&current);
+    if (err == ESP_OK && current == WIFI_PS_NONE) {
+        err = esp_wifi_set_ps(static_cast<wifi_ps_type_t>(previous_mode_));
+    }
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "weather Wi-Fi power save restore failed: %s", esp_err_to_name(err));
     }
 }
 
