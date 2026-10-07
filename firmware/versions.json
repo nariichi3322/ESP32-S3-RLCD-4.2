@@ -1,6 +1,47 @@
 {
-  "latest": "v100.0.4",
+  "latest": "v100.0.5",
   "items": [
+    {
+      "version": "v100.0.5",
+      "notes": "v100.0.5：共 10 项更新。\n1. 本版本未變更分區表；已使用 v100.0.4 分區的裝置可直接 App-only OT…\n2. 日曆可選擇顯示中國農曆、日本舊曆或不顯示。\n3. 聚合時鐘新增霧天、多雲與陰天的天氣畫面。\n4. 極地等沒有日出或日落的日子改顯示 `--:--`，不再導致整份天氣預報更新失敗；日落跨…\n5. 充電狀態改為連續確認後才切換，並修正電量停在接近滿電的平台時被誤記為已充滿的問題。\n6. 自動定位結果在同一個 Wi-Fi 網路下最多沿用 6 小時，手動城市的座標最多沿用 2…\n7. 主、備 Wi-Fi 都無法連線時，自動天氣同步的連線等待由 45 秒縮短為 30 秒；…\n其余 3 项见源码仓库同版本 Release。",
+      "images": {
+        "zh-TW": {
+          "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.5/weather_clock_v100.0.5.bin",
+          "sha256": "1090b60c4df6f994044471f1c472889065b0c3ac5ea2599dce3051a51c7b075f",
+          "size": 6633984,
+          "locale": "zh-TW"
+        },
+        "zh-CN": {
+          "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.5/weather_clock_v100.0.5_zh-CN.bin",
+          "sha256": "1816efd875990260b2d8f595b42fa070f17043c42575a8e3c9e4502c142fc100",
+          "size": 6633984,
+          "locale": "zh-CN"
+        },
+        "en": {
+          "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.5/weather_clock_v100.0.5_en.bin",
+          "sha256": "9e188328b9397b7543d2e05634d5d8405b4838480afb75c60faae104a1e7d6fc",
+          "size": 6625216,
+          "locale": "en"
+        },
+        "ja": {
+          "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.5/weather_clock_v100.0.5_ja.bin",
+          "sha256": "47bc9e306f3466e6ae6c069d870f15d77042c09567e23d58b41b5d1d0c4944c3",
+          "size": 5887648,
+          "locale": "ja"
+        }
+      },
+      "app": {
+        "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.5/weather_clock_v100.0.5.bin",
+        "sha256": "1090b60c4df6f994044471f1c472889065b0c3ac5ea2599dce3051a51c7b075f",
+        "size": 6633984,
+        "locale": "zh-TW"
+      },
+      "merged": {
+        "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.5/weather_clock_v100.0.5_merged.bin",
+        "sha256": "bfc02f7b2a3db2be04fd11df9e5d463b58354c7a031b1d48a000038e8d5899cd",
+        "size": 16509951
+      }
+    },
     {
       "version": "v100.0.4",
       "notes": "v100.0.4：共 11 项更新。\n1. 舊分區先刷 v100.0.4 merged，勿直接 App-only OTA。\n2. 建立繁體中文、簡體中文、English 與日本語四種固件版本；OTA 清單會依裝置選擇…\n3. 天氣看板新增每日預報與逐時預報卡片切換，方便依螢幕版面選擇所需資訊。\n4. 新增聚合時鐘頁，整合時間、天氣、預報高低溫、農曆日期與本機感測器資料。\n5. 修正聚合時鐘標籤、溫度數字與度數圓點的排版，改善不同資料狀態下的可讀性。\n6. 修正設定入口、頁面排列與部分頁面文字在不同語言或畫面尺寸下的顯示問題。\n其余 5 项见源码仓库同版本 Release。",
@@ -151,20 +192,6 @@
       "merged": {
         "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.38/weather_clock_v1.5.38_merged.bin",
         "sha256": "03c777128f44315234ae96183efe3ac4921e8bb52c695d4fd1c6d65252067812",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.37",
-      "notes": "v1.5.37：共 4 项更新。\n1. GitHub 公开源码首页新增完整英文版本和中英文切换入口，并补充微雪官方产品、硬件文…\n2. 修复电池实际充满时“上次满电时间”不更新的问题；现在仅在确认充电、会话从 96% 以下…\n3. 修复关机重启后的电压恢复可能被误记为一次满电的问题；拔线、高电量开机和普通电压回落不再…\n4. 统一中英文用户手册、开发规范和项目指南中的满电判定说明，明确无充电状态引脚时采用保守…\n完整说明见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.37/weather_clock_v1.5.37.bin",
-        "sha256": "65b46b262c9354660e2b3f91ae6530c28d415e0c754d23c37c11fd327e29270f",
-        "size": 6265952
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.37/weather_clock_v1.5.37_merged.bin",
-        "sha256": "ba086ac7365540141a9588ad68fd2c0afb17f09ba877ea771fe77510773a3a61",
         "size": 16509951
       }
     }
