@@ -1,6 +1,47 @@
 {
-  "latest": "v100.0.5",
+  "latest": "v100.0.6",
   "items": [
+    {
+      "version": "v100.0.6",
+      "notes": "v100.0.6：共 4 项更新。\n1. 本版本未變更分區表；已使用 v100.0.4 以後分區的裝置可直接 App-only…\n2. 頁面開關與排序會自動沿用舊設定，新增的 Claude 用量頁預設開啟並排在最後；不需要…\n3. 新增 Claude 用量頁：透過與 Codex 頁相同的加密藍牙，顯示 Claude…\n4. 「關於」頁的原始碼連結改為指向 nariichi3322 分支的儲存庫。\n完整说明见源码仓库同版本 Release。",
+      "images": {
+        "zh-TW": {
+          "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.6/weather_clock_v100.0.6.bin",
+          "sha256": "7e60b9880f74c93b9c1c50e7510531451cb516e779da6e803254f8746fae1667",
+          "size": 6636720,
+          "locale": "zh-TW"
+        },
+        "zh-CN": {
+          "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.6/weather_clock_v100.0.6_zh-CN.bin",
+          "sha256": "5a21ca2902720a939d7f474ff4f797a9a9e7e3531d8481671d78b27a29c05caa",
+          "size": 6636720,
+          "locale": "zh-CN"
+        },
+        "en": {
+          "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.6/weather_clock_v100.0.6_en.bin",
+          "sha256": "768d1ea6b8fd787cc37e30592608652c3845f93a41e5e5444ceff4d510271bc7",
+          "size": 6627952,
+          "locale": "en"
+        },
+        "ja": {
+          "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.6/weather_clock_v100.0.6_ja.bin",
+          "sha256": "ca9b29353d32483ff1dd83f14024a972af57722a38aa36bb7afbd551c54864d0",
+          "size": 5890384,
+          "locale": "ja"
+        }
+      },
+      "app": {
+        "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.6/weather_clock_v100.0.6.bin",
+        "sha256": "7e60b9880f74c93b9c1c50e7510531451cb516e779da6e803254f8746fae1667",
+        "size": 6636720,
+        "locale": "zh-TW"
+      },
+      "merged": {
+        "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.6/weather_clock_v100.0.6_merged.bin",
+        "sha256": "2a9a42ac299d06fd6a4e9d049ffb63fcb4f5c9b8fd86a28450773a27945c2715",
+        "size": 16509951
+      }
+    },
     {
       "version": "v100.0.5",
       "notes": "v100.0.5：共 10 项更新。\n1. 本版本未變更分區表；已使用 v100.0.4 分區的裝置可直接 App-only OT…\n2. 日曆可選擇顯示中國農曆、日本舊曆或不顯示。\n3. 聚合時鐘新增霧天、多雲與陰天的天氣畫面。\n4. 極地等沒有日出或日落的日子改顯示 `--:--`，不再導致整份天氣預報更新失敗；日落跨…\n5. 充電狀態改為連續確認後才切換，並修正電量停在接近滿電的平台時被誤記為已充滿的問題。\n6. 自動定位結果在同一個 Wi-Fi 網路下最多沿用 6 小時，手動城市的座標最多沿用 2…\n7. 主、備 Wi-Fi 都無法連線時，自動天氣同步的連線等待由 45 秒縮短為 30 秒；…\n其余 3 项见源码仓库同版本 Release。",
@@ -178,20 +219,6 @@
       "merged": {
         "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.39/weather_clock_v1.5.39_merged.bin",
         "sha256": "5a92448e7bf940dc0a790f614a22bfbfa115643ca56b6e721a70d944c72b3367",
-        "size": 16509951
-      }
-    },
-    {
-      "version": "v1.5.38",
-      "notes": "v1.5.38：共 8 项更新。\n1. 修复小智待唤醒、首次进入实时会话及离开页面时的 Wi-Fi 省电状态和 PM 锁校准，…\n2. 修正 ESP-IDF 新 I2C 主机接口的超时单位，避免慢总线或外设异常时实际等待时…\n3. 修复 SensorLib 调试帧长度校验缺失，异常帧不再可能越界复制。\n4. 修正显示驱动同时支持 LUT 与非 LUT 算法时的构建测试定位，保证两种实现均按各自…\n5. 上位机 Web Serial 烧录依赖改为固定版本并随项目本地提供，避免运行时第三方…\n6. Power Demo 不再把本机 Wi-Fi 凭据编译进固件，改为读取正式固件已保存的…\n其余 2 项见源码仓库同版本 Release。",
-      "app": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.38/weather_clock_v1.5.38.bin",
-        "sha256": "ec771de44bbb001b891a0d5a69bfd6ec20037e92c3fb5db7c23cae7e75ff70ce",
-        "size": 6266112
-      },
-      "merged": {
-        "url": "https://github.com/wickenzh/ESP32-S3-RLCD-4.2/releases/download/v1.5.38/weather_clock_v1.5.38_merged.bin",
-        "sha256": "03c777128f44315234ae96183efe3ac4921e8bb52c695d4fd1c6d65252067812",
         "size": 16509951
       }
     }
