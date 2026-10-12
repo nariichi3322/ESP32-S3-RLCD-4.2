@@ -96,6 +96,9 @@ async function fetchJson(url) {
   return response.json();
 }
 
+// Must track the compile step name in build-release.yml; the old name covers releases built before the rename.
+const FIRMWARE_BUILD_STEP_NAMES = new Set(["编译四种语言并生成完整刷写固件", "编译并生成双固件"]);
+
 async function fetchFirmwareBuildTimes(candidates) {
   if (!process.env.GH_API_TOKEN) return new Map();
   const wantedVersions = new Set(candidates.map(({ version }) => version.replace(/^v/i, "").toLowerCase()));
@@ -107,7 +110,7 @@ async function fetchFirmwareBuildTimes(candidates) {
     const version = String(run.display_title || "").trim();
     if (!version || !wantedVersions.has(version.replace(/^v/i, "").toLowerCase()) || buildTimes.has(version) || !run.jobs_url) continue;
     const jobs = await fetchJson(run.jobs_url);
-    const buildStep = (jobs.jobs || []).flatMap((job) => job.steps || []).find((step) => step.name === "编译并生成双固件" && step.conclusion === "success");
+    const buildStep = (jobs.jobs || []).flatMap((job) => job.steps || []).find((step) => FIRMWARE_BUILD_STEP_NAMES.has(step.name) && step.conclusion === "success");
     if (buildStep?.completed_at) buildTimes.set(version, buildStep.completed_at);
   }
   return buildTimes;
