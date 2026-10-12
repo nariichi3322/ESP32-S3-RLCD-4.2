@@ -2153,6 +2153,9 @@
     { "id": "LanguageTraditionalCompact", "zh-TW": "繁體", "zh-CN": "繁体", "en": "T-Chinese", "ja": "中国語" },
     { "id": "LanguageSimplifiedCompact", "zh-TW": "簡體", "zh-CN": "简体", "en": "S-Chinese", "ja": "簡体" },
     { "id": "LanguageEnglishCompact", "zh-TW": "英文", "zh-CN": "英文", "en": "English", "ja": "英語" },
-    { "id": "LanguageJapaneseCompact", "zh-TW": "日文", "zh-CN": "日语", "en": "Japanese", "ja": "日本語" }
+    { "id": "LanguageJapaneseCompact", "zh-TW": "日文", "zh-CN": "日语", "en": "Japanese", "ja": "日本語" },
+    { "id": "Claude", "zh-TW": "Claude", "zh-CN": "Claude", "en": "Claude", "ja": "Claude" },
+    { "id": "ClaudeQuotaTitle", "zh-TW": "CLAUDE 剩餘 (%s)", "zh-CN": "CLAUDE 剩余 (%s)", "en": "CLAUDE LEFT (%s)", "ja": "CLAUDE残り (%s)" },
+    { "id": "ClaudePrimaryTitlePlaceholder", "zh-TW": "CLAUDE 剩餘 (--)", "zh-CN": "CLAUDE 剩余 (--)", "en": "CLAUDE LEFT (--)", "ja": "CLAUDE残り (--)" }
   ]
 }

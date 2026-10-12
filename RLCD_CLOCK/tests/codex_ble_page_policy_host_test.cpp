@@ -15,6 +15,14 @@ int main()
     assert(normal.should_run);
     assert(!normal.immediate_stop);
 
+    // The Claude page shares the Codex BLE transport.
+    const CodexBlePageDecision claude = codex_ble_page_decision(
+        kWorkPageClaudeUsage, false, false, false, false, false, kOtaIdle);
+    assert(claude.should_run);
+    assert(!claude.immediate_stop);
+    assert(!codex_ble_page_decision(kWorkPageClaudeUsage, true, false, false,
+                                    false, false, kOtaIdle).should_run);
+
     // A normal page transition is graceful, not an immediate stop.
     const CodexBlePageDecision ordinary_page = codex_ble_page_decision(
         kWorkPageWeatherClock,

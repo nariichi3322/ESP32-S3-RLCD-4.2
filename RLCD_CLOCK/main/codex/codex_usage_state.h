@@ -14,3 +14,10 @@ CodexUsageParseResult codex_usage_state_submit(const char *payload,
                                                uint32_t now_tick_ms,
                                                bool *display_changed = nullptr);
 bool codex_usage_snapshot_copy(CodexUsageSnapshotView *out);
+// Claude usage arrives in the same v3 payload format on a second
+// characteristic; connection and reset events apply to both snapshots.
+CodexUsageParseResult claude_usage_state_submit(const char *payload,
+                                                size_t payload_size,
+                                                uint32_t now_tick_ms,
+                                                bool *display_changed = nullptr);
+bool claude_usage_snapshot_copy(CodexUsageSnapshotView *out);

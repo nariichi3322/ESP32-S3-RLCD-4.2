@@ -18,7 +18,7 @@ bool saved_page_order_matches(nvs_handle_t nvs,
     return page_order &&
            page_order_size == sizeof(saved_order) &&
            nvs_get_blob(nvs,
-                         kPageOrderV7Key,
+                         kPageOrderV8Key,
                         saved_order,
                         &stored_len) == ESP_OK &&
            stored_len == sizeof(saved_order) &&
@@ -28,10 +28,14 @@ bool saved_page_order_matches(nvs_handle_t nvs,
 
 WorkPageMask read_saved_page_mask(nvs_handle_t nvs)
 {
-    uint16_t v7_mask = 0;
-    if (nvs_get_u16(nvs, kPageMaskV7Key, &v7_mask) == ESP_OK &&
-        (static_cast<WorkPageMask>(v7_mask) & ~kCurrentKnownPageMask) == 0) {
-        return normalize_work_page_enabled_mask(static_cast<WorkPageMask>(v7_mask));
+    uint16_t wide_mask = 0;
+    if (nvs_get_u16(nvs, kPageMaskV8Key, &wide_mask) == ESP_OK &&
+        (static_cast<WorkPageMask>(wide_mask) & ~kCurrentKnownPageMask) == 0) {
+        return normalize_work_page_enabled_mask(static_cast<WorkPageMask>(wide_mask));
+    }
+    if (nvs_get_u16(nvs, kPageMaskV7Key, &wide_mask) == ESP_OK &&
+        (static_cast<WorkPageMask>(wide_mask) & ~kLegacyV7KnownPageMask) == 0) {
+        return normalize_work_page_enabled_mask(migrate_v7_page_mask(wide_mask));
     }
     uint8_t page_mask = 0;
     if (nvs_get_u8(nvs, kPageMaskV6Key, &page_mask) == ESP_OK &&
@@ -55,9 +59,16 @@ bool read_saved_page_order(nvs_handle_t nvs, uint8_t *page_order, size_t page_or
         return false;
     }
     size_t stored_len = page_order_size;
-    if (nvs_get_blob(nvs, kPageOrderV7Key, page_order, &stored_len) == ESP_OK &&
+    if (nvs_get_blob(nvs, kPageOrderV8Key, page_order, &stored_len) == ESP_OK &&
         stored_len == page_order_size &&
         work_page_order_policy::order_is_valid(page_order, page_order_size)) {
+        return true;
+    }
+    uint8_t v7_order[kLegacyV7WorkPageCount] = {};
+    stored_len = sizeof(v7_order);
+    if (nvs_get_blob(nvs, kPageOrderV7Key, v7_order, &stored_len) == ESP_OK &&
+        stored_len == sizeof(v7_order) &&
+        migrate_v7_page_order(v7_order, sizeof(v7_order), page_order, page_order_size)) {
         return true;
     }
     uint8_t v6_order[kLegacyV6WorkPageCount] = {};
@@ -101,7 +112,7 @@ esp_err_t write_work_page_order_nvs(nvs_handle_t nvs,
     if (saved_page_order_matches(nvs, page_order, page_order_size)) {
         return ESP_OK;
     }
-    esp_err_t write_err = nvs_set_blob(nvs, kPageOrderV7Key, page_order, page_order_size);
+    esp_err_t write_err = nvs_set_blob(nvs, kPageOrderV8Key, page_order, page_order_size);
     if (write_err == ESP_OK && changed) {
         *changed = true;
     }

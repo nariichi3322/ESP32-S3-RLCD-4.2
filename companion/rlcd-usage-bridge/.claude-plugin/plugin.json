@@ -1,0 +1,1 @@
+{ "name": "rlcd-usage-bridge", "version": "0.1.0", "description": "Writes Claude rate-limit windows for the RLCD display companion" }

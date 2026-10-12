@@ -4,14 +4,14 @@ In this fork QWeather is deprecated and not used. The firmware uses Open-Meteo o
 
 > **Language:** English (current) · [Chinese](README.md) · [Traditional Chinese](README_zh_TW.md) · [Japanese](README_JA.md)
 
-This fork is a low-power weather-clock firmware for the **ESP32-S3** and a **4.2-inch RLCD display**. It provides weather, calendar, temperature/humidity history, aggregate clock, Xiaozhi AI, and Codex usage pages. Wi-Fi is used on demand for provisioning, weather, daily sayings, NTP, diagnostics, and user-initiated OTA updates.
+This fork is a low-power weather-clock firmware for the **ESP32-S3** and a **4.2-inch RLCD display**. It provides weather, calendar, temperature/humidity history, aggregate clock, Xiaozhi AI, Codex usage, and Claude usage pages. Wi-Fi is used on demand for provisioning, weather, daily sayings, NTP, diagnostics, and user-initiated OTA updates.
 
 ## Current Build: Multi-page Weather Clock + Manual OTA
 
 - Configure primary/backup Wi-Fi and the NTP server through the setup portal.
 - Open **System → Check Update** and press BOOT to check manually. If an update is available, press BOOT again within 60 seconds to install it.
 - Weather, Daily Saying, Xiaozhi AI, Network Diagnostics, manual synchronization, and OTA run only after the corresponding user action or scheduled data refresh. OTA is never checked automatically.
-- Weather, Picture Clock, Weather Board, Temperature/Humidity Clock, Calendar, Temperature/Humidity History, Aggregate Clock, Xiaozhi AI, and Codex Usage can be disabled or reordered in Settings. Offline mode remains available for pages that do not require network data.
+- Weather, Picture Clock, Weather Board, Temperature/Humidity Clock, Calendar, Temperature/Humidity History, Aggregate Clock, Xiaozhi AI, Codex Usage, and Claude Usage can be disabled or reordered in Settings. Offline mode remains available for pages that do not require network data.
 - OTA manifests for this fork are published from the `nariichi3322` branch; `main` remains reserved for upstream synchronization.
 
 ## Quick Links
@@ -65,6 +65,7 @@ The default order is shown below. Pages can be disabled or reordered in Settings
 7. **Xiaozhi AI:** local wake word, voice conversations, captions, spoken replies, one-shot alarms, Pomodoro timers, and weather-city configuration.
 8. **Aggregate Clock:** a seconds-updating local clock that combines weather, forecast range, lunar date, and local sensor data.
 9. **Codex Usage:** encrypted BLE display of Codex usage and quota status from the companion application.
+10. **Claude Usage:** Claude Code 5-hour / 7-day rate limits, token totals, and running sessions over the same encrypted BLE link. See [companion/README.md](companion/README.md) to set up the companion.
 Every page follows a partial-refresh-first policy. Second-level pages update only changing digits, minute-level pages redraw only when time, data, or visible state changes, and hidden pages do not continue unnecessary rendering.
 
 ## Provisioning and Networking

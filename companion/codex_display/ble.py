@@ -4,7 +4,7 @@ import platform
 from collections.abc import Awaitable, Callable
 from typing import Any, Optional
 
-from .constants import DEVICE_NAME, SERVICE_UUID, STATUS_UUID
+from .constants import CLAUDE_STATUS_UUID, DEVICE_NAME, SERVICE_UUID, STATUS_UUID
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +51,15 @@ def _enable_winrt_service_changed_retry(client: Any) -> bool:
 class BleCompanion:
     """Windows-only, one-way status client; no command characteristic exists."""
 
-    def __init__(self, snapshot_provider: Callable[[], Awaitable[bytes]],
+    def __init__(self, snapshot_provider: Optional[Callable[[], Awaitable[bytes]]],
                  request_refresh: Optional[Callable[[], Awaitable[None]]] = None,
                  device_name: str = DEVICE_NAME, heartbeat_seconds: float = 15.0,
                  status_changed: Optional[asyncio.Event] = None,
                  initial_snapshot_provider: Optional[
-                     Callable[[], Awaitable[bytes]]] = None) -> None:
+                     Callable[[], Awaitable[bytes]]] = None,
+                 claude_provider: Optional[Callable[[], Awaitable[bytes]]] = None) -> None:
+        # snapshot_provider None = Claude-only mode (Codex unavailable).
+        self.claude_provider = claude_provider
         self.snapshot_provider = snapshot_provider
         self.initial_snapshot_provider = (initial_snapshot_provider or
                                           snapshot_provider)
@@ -65,6 +68,7 @@ class BleCompanion:
         self.heartbeat_seconds = heartbeat_seconds
         self.status_changed = status_changed
         self.connected_event = asyncio.Event()
+        self._claude_skip_logged = False
 
     async def find_device(self):
         from bleak import BleakScanner
@@ -82,6 +86,7 @@ class BleCompanion:
             self.connected_event.clear()
             disconnected.set()
 
+        self._claude_skip_logged = False
         client = BleakClient(device, **_client_options(on_disconnect))
         _enable_winrt_service_changed_retry(client)
         try:
@@ -93,7 +98,7 @@ class BleCompanion:
                 try:
                     await asyncio.wait_for(self.request_refresh(),
                                            POST_LINK_REFRESH_TIMEOUT_SECONDS)
-                    await self._send(client)
+                    await self._send_all(client)
                 except asyncio.TimeoutError:
                     logger.warning("Post-link Codex refresh timed out; keeping BLE connected")
                 except Exception:
@@ -117,7 +122,7 @@ class BleCompanion:
                     if lost in done:
                         break
                     self.status_changed.clear()
-                await self._send(client)
+                await self._send_all(client)
         finally:
             self.connected_event.clear()
             if client.is_connected:
@@ -132,13 +137,37 @@ class BleCompanion:
         await asyncio.wait_for(client.write_gatt_char(
             STATUS_UUID, await snapshot_provider(), response=True), 10)
 
+    async def _send_claude(self, client: Any) -> None:
+        if self.claude_provider is None:
+            return
+        services = getattr(client, "services", None)
+        if services is None or services.get_characteristic(CLAUDE_STATUS_UUID) is None:
+            # Older firmware has no Claude characteristic; keep the Codex link alone.
+            if not self._claude_skip_logged:
+                logger.info("Display firmware has no Claude characteristic; skipping Claude status")
+                self._claude_skip_logged = True
+            return
+        try:
+            payload = await self.claude_provider()
+        except Exception:
+            # Bad local Claude data must never tear down the shared Codex link.
+            logger.exception("Claude snapshot failed; skipping Claude status")
+            return
+        await asyncio.wait_for(client.write_gatt_char(
+            CLAUDE_STATUS_UUID, payload, response=True), 10)
+
+    async def _send_all(self, client: Any, initial: bool = False) -> None:
+        if self.snapshot_provider is not None:
+            await self._send(client, self.initial_snapshot_provider if initial else None)
+        await self._send_claude(client)
+
     async def _send_after_authentication(self, client: Any) -> None:
         """Keep the BLE link alive while Windows completes passkey pairing."""
         deadline = asyncio.get_running_loop().time() + PAIRING_WAIT_SECONDS
         waiting_logged = False
         while True:
             try:
-                await self._send(client, self.initial_snapshot_provider)
+                await self._send_all(client, initial=True)
                 return
             except Exception as error:
                 message = str(error).lower()

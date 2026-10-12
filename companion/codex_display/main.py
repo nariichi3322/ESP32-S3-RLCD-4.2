@@ -11,6 +11,7 @@ from typing import Optional
 
 from .app_server import AppServerClient
 from .ble import BleCompanion
+from .claude_usage import ClaudeSnapshotCache
 from .hook_events import HookActivityTracker
 from .local_usage import read_local_tokens
 from .metrics import Snapshot, collect_active_thread_state, collect_snapshot_state
@@ -127,39 +128,58 @@ async def reconcile_loop(cache: SnapshotCache, seconds: float,
                 logging.exception("Periodic RUN reconciliation failed")
 
 
+async def run_codex(args: argparse.Namespace, client: AppServerClient,
+                    claude: ClaudeSnapshotCache) -> None:
+    cache = SnapshotCache(client, args.refresh_seconds)
+    # Preload the first snapshot before scanning. Once BLE connects, the
+    # initial authenticated write must not wait on an app-server round trip.
+    await cache.refresh()
+    activity = HookActivityTracker(cache.activity_changed)
+    cache.attach_activity(activity)
+    ble = BleCompanion(cache.encoded, cache.refresh, args.device,
+                       args.heartbeat_seconds, cache.status_changed,
+                       cache.encoded_cached, claude.encoded)
+    tasks = [asyncio.create_task(activity.run_forever()),
+             asyncio.create_task(reconcile_loop(cache, args.run_reconcile_seconds,
+                                                ble.connected_event)),
+             asyncio.create_task(ble.run_forever()),
+             asyncio.create_task(client.wait_for_exit())]
+    try:
+        done, _ = await asyncio.wait(tasks[2:], return_when=asyncio.FIRST_COMPLETED)
+        for task in done:
+            task.result()
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+
 async def run(args: argparse.Namespace) -> None:
     if platform.system() != "Windows":
         raise RuntimeError("This companion supports Windows only")
-    client = AppServerClient(args.codex_bin)
-    await client.start()
+    claude = ClaudeSnapshotCache(args.refresh_seconds)
+    client: Optional[AppServerClient] = None
     try:
-        cache = SnapshotCache(client, args.refresh_seconds)
+        client = AppServerClient(args.codex_bin)
+        await client.start()
+    except Exception as error:
+        logging.warning("Codex unavailable (%s); running Claude-only", error)
+        client = None
+    try:
         if args.once:
-            print((await cache.encoded()).decode())
+            if client is not None:
+                print((await SnapshotCache(client, args.refresh_seconds).encoded()).decode())
+            print((await claude.encoded()).decode())
             return
-        # Preload the first snapshot before scanning. Once BLE connects, the
-        # initial authenticated write must not wait on an app-server round trip.
-        await cache.refresh()
-        activity = HookActivityTracker(cache.activity_changed)
-        cache.attach_activity(activity)
-        ble = BleCompanion(cache.encoded, cache.refresh, args.device,
-                           args.heartbeat_seconds, cache.status_changed,
-                           cache.encoded_cached)
-        tasks = [asyncio.create_task(activity.run_forever()),
-                 asyncio.create_task(reconcile_loop(cache, args.run_reconcile_seconds,
-                                                    ble.connected_event)),
-                 asyncio.create_task(ble.run_forever()),
-                 asyncio.create_task(client.wait_for_exit())]
-        try:
-            done, _ = await asyncio.wait(tasks[2:], return_when=asyncio.FIRST_COMPLETED)
-            for task in done:
-                task.result()
-        finally:
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
+        if client is not None:
+            await run_codex(args, client, claude)
+        else:
+            await claude.encoded()  # warm the first transcript scan before BLE connects
+            await BleCompanion(None, None, args.device, args.heartbeat_seconds,
+                               claude_provider=claude.encoded).run_forever()
     finally:
-        await client.stop()
+        if client is not None:
+            await client.stop()
 
 
 def parser() -> argparse.ArgumentParser:

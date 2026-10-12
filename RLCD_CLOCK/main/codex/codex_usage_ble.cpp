@@ -61,6 +61,11 @@ const ble_uuid128_t kServiceUuid = BLE_UUID128_INIT(
 const ble_uuid128_t kStatusUuid = BLE_UUID128_INIT(
     0x02, 0xde, 0xc0, 0x70, 0x65, 0x1b, 0xf8, 0xa0,
     0x44, 0x4b, 0x6d, 0x8f, 0x20, 0x6c, 0x8b, 0x7d);
+const ble_uuid128_t kClaudeStatusUuid = BLE_UUID128_INIT(
+    0x03, 0xde, 0xc0, 0x70, 0x65, 0x1b, 0xf8, 0xa0,
+    0x44, 0x4b, 0x6d, 0x8f, 0x20, 0x6c, 0x8b, 0x7d);
+// Non-null access-callback arg marks the Claude characteristic.
+int s_claude_status_marker;
 
 std::atomic<bool> s_initialized{false};
 std::atomic<bool> s_running{false};
@@ -89,6 +94,7 @@ SemaphoreHandle_t s_clear_bonds_done = nullptr;
 std::atomic<bool> s_clear_bonds_pending{false};
 std::atomic<bool> s_clear_bonds_result{false};
 uint16_t s_status_value_handle = 0;
+uint16_t s_claude_status_value_handle = 0;
 
 void notify_control_task(uint32_t notification)
 {
@@ -131,7 +137,7 @@ void log_rejected_status(CodexUsageParseResult result)
 }
 
 int status_access(uint16_t conn_handle, uint16_t,
-                  ble_gatt_access_ctxt *ctxt, void *)
+                  ble_gatt_access_ctxt *ctxt, void *arg)
 {
     if (ctxt->op != BLE_GATT_ACCESS_OP_WRITE_CHR) {
         return BLE_ATT_ERR_WRITE_NOT_PERMITTED;
@@ -152,8 +158,10 @@ int status_access(uint16_t conn_handle, uint16_t,
         copied != length) {
         return BLE_ATT_ERR_UNLIKELY;
     }
-    const CodexUsageParseResult result = codex_usage_state_submit(
-        reinterpret_cast<const char *>(payload), copied, monotonic_ms());
+    const char *text = reinterpret_cast<const char *>(payload);
+    const CodexUsageParseResult result =
+        arg ? claude_usage_state_submit(text, copied, monotonic_ms())
+            : codex_usage_state_submit(text, copied, monotonic_ms());
     if (result != CodexUsageParseResult::Ok) {
         log_rejected_status(result);
         return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
@@ -216,6 +224,17 @@ const ble_gatt_chr_def kCharacteristics[] = {
                  BLE_GATT_CHR_F_WRITE_AUTHEN,
         .min_key_size = 16,
         .val_handle = &s_status_value_handle,
+        .cpfd = nullptr,
+    },
+    {
+        .uuid = &kClaudeStatusUuid.u,
+        .access_cb = status_access,
+        .arg = &s_claude_status_marker,
+        .descriptors = nullptr,
+        .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC |
+                 BLE_GATT_CHR_F_WRITE_AUTHEN,
+        .min_key_size = 16,
+        .val_handle = &s_claude_status_value_handle,
         .cpfd = nullptr,
     },
     {},
@@ -423,8 +442,9 @@ void on_sync()
          * its attribute table.
          */
         ble_svc_gatt_changed(0x0001, 0xffff);
-        ESP_LOGI(kTag, "GATT ready status_handle=0x%04x; cache refresh queued",
-                 s_status_value_handle);
+        ESP_LOGI(kTag,
+                 "GATT ready status_handle=0x%04x claude_handle=0x%04x; cache refresh queued",
+                 s_status_value_handle, s_claude_status_value_handle);
         start_advertising_with_retry();
     }
 }

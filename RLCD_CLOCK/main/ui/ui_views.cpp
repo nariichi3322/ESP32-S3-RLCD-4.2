@@ -254,13 +254,17 @@ void ui_task(void *)
             weather_network_bits = static_cast<uint32_t>(
                 app_event_group_get_bits() & kUiWeatherNetworkStatusBits);
         }
-        const bool codex_enabled = active_page == kWorkPageCodexUsage;
+        const bool codex_enabled = codex_ble_usage_page(active_page);
         const bool codex_transport_running =
             codex_usage_ble_transport_running();
         uint8_t codex_link_state = static_cast<uint8_t>(
             CodexUsageLinkState::Disconnected);
         CodexUsageSnapshotView codex_view{};
-        if (codex_usage_snapshot_copy(&codex_view)) {
+        const bool codex_view_copied =
+            active_page == kWorkPageClaudeUsage
+                ? claude_usage_snapshot_copy(&codex_view)
+                : codex_usage_snapshot_copy(&codex_view);
+        if (codex_view_copied) {
             const uint32_t codex_now_ms = static_cast<uint32_t>(
                 esp_timer_get_time() / 1000ULL);
             codex_link_state = static_cast<uint8_t>(codex_usage_link_state(

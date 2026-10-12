@@ -15,6 +15,7 @@
 #include "ui_bitmap.h"
 #include "ui_icons.h"
 #include "ui_codex_usage.h"
+#include "ui_claude_usage.h"
 #include "ui_aggregate_clock.h"
 #include "ui_flip_clock.h"
 #include "ui_progress.h"
@@ -83,6 +84,9 @@ lv_obj_t *build_work_page_root(int page)
         break;
     case kWorkPageCodexUsage:
         build_codex_usage_page();
+        break;
+    case kWorkPageClaudeUsage:
+        build_claude_usage_page();
         break;
     case kWorkPageAggregateClock:
         build_aggregate_clock_page();

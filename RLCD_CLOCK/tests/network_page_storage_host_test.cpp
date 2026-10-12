@@ -17,6 +17,10 @@ uint8_t g_v5_order[network_page_storage::kLegacyV5WorkPageCount] = {};
 bool g_have_v5_order = false;
 uint8_t g_v6_order[network_page_storage::kLegacyV6WorkPageCount] = {};
 bool g_have_v6_order = false;
+uint8_t g_v7_order[network_page_storage::kLegacyV7WorkPageCount] = {};
+bool g_have_v7_order = false;
+bool g_have_v8_mask = false;
+uint16_t g_v8_mask = 0;
 bool g_have_v6_mask = false;
 bool g_have_v7_mask = false;
 bool g_have_v5_mask = false;
@@ -40,6 +44,9 @@ void reset_store()
     g_have_v5_order = false;
     memset(g_v6_order, 0, sizeof(g_v6_order));
     g_have_v6_order = false;
+    memset(g_v7_order, 0, sizeof(g_v7_order));
+    g_have_v7_order = false;
+    g_have_v8_mask = false;
     g_have_v6_mask = g_have_v5_mask = g_have_v4_mask = false;
     g_have_v7_mask = false;
     g_set_blob_result = ESP_OK;
@@ -56,6 +63,10 @@ WorkPageMask normalize_work_page_enabled_mask(WorkPageMask page_mask)
 esp_err_t nvs_get_u16(nvs_handle_t, const char *key, uint16_t *out)
 {
     if (!key || !out) return ESP_ERR_INVALID_ARG;
+    if (strcmp(key, network_page_storage::kPageMaskV8Key) == 0 && g_have_v8_mask) {
+        *out = g_v8_mask;
+        return ESP_OK;
+    }
     if (strcmp(key, network_page_storage::kPageMaskV7Key) == 0 && g_have_v7_mask) {
         *out = g_v7_mask;
         return ESP_OK;
@@ -88,6 +99,13 @@ esp_err_t nvs_get_blob(nvs_handle_t, const char *key, void *out, size_t *len)
         return ESP_FAIL;
     }
     if (strcmp(key, network_page_storage::kPageOrderV7Key) == 0) {
+        if (!g_have_v7_order) return ESP_ERR_NVS_NOT_FOUND;
+        if (*len < sizeof(g_v7_order)) return ESP_FAIL;
+        memcpy(out, g_v7_order, sizeof(g_v7_order));
+        *len = sizeof(g_v7_order);
+        return ESP_OK;
+    }
+    if (strcmp(key, network_page_storage::kPageOrderV8Key) == 0) {
         if (!g_have_saved_order) {
             return ESP_ERR_NVS_NOT_FOUND;
         }
@@ -133,7 +151,7 @@ esp_err_t nvs_set_blob(nvs_handle_t, const char *key, const void *value, size_t 
         return g_set_blob_result;
     }
     if (!key ||
-        strcmp(key, network_page_storage::kPageOrderV7Key) != 0 ||
+        strcmp(key, network_page_storage::kPageOrderV8Key) != 0 ||
         !value ||
         len != sizeof(g_saved_order)) {
         return ESP_ERR_INVALID_ARG;
@@ -146,24 +164,32 @@ esp_err_t nvs_set_blob(nvs_handle_t, const char *key, const void *value, size_t 
 int main()
 {
     constexpr nvs_handle_t kNvs = 1;
-    const uint8_t order[kWorkPageCount] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+    const uint8_t order[kWorkPageCount] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
 
     reset_store();
-    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x1ff);
+    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x3ff);
     g_have_v4_mask = true;
     g_v4_mask = 0x05;
-    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x1c5);
+    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x3c5);
     g_have_v5_mask = true;
     g_v5_mask = 0x12;
-    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x192);
+    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x392);
     g_have_v6_mask = true;
     g_v6_mask = 0x24;
-    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x124);
+    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x324);
     g_have_v7_mask = true;
     g_v7_mask = 0x181;
-    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x181);
+    // V7 predates Claude: migration enables the new page by default.
+    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x381);
     g_v7_mask = 0x200;
-    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x124);
+    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x324);
+    g_v7_mask = 0x181;
+    g_have_v8_mask = true;
+    g_v8_mask = 0x181;
+    // V8 is authoritative: a disabled Claude page stays disabled.
+    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x181);
+    g_v8_mask = 0x400;
+    assert(network_page_storage::read_saved_page_mask(kNvs) == 0x381);
 
     reset_store();
     const uint8_t v6_order[network_page_storage::kLegacyV6WorkPageCount] =
@@ -175,6 +201,38 @@ int main()
         kNvs, migrated_v6_order, sizeof(migrated_v6_order)));
     assert(memcmp(migrated_v6_order, v6_order, sizeof(v6_order)) == 0);
     assert(migrated_v6_order[kWorkPageCodexUsage] == kWorkPageCodexUsage);
+    assert(migrated_v6_order[kWorkPageClaudeUsage] == kWorkPageClaudeUsage);
+
+    reset_store();
+    const uint8_t v7_order[network_page_storage::kLegacyV7WorkPageCount] =
+        {8, 7, 2, 0, 1, 3, 4, 5, 6};
+    memcpy(g_v7_order, v7_order, sizeof(v7_order));
+    g_have_v7_order = true;
+    memcpy(g_v6_order, v6_order, sizeof(v6_order));
+    g_have_v6_order = true;
+    uint8_t migrated_v7_order[kWorkPageCount] = {};
+    assert(network_page_storage::read_saved_page_order(
+        kNvs, migrated_v7_order, sizeof(migrated_v7_order)));
+    assert(memcmp(migrated_v7_order, v7_order, sizeof(v7_order)) == 0);
+    assert(migrated_v7_order[kWorkPageClaudeUsage] == kWorkPageClaudeUsage);
+
+    // A corrupt V8 order falls back to the migrated V7 order, not V6.
+    const uint8_t corrupt_v8[kWorkPageCount] = {0, 0, 2, 3, 4, 5, 6, 7, 8, 9};
+    memcpy(g_saved_order, corrupt_v8, sizeof(corrupt_v8));
+    g_have_saved_order = true;
+    memset(migrated_v7_order, 0, sizeof(migrated_v7_order));
+    assert(network_page_storage::read_saved_page_order(
+        kNvs, migrated_v7_order, sizeof(migrated_v7_order)));
+    assert(memcmp(migrated_v7_order, v7_order, sizeof(v7_order)) == 0);
+    assert(migrated_v7_order[kWorkPageClaudeUsage] == kWorkPageClaudeUsage);
+
+    // A malformed V7 order falls back to V6.
+    g_have_saved_order = false;
+    g_v7_order[1] = 8;
+    memset(migrated_v7_order, 0, sizeof(migrated_v7_order));
+    assert(network_page_storage::read_saved_page_order(
+        kNvs, migrated_v7_order, sizeof(migrated_v7_order)));
+    assert(memcmp(migrated_v7_order, v6_order, sizeof(v6_order)) == 0);
 
     reset_store();
     const uint8_t v5_order[network_page_storage::kLegacyV5WorkPageCount] =
@@ -187,10 +245,11 @@ int main()
     assert(memcmp(migrated_order, v5_order, sizeof(v5_order)) == 0);
     assert(migrated_order[kWorkPageAggregateClock] == kWorkPageAggregateClock);
     assert(migrated_order[kWorkPageCodexUsage] == kWorkPageCodexUsage);
+    assert(migrated_order[kWorkPageClaudeUsage] == kWorkPageClaudeUsage);
 
     reset_store();
     const uint8_t malformed_order[kWorkPageCount] =
-        {0, 0, 2, 3, 4, 5, 6, 7, 8};
+        {0, 0, 2, 3, 4, 5, 6, 7, 8, 9};
     memcpy(g_saved_order, malformed_order, sizeof(malformed_order));
     g_have_saved_order = true;
     memcpy(g_v6_order, v6_order, sizeof(v6_order));
@@ -202,7 +261,7 @@ int main()
 
     reset_store();
     const uint8_t invalid_order[kWorkPageCount] =
-        {0, 0, 2, 3, 4, 5, 6, 7, 8};
+        {0, 0, 2, 3, 4, 5, 6, 7, 8, 9};
     bool changed = true;
     assert(network_page_storage::write_work_page_order_nvs(
                kNvs, ESP_OK, invalid_order, sizeof(invalid_order), &changed) ==
@@ -249,7 +308,7 @@ int main()
     reset_store();
     memcpy(g_saved_order, order, sizeof(order));
     g_have_saved_order = true;
-    uint8_t changed_order[kWorkPageCount] = {1, 0, 2, 3, 4, 5, 6, 7, 8};
+    uint8_t changed_order[kWorkPageCount] = {1, 0, 2, 3, 4, 5, 6, 7, 8, 9};
     g_set_blob_result = ESP_FAIL;
     changed = true;
     assert(network_page_storage::write_work_page_order_nvs(
@@ -263,5 +322,7 @@ int main()
     assert(changed);
     assert(g_set_blob_calls == 2);
     assert(memcmp(g_saved_order, changed_order, sizeof(changed_order)) == 0);
+    // Writes go only to V8; the V7 order stays intact for downgrade.
+    assert(!g_have_v7_order);
     return 0;
 }

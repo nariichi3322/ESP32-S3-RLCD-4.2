@@ -120,6 +120,7 @@ idf_component_register(
         "ui/ui_i18n.cpp"
         "ui/calendar_display_mode.cpp"
         "ui/ui_codex_usage.cpp"
+        "ui/ui_claude_usage.cpp"
         "ui/ui_codex_pairing.cpp"
         "ui/ui_runtime_schedule.cpp"
         "ui/ui_status_refresh_policy.cpp"

@@ -16,6 +16,7 @@ inline constexpr const char *kPageMaskV4Key = "page_mask_v4";
 inline constexpr const char *kPageMaskV5Key = "page_mask_v5";
 inline constexpr const char *kPageMaskV6Key = "page_mask_v6";
 inline constexpr const char *kPageMaskV7Key = "page_mask_v7";
+inline constexpr const char *kPageMaskV8Key = "page_mask_v8";
 inline constexpr const char *kPageOrderV1Key = "page_order_v1";
 inline constexpr const char *kPageOrderV2Key = "page_order_v2";
 inline constexpr const char *kPageOrderV3Key = "page_order_v3";
@@ -23,6 +24,7 @@ inline constexpr const char *kPageOrderV4Key = "page_order_v4";
 inline constexpr const char *kPageOrderV5Key = "page_order_v5";
 inline constexpr const char *kPageOrderV6Key = "page_order_v6";
 inline constexpr const char *kPageOrderV7Key = "page_order_v7";
+inline constexpr const char *kPageOrderV8Key = "page_order_v8";
 
 WorkPageMask read_saved_page_mask(nvs_handle_t nvs);
 bool read_saved_page_order(nvs_handle_t nvs, uint8_t *page_order, size_t page_order_size);

@@ -6,6 +6,7 @@
 #include "ui_settings_page.h"
 #include "ui_clock.h"
 #include "ui_codex_usage.h"
+#include "ui_claude_usage.h"
 #include "ui_aggregate_clock.h"
 #include "ui_codex_pairing.h"
 #include "ui_draw_cache.h"
@@ -56,6 +57,7 @@ void clear_clock_object_refs()
     clear_flip_clock_object_refs();
     clear_xiaozhi_page_object_refs();
     clear_codex_usage_page_object_refs();
+    clear_claude_usage_page_object_refs();
     clear_aggregate_clock_refs();
     clear_codex_pairing_overlay_object_refs();
     clear_work_page_day_progress_refs();

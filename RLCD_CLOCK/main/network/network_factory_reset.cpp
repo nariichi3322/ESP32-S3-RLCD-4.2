@@ -36,6 +36,7 @@ using network_page_storage::kPageMaskV4Key;
 using network_page_storage::kPageMaskV5Key;
 using network_page_storage::kPageMaskV6Key;
 using network_page_storage::kPageMaskV7Key;
+using network_page_storage::kPageMaskV8Key;
 using network_page_storage::kPageOrderV1Key;
 using network_page_storage::kPageOrderV2Key;
 using network_page_storage::kPageOrderV3Key;
@@ -43,6 +44,7 @@ using network_page_storage::kPageOrderV4Key;
 using network_page_storage::kPageOrderV5Key;
 using network_page_storage::kPageOrderV6Key;
 using network_page_storage::kPageOrderV7Key;
+using network_page_storage::kPageOrderV8Key;
 using network_weather_city_storage::kIgnoredAssetWeatherCityKey;
 using network_weather_city_storage::kManualWeatherCityKey;
 
@@ -72,6 +74,7 @@ constexpr const char *kSavedConfigKeys[] = {
     kPageMaskV5Key,
     kPageMaskV6Key,
     kPageMaskV7Key,
+    kPageMaskV8Key,
     kPageOrderV1Key,
     kPageOrderV2Key,
     kPageOrderV3Key,
@@ -79,6 +82,7 @@ constexpr const char *kSavedConfigKeys[] = {
     kPageOrderV5Key,
     kPageOrderV6Key,
     kPageOrderV7Key,
+    kPageOrderV8Key,
     kXiaozhiAutoReturnKey,
     kGalleryRotationKey,
     kWeatherClockSecondsKey,
@@ -87,7 +91,7 @@ constexpr const char *kSavedConfigKeys[] = {
     "codex_ble_v1",
 };
 
-static_assert(array_count(kSavedConfigKeys) == 35,
+static_assert(array_count(kSavedConfigKeys) == 37,
               "factory reset key registry count changed; update its host test");
 static_assert(cstr_array_nonempty(kSavedConfigKeys),
               "factory reset config keys must be non-empty");
@@ -131,6 +135,10 @@ static_assert(cstr_array_contains(kSavedConfigKeys, kPageOrderV6Key),
               "factory reset must clear current page order");
 static_assert(cstr_array_contains(kSavedConfigKeys, kPageOrderV7Key),
               "factory reset must clear V7 page order");
+static_assert(cstr_array_contains(kSavedConfigKeys, kPageMaskV8Key),
+              "factory reset must clear V8 page mask");
+static_assert(cstr_array_contains(kSavedConfigKeys, kPageOrderV8Key),
+              "factory reset must clear V8 page order");
 static_assert(cstr_array_contains(kSavedConfigKeys, kXiaozhiAutoReturnKey),
               "factory reset must clear Xiaozhi auto-return setting");
 static_assert(cstr_array_contains(kSavedConfigKeys, kGalleryRotationKey),

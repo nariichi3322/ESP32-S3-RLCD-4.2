@@ -429,7 +429,10 @@ bool layout_settings_secondary_slot(
     int slot = kSettingsPrimaryCount + index;
     if (navigation.page_order_mode || navigation.page_toggle_mode) {
         int manager_item_count = navigation.page_order_mode ? visible_order_count : kWorkPageCount;
-        if (index + manager_offset >= manager_item_count) {
+        // The secondary slot count exceeds one grid page; overflow slots
+        // belong to the next manager page, never to an off-grid position.
+        if (index >= settings_layout::kSettingsGridCapacity ||
+            index + manager_offset >= manager_item_count) {
             set_obj_visible(s_settings_labels[slot], false);
             hide_settings_switch_slot(index);
             return false;

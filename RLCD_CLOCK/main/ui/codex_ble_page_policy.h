@@ -3,6 +3,12 @@
 #include "ota_flow_policy.h"
 #include "work_page_ids.h"
 
+// Codex and Claude pages share one BLE transport and pairing.
+constexpr bool codex_ble_usage_page(int page)
+{
+    return page == kWorkPageCodexUsage || page == kWorkPageClaudeUsage;
+}
+
 struct CodexBlePageDecision {
     bool should_run = false;
     bool immediate_stop = false;
@@ -22,7 +28,7 @@ constexpr CodexBlePageDecision codex_ble_page_decision(
     const bool immediate_stop =
         low_battery || setup_portal_start_requested || setup_portal_active ||
         ota_immediate_stop || (auxiliary_page && !settings_page);
-    const bool should_run = active_page == kWorkPageCodexUsage &&
+    const bool should_run = codex_ble_usage_page(active_page) &&
                             !immediate_stop &&
                             (!auxiliary_page || settings_page);
     return {should_run, immediate_stop};

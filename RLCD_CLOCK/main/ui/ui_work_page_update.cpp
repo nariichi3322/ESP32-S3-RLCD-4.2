@@ -3,6 +3,7 @@
 #include "sensor_time.h"
 #include "codex_usage_state.h"
 #include "ui_codex_usage.h"
+#include "ui_claude_usage.h"
 #include "ui_clock_runtime.h"
 #include "ui_clock_time.h"
 #include "ui_aggregate_clock.h"
@@ -51,6 +52,14 @@ bool update_visible_work_page_body(const struct tm &local,
             changed |= update_codex_usage_page(local,
                                                view,
                                                codex_feature_enabled);
+        }
+    }
+    if (state.claude_usage) {
+        CodexUsageSnapshotView view{};
+        if (claude_usage_snapshot_copy(&view)) {
+            changed |= update_claude_usage_page(local,
+                                                view,
+                                                codex_feature_enabled);
         }
     }
     return changed;

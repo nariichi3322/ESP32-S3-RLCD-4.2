@@ -151,12 +151,14 @@ TickType_t ui_runtime_next_loop_delay_ticks(time_t sampled_wall_second,
             codex_wait.pairing_expiry_ms = pairing.expires_tick_ms;
         }
         CodexUsageSnapshotView view{};
-        if (codex_usage_snapshot_copy(&view)) {
+        const bool claude_page = active_page == kWorkPageClaudeUsage;
+        if (claude_page ? claude_usage_snapshot_copy(&view)
+                        : codex_usage_snapshot_copy(&view)) {
             codex_wait.last_valid_ms = view.last_valid_tick_ms;
             codex_wait.snapshot_valid = view.snapshot_valid;
             codex_wait.data_valid = view.data_valid;
             codex_wait.ble_connected = view.ble_connected;
-            if (active_page == kWorkPageCodexUsage &&
+            if ((active_page == kWorkPageCodexUsage || claude_page) &&
                 !surfaces.auxiliary_page_requested()) {
                 codex_wait.received_ms = view.received_tick_ms;
                 codex_wait.quota_reset_seconds = view.snapshot.quota_reset_seconds;

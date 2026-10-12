@@ -56,6 +56,7 @@ constexpr WorkPageDescriptor kWorkPageDescriptors[kWorkPageCount] = {
      kWorkPageTraitRequiresNetwork | kWorkPageTraitWeatherData |
          kWorkPageTraitExtendedWeatherData},
     {kWorkPageCodexUsage, UiTextId::Codex, kWorkPageTraitLowRefreshIdle},
+    {kWorkPageClaudeUsage, UiTextId::Claude, kWorkPageTraitLowRefreshIdle},
 };
 
 constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
@@ -68,6 +69,7 @@ constexpr uint8_t kDefaultWorkPageOrder[kWorkPageCount] = {
     kWorkPageXiaozhiAI,
     kWorkPageAggregateClock,
     kWorkPageCodexUsage,
+    kWorkPageClaudeUsage,
 };
 StaticTaskMutex s_work_page_order_mutex;
 uint8_t s_work_page_order[kWorkPageCount] = {
@@ -80,6 +82,7 @@ uint8_t s_work_page_order[kWorkPageCount] = {
     kWorkPageXiaozhiAI,
     kWorkPageAggregateClock,
     kWorkPageCodexUsage,
+    kWorkPageClaudeUsage,
 };
 constexpr WorkPageMask work_page_mask(int page)
 {

@@ -36,6 +36,7 @@ void expect_default_order()
         kWorkPageXiaozhiAI,
         kWorkPageAggregateClock,
         kWorkPageCodexUsage,
+        kWorkPageClaudeUsage,
     };
     uint8_t actual[kWorkPageCount] = {};
     assert(work_page_order_copy(actual, sizeof(actual)));
@@ -54,6 +55,7 @@ void expect_order_policy_boundaries()
         kWorkPageXiaozhiAI,
         kWorkPageAggregateClock,
         kWorkPageCodexUsage,
+        kWorkPageClaudeUsage,
     };
     assert(!work_page_order_policy::order_is_valid(nullptr, kWorkPageCount));
     assert(!work_page_order_policy::order_is_valid(default_order,
@@ -88,6 +90,7 @@ void expect_order_policy_boundaries()
         kWorkPageWeatherClock,
         kWorkPageAggregateClock,
         kWorkPageCodexUsage,
+        kWorkPageClaudeUsage,
     };
     const WorkPageMask enabled = page_bit(kWorkPageXiaozhiAI) |
                             page_bit(kWorkPageHistory) |
@@ -140,6 +143,7 @@ void expect_order_policy_boundaries()
         kWorkPageXiaozhiAI,
         kWorkPageAggregateClock,
         kWorkPageCodexUsage,
+        kWorkPageClaudeUsage,
     };
     memcpy(swap_candidate, preserved_candidate, sizeof(swap_candidate));
     assert(!work_page_order_policy::swap_entries_preserving_home(
@@ -190,6 +194,7 @@ int main()
         "小智AI",
         "聚合時鐘",
         "Codex",
+        "Claude",
     };
     const WorkPageDataRequirements expected_data[kWorkPageCount] = {
         {true, false, false, false},
@@ -200,6 +205,7 @@ int main()
         {false, false, false, false},
         {false, false, false, false},
         {true, true, false, false},
+        {false, false, false, false},
         {false, false, false, false},
     };
     for (int page = 0; page < kWorkPageCount; ++page) {
@@ -215,6 +221,9 @@ int main()
     ui_language_store(UiLanguage::Simplified);
     assert(strcmp(work_page_name(kWorkPageWeatherClock), "天气时钟") == 0);
     assert(strcmp(work_page_name(kWorkPageCodexUsage), "Codex") == 0);
+    assert(strcmp(work_page_name(kWorkPageClaudeUsage), "Claude") == 0);
+    assert(!work_page_requires_network(kWorkPageClaudeUsage));
+    assert(work_page_uses_low_refresh_idle(kWorkPageClaudeUsage));
     assert(strcmp(work_page_name(-1), "未知页面") == 0);
     ui_language_store(UiLanguage::English);
     assert(strcmp(work_page_name(kWorkPageFlipClock), "T&H-Clock") == 0);
@@ -294,7 +303,8 @@ int main()
             page_bit(kWorkPageFlipClock) |
             page_bit(kWorkPageCalendar) |
             page_bit(kWorkPageHistory) |
-            page_bit(kWorkPageCodexUsage)));
+            page_bit(kWorkPageCodexUsage) |
+            page_bit(kWorkPageClaudeUsage)));
     assert(work_page_mask_for_offline_mode(local_pages |
                                            page_bit(kWorkPageWeatherClock)) ==
            local_pages);
@@ -322,6 +332,7 @@ int main()
         kWorkPageWeatherClock,
         kWorkPageAggregateClock,
         kWorkPageCodexUsage,
+        kWorkPageClaudeUsage,
     };
     work_page_order_replace(xiaozhi_first, sizeof(xiaozhi_first));
     uint8_t normalized[kWorkPageCount] = {};
@@ -367,6 +378,7 @@ int main()
         kWorkPageXiaozhiAI,
         kWorkPageAggregateClock,
         kWorkPageCodexUsage,
+        kWorkPageClaudeUsage,
     };
     const uint8_t alternate_order[kWorkPageCount] = {
         kWorkPageHistory,
@@ -378,6 +390,7 @@ int main()
         kWorkPageXiaozhiAI,
         kWorkPageAggregateClock,
         kWorkPageCodexUsage,
+        kWorkPageClaudeUsage,
     };
     work_page_enabled_mask_store(all_pages);
     std::atomic<bool> writer_done{false};

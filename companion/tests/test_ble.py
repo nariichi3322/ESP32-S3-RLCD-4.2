@@ -8,7 +8,7 @@ from companion.codex_display.ble import (
     _client_options,
     _enable_winrt_service_changed_retry,
 )
-from companion.codex_display.constants import STATUS_UUID
+from companion.codex_display.constants import CLAUDE_STATUS_UUID, STATUS_UUID
 
 
 class FakeClient:
@@ -18,6 +18,18 @@ class FakeClient:
 
     async def write_gatt_char(self, uuid, value, response):
         self.calls.append((uuid, value, response))
+
+
+class Services:
+    def __init__(self, present):
+        self.present = present
+
+    def get_characteristic(self, uuid):
+        return object() if self.present else None
+
+
+async def claude_payload():
+    return b"claude"
 
 
 class BleTests(unittest.IsolatedAsyncioTestCase):
@@ -108,3 +120,38 @@ class BleTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(asyncio.CancelledError):
                 await companion.run_forever()
         sleep.assert_awaited_once_with(1.0)
+
+    async def test_codex_then_claude_written_when_characteristic_present(self):
+        async def payload():
+            return b"codex"
+
+        client = FakeClient()
+        client.services = Services(True)
+        companion = BleCompanion(payload, claude_provider=claude_payload)
+        await companion._send_all(client)
+        self.assertEqual(client.calls, [(STATUS_UUID, b"codex", True),
+                                        (CLAUDE_STATUS_UUID, b"claude", True)])
+
+    async def test_missing_claude_characteristic_is_skipped_and_logged_once(self):
+        async def payload():
+            return b"codex"
+
+        client = FakeClient()
+        client.services = Services(False)
+        companion = BleCompanion(payload, claude_provider=claude_payload)
+        with self.assertLogs("companion.codex_display.ble", "INFO") as logs:
+            await companion._send_all(client)
+            await companion._send_all(client)
+        self.assertEqual(client.calls, [(STATUS_UUID, b"codex", True)] * 2)
+        self.assertEqual(len(logs.output), 1)
+
+    async def test_claude_only_initial_write_retries_authentication(self):
+        client = FakeClient()
+        client.services = Services(True)
+        client.write_gatt_char = AsyncMock(side_effect=[
+            RuntimeError("Protocol Error 0x05: Insufficient Authentication"), None])
+        companion = BleCompanion(None, claude_provider=claude_payload)
+        with patch("companion.codex_display.ble.asyncio.sleep", AsyncMock()):
+            await companion._send_after_authentication(client)
+        self.assertEqual(client.write_gatt_char.await_count, 2)
+        self.assertEqual(client.write_gatt_char.await_args.args[0], CLAUDE_STATUS_UUID)

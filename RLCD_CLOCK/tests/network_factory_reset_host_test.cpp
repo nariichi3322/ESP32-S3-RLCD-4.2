@@ -30,6 +30,7 @@ const char *const kExpectedKeys[] = {
     "page_mask_v5",
     "page_mask_v6",
     "page_mask_v7",
+    "page_mask_v8",
     "page_order_v1",
     "page_order_v2",
     "page_order_v3",
@@ -37,6 +38,7 @@ const char *const kExpectedKeys[] = {
     "page_order_v5",
     "page_order_v6",
     "page_order_v7",
+    "page_order_v8",
     "xz_auto_ret_v1",
     "gallery_rot_v1",
     "clock_sec_v1",
@@ -126,7 +128,7 @@ int main()
 {
     constexpr nvs_handle_t kNvs = 1;
     constexpr size_t kExpectedKeyCount = sizeof(kExpectedKeys) / sizeof(kExpectedKeys[0]);
-    static_assert(kExpectedKeyCount == 35,
+    static_assert(kExpectedKeyCount == 37,
                   "factory reset host test must enumerate every registered key");
 
     reset_store(true);

@@ -21,7 +21,7 @@ using network_config_nvs::commit_nvs_if_changed;
 using network_config_nvs::ScopedNvsHandle;
 using network_config_nvs::write_changed_nvs_u8;
 using network_config_nvs::write_changed_nvs_u16;
-using network_page_storage::kPageMaskV7Key;
+using network_page_storage::kPageMaskV8Key;
 using network_page_storage::write_work_page_order_nvs;
 using network_config_keys::kXiaozhiAutoReturnKey;
 using network_config_keys::kGalleryRotationKey;
@@ -122,7 +122,7 @@ bool set_work_page_enabled_mask_setting(WorkPageMask page_mask)
         return false;
     }
     bool changed = false;
-    err = write_changed_nvs_u16(nvs.get(), err, kPageMaskV7Key, mask, &changed);
+    err = write_changed_nvs_u16(nvs.get(), err, kPageMaskV8Key, mask, &changed);
     err = commit_nvs_if_changed(nvs.get(), err, changed);
     if (!nvs.close_save_ok(err)) {
         ESP_LOGW(TAG,

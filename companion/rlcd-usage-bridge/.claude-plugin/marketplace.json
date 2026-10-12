@@ -1,0 +1,5 @@
+{
+  "name": "rlcd-local",
+  "owner": { "name": "nariichi3322" },
+  "plugins": [{ "name": "rlcd-usage-bridge", "source": "./" }]
+}

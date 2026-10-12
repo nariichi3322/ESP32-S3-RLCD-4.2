@@ -12,7 +12,8 @@ inline constexpr int kWorkPageHistory = 5;
 inline constexpr int kWorkPageXiaozhiAI = 6;
 inline constexpr int kWorkPageAggregateClock = 7;
 inline constexpr int kWorkPageCodexUsage = 8;
-inline constexpr int kWorkPageCount = 9;
+inline constexpr int kWorkPageClaudeUsage = 9;
+inline constexpr int kWorkPageCount = 10;
 
 using WorkPageMask = uint16_t;
 
@@ -31,13 +32,13 @@ constexpr bool is_valid_work_page_id(int page)
 
 static_assert(kWorkPageWeatherClock == 0,
               "work page ids must start at weather clock zero");
-static_assert(kWorkPageCount == kWorkPageCodexUsage + 1,
+static_assert(kWorkPageCount == kWorkPageClaudeUsage + 1,
               "work page count must match the last work page id");
 static_assert(kDisplaySettingsPageItemCount == kWorkPageCount,
               "display page setting count must match work page count");
 static_assert(is_valid_work_page_id(kWorkPageWeatherClock),
               "first work page id must be valid");
-static_assert(is_valid_work_page_id(kWorkPageCodexUsage),
+static_assert(is_valid_work_page_id(kWorkPageClaudeUsage),
               "last work page id must be valid");
 static_assert(kWorkPageCount <= static_cast<int>(sizeof(WorkPageMask) * 8),
               "work page mask type must represent every work page");

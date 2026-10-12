@@ -651,6 +651,9 @@ enum class UiTextId : uint16_t {
     LanguageSimplifiedCompact,
     LanguageEnglishCompact,
     LanguageJapaneseCompact,
+    Claude,
+    ClaudeQuotaTitle,
+    ClaudePrimaryTitlePlaceholder,
     Count,
 };
 
