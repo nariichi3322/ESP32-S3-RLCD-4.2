@@ -1,33 +1,33 @@
 {
-  "version": "v100.0.6",
-  "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.6/weather_clock_v100.0.6.bin",
-  "sha256": "7e60b9880f74c93b9c1c50e7510531451cb516e779da6e803254f8746fae1667",
-  "size": 6636720,
+  "version": "v100.0.7",
+  "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.7/weather_clock_v100.0.7.bin",
+  "sha256": "5c23a2250eaba73cd6162f309b3e88f20eaa92768efbb81d4a8ea996a396f4c9",
+  "size": 6636352,
   "images": {
     "zh-TW": {
-      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.6/weather_clock_v100.0.6.bin",
-      "sha256": "7e60b9880f74c93b9c1c50e7510531451cb516e779da6e803254f8746fae1667",
-      "size": 6636720,
+      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.7/weather_clock_v100.0.7.bin",
+      "sha256": "5c23a2250eaba73cd6162f309b3e88f20eaa92768efbb81d4a8ea996a396f4c9",
+      "size": 6636352,
       "locale": "zh-TW"
     },
     "zh-CN": {
-      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.6/weather_clock_v100.0.6_zh-CN.bin",
-      "sha256": "5a21ca2902720a939d7f474ff4f797a9a9e7e3531d8481671d78b27a29c05caa",
-      "size": 6636720,
+      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.7/weather_clock_v100.0.7_zh-CN.bin",
+      "sha256": "6eb4c42aebd8296ab34bb116e9a4d733e8fe91f489a8be75d1d7afdef8cd982b",
+      "size": 6636352,
       "locale": "zh-CN"
     },
     "en": {
-      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.6/weather_clock_v100.0.6_en.bin",
-      "sha256": "768d1ea6b8fd787cc37e30592608652c3845f93a41e5e5444ceff4d510271bc7",
-      "size": 6627952,
+      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.7/weather_clock_v100.0.7_en.bin",
+      "sha256": "e8704306a7c19693bc8b2f6ab30f6d4197e594735af01717a42bfccb48124374",
+      "size": 6627584,
       "locale": "en"
     },
     "ja": {
-      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.6/weather_clock_v100.0.6_ja.bin",
-      "sha256": "ca9b29353d32483ff1dd83f14024a972af57722a38aa36bb7afbd551c54864d0",
-      "size": 5890384,
+      "url": "https://github.com/nariichi3322/ESP32-S3-RLCD-4.2/releases/download/v100.0.7/weather_clock_v100.0.7_ja.bin",
+      "sha256": "42c236162a3abd22b37ae9c363c7921ead5231fa49ddb6a7fdcd8209de2799b2",
+      "size": 5890032,
       "locale": "ja"
     }
   },
-  "notes": "v100.0.6：共 4 项更新。\n1. 本版本未變更分區表；已使用 v100.0.4 以後分區的裝置可直接 App-only…\n2. 頁面開關與排序會自動沿用舊設定，新增的 Claude 用量頁預設開啟並排在最後；不需要…\n3. 新增 Claude 用量頁：透過與 Codex 頁相同的加密藍牙，顯示 Claude…\n4. 「關於」頁的原始碼連結改為指向 nariichi3322 分支的儲存庫。\n完整…"
+  "notes": "v100.0.7：共 2 项更新。\n1. 本版本未變更分區表；已使用 v100.0.4 以後分區的裝置可直接 App-only…\n2. 設定頁「檢查更新」耗時超過 30 秒時（例如從 Codex／Claude 頁進入設定、…\n完整说明见源码仓库同版本 Release。"
 }
