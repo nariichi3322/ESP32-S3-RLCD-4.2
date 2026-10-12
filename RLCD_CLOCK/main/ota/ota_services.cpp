@@ -185,6 +185,9 @@ static void ota_set_status(int state, const char *text, int progress = -1, uint3
     TickType_t status_until_tick = 0;
     if (hold_ms > 0) {
         status_until_tick = xTaskGetTickCount() + pdMS_TO_TICKS(hold_ms);
+        // 结果状态（失败/已最新等）不算 OTA 进行中；先刷新设置页活动时间，
+        // 避免检查耗时超过设置超时后，结果尚未绘制就被超时关闭。
+        settings_activity_record(xTaskGetTickCount());
     }
     ota_runtime_publish_status(state,
                                ota_status_text_or_fallback(text),
