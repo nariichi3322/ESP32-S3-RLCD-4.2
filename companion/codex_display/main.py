@@ -93,6 +93,18 @@ class SnapshotCache:
             self.updated_at = asyncio.get_running_loop().time()
             self.sequence += 1
 
+    async def refresh_until_ready(self, retry_seconds: float = 30) -> None:
+        # The network may not be up yet right after logon; keep retrying
+        # instead of exiting, since Task Scheduler won't restart on exit code 1.
+        while True:
+            try:
+                await self.refresh()
+                return
+            except Exception as error:
+                logging.warning("Initial snapshot failed (%s); retrying in %gs",
+                                error, retry_seconds)
+                await asyncio.sleep(retry_seconds)
+
     async def activity_changed(self) -> None:
         try:
             count, paths = await collect_active_thread_state(self.client)
@@ -133,7 +145,7 @@ async def run_codex(args: argparse.Namespace, client: AppServerClient,
     cache = SnapshotCache(client, args.refresh_seconds)
     # Preload the first snapshot before scanning. Once BLE connects, the
     # initial authenticated write must not wait on an app-server round trip.
-    await cache.refresh()
+    await cache.refresh_until_ready()
     activity = HookActivityTracker(cache.activity_changed)
     cache.attach_activity(activity)
     ble = BleCompanion(cache.encoded, cache.refresh, args.device,

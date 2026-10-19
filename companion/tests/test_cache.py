@@ -36,3 +36,20 @@ class CacheTests(unittest.IsolatedAsyncioTestCase):
             client.fail = True
             second = await cache.encoded()
         self.assertEqual(first, second)
+
+    async def test_startup_refresh_retries_until_network_is_up(self):
+        client = FakeClient()
+        client.fail = True
+        cache = SnapshotCache(client, 60)
+        sleeps = []
+
+        async def fake_sleep(seconds):
+            sleeps.append(seconds)
+            if len(sleeps) == 2:
+                client.fail = False
+
+        with patch("companion.codex_display.main.asyncio.sleep", fake_sleep), \
+                self.assertLogs(level="WARNING"):
+            await cache.refresh_until_ready(30)
+        self.assertEqual(sleeps, [30, 30])
+        self.assertIsNotNone(cache.snapshot)
