@@ -152,10 +152,10 @@ void build_codex_preview_body(lv_obj_t *screen, const char *mode)
                  detail_valid ? "3d 4h" : "");
         row(screen, 90, ui_text(UiTextId::UsageFable), detail_valid ? "88%" : "--",
             sub, detail_valid ? 88 : 0, true);
-        if (detail_valid) snprintf(sub, sizeof(sub), ui_format(UiTextId::UsageSpentBoth), "$7.86", "$40.00");
+        if (detail_valid) snprintf(sub, sizeof(sub), ui_format(UiTextId::UsageRemainingBoth), "$32.14", "$40.00");
         else sub[0] = '\0';
-        row(screen, 132, ui_text(UiTextId::UsagePaid), detail_valid ? "19%" : "--",
-            sub, detail_valid ? 19 : 0, true);
+        row(screen, 132, ui_text(UiTextId::UsagePaid), detail_valid ? "80%" : "--",
+            sub, detail_valid ? 80 : 0, true);
     } else {
         const char *paid = fixture.data_valid
                                ? (strcmp(fixture.paid, "UNLIM") == 0

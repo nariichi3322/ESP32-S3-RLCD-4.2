@@ -658,7 +658,7 @@ enum class UiTextId : uint16_t {
     UsageSevenDays,
     UsageFable,
     UsagePaid,
-    UsageSpentBoth,
+    UsageRemainingBoth,
     UsageSpentOne,
     UsageBalance,
     UsageGrants,

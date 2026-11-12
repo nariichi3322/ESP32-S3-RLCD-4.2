@@ -25,6 +25,7 @@ int main()
     assert(usage_bottom_section_version(UsagePage::Codex) == 2);
 
     assert(usage_spent_percent(786, 4000) == 19);
+    assert(usage_spent_percent(4000 - 786, 4000) == 80); // paid row shows remaining budget
     assert(usage_spent_percent(10001, 10000) == 100);
     assert(usage_spent_percent(UINT64_MAX, UINT64_MAX) == 100);
     assert(usage_spent_percent(UINT64_MAX - 1, UINT64_MAX) == 99);

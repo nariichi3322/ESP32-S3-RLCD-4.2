@@ -87,11 +87,15 @@ bool update_spend(const ClaudeDetailView &detail)
         value = ui_text(UiTextId::UsageDisabled);
         break;
     case ClaudeDetailSpendState::Value: {
+        // With a cap, show what is left so the meter shrinks like the quota rows.
+        const uint64_t shown = !detail.spend_limit ? detail.spend_used
+                               : detail.spend_used >= detail.spend_limit ? 0
+                               : detail.spend_limit - detail.spend_used;
         char used[48];
         char limit[48];
         char used_money[64];
         char limit_money[64];
-        usage_format_amount(detail.spend_used, detail.exponent, used, sizeof(used));
+        usage_format_amount(shown, detail.exponent, used, sizeof(used));
         usage_format_amount(detail.spend_limit, detail.exponent, limit, sizeof(limit));
         const bool usd = memcmp(detail.currency, "USD", 3) == 0;
         if (usd) {
@@ -103,10 +107,10 @@ bool update_spend(const ClaudeDetailView &detail)
             snprintf(limit_money, sizeof(limit_money), "%s", limit);
         }
         if (detail.spend_limit) {
-            percent = static_cast<int>(usage_spent_percent(detail.spend_used, detail.spend_limit));
+            percent = static_cast<int>(usage_spent_percent(shown, detail.spend_limit));
             snprintf(value_buf, sizeof(value_buf), "%d%%", percent);
             value = value_buf;
-            snprintf(sub, sizeof(sub), ui_format(UiTextId::UsageSpentBoth),
+            snprintf(sub, sizeof(sub), ui_format(UiTextId::UsageRemainingBoth),
                      used_money, limit_money);
         } else {
             value = "";

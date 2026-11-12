@@ -2161,7 +2161,7 @@
     { "id": "UsageSevenDays", "zh-TW": "7 天", "zh-CN": "7 天", "en": "7D", "ja": "7日" },
     { "id": "UsageFable", "zh-TW": "Fable", "zh-CN": "Fable", "en": "Fable", "ja": "Fable" },
     { "id": "UsagePaid", "zh-TW": "付費", "zh-CN": "付费", "en": "PAID", "ja": "有料" },
-    { "id": "UsageSpentBoth", "zh-TW": "已花費 %s / %s", "zh-CN": "已花费 %s / %s", "en": "SPENT %s / %s", "ja": "使用 %s / %s" },
+    { "id": "UsageRemainingBoth", "zh-TW": "剩餘 %s / %s", "zh-CN": "剩余 %s / %s", "en": "LEFT %s / %s", "ja": "残り %s / %s" },
     { "id": "UsageSpentOne", "zh-TW": "已花費 %s", "zh-CN": "已花费 %s", "en": "SPENT %s", "ja": "使用 %s" },
     { "id": "UsageBalance", "zh-TW": "餘額", "zh-CN": "余额", "en": "BALANCE", "ja": "残高" },
     { "id": "UsageGrants", "zh-TW": "重設額度", "zh-CN": "重置额度", "en": "GRANTS", "ja": "リセット" },
