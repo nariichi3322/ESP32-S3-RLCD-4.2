@@ -69,7 +69,11 @@ int main()
     assert(codex_usage_format_tokens(1240000000, text, sizeof(text)) && strcmp(text, "1.2B") == 0);
     assert(codex_usage_format_credits(999999, text, sizeof(text)) && strcmp(text, "999999") == 0);
     assert(codex_usage_format_credits(1250000, text, sizeof(text)) && strcmp(text, "1250000") == 0);
-    assert(codex_usage_format_credits(12500000, text, sizeof(text)) && strcmp(text, "12.5M") == 0);
+    // Ten units and above drop the decimal, the same rule as token counts.
+    assert(codex_usage_format_credits(12500000, text, sizeof(text)) && strcmp(text, "13M") == 0);
+    assert(codex_usage_format_tokens(12450000, text, sizeof(text)) && strcmp(text, "12M") == 0);
+    assert(codex_usage_format_tokens(9960, text, sizeof(text)) && strcmp(text, "10K") == 0);
+    assert(codex_usage_format_tokens(999500, text, sizeof(text)) && strcmp(text, "1.0M") == 0);
     assert(codex_usage_format_tokens(UINT64_MAX, text, sizeof(text)) && strchr(text, 'T'));
     return 0;
 }

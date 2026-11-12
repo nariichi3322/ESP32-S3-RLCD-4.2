@@ -202,17 +202,20 @@ bool codex_usage_format_tokens(uint64_t value, char *buffer, size_t capacity)
     if (value < 1000) {
         if (!append_unsigned(value, buffer, capacity, offset)) return false;
     } else {
-        const uint64_t unit = value < 1000000ULL ? 1000ULL :
-                              value < 1000000000ULL ? 1000000ULL :
-                              value < 1000000000000ULL ? 1000000000ULL :
-                                                        1000000000000ULL;
-        const char suffix = unit == 1000ULL ? 'K' :
-                            unit == 1000000ULL ? 'M' :
-                            unit == 1000000000ULL ? 'B' : 'T';
+        static const uint64_t kUnits[] = {1000ULL, 1000000ULL, 1000000000ULL, 1000000000000ULL};
+        static const char kSuffixes[] = {'K', 'M', 'B', 'T'};
+        size_t index = 0;
+        while (index < 3 && value >= kUnits[index] * 1000ULL) ++index;
+        // Round half up from the raw value once; rounding the tenths again turns 12.45 into 13.
+        const auto round_whole = [value](uint64_t unit) {
+            return value / unit + (value % unit >= unit - unit / 2U ? 1U : 0U);
+        };
+        if (index < 3 && round_whole(kUnits[index]) >= 1000U) ++index; // 999.5K reads as 1.0M
+        const uint64_t unit = kUnits[index];
+        const char suffix = kSuffixes[index];
         const uint64_t rounded_tenths =
             (value / unit) * 10U + ((value % unit) * 10U + unit / 2U) / unit;
-        if (!append_unsigned(rounded_tenths >= 100 ? (rounded_tenths + 5U) / 10U
-                                                   : rounded_tenths / 10U,
+        if (!append_unsigned(rounded_tenths >= 100 ? round_whole(unit) : rounded_tenths / 10U,
                              buffer, capacity, offset)) return false;
         if (rounded_tenths < 100) {
             if (offset + 2 >= capacity) return false;
