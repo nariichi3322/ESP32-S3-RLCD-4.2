@@ -9,6 +9,7 @@ CodexUsageSnapshotView s_view;
 // Claude reuses the Codex v3 payload on its own characteristic, so it keeps a
 // separate snapshot but shares the BLE link lifecycle.
 CodexUsageSnapshotView s_claude_view;
+ClaudeDetailSnapshotView s_claude_detail_view;
 
 CodexUsageParseResult submit_to(CodexUsageSnapshotView &view,
                                 const char *payload,
@@ -55,6 +56,7 @@ void codex_usage_state_reset()
     if (!lock) return;
     codex_usage_state_clear(s_view);
     codex_usage_state_clear(s_claude_view);
+    s_claude_detail_view = {};
 }
 
 void codex_usage_state_connection_changed(bool connected, bool bonded)
@@ -63,6 +65,7 @@ void codex_usage_state_connection_changed(bool connected, bool bonded)
     if (!lock) return;
     codex_usage_state_set_connection(s_view, connected, bonded);
     codex_usage_state_set_connection(s_claude_view, connected, bonded);
+    if (!connected || !bonded) s_claude_detail_view.valid = false;
 }
 
 CodexUsageParseResult codex_usage_state_submit(const char *payload,
@@ -90,4 +93,28 @@ bool codex_usage_snapshot_copy(CodexUsageSnapshotView *out)
 bool claude_usage_snapshot_copy(CodexUsageSnapshotView *out)
 {
     return copy_from(s_claude_view, out);
+}
+
+ClaudeDetailParseResult claude_detail_state_submit(const uint8_t *payload,
+                                                   size_t payload_size,
+                                                   uint32_t now_tick_ms)
+{
+    ClaudeDetailSnapshot parsed{};
+    const ClaudeDetailParseResult result = claude_detail_parse(payload, payload_size, &parsed);
+    if (result != ClaudeDetailParseResult::Ok) return result;
+    ScopedSemaphoreLock lock(s_mutex.handle());
+    if (!lock) return ClaudeDetailParseResult::Unavailable;
+    s_claude_detail_view.snapshot = parsed;
+    s_claude_detail_view.received_tick_ms = now_tick_ms;
+    s_claude_detail_view.valid = true;
+    return result;
+}
+
+bool claude_detail_snapshot_copy(ClaudeDetailSnapshotView *out)
+{
+    if (!out) return false;
+    ScopedSemaphoreLock lock(s_mutex.handle());
+    if (!lock) return false;
+    *out = s_claude_detail_view;
+    return true;
 }

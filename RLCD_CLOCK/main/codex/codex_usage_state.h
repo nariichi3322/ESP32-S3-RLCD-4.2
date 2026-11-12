@@ -3,6 +3,7 @@
 
 #include "codex_usage_protocol.h"
 #include "codex_usage_state_model.h"
+#include "claude_detail_protocol.h"
 
 using CodexUsageSnapshotView = CodexUsageStateData;
 
@@ -21,3 +22,14 @@ CodexUsageParseResult claude_usage_state_submit(const char *payload,
                                                 uint32_t now_tick_ms,
                                                 bool *display_changed = nullptr);
 bool claude_usage_snapshot_copy(CodexUsageSnapshotView *out);
+
+struct ClaudeDetailSnapshotView {
+    ClaudeDetailSnapshot snapshot{};
+    uint32_t received_tick_ms = 0;
+    bool valid = false;
+};
+
+ClaudeDetailParseResult claude_detail_state_submit(const uint8_t *payload,
+                                                   size_t payload_size,
+                                                   uint32_t now_tick_ms);
+bool claude_detail_snapshot_copy(ClaudeDetailSnapshotView *out);

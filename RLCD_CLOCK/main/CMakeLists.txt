@@ -43,6 +43,8 @@ idf_component_register(
     SRCS
         "core/main.cpp"
         "codex/codex_usage_protocol.cpp"
+        "codex/claude_detail_protocol.cpp"
+        "codex/claude_detail_view.cpp"
         "codex/codex_usage_state.cpp"
         "codex/codex_usage_ble.cpp"
         "core/app_task_startup.cpp"

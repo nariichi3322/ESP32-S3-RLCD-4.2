@@ -64,8 +64,12 @@ const ble_uuid128_t kStatusUuid = BLE_UUID128_INIT(
 const ble_uuid128_t kClaudeStatusUuid = BLE_UUID128_INIT(
     0x03, 0xde, 0xc0, 0x70, 0x65, 0x1b, 0xf8, 0xa0,
     0x44, 0x4b, 0x6d, 0x8f, 0x20, 0x6c, 0x8b, 0x7d);
-// Non-null access-callback arg marks the Claude characteristic.
+const ble_uuid128_t kClaudeDetailUuid = BLE_UUID128_INIT(
+    0x04, 0xde, 0xc0, 0x70, 0x65, 0x1b, 0xf8, 0xa0,
+    0x44, 0x4b, 0x6d, 0x8f, 0x20, 0x6c, 0x8b, 0x7d);
+int s_codex_status_marker;
 int s_claude_status_marker;
+int s_claude_detail_marker;
 
 std::atomic<bool> s_initialized{false};
 std::atomic<bool> s_running{false};
@@ -84,6 +88,7 @@ std::atomic<uint32_t> s_pairing_expiry{0};
 std::atomic<uint32_t> s_pairing_generation{0};
 std::atomic<bool> s_pairing_visible{false};
 std::atomic<uint32_t> s_last_reject_log_tick{0};
+std::atomic<uint32_t> s_last_detail_reject_log_tick{0};
 std::atomic<bool> s_desired_enabled{false};
 std::atomic<bool> s_graceful_stop_pending{false};
 std::atomic<uint32_t> s_graceful_stop_deadline{0};
@@ -95,6 +100,7 @@ std::atomic<bool> s_clear_bonds_pending{false};
 std::atomic<bool> s_clear_bonds_result{false};
 uint16_t s_status_value_handle = 0;
 uint16_t s_claude_status_value_handle = 0;
+uint16_t s_claude_detail_value_handle = 0;
 
 void notify_control_task(uint32_t notification)
 {
@@ -136,6 +142,15 @@ void log_rejected_status(CodexUsageParseResult result)
     ESP_LOGW(kTag, "rejected status payload: %u", static_cast<unsigned>(result));
 }
 
+void log_rejected_detail(ClaudeDetailParseResult result)
+{
+    const uint32_t now = monotonic_ms();
+    const uint32_t previous = s_last_detail_reject_log_tick.load(std::memory_order_relaxed);
+    if (static_cast<uint32_t>(now - previous) < kLogThrottleMs) return;
+    s_last_detail_reject_log_tick.store(now, std::memory_order_relaxed);
+    ESP_LOGW(kTag, "rejected detail payload: %u", static_cast<unsigned>(result));
+}
+
 int status_access(uint16_t conn_handle, uint16_t,
                   ble_gatt_access_ctxt *ctxt, void *arg)
 {
@@ -149,7 +164,11 @@ int status_access(uint16_t conn_handle, uint16_t,
         return BLE_ATT_ERR_INSUFFICIENT_AUTHEN;
     }
     const uint16_t length = OS_MBUF_PKTLEN(ctxt->om);
-    if (length == 0 || length > kCodexUsageMaxPayloadBytes) {
+    if (length == 0 || length > kCodexUsageMaxPayloadBytes ||
+        (arg == &s_claude_detail_marker && length < kClaudeDetailFrameBytes)) {
+        if (arg == &s_claude_detail_marker) {
+            log_rejected_detail(ClaudeDetailParseResult::InvalidLength);
+        }
         return BLE_ATT_ERR_INVALID_ATTR_VALUE_LEN;
     }
     uint8_t payload[kCodexUsageMaxPayloadBytes];
@@ -158,10 +177,25 @@ int status_access(uint16_t conn_handle, uint16_t,
         copied != length) {
         return BLE_ATT_ERR_UNLIKELY;
     }
+    if (arg == &s_claude_detail_marker) {
+        const ClaudeDetailParseResult result =
+            claude_detail_state_submit(payload, copied, monotonic_ms());
+        if (result != ClaudeDetailParseResult::Ok) {
+            log_rejected_detail(result);
+            return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
+        }
+        notify_ui_task();
+        return 0;
+    }
     const char *text = reinterpret_cast<const char *>(payload);
-    const CodexUsageParseResult result =
-        arg ? claude_usage_state_submit(text, copied, monotonic_ms())
-            : codex_usage_state_submit(text, copied, monotonic_ms());
+    CodexUsageParseResult result;
+    if (arg == &s_codex_status_marker) {
+        result = codex_usage_state_submit(text, copied, monotonic_ms());
+    } else if (arg == &s_claude_status_marker) {
+        result = claude_usage_state_submit(text, copied, monotonic_ms());
+    } else {
+        return BLE_ATT_ERR_UNLIKELY;
+    }
     if (result != CodexUsageParseResult::Ok) {
         log_rejected_status(result);
         return BLE_ATT_ERR_VALUE_NOT_ALLOWED;
@@ -218,7 +252,7 @@ const ble_gatt_chr_def kCharacteristics[] = {
     {
         .uuid = &kStatusUuid.u,
         .access_cb = status_access,
-        .arg = nullptr,
+        .arg = &s_codex_status_marker,
         .descriptors = nullptr,
         .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC |
                  BLE_GATT_CHR_F_WRITE_AUTHEN,
@@ -235,6 +269,17 @@ const ble_gatt_chr_def kCharacteristics[] = {
                  BLE_GATT_CHR_F_WRITE_AUTHEN,
         .min_key_size = 16,
         .val_handle = &s_claude_status_value_handle,
+        .cpfd = nullptr,
+    },
+    {
+        .uuid = &kClaudeDetailUuid.u,
+        .access_cb = status_access,
+        .arg = &s_claude_detail_marker,
+        .descriptors = nullptr,
+        .flags = BLE_GATT_CHR_F_WRITE | BLE_GATT_CHR_F_WRITE_ENC |
+                 BLE_GATT_CHR_F_WRITE_AUTHEN,
+        .min_key_size = 16,
+        .val_handle = &s_claude_detail_value_handle,
         .cpfd = nullptr,
     },
     {},
