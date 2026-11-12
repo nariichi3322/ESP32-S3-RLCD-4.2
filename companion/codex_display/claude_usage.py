@@ -8,8 +8,9 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
+from .claude_detail import MAX_U64, parse_timestamp, read_claude_detail
 from .metrics import Snapshot
-from .paths import CLAUDE_RATE_LIMITS_PATH, CLAUDE_SESSIONS_PATH, claude_directory
+from .paths import CLAUDE_DETAIL_PATH, CLAUDE_RATE_LIMITS_PATH, CLAUDE_SESSIONS_PATH, claude_directory
 from .protocol import encode_snapshot
 
 SESSION_MAX_AGE_SECONDS = 6 * 3600
@@ -118,10 +119,24 @@ def running_sessions(path: Path, now: float) -> int:
 
 def build_claude_snapshot(tokens: tuple[int, int], rate_path: Path = CLAUDE_RATE_LIMITS_PATH,
                           sessions_path: Path = CLAUDE_SESSIONS_PATH,
-                          now: Optional[float] = None) -> Snapshot:
+                          now: Optional[float] = None,
+                          detail_path: Path = CLAUDE_DETAIL_PATH) -> Snapshot:
     now = time.time() if now is None else now
     seconds = int(now)
     limits = _read_json(rate_path)
+    last_ok = read_claude_detail(detail_path).get("last_ok")
+    if isinstance(last_ok, dict):
+        captured, rate_captured, body = (last_ok.get("captured_at"),
+                                         limits.get("captured_at"), last_ok.get("body"))
+        if (type(captured) is int and 0 < captured <= MAX_U64 and isinstance(body, dict) and
+                captured > (rate_captured if type(rate_captured) is int and
+                            0 <= rate_captured <= MAX_U64 else 0)):
+            limits = {}
+            for key in ("five_hour", "seven_day"):
+                window = body.get(key)
+                if isinstance(window, dict):
+                    limits[key] = {"used_percentage": window.get("utilization"),
+                                   "resets_at": parse_timestamp(window.get("resets_at"))}
     primary_ok, remaining, reset = _window(limits.get("five_hour"), seconds)
     secondary_ok, secondary_remaining, secondary_reset = _window(limits.get("seven_day"), seconds)
     return Snapshot(
@@ -134,10 +149,11 @@ def build_claude_snapshot(tokens: tuple[int, int], rate_path: Path = CLAUDE_RATE
 class ClaudeSnapshotCache:
     def __init__(self, refresh_seconds: float = 60, claude_dir: Optional[Path] = None,
                  rate_path: Path = CLAUDE_RATE_LIMITS_PATH,
-                 sessions_path: Path = CLAUDE_SESSIONS_PATH) -> None:
+                 sessions_path: Path = CLAUDE_SESSIONS_PATH,
+                 detail_path: Path = CLAUDE_DETAIL_PATH) -> None:
         self.refresh_seconds = refresh_seconds
         self.scanner = TokenScanner((claude_dir or claude_directory()) / "projects")
-        self.rate_path, self.sessions_path = rate_path, sessions_path
+        self.rate_path, self.sessions_path, self.detail_path = rate_path, sessions_path, detail_path
         self.tokens = (0, 0)
         self.scanned_at: Optional[float] = None
         self.sequence = 0
@@ -148,7 +164,8 @@ class ClaudeSnapshotCache:
         refreshed = self.scanned_at is None or now - self.scanned_at >= self.refresh_seconds
         if refreshed:
             self.tokens, self.scanned_at = self.scanner.totals(now), now
-        snapshot = build_claude_snapshot(self.tokens, self.rate_path, self.sessions_path, now)
+        snapshot = build_claude_snapshot(self.tokens, self.rate_path, self.sessions_path,
+                                         now, self.detail_path)
         # The countdown and clock tick every call; only real content changes bump the sequence.
         signature = asdict(replace(snapshot, generated_at=0, quota_reset_seconds=0,
                                    secondary_quota_reset_seconds=0))

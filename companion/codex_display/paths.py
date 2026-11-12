@@ -15,6 +15,7 @@ EVENTS_PATH = STATE_DIR / "hook-events.jsonl"
 USAGE_PATH = STATE_DIR / "local-usage.json"
 LOCK_PATH = STATE_DIR / "hook-events.lock"
 CLAUDE_RATE_LIMITS_PATH = STATE_DIR / "claude-rate-limits.json"
+CLAUDE_DETAIL_PATH = STATE_DIR / "claude-usage-detail.json"
 CLAUDE_SESSIONS_PATH = STATE_DIR / "claude-sessions.json"
 
 

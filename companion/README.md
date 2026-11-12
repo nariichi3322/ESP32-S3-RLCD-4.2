@@ -152,6 +152,24 @@ preserves unrelated settings. It installs three things:
 - **`UserPromptSubmit` / `Stop` / `SessionEnd` hooks**, which track running
   sessions.
 
+The mod checks the detail cache at session start and every five minutes while
+the session runs. After a successful fetch it waits at least 15 minutes before
+fetching again. On HTTP 429 it honors a positive `Retry-After` in seconds, or
+waits 10 minutes if absent or invalid; other failures wait 15 minutes. Checks
+occur on the five-minute schedule, so a retry may happen later than its deadline.
+Failures retain the last successful response. The raw response is stored in
+`%LOCALAPPDATA%\CodexUsageDisplay\claude-usage-detail.json`; the companion only
+reads this local file and sends the detail on a separate BLE characteristic
+when supported by the firmware. The newer source also supplies the 5-hour and
+7-day windows.
+
+To decode the current detail frame without connecting to Bluetooth or starting
+Codex, run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File companion\run.ps1 --print-claude-detail
+```
+
 Stored under `%LOCALAPPDATA%\CodexUsageDisplay`: `claude-rate-limits.json`
 (5-hour and 7-day used percentage and reset time) and `claude-sessions.json`
 (session ids and timestamps of running turns; never prompt text). Rate limits

@@ -104,6 +104,16 @@ python companion\install_hook.py --uninstall
 - **`rlcd-usage-bridge` mod**（`companion\rlcd-usage-bridge`，以本地 marketplace `rlcd-local` 註冊）：VS Code 擴充功能不會執行 `statusLine`，這個 mod 會依每個工作階段自己的額度量測，寫出同一個額度檔，在終端機、桌面版與 VS Code 都能運作。它使用 Claude Code 標示為早期存取（early access）的外掛 API，Claude Code 更新後可能需要調整。
 - **`UserPromptSubmit` / `Stop` / `SessionEnd` hooks**：追蹤執行中的工作階段。
 
+mod 會在工作階段啟動時及執行期間每 5 分鐘檢查明細快取；成功查詢後至少等待 15 分鐘才再次查詢。收到 HTTP 429 時，依有效的正整數 `Retry-After` 秒數等待；沒有或無效時等待 10 分鐘，其他失敗則等待 15 分鐘。由於每 5 分鐘才檢查，實際重試可能晚於等待期限。失敗時會保留上次成功的回應。
+
+原始回應存放在 `%LOCALAPPDATA%\CodexUsageDisplay\claude-usage-detail.json`。companion 只讀取此本機檔案，並在韌體支援時透過獨立的 BLE 特徵值傳送明細；5 小時與 7 天額度也會採用時間較新的來源。
+
+不連接藍牙、不啟動 Codex，即可解碼目前的明細封包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File companion\run.ps1 --print-claude-detail
+```
+
 存放在 `%LOCALAPPDATA%\CodexUsageDisplay` 的檔案：
 
 - `claude-rate-limits.json`：5 小時與 7 天的已用百分比與重置時間。

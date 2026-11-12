@@ -2,6 +2,7 @@
 import argparse
 import asyncio
 import ctypes
+import json
 import logging
 import os
 import platform
@@ -11,6 +12,7 @@ from typing import Optional
 
 from .app_server import AppServerClient
 from .ble import BleCompanion
+from .claude_detail import current_claude_detail, decode_claude_detail
 from .claude_usage import ClaudeSnapshotCache
 from .hook_events import HookActivityTracker
 from .local_usage import read_local_tokens
@@ -140,6 +142,10 @@ async def reconcile_loop(cache: SnapshotCache, seconds: float,
                 logging.exception("Periodic RUN reconciliation failed")
 
 
+async def encoded_claude_detail() -> bytes:
+    return await asyncio.to_thread(current_claude_detail)
+
+
 async def run_codex(args: argparse.Namespace, client: AppServerClient,
                     claude: ClaudeSnapshotCache) -> None:
     cache = SnapshotCache(client, args.refresh_seconds)
@@ -150,7 +156,7 @@ async def run_codex(args: argparse.Namespace, client: AppServerClient,
     cache.attach_activity(activity)
     ble = BleCompanion(cache.encoded, cache.refresh, args.device,
                        args.heartbeat_seconds, cache.status_changed,
-                       cache.encoded_cached, claude.encoded)
+                       cache.encoded_cached, claude.encoded, encoded_claude_detail)
     tasks = [asyncio.create_task(activity.run_forever()),
              asyncio.create_task(reconcile_loop(cache, args.run_reconcile_seconds,
                                                 ble.connected_event)),
@@ -167,6 +173,9 @@ async def run_codex(args: argparse.Namespace, client: AppServerClient,
 
 
 async def run(args: argparse.Namespace) -> None:
+    if args.print_claude_detail:
+        print(json.dumps(decode_claude_detail(current_claude_detail()), indent=2))
+        return
     if platform.system() != "Windows":
         raise RuntimeError("This companion supports Windows only")
     claude = ClaudeSnapshotCache(args.refresh_seconds)
@@ -188,7 +197,8 @@ async def run(args: argparse.Namespace) -> None:
         else:
             await claude.encoded()  # warm the first transcript scan before BLE connects
             await BleCompanion(None, None, args.device, args.heartbeat_seconds,
-                               claude_provider=claude.encoded).run_forever()
+                               claude_provider=claude.encoded,
+                               claude_detail_provider=encoded_claude_detail).run_forever()
     finally:
         if client is not None:
             await client.stop()
@@ -203,6 +213,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--run-reconcile-seconds", type=float, default=30)
     result.add_argument("--log-path")
     result.add_argument("--once", action="store_true")
+    result.add_argument("--print-claude-detail", action="store_true")
     result.add_argument("--verbose", action="store_true")
     return result
 
@@ -214,8 +225,9 @@ def main() -> None:
                                     backupCount=1, encoding="utf-8")] if log_path else None
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(message)s", handlers=handlers)
-    mutex = None if args.once else acquire_instance_mutex()
-    if not args.once and mutex is None:
+    one_shot = args.once or args.print_claude_detail
+    mutex = None if one_shot else acquire_instance_mutex()
+    if not one_shot and mutex is None:
         logging.warning("Another Codex Display companion is already running; exiting")
         return
     try:

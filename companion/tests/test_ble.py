@@ -8,7 +8,7 @@ from companion.codex_display.ble import (
     _client_options,
     _enable_winrt_service_changed_retry,
 )
-from companion.codex_display.constants import CLAUDE_STATUS_UUID, STATUS_UUID
+from companion.codex_display.constants import CLAUDE_DETAIL_UUID, CLAUDE_STATUS_UUID, STATUS_UUID
 
 
 class FakeClient:
@@ -155,3 +155,65 @@ class BleTests(unittest.IsolatedAsyncioTestCase):
             await companion._send_after_authentication(client)
         self.assertEqual(client.write_gatt_char.await_count, 2)
         self.assertEqual(client.write_gatt_char.await_args.args[0], CLAUDE_STATUS_UUID)
+
+    async def test_detail_absent_is_skipped_without_building(self):
+        async def codex():
+            return b"codex"
+
+        class OlderServices:
+            def get_characteristic(self, uuid):
+                return None if uuid == CLAUDE_DETAIL_UUID else object()
+
+        client = FakeClient()
+        client.services = OlderServices()
+        detail = AsyncMock(return_value=b"detail")
+        await BleCompanion(codex, claude_provider=claude_payload,
+                           claude_detail_provider=detail)._send_all(client)
+        self.assertEqual(client.calls, [(STATUS_UUID, b"codex", True),
+                                        (CLAUDE_STATUS_UUID, b"claude", True)])
+        detail.assert_not_awaited()
+
+    async def test_detail_is_rebuilt_after_existing_writes_each_time(self):
+        async def codex():
+            return b"codex"
+
+        client = FakeClient()
+        client.services = Services(True)
+        detail = AsyncMock(side_effect=[b"detail-1", b"detail-2"])
+        companion = BleCompanion(codex, claude_provider=claude_payload,
+                                 claude_detail_provider=detail)
+        await companion._send_all(client)
+        await companion._send_all(client)
+        self.assertEqual(client.calls, [(STATUS_UUID, b"codex", True),
+                                        (CLAUDE_STATUS_UUID, b"claude", True),
+                                        (CLAUDE_DETAIL_UUID, b"detail-1", True),
+                                        (STATUS_UUID, b"codex", True),
+                                        (CLAUDE_STATUS_UUID, b"claude", True),
+                                        (CLAUDE_DETAIL_UUID, b"detail-2", True)])
+
+    async def test_detail_build_and_write_errors_do_not_escape_or_expose_error_text(self):
+        async def codex():
+            return b"codex"
+
+        for failure in ("build", "write"):
+            with self.subTest(failure=failure):
+                client = FakeClient()
+                client.services = Services(True)
+                detail = AsyncMock(side_effect=RuntimeError("private response") if failure == "build"
+                                   else None, return_value=b"detail")
+                if failure == "write":
+                    original_write = client.write_gatt_char
+
+                    async def fail_detail(uuid, value, response):
+                        if uuid == CLAUDE_DETAIL_UUID:
+                            raise RuntimeError("private response")
+                        await original_write(uuid, value, response)
+
+                    client.write_gatt_char = fail_detail
+                companion = BleCompanion(codex, claude_provider=claude_payload,
+                                         claude_detail_provider=detail)
+                with self.assertLogs("companion.codex_display.ble", "WARNING") as logs:
+                    await companion._send_all(client)
+                self.assertEqual(client.calls, [(STATUS_UUID, b"codex", True),
+                                                (CLAUDE_STATUS_UUID, b"claude", True)])
+                self.assertNotIn("private response", " ".join(logs.output))

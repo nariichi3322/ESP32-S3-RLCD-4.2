@@ -26,13 +26,15 @@ class MappingTests(unittest.TestCase):
         self.root = Path(self.dir.name)
         self.addCleanup(self.dir.cleanup)
 
-    def build(self, limits, sessions=None):
-        rate, sess = self.root / "r.json", self.root / "s.json"
+    def build(self, limits, sessions=None, detail=None):
+        rate, sess, detail_path = self.root / "r.json", self.root / "s.json", self.root / "d.json"
         if limits is not None:
             rate.write_text(json.dumps(limits))
         if sessions is not None:
             sess.write_text(json.dumps({"sessions": sessions}))
-        return build_claude_snapshot((5, 9), rate, sess, NOW)
+        if detail is not None:
+            detail_path.write_text(json.dumps(detail))
+        return build_claude_snapshot((5, 9), rate, sess, NOW, detail_path)
 
     def test_both_windows(self):
         s = self.build({"five_hour": {"used_percentage": 23.5, "resets_at": NOW + 600},
@@ -68,6 +70,32 @@ class MappingTests(unittest.TestCase):
         self.assertEqual(running_sessions(path, NOW + 1), 255)
         self.assertEqual(running_sessions(self.root / "missing.json", NOW), 0)
 
+    def test_newer_detail_replaces_both_windows_and_preserves_json_format(self):
+        rate = {"captured_at": NOW - 100,
+                "five_hour": {"used_percentage": 60, "resets_at": NOW + 100},
+                "seven_day": {"used_percentage": 80, "resets_at": NOW + 200}}
+        newer = {"last_ok": {"captured_at": NOW - 50, "body": {
+            "five_hour": {"utilization": 6, "resets_at": "2027-01-15T08:10:00.846431+00:00"},
+            "seven_day": {"utilization": 17, "resets_at": "2027-01-15T10:30:00.846448+00:00"}}}}
+        result = self.build(rate, detail=newer)
+        self.assertEqual((result.remaining_percent, result.quota_reset_seconds,
+                          result.secondary_remaining_percent, result.secondary_quota_reset_seconds),
+                         (94, 600, 83, 9000))
+        payload = json.loads(encode_snapshot(result, 1))
+        self.assertEqual((payload["r"], payload["R"]), (94, 83))
+        self.assertEqual(set(payload), {"v", "s", "t", "o", "r", "u", "q", "d", "n", "R",
+                                        "U", "Q", "e", "w", "p", "b", "c", "x", "a"})
+        for captured in (NOW - 100, NOW - 101, 1 << 64):
+            newer["last_ok"]["captured_at"] = captured
+            result = self.build(rate, detail=newer)
+            self.assertEqual((result.remaining_percent, result.secondary_remaining_percent), (40, 20))
+
+    def test_newer_detail_missing_or_invalid_window_is_unavailable(self):
+        newer = {"last_ok": {"captured_at": NOW, "body": {
+            "five_hour": {"utilization": 6, "resets_at": "not-a-date"}}}}
+        result = self.build({"captured_at": NOW - 1}, detail=newer)
+        self.assertEqual((result.limit_window_minutes, result.secondary_available), (0, False))
+
 
 class ScannerTests(unittest.TestCase):
     def test_dedupe_buckets_window_and_cache(self):
@@ -98,7 +126,7 @@ class ScannerTests(unittest.TestCase):
     def test_cache_sequence_and_payload(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            cache = ClaudeSnapshotCache(60, root, root / "r.json", root / "s.json")
+            cache = ClaudeSnapshotCache(60, root, root / "r.json", root / "s.json", root / "d.json")
             cache.snapshot()
             first = cache.sequence
             cache.snapshot()

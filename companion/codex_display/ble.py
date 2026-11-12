@@ -4,7 +4,7 @@ import platform
 from collections.abc import Awaitable, Callable
 from typing import Any, Optional
 
-from .constants import CLAUDE_STATUS_UUID, DEVICE_NAME, SERVICE_UUID, STATUS_UUID
+from .constants import CLAUDE_DETAIL_UUID, CLAUDE_STATUS_UUID, DEVICE_NAME, SERVICE_UUID, STATUS_UUID
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +57,12 @@ class BleCompanion:
                  status_changed: Optional[asyncio.Event] = None,
                  initial_snapshot_provider: Optional[
                      Callable[[], Awaitable[bytes]]] = None,
-                 claude_provider: Optional[Callable[[], Awaitable[bytes]]] = None) -> None:
+                 claude_provider: Optional[Callable[[], Awaitable[bytes]]] = None,
+                 claude_detail_provider: Optional[Callable[[], Awaitable[bytes]]] = None) -> None:
         # snapshot_provider None = Claude-only mode (Codex unavailable).
         self.claude_provider = claude_provider
+        self.claude_detail_provider = claude_detail_provider
+        self._claude_detail_error_logged: Optional[str] = None
         self.snapshot_provider = snapshot_provider
         self.initial_snapshot_provider = (initial_snapshot_provider or
                                           snapshot_provider)
@@ -156,10 +159,29 @@ class BleCompanion:
         await asyncio.wait_for(client.write_gatt_char(
             CLAUDE_STATUS_UUID, payload, response=True), 10)
 
+    async def _send_claude_detail(self, client: Any) -> None:
+        if self.claude_detail_provider is None:
+            return
+        try:
+            services = getattr(client, "services", None)
+            if services is None or services.get_characteristic(CLAUDE_DETAIL_UUID) is None:
+                return
+            payload = await self.claude_detail_provider()
+            await asyncio.wait_for(client.write_gatt_char(
+                CLAUDE_DETAIL_UUID, payload, response=True), 10)
+        except Exception as error:
+            # Heartbeats retry every few seconds; log each failure kind once.
+            if type(error).__name__ != self._claude_detail_error_logged:
+                logger.warning("Claude detail send failed (%s)", type(error).__name__)
+                self._claude_detail_error_logged = type(error).__name__
+            return
+        self._claude_detail_error_logged = None
+
     async def _send_all(self, client: Any, initial: bool = False) -> None:
         if self.snapshot_provider is not None:
             await self._send(client, self.initial_snapshot_provider if initial else None)
         await self._send_claude(client)
+        await self._send_claude_detail(client)
 
     async def _send_after_authentication(self, client: Any) -> None:
         """Keep the BLE link alive while Windows completes passkey pairing."""
