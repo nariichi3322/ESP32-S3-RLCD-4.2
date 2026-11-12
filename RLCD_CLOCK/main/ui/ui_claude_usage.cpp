@@ -1,113 +1,168 @@
 #include "ui_claude_usage.h"
 
 #include "battery_runtime_state.h"
+#include "sensor_time.h"
+#include "claude_detail_view.h"
 #include "ui_battery.h"
 #include "ui_fonts.h"
 #include "ui_i18n.h"
 #include "ui_page_state.h"
 #include "ui_progress.h"
+#include "ui_usage_bottom_mode.h"
+#include "ui_usage_rows.h"
 #include "ui_widgets.h"
 #include "ui_work_status.h"
 #include "work_page_ids.h"
 
-#include <stdio.h>
 #include <esp_timer.h>
+#include <stdio.h>
+#include <string.h>
+#include <time.h>
 
 namespace {
 lv_obj_t *s_online_content;
 lv_obj_t *s_offline_content;
-lv_obj_t *s_primary_title;
-lv_obj_t *s_percent;
-lv_obj_t *s_reset;
-lv_obj_t *s_secondary_title;
-lv_obj_t *s_secondary_percent;
-lv_obj_t *s_secondary_reset;
-lv_obj_t *s_today;
-lv_obj_t *s_week;
-lv_obj_t *s_run;
+UsageRow s_rows[4];
+UsageBottom s_bottom;
 
-lv_obj_t *make_content_container(lv_obj_t *screen)
+UiTextId grant_type(ClaudeDetailGrantType type)
 {
-    lv_obj_t *content = lv_obj_create(screen);
-    if (!content) return nullptr;
-    lv_obj_set_pos(content, 0, 67);
-    lv_obj_set_size(content, 400, 183);
-    lv_obj_set_style_bg_opa(content, LV_OPA_TRANSP, LV_PART_MAIN);
-    lv_obj_set_style_border_width(content, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(content, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(content, LV_OBJ_FLAG_SCROLLABLE);
-    return content;
-}
-
-lv_obj_t *metric(lv_obj_t *parent, int x, int y, const char *title, int width = 92)
-{
-    make_label_with_font(parent, x, y, width, 18, title, ui_font(UiFontRole::Body16));
-    lv_obj_t *value = make_label_with_font(parent, x, y + 19, width, 29, ui_text(UiTextId::UiPlaceholder), &lv_font_montserrat_16);
-    if (value) lv_obj_set_style_text_align(value, LV_TEXT_ALIGN_LEFT, LV_PART_MAIN);
-    return value;
-}
-
-void format_duration(uint32_t seconds, char *out, size_t size)
-{
-    const uint32_t minutes = seconds / 60U;
-    const uint32_t hours = minutes / 60U;
-    const uint32_t days = hours / 24U;
-    if (days) {
-        snprintf(out, size, ui_format(UiTextId::CodexDurationDaysHours),
-                 static_cast<unsigned long>(days),
-                 static_cast<unsigned long>(hours % 24U));
-    } else if (hours) {
-        snprintf(out, size, ui_format(UiTextId::CodexDurationHoursMinutes),
-                 static_cast<unsigned long>(hours),
-                 static_cast<unsigned long>(minutes % 60U));
-    } else {
-        snprintf(out, size, ui_format(UiTextId::CodexDurationMinutes),
-                 static_cast<unsigned long>(minutes));
+    switch (type) {
+    case ClaudeDetailGrantType::Full: return UiTextId::UsageGrantFull;
+    case ClaudeDetailGrantType::Fable: return UiTextId::UsageGrantFable;
+    case ClaudeDetailGrantType::Partial: return UiTextId::UsageGrantPartial;
+    default: return UiTextId::UsageGrantOther;
     }
 }
 
-lv_obj_t *quota_block(lv_obj_t *parent, int y, lv_obj_t **percent, lv_obj_t **reset)
+bool update_fable(const ClaudeDetailView &detail, time_t wall_time)
 {
-    lv_obj_t *title = make_label_with_font(parent, 18, y, 170, 18,
-                                           ui_text(UiTextId::ClaudePrimaryTitlePlaceholder),
-                                           ui_font(UiFontRole::Body16));
-    *percent = make_label_with_font(parent, 18, y + 18, 170, 35,
-                                    ui_text(UiTextId::UiPlaceholder), &lv_font_montserrat_32);
-    *reset = make_label_with_font(parent, 18, y + 54, 170, 18,
-                                  ui_text(UiTextId::CodexResetPlaceholder),
-                                  ui_font(UiFontRole::Body16));
-    return title;
+    const char *value = ui_text(UiTextId::UiPlaceholder);
+    char value_buf[16];
+    char reset[80] = "";
+    int percent = 0;
+    switch (detail.fable) {
+    case ClaudeDetailFableState::NotLoggedIn:
+        value = ui_text(UiTextId::UsageNotLoggedIn);
+        break;
+    case ClaudeDetailFableState::NoPlan:
+        value = ui_text(UiTextId::UsageNoPlan);
+        break;
+    case ClaudeDetailFableState::Value: {
+        percent = detail.fable_remaining_percent;
+        snprintf(value_buf, sizeof(value_buf), "%u%%", static_cast<unsigned>(percent));
+        value = value_buf;
+        if (!detail.fable_resets_at || wall_time <= 0) {
+            snprintf(reset, sizeof(reset), "%s", ui_text(UiTextId::CodexResetPlaceholder));
+        } else {
+            const uint64_t current = static_cast<uint64_t>(wall_time);
+            const uint64_t remaining = detail.fable_resets_at > current
+                                           ? detail.fable_resets_at - current : 0;
+            const uint32_t seconds = remaining > UINT32_MAX ? UINT32_MAX
+                                                            : static_cast<uint32_t>(remaining);
+            char duration[48];
+            usage_format_duration(seconds, duration, sizeof(duration));
+            snprintf(reset, sizeof(reset), ui_format(UiTextId::CodexResetFormat), duration);
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return usage_row_update(s_rows[2], value, reset, percent);
 }
 
-// window_minutes == 0 marks a window Claude Code has not reported.
-bool update_quota_block(lv_obj_t *title,
-                        lv_obj_t *percent,
-                        lv_obj_t *reset,
-                        bool available,
-                        uint8_t remaining_percent,
-                        uint32_t window_minutes,
-                        uint32_t reset_seconds,
-                        uint32_t received_tick_ms,
-                        uint32_t now)
+bool update_spend(const ClaudeDetailView &detail)
 {
-    char text[32];
-    char window[16];
-    codex_usage_format_window(window_minutes, window, sizeof(window));
-    snprintf(text, sizeof(text), ui_format(UiTextId::ClaudeQuotaTitle), window);
-    bool changed = set_label_text_if_changed(title, text);
-    if (!available || window_minutes == 0) {
-        changed |= set_label_text_if_changed(percent, ui_text(UiTextId::UiPlaceholder));
-        changed |= set_label_text_if_changed(reset, ui_text(UiTextId::CodexResetPlaceholder));
-        return changed;
+    const char *value = ui_text(UiTextId::UiPlaceholder);
+    char value_buf[16];
+    char sub[192] = "";
+    int percent = 0;
+    bool show_meter = true;
+    switch (detail.spend) {
+    case ClaudeDetailSpendState::NotLoggedIn:
+        value = ui_text(UiTextId::UsageNotLoggedIn);
+        break;
+    case ClaudeDetailSpendState::Disabled:
+        value = ui_text(UiTextId::UsageDisabled);
+        break;
+    case ClaudeDetailSpendState::Value: {
+        char used[48];
+        char limit[48];
+        char used_money[64];
+        char limit_money[64];
+        usage_format_amount(detail.spend_used, detail.exponent, used, sizeof(used));
+        usage_format_amount(detail.spend_limit, detail.exponent, limit, sizeof(limit));
+        const bool usd = memcmp(detail.currency, "USD", 3) == 0;
+        if (usd) {
+            snprintf(used_money, sizeof(used_money), "$%s", used);
+            snprintf(limit_money, sizeof(limit_money), "$%s", limit);
+        } else {
+            snprintf(used_money, sizeof(used_money), "%c%c%c %s",
+                     detail.currency[0], detail.currency[1], detail.currency[2], used);
+            snprintf(limit_money, sizeof(limit_money), "%s", limit);
+        }
+        if (detail.spend_limit) {
+            percent = static_cast<int>(usage_spent_percent(detail.spend_used, detail.spend_limit));
+            snprintf(value_buf, sizeof(value_buf), "%d%%", percent);
+            value = value_buf;
+            snprintf(sub, sizeof(sub), ui_format(UiTextId::UsageSpentBoth),
+                     used_money, limit_money);
+        } else {
+            value = "";
+            show_meter = false;
+            snprintf(sub, sizeof(sub), ui_format(UiTextId::UsageSpentOne), used_money);
+        }
+        break;
     }
-    snprintf(text, sizeof(text), "%u%%", remaining_percent);
-    changed |= set_label_text_if_changed(percent, text);
-    format_duration(codex_usage_countdown_seconds(
-        reset_seconds, received_tick_ms, now), text, sizeof(text));
-    char reset_text[40];
-    snprintf(reset_text, sizeof(reset_text), ui_format(UiTextId::CodexResetFormat), text);
-    changed |= set_label_text_if_changed(reset, reset_text);
-    return changed;
+    default:
+        break;
+    }
+    return usage_row_update(s_rows[3], value, sub, percent, show_meter);
+}
+
+bool update_bottom(const ClaudeDetailView &detail, const CodexUsageSnapshotView &view)
+{
+    const UsageBottomSection section = usage_bottom_section_load(UsagePage::Claude);
+    char title[64];
+    snprintf(title, sizeof(title), "%s%s",
+             ui_text(section == UsageBottomSection::Stats ? UiTextId::UsageStats : UiTextId::UsageGrants),
+             section == UsageBottomSection::Grants && detail.more ? "+" : "");
+    char left[2][128]{};
+    char right[2][96]{};
+    const char *message = nullptr;
+    bool hide_title = false;
+    switch (detail.grants) {
+    case ClaudeDetailGrantsState::NotLoggedIn:
+        message = ui_text(UiTextId::UsageClaudeNotLoggedIn);
+        hide_title = true;
+        break;
+    case ClaudeDetailGrantsState::None:
+        message = ui_text(UiTextId::UsageNoGrants);
+        break;
+    case ClaudeDetailGrantsState::Value:
+        for (unsigned i = 0; i < detail.grant_count && i < 2; ++i) {
+            char count[24];
+            char date[32];
+            usage_format_uint64(detail.grant_rows[i].resets_left, count, sizeof(count));
+            snprintf(left[i], sizeof(left[i]), ui_format(UiTextId::UsageGrantCount),
+                     ui_text(grant_type(detail.grant_rows[i].type)), count);
+            usage_format_date(detail.grant_rows[i].ends_at, date, sizeof(date));
+            if (strcmp(date, ui_text(UiTextId::UiPlaceholder)) == 0) {
+                snprintf(right[i], sizeof(right[i]), "%s", date);
+            } else {
+                snprintf(right[i], sizeof(right[i]), ui_format(UiTextId::UsageExpires), date);
+            }
+        }
+        break;
+    default:
+        message = ui_text(UiTextId::UiPlaceholder);
+        break;
+    }
+    const UsageStats stats = usage_format_stats(view, false);
+    return usage_bottom_update(s_bottom, section, title, left[0], right[0],
+                               left[1], right[1], message, hide_title,
+                               stats.today, stats.week, stats.running);
 }
 }
 
@@ -120,29 +175,24 @@ void build_claude_usage_page()
     build_work_page_battery_icon(screen, kWorkPageClaudeUsage);
     build_work_page_status_bar(screen, kWorkPageClaudeUsage, true, true);
     make_black_bar(screen, 18, 65, 364, 2);
-    s_online_content = make_content_container(screen);
-    s_offline_content = make_content_container(screen);
+    s_online_content = usage_content_container(screen);
+    s_offline_content = usage_content_container(screen);
     if (!s_online_content || !s_offline_content) return;
-    s_primary_title = quota_block(s_online_content, 6, &s_percent, &s_reset);
-    make_black_bar(s_online_content, 18, 84, 170, 2);
-    s_secondary_title = quota_block(s_online_content, 96, &s_secondary_percent,
-                                    &s_secondary_reset);
-    make_black_bar(s_online_content, 198, 9, 2, 174);
-    s_today = metric(s_online_content, 212, 9, ui_text(UiTextId::CodexToday));
-    s_week = metric(s_online_content, 302, 9, ui_text(UiTextId::CodexSevenDays));
-    s_run = metric(s_online_content, 212, 65, ui_text(UiTextId::CodexRunning), 182);
+    const UiTextId titles[] = {UiTextId::UsageFiveHours, UiTextId::UsageSevenDays,
+                               UiTextId::UsageFable, UiTextId::UsagePaid};
+    const int ys[] = {6, 48, 90, 132};
+    for (int i = 0; i < 4; ++i) {
+        s_rows[i] = usage_row_create(s_online_content, ys[i], ui_text(titles[i]), true);
+    }
+    usage_bottom_create(s_online_content, s_bottom);
     lv_obj_t *offline_title = make_label_with_font(
         s_offline_content, 25, 56, 350, 34,
         ui_text(UiTextId::CodexBluetoothOff), ui_font(UiFontRole::Body16));
     lv_obj_t *offline_detail = make_label_with_font(
         s_offline_content, 25, 96, 350, 24,
         ui_text(UiTextId::CodexOffline), ui_font(UiFontRole::Body16));
-    if (offline_title) {
-        lv_obj_set_style_text_align(offline_title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    }
-    if (offline_detail) {
-        lv_obj_set_style_text_align(offline_detail, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    }
+    if (offline_title) lv_obj_set_style_text_align(offline_title, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    if (offline_detail) lv_obj_set_style_text_align(offline_detail, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
     set_obj_visible(s_online_content, true);
     set_obj_visible(s_offline_content, false);
     build_work_page_day_progress(screen, kWorkPageClaudeUsage);
@@ -154,44 +204,40 @@ bool update_claude_usage_page(const struct tm &local,
                               const CodexUsageSnapshotView &view,
                               bool feature_enabled)
 {
-    const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
-    bool changed = false;
-    changed |= update_work_page_status_time(kWorkPageClaudeUsage, local);
+    const bool time_valid = is_tm_plausible(local);
+    bool changed = time_valid ? update_work_page_status_time(kWorkPageClaudeUsage, local) : false;
     changed |= set_obj_visible(s_online_content, feature_enabled);
     changed |= set_obj_visible(s_offline_content, !feature_enabled);
     if (!feature_enabled) return changed;
+
+    ClaudeDetailSnapshotView detail_snapshot{};
+    const bool copied = claude_detail_snapshot_copy(&detail_snapshot);
+    const uint32_t now = static_cast<uint32_t>(esp_timer_get_time() / 1000ULL);
+    const ClaudeDetailView detail = claude_detail_make_view(
+        detail_snapshot.snapshot, copied && detail_snapshot.valid,
+        detail_snapshot.received_tick_ms, now);
     const bool valid = view.snapshot_valid && view.data_valid;
-    changed |= update_quota_block(
-        s_primary_title, s_percent, s_reset, valid,
-        view.snapshot.remaining_percent, view.snapshot.limit_window_minutes,
-        view.snapshot.quota_reset_seconds, view.received_tick_ms, now);
-    changed |= update_quota_block(
-        s_secondary_title, s_secondary_percent, s_secondary_reset,
-        valid && view.snapshot.secondary_available,
-        view.snapshot.secondary_remaining_percent,
-        view.snapshot.secondary_limit_window_minutes,
-        view.snapshot.secondary_quota_reset_seconds,
-        view.received_tick_ms, now);
-    if (!valid) {
-        changed |= set_label_text_if_changed(s_today, ui_text(UiTextId::UiPlaceholder));
-        changed |= set_label_text_if_changed(s_week, ui_text(UiTextId::UiPlaceholder));
-        changed |= set_label_text_if_changed(s_run, ui_text(UiTextId::UiPlaceholder));
-        return changed;
-    }
-    char text[24];
-    codex_usage_format_tokens(view.snapshot.tokens_today, text, sizeof(text));
-    changed |= set_label_text_if_changed(s_today, text);
-    codex_usage_format_tokens(view.snapshot.tokens_7d, text, sizeof(text));
-    changed |= set_label_text_if_changed(s_week, text);
-    snprintf(text, sizeof(text), "%u", view.snapshot.active_threads);
-    changed |= set_label_text_if_changed(s_run, text);
+    changed |= usage_row_window(s_rows[0], valid ? view.snapshot.limit_window_minutes : 0,
+                                300, ui_text(UiTextId::UsageFiveHours));
+    changed |= usage_row_window(s_rows[1], valid ? view.snapshot.secondary_limit_window_minutes : 0,
+                                10080, ui_text(UiTextId::UsageSevenDays));
+    changed |= usage_row_quota(s_rows[0], valid && view.snapshot.limit_window_minutes != 0,
+                               view.snapshot.remaining_percent, view.snapshot.quota_reset_seconds,
+                               view.received_tick_ms, now);
+    changed |= usage_row_quota(s_rows[1], valid && view.snapshot.secondary_available &&
+                                              view.snapshot.secondary_limit_window_minutes != 0,
+                               view.snapshot.secondary_remaining_percent,
+                               view.snapshot.secondary_quota_reset_seconds,
+                               view.received_tick_ms, now);
+    changed |= update_fable(detail, time_valid ? time(nullptr) : 0);
+    changed |= update_spend(detail);
+    changed |= update_bottom(detail, view);
     return changed;
 }
 
 void clear_claude_usage_page_object_refs()
 {
     s_online_content = s_offline_content = nullptr;
-    s_primary_title = s_percent = s_reset = s_secondary_title =
-        s_secondary_percent = s_secondary_reset = s_today = s_week = s_run =
-        nullptr;
+    for (auto &row : s_rows) row = {};
+    s_bottom = {};
 }

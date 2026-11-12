@@ -19,6 +19,7 @@
 #include "ui_info_page_state.h"
 #include "ui_clock_seconds_state.h"
 #include "ui_weather_board_mode.h"
+#include "ui_usage_bottom_mode.h"
 #include "ui_settings_activity_state.h"
 #include "ui_settings_feedback.h"
 #include "ui_settings_navigation.h"
@@ -127,7 +128,14 @@ void toggle_weather_clock_seconds()
 
 void handle_boot_long_press()
 {
-    if (active_work_page_load() == kWorkPageWeatherBoard) {
+    const int page = active_work_page_load();
+    if (page == kWorkPageClaudeUsage || page == kWorkPageCodexUsage) {
+        usage_bottom_section_toggle(page == kWorkPageClaudeUsage
+                                        ? UsagePage::Claude : UsagePage::Codex);
+        notify_ui_task();
+        return;
+    }
+    if (page == kWorkPageWeatherBoard) {
         toggle_weather_board_forecast_mode();
         ESP_LOGI(TAG,
                  BUTTON_WEATHER_BOARD_FORECAST_MODE_LOG_FORMAT,

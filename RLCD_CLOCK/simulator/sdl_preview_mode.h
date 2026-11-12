@@ -43,7 +43,8 @@ inline Selection selection_for(const char *mode)
         is(mode, "calendar"),
         is(mode, "weather_board"),
         is(mode, "info"),
-        has_prefix(mode, "codex_"),
+        is(mode, "codex") || has_prefix(mode, "codex_") ||
+            is(mode, "claude") || has_prefix(mode, "claude_"),
         is(mode, "aggregate_clock"),
     };
 }

@@ -19,6 +19,30 @@
 #include "work_page_ids.h"
 
 namespace {
+bool update_visible_usage_pages(const struct tm &local,
+                                const ActiveWorkPageState &state,
+                                bool codex_feature_enabled)
+{
+    bool changed = false;
+    if (state.codex_usage) {
+        CodexUsageSnapshotView view{};
+        if (codex_usage_snapshot_copy(&view)) {
+            changed |= update_codex_usage_page(local,
+                                               view,
+                                               codex_feature_enabled);
+        }
+    }
+    if (state.claude_usage) {
+        CodexUsageSnapshotView view{};
+        if (claude_usage_snapshot_copy(&view)) {
+            changed |= update_claude_usage_page(local,
+                                                view,
+                                                codex_feature_enabled);
+        }
+    }
+    return changed;
+}
+
 bool update_visible_work_page_body(const struct tm &local,
                                    const ClockUiTimeSnapshot &time_snapshot,
                                    const ActiveWorkPageState &state,
@@ -46,22 +70,7 @@ bool update_visible_work_page_body(const struct tm &local,
     if (state.aggregate_clock) {
         changed |= update_aggregate_clock_page(local);
     }
-    if (state.codex_usage) {
-        CodexUsageSnapshotView view{};
-        if (codex_usage_snapshot_copy(&view)) {
-            changed |= update_codex_usage_page(local,
-                                               view,
-                                               codex_feature_enabled);
-        }
-    }
-    if (state.claude_usage) {
-        CodexUsageSnapshotView view{};
-        if (claude_usage_snapshot_copy(&view)) {
-            changed |= update_claude_usage_page(local,
-                                                view,
-                                                codex_feature_enabled);
-        }
-    }
+    changed |= update_visible_usage_pages(local, state, codex_feature_enabled);
     return changed;
 }
 
@@ -108,6 +117,7 @@ bool update_active_work_page_content(const struct tm &local,
         return changed;
     }
 
+    changed |= update_visible_usage_pages(local, state, status.codex_enabled);
     changed |= update_active_work_page_invalid_time_labels(
         active_page,
         low_battery_mode || setup_portal_active);
